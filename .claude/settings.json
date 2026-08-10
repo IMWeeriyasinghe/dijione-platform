@@ -1,0 +1,109 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+
+      "Bash(pwd*)",
+      "Bash(ls*)",
+      "Bash(dir*)",
+
+      "Bash(mkdir *)",
+      "Bash(copy *)",
+      "Bash(cp *)",
+      "Bash(move *)",
+      "Bash(mv *)",
+
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git rev-parse*)",
+      "Bash(git ls-files*)",
+
+      "Bash(node *)",
+      "Bash(node --version*)",
+      "Bash(npm *)",
+      "Bash(npm install*)",
+      "Bash(npm ci*)",
+      "Bash(npm run *)",
+      "Bash(npm test*)",
+      "Bash(npm --version*)",
+      "Bash(npx *)",
+
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(py *)",
+      "Bash(python --version*)",
+      "Bash(python3 --version*)",
+
+      "Bash(pip *)",
+      "Bash(pip install *)",
+      "Bash(python -m pip *)",
+      "Bash(python3 -m pip *)",
+
+      "Bash(python -m pytest*)",
+      "Bash(python3 -m pytest*)",
+      "Bash(pytest*)",
+      "Bash(ruff *)",
+
+      "Bash(uvicorn *)",
+      "Bash(python -m uvicorn *)",
+      "Bash(python3 -m uvicorn *)",
+
+      "Bash(alembic *)",
+
+      "Bash(where *)",
+      "Bash(which *)",
+      "Bash(echo *)",
+      "Bash(type *)"
+    ],
+
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -fd*)",
+      "Bash(git clean -fdx*)",
+
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf C:*)",
+      "Bash(rm -rf D:*)",
+      "Bash(rm -rf E:*)",
+
+      "Bash(del /s /q C:\\*)",
+      "Bash(del /s /q D:\\*)",
+      "Bash(del /s /q E:\\*)",
+
+      "Bash(rmdir /s /q C:\\*)",
+      "Bash(rmdir /s /q D:\\*)",
+      "Bash(rmdir /s /q E:\\*)",
+
+      "Bash(rd /s /q C:\\*)",
+      "Bash(rd /s /q D:\\*)",
+      "Bash(rd /s /q E:\\*)",
+
+      "Bash(format *)",
+      "Bash(diskpart*)",
+
+      "Bash(shutdown *)",
+      "Bash(restart-computer*)",
+
+      "Bash(powershell Remove-Item C:\\*)",
+      "Bash(powershell Remove-Item D:\\*)",
+      "Bash(powershell Remove-Item E:\\*)",
+
+      "Bash(pwsh Remove-Item C:\\*)",
+      "Bash(pwsh Remove-Item D:\\*)",
+      "Bash(pwsh Remove-Item E:\\*)"
+    ]
+  }
+}
