@@ -39,7 +39,13 @@ class ApplicationRepository:
         )
         return list(self.db.execute(stmt).scalars().all())
 
-    def list_for_scope(self, *, client_id: int | None, search: str | None = None) -> list[Application]:
+    def list_for_scope(
+        self,
+        *,
+        client_id: int | None,
+        search: str | None = None,
+        talent_request_id: int | None = None,
+    ) -> list[Application]:
         stmt = (
             select(Application)
             .options(
@@ -48,6 +54,8 @@ class ApplicationRepository:
             )
             .join(TalentRequest)
         )
+        if talent_request_id is not None:
+            stmt = stmt.where(Application.talent_request_id == talent_request_id)
         if client_id is not None:
             stmt = stmt.where(TalentRequest.client_id == client_id)
         if search:

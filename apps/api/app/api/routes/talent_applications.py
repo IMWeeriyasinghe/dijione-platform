@@ -23,11 +23,14 @@ router = APIRouter(prefix="/api/talent/applications", tags=["talent-applications
 @router.get("", response_model=list[ApplicationOut])
 def list_applications(
     search: str | None = None,
+    talent_request_id: int | None = None,
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> list[ApplicationOut]:
     service = ApplicationService(db)
-    applications = service.repo.list_for_scope(client_id=None, search=search)
+    applications = service.repo.list_for_scope(
+        client_id=None, search=search, talent_request_id=talent_request_id
+    )
     return [service.to_out(a) for a in applications]
 
 

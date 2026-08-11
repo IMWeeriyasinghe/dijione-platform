@@ -84,7 +84,7 @@ class InterviewService:
                 user_id=user_id,
                 type=NotificationType.INTERVIEW_UPCOMING.value,
                 title=f"Interview scheduled: {application.candidate.full_name}",
-                body=f"{interview.scheduled_at.isoformat()}",
+                body=f"{interview.scheduled_at.strftime('%b %d, %Y at %I:%M %p UTC')}",
                 related_entity_type="Interview",
                 related_entity_id=interview.id,
             )
@@ -94,6 +94,7 @@ class InterviewService:
         return InterviewOut(
             id=interview.id,
             application_id=interview.application_id,
+            talent_request_id=application.talent_request_id if application else 0,
             candidate_name=application.candidate.full_name if application and application.candidate else "",
             client_name=(
                 application.talent_request.client.name
@@ -115,6 +116,7 @@ class InterviewService:
         application = interview.application
         return ClientInterviewOut(
             id=interview.id,
+            talent_request_id=application.talent_request_id if application else 0,
             candidate_name=application.candidate.full_name if application and application.candidate else "",
             designation=application.talent_request.designation
             if application and application.talent_request

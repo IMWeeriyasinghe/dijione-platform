@@ -30,18 +30,22 @@ Modular monolith per CLAUDE.md §6:
 ## Phases
 
 - [x] Phase 0 — Planning, repo inspection, docs skeleton
-- [ ] Phase 1 — DijiOne platform foundation (Next.js shell, FastAPI, SQLite,
+- [x] Phase 1 — DijiOne platform foundation (Next.js shell, FastAPI, SQLite,
       Alembic, design tokens, module registry, dev identity)
-- [ ] Phase 2 — DijiTalentFlow core (Client + TA workspaces, domain model,
+- [x] Phase 2 — DijiTalentFlow core (Client + TA workspaces, domain model,
       demo data)
-- [ ] Phase 3 — Workflow & security (CS review state, notifications, audit
+- [x] Phase 3 — Workflow & security (CS review state, notifications, audit
       log, tenant isolation tests)
-- [ ] Phase 4 — Mock integration architecture (LeverClient, HubSpotClient,
+- [x] Phase 4 — Mock integration architecture (LeverClient, HubSpotClient,
       ExternalMapping, IntegrationEvent, webhooks)
-- [ ] Phase 5 — 55-65% review point / quality gates (lint, build, pytest,
-      ruff, migrations)
+- [x] Phase 5 — 55-65% review point / quality gates (lint, build, pytest,
+      ruff, migrations) — see `docs/mvp-status.md` for full results
 - [ ] Phase 6+ — Live discovery / production hardening — NOT started; blocked
       on credentials by design, not a blocker for this run.
+
+See `docs/mvp-status.md` for the full Definition-of-MVP-Done checklist and
+`docs/decisions/0001-monorepo-layout.md` for the repository-layout ADR
+referenced below.
 
 ## Notes
 

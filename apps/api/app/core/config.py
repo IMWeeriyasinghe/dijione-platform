@@ -27,7 +27,14 @@ class Settings(BaseSettings):
 
     azure_storage_connection_string: str = ""
 
-    api_cors_origins: str = "http://localhost:3000"
+    # Next.js falls back to :3001, :3002, ... when :3000 is already in use
+    # by another local process, so local dev allows a small range rather
+    # than a single hardcoded origin. Production sets this explicitly via
+    # the API_CORS_ORIGINS env var (see .env.example).
+    api_cors_origins: str = (
+        "http://localhost:3000,http://localhost:3001,http://localhost:3002,"
+        "http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002"
+    )
     jwt_dev_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 12

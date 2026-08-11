@@ -20,6 +20,7 @@ class InterviewStatusUpdate(BaseModel):
 class InterviewOut(BaseModel):
     id: int
     application_id: int
+    talent_request_id: int
     candidate_name: str
     client_name: str
     designation: str
@@ -35,6 +36,7 @@ class InterviewOut(BaseModel):
 
 class ClientInterviewOut(BaseModel):
     id: int
+    talent_request_id: int
     candidate_name: str
     designation: str
     scheduled_at: datetime
