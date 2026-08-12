@@ -1,0 +1,19 @@
+flowchart TD
+    CAND["Candidate: Ron Axel\n(ONE row in candidates table, id fixed)"]
+
+    CAND --> APP1["Application #1\ncandidate_id=Ron, talent_request_id=ABC req\nstage=INTERVIEWS, status=CLIENT_REVIEW\nis_client_visible=true"]
+    CAND --> APP2["Application #2\ncandidate_id=Ron, talent_request_id=XYZ req\nstage=SOURCING, status=ACTIVE\nis_client_visible=false"]
+
+    APP1 --> ABCREQ["TalentRequest: Senior Power Platform Developer\nclient_id = ABC Company"]
+    APP2 --> XYZREQ["TalentRequest: Senior Python Developer\nclient_id = XYZ Company"]
+
+    ABCREQ --> ABCVIEW["ABC Company client user\nGET /requests/{abc_id}/candidates\nsees ONLY Application #1 (client-safe fields)"]
+    XYZREQ --> XYZVIEW["XYZ Company client user\nsees ONLY Application #2\n(has no visibility into ABC at all)"]
+
+    CAND --> TAVIEW["TA / staff persona\nGET /api/talent/candidates/{ron_id}\nsees BOTH applications, full detail"]
+
+    NOTE["UniqueConstraint(candidate_id, talent_request_id)\nprevents a duplicate Application for the same pair.\nCandidate row is never copied or moved."]
+    CAND -.-> NOTE
+
+    classDef master fill:#fff8ef,stroke:#c9431d,color:#24140f;
+    class CAND master

@@ -13,11 +13,13 @@ router = APIRouter(prefix="/api/talent/clients", tags=["talent-clients"])
 def list_client_portfolios(
     scope: TalentScope = Depends(require_staff_scope), db: Session = Depends(get_db)
 ) -> list[ClientPortfolioOut]:
-    """Cross-client portfolio view — staff only (CLAUDE.md §41). Client
-    users cannot access this consolidated screen."""
+    """Cross-client portfolio view — staff only (CLAUDE.md §41), restricted
+    to the staff member's authorized client portfolio when one is assigned
+    (CLAUDE.md-extension §22). Client users cannot access this consolidated
+    screen."""
     repo = ClientRepository(db)
     out = []
-    for client in repo.list_all():
+    for client in repo.list_for_scope(allowed_client_ids=scope.client_ids):
         total, active = repo.portfolio_counts(client.id)
         out.append(
             ClientPortfolioOut(
@@ -40,6 +42,8 @@ def get_client(
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> ClientOut:
+    if scope.client_ids is not None and client_id not in scope.client_ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
     client = ClientRepository(db).get_by_id(client_id)
     if client is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")

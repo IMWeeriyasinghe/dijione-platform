@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant U as User
+    participant W as Next.js (apps/web)
+    participant A as FastAPI (apps/api)
+    participant DB as SQLite
+
+    U->>W: Open "/"
+    W->>W: AuthGate checks localStorage token
+    Note over W: No token found
+    W->>A: GET /api/auth/dev-personas (public, no auth)
+    A->>DB: SELECT users WHERE persona_key IS NOT NULL
+    A-->>W: List of 7 seeded personas
+    W-->>U: Render persona switcher (no password)
+
+    U->>W: Click a persona (e.g. "Amal Perera")
+    W->>A: POST /api/auth/dev-login {persona_key}
+    A->>DB: Look up User by persona_key
+    A->>A: DevAuthProvider.issue_token(user_id)\n(HS256, JWT_DEV_SECRET, 12h expiry)
+    A-->>W: {access_token, user}
+    W->>W: localStorage.setItem(token)\nsetUser(user)
+    W-->>U: Render DijiOne Home
+
+    U->>W: Navigate to /talent-flow/*
+    W->>A: GET ... with "Authorization: Bearer <token>"
+    A->>A: get_current_user(): decode_token, load User
+    A->>A: get_talent_scope(): load UserModuleRole\n(role, client_id)
+    A->>DB: tenant-scoped query using scope.client_id
+    A-->>W: Data appropriate to role/tenant
+    W-->>U: Client Workspace OR TA Workspace

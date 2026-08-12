@@ -29,7 +29,10 @@ def list_applications(
 ) -> list[ApplicationOut]:
     service = ApplicationService(db)
     applications = service.repo.list_for_scope(
-        client_id=None, search=search, talent_request_id=talent_request_id
+        client_id=None,
+        search=search,
+        talent_request_id=talent_request_id,
+        allowed_client_ids=scope.client_ids,
     )
     return [service.to_out(a) for a in applications]
 

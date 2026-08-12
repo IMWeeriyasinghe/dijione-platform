@@ -24,12 +24,15 @@ from app.core.constants import (  # noqa: E402
     PlatformRole,
     TalentFlowRole,
 )
+from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.models.client import Client  # noqa: E402
 from app.models.external_mapping import ExternalMapping  # noqa: E402
 from app.models.module import ApplicationModule  # noqa: E402
+from app.models.role import Permission, Role, RolePermission  # noqa: E402
 from app.models.user import User, UserModuleRole  # noqa: E402
+from app.models.user_module_client_scope import UserModuleClientScope  # noqa: E402
 from app.schemas.application import ApplicationCreate  # noqa: E402
 from app.schemas.candidate import CandidateCreate  # noqa: E402
 from app.schemas.document import DocumentCreate  # noqa: E402
@@ -48,9 +51,46 @@ def reset_schema() -> None:
     Base.metadata.create_all(bind=engine)
 
 
+def seed_authorization_catalog(db) -> None:
+    """Populate the Role / Permission / RolePermission catalog from the
+    single source of truth in ``app.core.permissions`` (DijiOne Phase 2
+    §19-20). Mirrors the Alembic migration's backfill so a fresh
+    ``--reset`` reseed and a migrated existing database end up identical.
+    """
+    permission_ids: dict[str, int] = {}
+    for perm in ALL_PERMISSIONS:
+        row = Permission(
+            key=perm.key, name=perm.name, description=perm.description,
+            module_key=perm.module_key, category=perm.category,
+        )
+        db.add(row)
+        db.flush()
+        permission_ids[perm.key] = row.id
+
+    for role_def in ALL_ROLES:
+        role = Role(
+            module_key=role_def.module_key, key=role_def.key, name=role_def.name,
+            description=role_def.description, is_system=True,
+        )
+        db.add(role)
+        db.flush()
+        for perm_key in role_def.permissions:
+            db.add(RolePermission(role_id=role.id, permission_id=permission_ids[perm_key]))
+    db.commit()
+
+
+def _assign_client_scope(db, module_role: UserModuleRole, *, client_id: int | None) -> None:
+    if client_id is not None:
+        db.add(UserModuleClientScope(user_module_role_id=module_role.id, client_id=client_id, all_clients=False))
+    else:
+        db.add(UserModuleClientScope(user_module_role_id=module_role.id, all_clients=True))
+
+
 def seed() -> None:
     db = SessionLocal()
     try:
+        seed_authorization_catalog(db)
+
         # --- Module registry --------------------------------------------
         db.add_all(
             [
@@ -74,7 +114,12 @@ def seed() -> None:
                     status="COMING_SOON",
                     enabled=True,
                     display_order=2,
-                    required_roles="ANY",
+                    # Empty = visible to every authenticated platform user
+                    # (CR §5, §58 Scenario 6). Coming Soon cards are inert
+                    # teasers with no functional access to gate, unlike
+                    # DijiTalentFlow below which requires an actual module
+                    # assignment.
+                    required_roles="",
                 ),
                 ApplicationModule(
                     key=MODULE_SPARK,
@@ -85,7 +130,7 @@ def seed() -> None:
                     status="COMING_SOON",
                     enabled=True,
                     display_order=3,
-                    required_roles="ANY",
+                    required_roles="",
                 ),
             ]
         )
@@ -118,6 +163,11 @@ def seed() -> None:
             title="Platform Administrator", platform_role=PlatformRole.PLATFORM_ADMIN.value,
             persona_key="platform-admin", avatar_color="#8f2417",
         )
+        super_admin = User(
+            email="superadmin@dijitalteam.com", full_name="Priyantha Bandara",
+            title="DijiOne Super Admin", platform_role=PlatformRole.SUPER_ADMIN.value,
+            persona_key="super-admin", avatar_color="#5c1a15",
+        )
         abc_client_user = User(
             email="amal.perera@abc-company.example", full_name="Amal Perera",
             title="Head of Talent, ABC Company", platform_role=PlatformRole.PLATFORM_USER.value,
@@ -133,31 +183,46 @@ def seed() -> None:
             title="COO, Nova Solutions", platform_role=PlatformRole.PLATFORM_USER.value,
             persona_key="nova-client", avatar_color="#fbc34a",
         )
+        ta_portfolio_user = User(
+            email="ruwan.gunasekara@dijitalteam.com", full_name="Ruwan Gunasekara",
+            title="Talent Acquisition Specialist (ABC + XYZ Portfolio)",
+            platform_role=PlatformRole.PLATFORM_USER.value,
+            persona_key="ta-portfolio", avatar_color="#f26a1b",
+        )
         db.add_all(
-            [madushanka, cs_user, ta_manager, platform_admin, abc_client_user, xyz_client_user, nova_client_user]
+            [
+                madushanka, cs_user, ta_manager, platform_admin, super_admin,
+                abc_client_user, xyz_client_user, nova_client_user, ta_portfolio_user,
+            ]
         )
         db.flush()
 
-        db.add_all(
-            [
-                UserModuleRole(user_id=madushanka.id, module_key=MODULE_TALENT_FLOW, role=TalentFlowRole.TA_MEMBER.value),
-                UserModuleRole(user_id=cs_user.id, module_key=MODULE_TALENT_FLOW, role=TalentFlowRole.CUSTOMER_SUCCESS.value),
-                UserModuleRole(user_id=ta_manager.id, module_key=MODULE_TALENT_FLOW, role=TalentFlowRole.TA_MANAGER.value),
-                UserModuleRole(user_id=platform_admin.id, module_key=MODULE_TALENT_FLOW, role=TalentFlowRole.TA_MANAGER.value),
-                UserModuleRole(
-                    user_id=abc_client_user.id, module_key=MODULE_TALENT_FLOW,
-                    role=TalentFlowRole.TALENT_CLIENT.value, client_id=abc.id,
-                ),
-                UserModuleRole(
-                    user_id=xyz_client_user.id, module_key=MODULE_TALENT_FLOW,
-                    role=TalentFlowRole.TALENT_CLIENT.value, client_id=xyz.id,
-                ),
-                UserModuleRole(
-                    user_id=nova_client_user.id, module_key=MODULE_TALENT_FLOW,
-                    role=TalentFlowRole.TALENT_CLIENT.value, client_id=nova.id,
-                ),
-            ]
-        )
+        # Demonstrates DijiOne Phase 2 client/portfolio scope (CR §22): every
+        # staff assignment defaults to ALL_CLIENTS except ta_portfolio_user,
+        # who is explicitly restricted to ABC + XYZ (Nova excluded) so the
+        # Effective Access view and Admin Center client-scope screens have a
+        # non-trivial example to show.
+        module_roles = [
+            (madushanka, TalentFlowRole.TA_MEMBER.value, None, None),
+            (cs_user, TalentFlowRole.CUSTOMER_SUCCESS.value, None, None),
+            (ta_manager, TalentFlowRole.TA_MANAGER.value, None, None),
+            (platform_admin, TalentFlowRole.TA_MANAGER.value, None, None),
+            (abc_client_user, TalentFlowRole.TALENT_CLIENT.value, abc.id, None),
+            (xyz_client_user, TalentFlowRole.TALENT_CLIENT.value, xyz.id, None),
+            (nova_client_user, TalentFlowRole.TALENT_CLIENT.value, nova.id, None),
+            (ta_portfolio_user, TalentFlowRole.TA_MEMBER.value, None, [abc.id, xyz.id]),
+        ]
+        for user, role, client_id, portfolio in module_roles:
+            module_role = UserModuleRole(
+                user_id=user.id, module_key=MODULE_TALENT_FLOW, role=role, client_id=client_id,
+            )
+            db.add(module_role)
+            db.flush()
+            if portfolio is not None:
+                for portfolio_client_id in portfolio:
+                    _assign_client_scope(db, module_role, client_id=portfolio_client_id)
+            else:
+                _assign_client_scope(db, module_role, client_id=client_id)
         db.commit()
 
         # --- Talent requests (via service, exercises workflow + audit) ----
@@ -467,7 +532,8 @@ def seed() -> None:
         print(f"  Talent requests: {request_codes}")
         print(
             "  Dev personas: madushanka-ta, customer-success, ta-manager, "
-            "platform-admin, abc-client, xyz-client, nova-client"
+            "platform-admin, super-admin, abc-client, xyz-client, nova-client, "
+            "ta-portfolio (ABC+XYZ only)"
         )
     finally:
         db.close()

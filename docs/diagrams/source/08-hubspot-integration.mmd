@@ -1,0 +1,30 @@
+flowchart LR
+    subgraph Real["Real HubSpot"]
+        HS["HubSpot API\n(never called — no credentials)"]
+    end
+
+    subgraph Backend["apps/api"]
+        Iface["HubSpotClient\n(abstract interface)"]
+        Mock["MockHubSpotClient\nhardcoded companies/contacts/deals\nmatching seeded demo clients"]
+        Factory["factory.get_hubspot_client()\nalways returns Mock\n(INTEGRATIONS_MODE=mock)"]
+        Status["GET /api/integrations/hubspot/status\n(staff-only, mode + company count)"]
+        WH["POST /api/webhooks/hubspot"]
+        Sync["SyncService.process_hubspot_event\nrecords IntegrationEvent only —\nNO domain record is ever mutated"]
+    end
+
+    DB[("IntegrationEvent table\n(idempotent by provider+external_event_id)")]
+    EM[("ExternalMapping rows\nprovider=HUBSPOT, type=company\nINSERTED ONLY by scripts/seed.py —\nno API endpoint creates these")]
+
+    UI["DijiTalentFlow frontend"]
+
+    HS -. "not connected" .-> Iface
+    Iface --> Mock --> Factory --> Status
+    UI -. "no page calls this today" .-> Status
+    WH --> Sync --> DB
+
+    classDef mocked fill:#fff3d6,stroke:#c78300,color:#4a3300;
+    classDef stub fill:#fde2e1,stroke:#c62d26,color:#5c1a15;
+    classDef notimpl fill:#eee,stroke:#888,color:#333,stroke-dasharray: 4 3;
+    class Mock,Factory,Status mocked
+    class WH,Sync stub
+    class HS,EM notimpl

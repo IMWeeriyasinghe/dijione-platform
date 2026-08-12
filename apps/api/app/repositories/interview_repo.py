@@ -17,7 +17,9 @@ class InterviewRepository:
         stmt = select(Interview).where(Interview.application_id == application_id)
         return list(self.db.execute(stmt).scalars().all())
 
-    def list_for_scope(self, *, client_id: int | None) -> list[Interview]:
+    def list_for_scope(
+        self, *, client_id: int | None, allowed_client_ids: list[int] | None = None
+    ) -> list[Interview]:
         stmt = (
             select(Interview)
             .join(Application, Interview.application_id == Application.id)
@@ -31,6 +33,8 @@ class InterviewRepository:
         )
         if client_id is not None:
             stmt = stmt.where(TalentRequest.client_id == client_id, Interview.client_visible.is_(True))
+        elif allowed_client_ids is not None:
+            stmt = stmt.where(TalentRequest.client_id.in_(allowed_client_ids))
         stmt = stmt.order_by(Interview.scheduled_at)
         return list(self.db.execute(stmt).scalars().all())
 

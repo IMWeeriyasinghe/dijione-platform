@@ -1,0 +1,49 @@
+flowchart TB
+    U["User (browser)"]
+
+    subgraph FE["apps/web — Next.js 16"]
+        Switcher["Dev Persona Switcher\n(substitute for login page)"]
+        Shell["DijiOne Shell\nAppShell / Sidebar / TopNav"]
+        TF["DijiTalentFlow UI\nClient Workspace + TA Workspace"]
+    end
+
+    subgraph BE["apps/api — FastAPI"]
+        AuthSeam["Auth seam\nDevAuthProvider (ACTIVE)\nEntraAuthProvider (STUB, raises NotImplementedError)\n/api/auth/entra/* seam (Phase 2, 501 until configured)"]
+        AuthZ["AuthorizationService (Phase 2)\nresolves platform + module permissions\nand client/portfolio scope from DB state"]
+        Routes["REST routes\n/api/talent/*, /api/modules,\n/api/notifications, /api/webhooks/*"]
+        AdminRoutes["/api/admin/* (Phase 2)\nusers, modules, roles, permissions,\nclient scope, audit, effective-access"]
+        Svc["Services\nworkflow, notifications, audit"]
+        Repo["Repositories\ntenant + portfolio-scoped queries"]
+    end
+
+    DB[("SQLite\nSQLAlchemy 2 + Alembic\n+ Role/Permission/RolePermission\n+ UserModuleClientScope (Phase 2)")]
+
+    subgraph MOCK["Mocked integration layer"]
+        MLever["MockLeverClient"]
+        MHub["MockHubSpotClient"]
+    end
+
+    subgraph FUTURE["Architecture-ready only — no code executes here"]
+        Entra["Microsoft Entra ID SSO"]
+        Copilot["Copilot / Cowork orchestration"]
+        LiveLever["Live LeverClient"]
+        LiveHub["Live HubSpotClient"]
+    end
+
+    U --> Switcher --> AuthSeam
+    U --> Shell --> TF
+    Shell -. "Administration nav\n(platform.admin.access only)" .-> AdminRoutes
+    AuthSeam --> AuthZ
+    TF -- "Bearer JWT" --> Routes
+    Routes --> AuthZ
+    AdminRoutes --> AuthZ
+    AuthZ --> DB
+    Routes --> Svc --> Repo --> DB
+    AdminRoutes --> Svc
+    Svc --> MLever
+    Svc --> MHub
+
+    AuthSeam -.swap later.-> Entra
+    MLever -.swap later.-> LiveLever
+    MHub -.swap later.-> LiveHub
+    Copilot -. "not built; would call Routes,\nnever bypassing AuthZ" .-> Routes

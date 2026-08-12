@@ -64,6 +64,23 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+/** Whether the current user can access the DijiOne Admin Center — derived
+ * from the backend-resolved permission set, never from a hardcoded role
+ * name (CLAUDE.md-extension §32-33: the frontend never re-implements
+ * authorization decisions). */
+export function usePlatformAdmin(): boolean {
+  const { user } = useAuth();
+  return useMemo(() => Boolean(user?.platform_permissions.includes("platform.admin.access")), [user]);
+}
+
+export function usePlatformPermission(permissionKey: string): boolean {
+  const { user } = useAuth();
+  return useMemo(
+    () => Boolean(user?.platform_permissions.includes(permissionKey)),
+    [user, permissionKey]
+  );
+}
+
 /** DijiTalentFlow module-role scope for the current user, or null if they
  * hold no role in the module. */
 export function useTalentScope() {

@@ -28,5 +28,6 @@ class CurrentUserOut(BaseModel):
     platform_role: str
     avatar_color: str | None
     module_roles: list[dict]
+    platform_permissions: list[str] = []
 
     model_config = ConfigDict(from_attributes=True)

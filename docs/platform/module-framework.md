@@ -20,7 +20,11 @@ display_order, required_roles, created_at, updated_at
 
 `GET /api/modules` filters the registry against the caller's
 `UserModuleRole` rows before returning it, so a user only ever sees modules
-they're authorized to open (CLAUDE.md §9/§10).
+they're authorized to open (CLAUDE.md §9/§10). Since Phase 2, a module row
+is only counted as "authorized" when the assignment is also
+`enabled=true` — a platform administrator disabling one user's
+DijiTalentFlow access (via the Admin Center) removes it from that user's
+DijiOne Home immediately, without touching the module registry itself.
 
 ## Adding a new module (e.g. DijiBirthday)
 
@@ -29,7 +33,11 @@ they're authorized to open (CLAUDE.md §9/§10).
    set following the `talent_*` naming convention. Register routers in
    `app/main.py`.
 2. **Roles**: extend `app/core/constants.py` with the module's role enum
-   (e.g. `HR_USER`, `HR_ADMIN`) and reuse `UserModuleRole.module_key`.
+   (e.g. `HR_USER`, `HR_ADMIN`) and reuse `UserModuleRole.module_key`. Add
+   the role and its permissions to `app/core/permissions.py`'s catalog
+   (`ALL_ROLES`) so the Admin Center's role/permission editors and
+   `AuthorizationService` pick it up automatically — no other authorization
+   code needs to change (see `docs/platform/authorization.md`).
 3. **Registry**: insert an `ApplicationModule` row (via a migration or the
    seed script) with `status="ACTIVE"` once the module is ready.
 4. **Frontend**: add `apps/web/src/app/<module-key>/` with its own

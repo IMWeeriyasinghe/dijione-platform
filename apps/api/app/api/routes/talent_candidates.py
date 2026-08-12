@@ -61,7 +61,9 @@ def list_request_candidates(
     """Client-safe candidate view scoped to one talent request (CLAUDE.md
     §35). Works for both client and staff personas but a client persona
     only ever sees requests belonging to their own tenant."""
-    request = TalentRequestRepository(db).get_by_id(request_id, client_id=scope.client_id)
+    request = TalentRequestRepository(db).get_by_id(
+        request_id, client_id=scope.client_id, allowed_client_ids=scope.client_ids
+    )
     if request is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found")
 

@@ -1,0 +1,31 @@
+flowchart TD
+    REQ["Incoming API request\nAuthorization: Bearer <token>"] --> DECODE["get_current_user()\ndecode JWT -> user_id -> load User\n(reject if is_active=false)"]
+    DECODE --> ROLE["get_talent_scope()\nload UserModuleRole WHERE\nuser_id=... AND module_key='talent-flow'\n(reject if enabled=false, Phase 2)"]
+    ROLE --> PERM["AuthorizationService.module_role_permissions()\nresolve scope.permissions from\nRole/Permission/RolePermission (Phase 2)"]
+    PERM --> BRANCH{"role == TALENT_CLIENT?"}
+
+    BRANCH -->|yes| CLIENTSCOPE["scope.client_id = UserModuleRole.client_id\n(from DB, NEVER from request input)"]
+    BRANCH -->|no, staff role| PORTFOLIO["AuthorizationService.client_scope_for()\nscope.client_ids = None (ALL_CLIENTS)\nor a specific portfolio (Phase 2)"]
+
+    CLIENTSCOPE --> REPO["Repository call:\nlist_for_scope(client_id=scope.client_id,\nallowed_client_ids=scope.client_ids, ...)"]
+    PORTFOLIO --> REPO
+
+    REPO --> FILTER{"client_id is not None?"}
+    FILTER -->|yes| WHERE["SQL: WHERE talent_requests.client_id = :client_id"]
+    FILTER -->|no, staff| FILTER2{"allowed_client_ids is not None?"}
+    FILTER2 -->|yes, restricted portfolio| PORTWHERE["SQL: WHERE talent_requests.client_id IN :allowed_client_ids"]
+    FILTER2 -->|no, ALL_CLIENTS| ALL["SQL: no client_id filter"]
+
+    QP["Client-supplied query param\n?client_id=<other tenant>"] -.->|"only honored when\nscope.client_id IS None\n(i.e. staff), AND still\nintersected with allowed_client_ids"| ALL
+    QP -.->|"IGNORED for TALENT_CLIENT callers"| WHERE
+
+    WHERE --> RESULT["Rows returned"]
+    PORTWHERE --> RESULT
+    ALL --> RESULT
+    RESULT --> RESP["404 (not 403) on cross-tenant\nor out-of-portfolio detail lookup —\nexistence not leaked"]
+
+    TEST["apps/api/tests/test_tenant_isolation.py\n+ test_authorization_phase2.py\ncovers: list, detail, ID enumeration,\nsearch/filter, staff-only endpoints,\nrestricted-portfolio staff"]
+    RESP -.verified by.-> TEST
+
+    classDef enforced fill:#e3f3ea,stroke:#138a4b,color:#0d3b23;
+    class DECODE,ROLE,PERM,CLIENTSCOPE,PORTFOLIO,REPO,WHERE,PORTWHERE,RESP enforced

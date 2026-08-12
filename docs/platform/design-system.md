@@ -97,7 +97,10 @@ Shell-level composition lives in `components/shell/`: `AppShell`, `Sidebar`,
 `TopNav`, `NotificationsPanel`, `UserMenu`, `DevPersonaSwitcher`, `AuthGate`.
 
 Every DijiTalentFlow page composes these rather than re-implementing card/
-table/badge styling locally (CLAUDE.md §54).
+table/badge styling locally (CLAUDE.md §54). The Phase 2 DijiOne Admin
+Center (`apps/web/src/app/admin/*`) reuses the identical set — no new
+tokens, gradients, or primitive components were introduced for it, per the
+requirement that Admin screens "feel like a natural part of DijiOne."
 
 ## Accessibility
 

@@ -9,7 +9,13 @@ class ApplicationRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_by_id(self, application_id: int, *, client_id: int | None = None) -> Application | None:
+    def get_by_id(
+        self,
+        application_id: int,
+        *,
+        client_id: int | None = None,
+        allowed_client_ids: list[int] | None = None,
+    ) -> Application | None:
         stmt = (
             select(Application)
             .options(joinedload(Application.candidate), joinedload(Application.talent_request))
@@ -17,6 +23,8 @@ class ApplicationRepository:
         )
         if client_id is not None:
             stmt = stmt.join(TalentRequest).where(TalentRequest.client_id == client_id)
+        elif allowed_client_ids is not None:
+            stmt = stmt.join(TalentRequest).where(TalentRequest.client_id.in_(allowed_client_ids))
         return self.db.execute(stmt).scalars().first()
 
     def list_for_request(
@@ -45,6 +53,7 @@ class ApplicationRepository:
         client_id: int | None,
         search: str | None = None,
         talent_request_id: int | None = None,
+        allowed_client_ids: list[int] | None = None,
     ) -> list[Application]:
         stmt = (
             select(Application)
@@ -58,6 +67,8 @@ class ApplicationRepository:
             stmt = stmt.where(Application.talent_request_id == talent_request_id)
         if client_id is not None:
             stmt = stmt.where(TalentRequest.client_id == client_id)
+        elif allowed_client_ids is not None:
+            stmt = stmt.where(TalentRequest.client_id.in_(allowed_client_ids))
         if search:
             like = f"%{search}%"
             stmt = stmt.where(TalentRequest.designation.ilike(like))

@@ -1,0 +1,34 @@
+flowchart LR
+    subgraph Real["Real Lever"]
+        LV["Lever API\n(never called — no credentials)"]
+    end
+
+    subgraph Backend["apps/api"]
+        Iface["LeverClient\n(abstract interface)"]
+        Mock["MockLeverClient\nhardcoded postings/opportunities/\nstages/interviews"]
+        Mapper["LEVER_STAGE_MAP\nLever stage text -> CanonicalStage\n(placeholder mapping, unverified\nagainst a real Lever pipeline)"]
+        Factory["factory.get_lever_client()\nalways returns Mock"]
+        Status["GET /api/integrations/lever/status\n(staff-only)"]
+        WH["POST /api/webhooks/lever"]
+        Sync["SyncService.process_lever_event"]
+        Apply["_apply_lever_event:\nlook up ExternalMapping(LEVER, opportunity)\n-> update Application.current_stage\n-> AuditLog"]
+    end
+
+    DB[("IntegrationEvent table\n(idempotent)")]
+    EM[("ExternalMapping rows\nprovider=LEVER, type=opportunity\nINSERTED ONLY by scripts/seed.py\n(2 demo rows for Ron Axel) —\nno API endpoint creates these live")]
+    APPDB[("Application.current_stage")]
+
+    LV -. "not connected" .-> Iface
+    Iface --> Mock --> Factory --> Status
+    WH --> Sync --> DB
+    Sync --> Apply
+    Apply -->|"mapping found"| APPDB
+    Apply -.->|"mapping missing -> no-op"| EM
+    Mapper --> Apply
+
+    classDef mocked fill:#fff3d6,stroke:#c78300,color:#4a3300;
+    classDef stub fill:#fde2e1,stroke:#c62d26,color:#5c1a15;
+    classDef notimpl fill:#eee,stroke:#888,color:#333,stroke-dasharray: 4 3;
+    class Mock,Factory,Status,Mapper mocked
+    class WH,Sync,Apply stub
+    class LV,EM notimpl

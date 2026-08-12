@@ -46,16 +46,19 @@ See `PLAN.md` for the explicit ADR-style rationale.
 ```text
 app/
 ├── main.py               # FastAPI app, router registration, CORS
-├── core/                 # settings, constants (roles/stages/enums), dev-JWT auth
+├── core/                 # settings, constants (roles/stages/enums), permissions.py
+│                          # (Role/Permission catalog, Phase 2), dev-JWT auth
 ├── db/                   # SQLAlchemy Base, session, engine
-├── models/                # SQLAlchemy 2 ORM models
-├── schemas/               # Pydantic request/response DTOs
+├── models/                # SQLAlchemy 2 ORM models (incl. role.py, user_module_client_scope.py)
+├── schemas/               # Pydantic request/response DTOs (incl. admin.py)
 ├── repositories/          # Tenant-safe data access (one per aggregate)
 ├── services/               # Business logic, workflow transitions, audit/notify
+│                          #   authorization_service.py — centralized permission/scope engine
+│                          #   admin_service.py — Admin Center business logic + audit
 ├── integrations/
 │   ├── lever/             # LeverClient interface, MockLeverClient, stage mapper
 │   └── hubspot/           # HubSpotClient interface, MockHubSpotClient
-└── api/routes/             # Thin FastAPI route handlers
+└── api/routes/             # Thin FastAPI route handlers (incl. admin.py, auth_entra.py)
 ```
 
 Route handlers never talk to the database directly — they call a service,
@@ -69,7 +72,8 @@ isolation correctness (see `docs/talent-flow/data-model.md`).
 src/
 ├── app/
 │   ├── page.tsx              # DijiOne Home
-│   └── talent-flow/           # DijiTalentFlow module routes
+│   ├── talent-flow/           # DijiTalentFlow module routes
+│   └── admin/                 # DijiOne Admin Center (Phase 2) — see docs/platform/admin-center.md
 ├── components/
 │   ├── shell/                 # AppShell, Sidebar, TopNav, persona switcher
 │   ├── ui/                    # Design-system primitives (Card, Button, Table, …)

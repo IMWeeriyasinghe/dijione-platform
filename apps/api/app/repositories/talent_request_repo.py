@@ -17,14 +17,28 @@ class TalentRequestRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def _scoped(self, stmt, client_id: int | None):
+    def _scoped(self, stmt, client_id: int | None, allowed_client_ids: list[int] | None = None):
         if client_id is not None:
             stmt = stmt.where(TalentRequest.client_id == client_id)
+        elif allowed_client_ids is not None:
+            # Staff portfolio restriction (CLAUDE.md-extension §22) — only
+            # applied when the caller has no single-tenant client_id (i.e.
+            # is staff); None here (from AuthorizationService) means ALL
+            # clients, so no additional filter is added in that case.
+            stmt = stmt.where(TalentRequest.client_id.in_(allowed_client_ids))
         return stmt
 
-    def get_by_id(self, request_id: int, *, client_id: int | None) -> TalentRequest | None:
+    def get_by_id(
+        self,
+        request_id: int,
+        *,
+        client_id: int | None,
+        allowed_client_ids: list[int] | None = None,
+    ) -> TalentRequest | None:
         stmt = self._scoped(
-            select(TalentRequest).where(TalentRequest.id == request_id), client_id
+            select(TalentRequest).where(TalentRequest.id == request_id),
+            client_id,
+            allowed_client_ids,
         )
         return self.db.execute(stmt).scalars().first()
 
@@ -36,9 +50,10 @@ class TalentRequestRepository:
         stage: str | None = None,
         status: str | None = None,
         filter_client_id: int | None = None,
+        allowed_client_ids: list[int] | None = None,
     ) -> list[TalentRequest]:
         stmt = select(TalentRequest)
-        stmt = self._scoped(stmt, client_id)
+        stmt = self._scoped(stmt, client_id, allowed_client_ids)
         if filter_client_id is not None and client_id is None:
             stmt = stmt.where(TalentRequest.client_id == filter_client_id)
         if search:

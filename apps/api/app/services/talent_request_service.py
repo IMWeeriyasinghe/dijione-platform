@@ -100,9 +100,17 @@ class TalentRequestService:
         return request
 
     def review_request(
-        self, *, request_id: int, actor_id: int, decision: str, reason: str
+        self,
+        *,
+        request_id: int,
+        actor_id: int,
+        decision: str,
+        reason: str,
+        allowed_client_ids: list[int] | None = None,
     ) -> TalentRequest:
-        request = self.repo.get_by_id(request_id, client_id=None)
+        request = self.repo.get_by_id(
+            request_id, client_id=None, allowed_client_ids=allowed_client_ids
+        )
         if request is None:
             raise TalentRequestNotFoundError(request_id)
 
@@ -186,9 +194,17 @@ class TalentRequestService:
             )
 
     def update_stage(
-        self, *, request_id: int, actor_id: int, stage: str, client_safe_status_text: str | None
+        self,
+        *,
+        request_id: int,
+        actor_id: int,
+        stage: str,
+        client_safe_status_text: str | None,
+        allowed_client_ids: list[int] | None = None,
     ) -> TalentRequest:
-        request = self.repo.get_by_id(request_id, client_id=None)
+        request = self.repo.get_by_id(
+            request_id, client_id=None, allowed_client_ids=allowed_client_ids
+        )
         if request is None:
             raise TalentRequestNotFoundError(request_id)
         if stage not in [s.value for s in CANONICAL_STAGE_ORDER]:
@@ -223,8 +239,17 @@ class TalentRequestService:
         )
         return request
 
-    def update_ta_status(self, *, request_id: int, actor_id: int, ta_status: str) -> TalentRequest:
-        request = self.repo.get_by_id(request_id, client_id=None)
+    def update_ta_status(
+        self,
+        *,
+        request_id: int,
+        actor_id: int,
+        ta_status: str,
+        allowed_client_ids: list[int] | None = None,
+    ) -> TalentRequest:
+        request = self.repo.get_by_id(
+            request_id, client_id=None, allowed_client_ids=allowed_client_ids
+        )
         if request is None:
             raise TalentRequestNotFoundError(request_id)
         previous = request.ta_status

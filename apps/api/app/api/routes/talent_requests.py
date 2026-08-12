@@ -7,7 +7,6 @@ from app.api.deps import (
     require_customer_success_scope,
     require_staff_scope,
 )
-from app.core.constants import TalentFlowRole
 from app.db.session import get_db
 from app.schemas.talent_request import (
     TalentRequestCreate,
@@ -36,7 +35,9 @@ def list_requests(
 ) -> list[TalentRequestOut]:
     """Client users only ever see their own organization's requests
     (CLAUDE.md §33) — enforced by always passing scope.client_id, never a
-    client-supplied id, when the caller is a TALENT_CLIENT persona."""
+    client-supplied id, when the caller is a TALENT_CLIENT persona. Staff
+    with a restricted client portfolio (CLAUDE.md-extension §22) only ever
+    see ``scope.client_ids``, also never client-supplied."""
     service = TalentRequestService(db)
     requests = service.repo.list_for_scope(
         client_id=scope.client_id,
@@ -44,6 +45,7 @@ def list_requests(
         stage=stage,
         status=status_filter,
         filter_client_id=client_id,
+        allowed_client_ids=scope.client_ids,
     )
     return [service.to_out(r) for r in requests]
 
@@ -54,7 +56,7 @@ def create_request(
     scope: TalentScope = Depends(get_talent_scope),
     db: Session = Depends(get_db),
 ) -> TalentRequestOut:
-    if scope.role != TalentFlowRole.TALENT_CLIENT.value or scope.client_id is None:
+    if not scope.has("talent.requests.create") or scope.client_id is None:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Only a client persona can submit a talent request"
         )
@@ -72,7 +74,9 @@ def get_request(
     db: Session = Depends(get_db),
 ) -> TalentRequestOut:
     service = TalentRequestService(db)
-    request = service.repo.get_by_id(request_id, client_id=scope.client_id)
+    request = service.repo.get_by_id(
+        request_id, client_id=scope.client_id, allowed_client_ids=scope.client_ids
+    )
     if request is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found")
     return service.to_out(request)
@@ -88,7 +92,11 @@ def review_request(
     service = TalentRequestService(db)
     try:
         request = service.review_request(
-            request_id=request_id, actor_id=scope.user.id, decision=payload.decision, reason=payload.reason
+            request_id=request_id,
+            actor_id=scope.user.id,
+            decision=payload.decision,
+            reason=payload.reason,
+            allowed_client_ids=scope.client_ids,
         )
     except TalentRequestNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found") from exc
@@ -113,6 +121,7 @@ def update_stage(
             actor_id=scope.user.id,
             stage=payload.stage,
             client_safe_status_text=payload.client_safe_status_text,
+            allowed_client_ids=scope.client_ids,
         )
     except TalentRequestNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found") from exc
@@ -133,7 +142,10 @@ def update_ta_status(
     service = TalentRequestService(db)
     try:
         request = service.update_ta_status(
-            request_id=request_id, actor_id=scope.user.id, ta_status=payload.ta_status
+            request_id=request_id,
+            actor_id=scope.user.id,
+            ta_status=payload.ta_status,
+            allowed_client_ids=scope.client_ids,
         )
     except TalentRequestNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found") from exc

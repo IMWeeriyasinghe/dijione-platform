@@ -1,0 +1,15 @@
+flowchart TD
+    L["Sign in as staff persona\n(TA_MEMBER / CUSTOMER_SUCCESS / TA_MANAGER)"] --> S["TalentScope resolved\nclient_id = None -> cross-client"]
+    S --> Shell["TA Operations Workspace shell"]
+
+    Shell --> OD["Operations Dashboard\nGET /api/talent/ta/dashboard"]
+    Shell --> CP["Client Portfolios\nGET /api/talent/clients (staff-only)"]
+    Shell --> AR["All Requests\nGET /api/talent/requests (unscoped)"]
+    Shell --> POOL["Candidate Pool\nGET/POST /api/talent/candidates"]
+    Shell --> APPS["Applications\nGET/POST /api/talent/applications\nPATCH stage/status/score/visibility"]
+    Shell --> IM["Interview Manager\nGET/POST /api/talent/interviews\nPATCH status"]
+
+    AR --> RD["Request Detail (any client)\nUpdate Stage / Review actions visible"]
+    POOL --> CD["Candidate Detail\nshows ALL applications across ALL clients"]
+    APPS --> ASSIGN["Add Candidate to Request\n= POST /api/talent/applications\n{candidate_id, talent_request_id}"]
+    APPS --> VIS["Toggle is_client_visible\n= what the client is allowed to see"]

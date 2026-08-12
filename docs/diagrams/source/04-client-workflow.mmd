@@ -1,0 +1,17 @@
+flowchart TD
+    L["Sign in as TALENT_CLIENT persona\n(e.g. Amal Perera, ABC Company)"] --> S["TalentScope resolved\nclient_id = ABC Company id"]
+    S --> Shell["Client Workspace shell\n(gradient sidebar, role-based nav)"]
+
+    Shell --> D["Dashboard\nGET /api/talent/dashboard/client"]
+    Shell --> MR["My Requests\nGET /api/talent/requests\n(scoped to own client_id)"]
+    Shell --> C["Candidates\naggregated client-safe view\nacross own requests"]
+    Shell --> I["Interviews\nGET /api/talent/interviews\n(client-safe shape)"]
+    Shell --> M["Messages\nper-request thread"]
+    Shell --> Doc["Documents\nper-request metadata"]
+    Shell --> N["New Talent Request\nsee diagram 05"]
+
+    MR --> RD["Request Detail\nGET /api/talent/requests/{id}\n(404 if not own client)"]
+    RD --> RDT["Overview / Candidates / Interviews\n/ Messages / Documents tabs"]
+    RDT --> CV["Client-safe candidates only:\nGET /api/talent/requests/{id}/candidates\n(is_client_visible=true rows)"]
+    RDT --> MSG["Messages:\nGET/POST /api/talent/requests/{id}/messages"]
+    RDT --> DOC2["Documents:\nGET/POST /api/talent/requests/{id}/documents"]

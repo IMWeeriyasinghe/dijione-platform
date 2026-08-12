@@ -1,0 +1,54 @@
+flowchart TD
+    USER["User"]
+    AUTH["Dev Identity Mode\n(IMPLEMENTED)\nMicrosoft SSO — NOT IMPLEMENTED"]
+    DJO["DijiOne Home\n(IMPLEMENTED)"]
+    SCOPE["Role + Tenant Resolution\nTalentScope (IMPLEMENTED, backend-enforced)"]
+    TF["DijiTalentFlow\n(IMPLEMENTED)"]
+
+    USER --> AUTH --> DJO --> SCOPE --> TF
+
+    subgraph CW["CLIENT WORKSPACE (IMPLEMENTED)"]
+        CD["Dashboard"]
+        CMR["My Requests"]
+        CC["Candidates (client-safe)"]
+        CI["Interviews"]
+        CM["Messages"]
+        CDoc["Documents"]
+    end
+
+    subgraph TA["TA OPERATIONS (IMPLEMENTED)"]
+        TOD["Operations Dashboard"]
+        TCP["Client Portfolios"]
+        TAR["All Requests"]
+        TCPool["Candidate Pool"]
+        TApp["Applications"]
+        TIM["Interview Manager"]
+    end
+
+    TF --> CW
+    TF --> TA
+
+    API["FastAPI REST API (IMPLEMENTED)"]
+    CW --> API
+    TA --> API
+
+    DATA["SQLite via SQLAlchemy/Alembic (IMPLEMENTED)"]
+    API --> DATA
+
+    subgraph EXT["External systems"]
+        HUB["HubSpot — MOCKED, one-way status read only"]
+        LEV["Lever — MOCKED, webhook stage-sync only"]
+    end
+
+    API -. "no live calls" .-> HUB
+    API -. "no live calls" .-> LEV
+
+    COPILOT["Copilot / Cowork layer\nNOT IMPLEMENTED — docs only"]
+    DJO -. future .-> COPILOT
+
+    classDef implemented fill:#e3f3ea,stroke:#138a4b,color:#0d3b23;
+    classDef mocked fill:#fff3d6,stroke:#c78300,color:#4a3300;
+    classDef notimpl fill:#fde2e1,stroke:#c62d26,color:#5c1a15,stroke-dasharray: 4 3;
+    class AUTH,DJO,SCOPE,TF,API,DATA implemented
+    class HUB,LEV mocked
+    class COPILOT notimpl

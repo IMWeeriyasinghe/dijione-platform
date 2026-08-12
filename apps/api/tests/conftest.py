@@ -14,11 +14,51 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.core.constants import MODULE_TALENT_FLOW, TalentFlowRole  # noqa: E402
+from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.client import Client  # noqa: E402
+from app.models.role import Permission, Role, RolePermission  # noqa: E402
 from app.models.user import User, UserModuleRole  # noqa: E402
+from app.models.user_module_client_scope import UserModuleClientScope  # noqa: E402
+
+
+def _seed_authorization_catalog(session) -> None:
+    """Every test DB needs the Role/Permission catalog populated — it is
+    the sole source of resolved permissions (see AuthorizationService)."""
+    permission_ids: dict[str, int] = {}
+    for perm in ALL_PERMISSIONS:
+        row = Permission(
+            key=perm.key, name=perm.name, description=perm.description,
+            module_key=perm.module_key, category=perm.category,
+        )
+        session.add(row)
+        session.flush()
+        permission_ids[perm.key] = row.id
+    for role_def in ALL_ROLES:
+        role = Role(
+            module_key=role_def.module_key, key=role_def.key, name=role_def.name,
+            description=role_def.description, is_system=True,
+        )
+        session.add(role)
+        session.flush()
+        for perm_key in role_def.permissions:
+            session.add(RolePermission(role_id=role.id, permission_id=permission_ids[perm_key]))
+    session.commit()
+
+
+def assign_client_scope(session, module_role: UserModuleRole, *, client_id: int | None) -> None:
+    """Test helper mirroring scripts/seed.py's ``_assign_client_scope``."""
+    if client_id is not None:
+        session.add(
+            UserModuleClientScope(
+                user_module_role_id=module_role.id, client_id=client_id, all_clients=False
+            )
+        )
+    else:
+        session.add(UserModuleClientScope(user_module_role_id=module_role.id, all_clients=True))
+    session.commit()
 
 
 @pytest.fixture()
@@ -27,6 +67,7 @@ def db():
     Base.metadata.create_all(bind=engine)
     session = SessionLocal()
     try:
+        _seed_authorization_catalog(session)
         yield session
     finally:
         session.close()

@@ -20,7 +20,9 @@ def list_interviews(
     """Staff see the full cross-client interview manager (CLAUDE.md §45);
     client personas see only their own, client-safe interviews (§36)."""
     service = InterviewService(db)
-    interviews = service.repo.list_for_scope(client_id=scope.client_id)
+    interviews = service.repo.list_for_scope(
+        client_id=scope.client_id, allowed_client_ids=scope.client_ids
+    )
     if scope.is_staff:
         return [service.to_out(i).model_dump(mode="json") for i in interviews]
     return [service.to_client_out(i).model_dump(mode="json") for i in interviews]

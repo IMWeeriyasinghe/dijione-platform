@@ -10,8 +10,10 @@ from app.models.interview import Interview
 from app.models.message import Message
 from app.models.module import ApplicationModule
 from app.models.notification import Notification
+from app.models.role import Permission, Role, RolePermission
 from app.models.talent_request import TalentRequest
 from app.models.user import User, UserModuleRole
+from app.models.user_module_client_scope import UserModuleClientScope
 
 __all__ = [
     "Base",
@@ -26,7 +28,11 @@ __all__ = [
     "Message",
     "ApplicationModule",
     "Notification",
+    "Permission",
+    "Role",
+    "RolePermission",
     "TalentRequest",
     "User",
     "UserModuleRole",
+    "UserModuleClientScope",
 ]

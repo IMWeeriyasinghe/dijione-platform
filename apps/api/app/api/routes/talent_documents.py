@@ -12,7 +12,9 @@ router = APIRouter(prefix="/api/talent/requests/{request_id}/documents", tags=["
 
 
 def _ensure_request_in_scope(request_id: int, scope: TalentScope, db: Session):
-    request = TalentRequestRepository(db).get_by_id(request_id, client_id=scope.client_id)
+    request = TalentRequestRepository(db).get_by_id(
+        request_id, client_id=scope.client_id, allowed_client_ids=scope.client_ids
+    )
     if request is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found")
     return request

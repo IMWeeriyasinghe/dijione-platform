@@ -78,9 +78,14 @@ class DashboardService:
             requests=[self.request_service.to_out(r) for r in requests],
         )
 
-    def ta_dashboard(self) -> TaDashboardOut:
-        clients = self.db.execute(select(func.count(Client.id))).scalar_one()
-        requests = self.request_repo.list_for_scope(client_id=None)
+    def ta_dashboard(self, *, allowed_client_ids: list[int] | None = None) -> TaDashboardOut:
+        if allowed_client_ids is not None:
+            clients = len(allowed_client_ids)
+        else:
+            clients = self.db.execute(select(func.count(Client.id))).scalar_one()
+        requests = self.request_repo.list_for_scope(
+            client_id=None, allowed_client_ids=allowed_client_ids
+        )
         active_requests = [
             r
             for r in requests

@@ -11,6 +11,7 @@ from enum import StrEnum
 class PlatformRole(StrEnum):
     PLATFORM_USER = "PLATFORM_USER"
     PLATFORM_ADMIN = "PLATFORM_ADMIN"
+    SUPER_ADMIN = "SUPER_ADMIN"
 
 
 class TalentFlowRole(StrEnum):

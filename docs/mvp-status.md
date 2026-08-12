@@ -1,8 +1,10 @@
 # DijiOne MVP Status
 
-Last updated: end of the first autonomous run (see `PLAN.md`).
+Last updated: end of the Phase 2 autonomous run (see `PLAN.md`). Phase 1
+status is preserved below; see "Phase 2 — Authorization & Admin Center"
+for what changed.
 
-## Definition of MVP Done — CLAUDE.md §84 checklist
+## Definition of MVP Done — CLAUDE.md §84 checklist (Phase 1)
 
 1. ✅ Repository starts from documented local commands (`docs/setup.md`)
 2. ✅ DijiOne Home works
@@ -87,11 +89,90 @@ Approximately 55-60% of the full DijiOne vision, matching the target for
 functional first module end-to-end, and integration-ready architecture,
 without live external connectivity.
 
+## Phase 2 — Authorization & Admin Center
+
+Delivered on top of the Phase 1 baseline above, without rewriting any
+working DijiTalentFlow functionality (all 18 pre-Phase-2 tests still pass
+unmodified):
+
+1. ✅ Centralized authorization engine (`AuthorizationService`) resolving
+   platform + module permissions and client/portfolio scope from database
+   state only — see `docs/platform/authorization.md`.
+2. ✅ Role / Permission / RolePermission catalog, seeded from a single
+   source of truth (`app/core/permissions.py`) used by both the Alembic
+   migration and `scripts/seed.py`.
+3. ✅ Client/portfolio scope (`UserModuleClientScope`) — staff can now be
+   restricted to a subset of clients instead of only "one client" or "all
+   clients"; demonstrated by the `ta-portfolio` seed persona (ABC + XYZ
+   only, Nova excluded) and covered by
+   `tests/test_authorization_phase2.py`.
+4. ✅ `SUPER_ADMIN` platform role added alongside `PLATFORM_ADMIN` /
+   `PLATFORM_USER`, with lockout protection (last active SUPER_ADMIN can't
+   be deactivated/demoted) and admin-role-change restricted to
+   `platform.admin.manage_admins` holders.
+5. ✅ DijiOne Admin Center — backend (`/api/admin/*`, 15 endpoints) and
+   frontend (`/admin/*`, 8 pages: Dashboard, Users, User Detail,
+   Applications, Roles, Permissions, Client Access, Audit) — see
+   `docs/platform/admin-center.md`.
+6. ✅ Module assignments gained an `enabled` flag — disabling a user's
+   module access removes it from their DijiOne Home immediately.
+7. ✅ `User` gained `entra_object_id`, `identity_provider`,
+   `last_login_at` — Phase 2 identity fields, populated on every
+   `dev-login`.
+8. ✅ Microsoft Entra ID integration seam extended (`/api/auth/entra/*`,
+   `app/api/routes/auth_entra.py`) — concrete OIDC code seams that fail
+   fast with a typed 501 until real tenant credentials are configured.
+   Still not activated; Dev Identity Mode remains the only working
+   authentication path.
+9. ✅ Every admin mutation is audit-logged via the existing `AuditLog`
+   table (no new audit store introduced).
+10. ✅ New Alembic migration (`2e7f7d7dc3fa`) applies cleanly to the
+    pre-Phase-2 database with a full backfill; verified against both a
+    migrated existing `dijione.db` and a fresh `--reset` reseed.
+
+### Phase 2 quality gates
+
+| Gate | Result |
+|---|---|
+| `pytest` (apps/api) | 35 passed (18 Phase 1 + 17 new Phase 2) |
+| `ruff check .` (apps/api) | clean |
+| Alembic `upgrade head` | clean, applies to existing dev DB and fresh DB identically |
+| `npm run lint` (apps/web) | clean |
+| `npm run build` (apps/web) | clean — 8 new `/admin/*` routes compile alongside the 14 existing routes |
+| Browser smoke test | Admin Center navigated end-to-end as SUPER_ADMIN; non-admin persona correctly denied with an empty state, not a broken page — see `docs/platform/admin-center.md` |
+
+### DijiBirthday / DijiSpark (CR §4.2 / §4.3)
+
+Registered in the module registry as `COMING_SOON`, rendered as disabled,
+non-clickable "Coming Soon" cards on DijiOne Home (`ModuleCard.tsx`
+already implemented this correctly in Phase 1). The Admin Center's
+Applications screen surfaces them the same way. No functional workflows
+were added for either module, per the CR's explicit non-goal.
+
+**Bug found and fixed during Phase 2 browser verification**: both cards'
+`required_roles` seed value (`"ANY"`) was a non-empty string, which
+`GET /api/modules` treats as "the caller needs an actual module
+assignment" — since no persona ever held a `birthday`/`spark` role, this
+meant *nobody*, in either phase, ever actually saw the two Coming Soon
+cards, contradicting CR §58 Scenario 6. Fixed by seeding
+`required_roles=""` for COMING_SOON modules (empty = visible to any
+authenticated user, matching the documented intent in
+`docs/platform/module-framework.md`); DijiTalentFlow's `required_roles`
+is unchanged since it is a real access boundary. Verified in a real
+browser (both an ordinary client persona and a no-module-access
+SUPER_ADMIN persona now see the two cards) and covered by
+`tests/test_module_registry.py`.
+
 ## Next autonomous phase (when resumed)
 
 1. Request read-only Lever + HubSpot credentials (Phase D discovery).
 2. Update `LEVER_STAGE_MAP` against real pipeline data.
-3. Build the Entra ID `EntraAuthProvider` once tenant/client credentials
-   are available.
+3. Implement `EntraAuthProvider.decode_token` (JWKS validation) and the
+   Next.js `/api/auth/callback` route once a real Entra app registration
+   and tenant/client credentials are available — the `/api/auth/entra/*`
+   seam is ready to receive it.
 4. Real document storage (Azure Blob Storage).
-5. DijiBirthday as the second module, proving the module framework.
+5. Role/permission creation-and-editing UI in the Admin Center (currently
+   read-only/system-protected).
+6. DijiBirthday as the second module, proving the module framework end to
+   end (registry → roles → permissions → Admin Center → UI).

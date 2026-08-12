@@ -1,7 +1,10 @@
 # DijiOne Platform — Build Plan
 
-Status: FIRST AUTONOMOUS RUN in progress.
-Authoritative contract: [CLAUDE.md](./CLAUDE.md).
+Status: Phase 1 (First Autonomous Run) complete; Phase 2 (Identity,
+Authorization, Administration) complete. See `docs/mvp-status.md` for the
+full checklist and quality-gate results of both phases.
+Authoritative contract: [CLAUDE.md](./CLAUDE.md), extended by the DijiOne
+Phase 2 change request (identity/authorization/Admin Center).
 
 ## Repository state at start
 
@@ -43,6 +46,29 @@ Modular monolith per CLAUDE.md §6:
 - [ ] Phase 6+ — Live discovery / production hardening — NOT started; blocked
       on credentials by design, not a blocker for this run.
 
+## Phase 2 — Identity, Authorization & Admin Center
+
+- [x] Centralized `AuthorizationService` + Role/Permission/RolePermission
+      catalog (`app/core/permissions.py`, single source of truth for the
+      Alembic backfill and `scripts/seed.py`).
+- [x] Client/portfolio scope (`UserModuleClientScope`) replacing the
+      "one client or all clients" limitation with an explicit portfolio.
+- [x] `SUPER_ADMIN` platform role + lockout/admin-role-change protection.
+- [x] DijiOne Admin Center: backend (`/api/admin/*`) + frontend
+      (`/admin/*`, 8 pages).
+- [x] Module assignment `enabled` flag; `User` Phase 2 identity fields
+      (`entra_object_id`, `identity_provider`, `last_login_at`).
+- [x] Microsoft Entra ID OIDC integration seam extended
+      (`/api/auth/entra/*`) — not activated, fails fast with 501 until
+      real tenant credentials exist.
+- [x] Admin audit logging (reuses existing `AuditLog`, no new store).
+- [x] Regression: all 18 Phase 1 tests still pass unmodified; 17 new
+      Phase 2 tests added (`test_authorization_phase2.py`,
+      `test_admin_center.py`).
+- [x] Docs: `docs/platform/authorization.md`, `docs/platform/admin-center.md`
+      (new); `authentication.md`, `module-framework.md`, `architecture.md`
+      updated.
+
 See `docs/mvp-status.md` for the full Definition-of-MVP-Done checklist and
 `docs/decisions/0001-monorepo-layout.md` for the repository-layout ADR
 referenced below.
@@ -52,4 +78,6 @@ referenced below.
 - No production credentials available or requested. Mock providers only.
 - SQLite for local dev, PostgreSQL-compatible schema via SQLAlchemy 2.
 - Dev Identity Mode replaces Entra ID locally; seam documented in
-  `docs/platform/authentication.md`.
+  `docs/platform/authentication.md`. Phase 2 kept this seam intact —
+  Dev Identity Mode and the target Entra ID flow both resolve through the
+  same `AuthorizationService`, only identity acquisition differs.

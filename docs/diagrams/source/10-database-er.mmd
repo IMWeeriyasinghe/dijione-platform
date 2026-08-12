@@ -1,0 +1,120 @@
+erDiagram
+    CLIENT ||--o{ TALENT_REQUEST : "client_id"
+    CLIENT ||--o{ USER_MODULE_ROLE : "client_id (nullable)"
+    USER ||--o{ USER_MODULE_ROLE : "user_id"
+    USER ||--o{ TALENT_REQUEST : "created_by"
+    TALENT_REQUEST ||--o{ APPLICATION : "talent_request_id"
+    CANDIDATE ||--o{ APPLICATION : "candidate_id"
+    APPLICATION ||--o{ INTERVIEW : "application_id"
+    TALENT_REQUEST ||--o{ MESSAGE : "talent_request_id"
+    TALENT_REQUEST ||--o{ DOCUMENT : "talent_request_id"
+    USER ||--o{ NOTIFICATION : "user_id"
+    USER ||--o{ AUDIT_LOG : "actor_id (nullable)"
+
+    CLIENT {
+        int id PK
+        string name UK
+        string industry
+        string account_manager
+        string status
+    }
+    USER {
+        int id PK
+        string email UK
+        string full_name
+        string platform_role
+        string persona_key UK "dev-identity only"
+        bool is_active
+    }
+    USER_MODULE_ROLE {
+        int id PK
+        int user_id FK
+        string module_key
+        string role
+        int client_id FK "null for staff roles"
+    }
+    APPLICATION_MODULE {
+        int id PK
+        string key UK
+        string name
+        bool enabled
+        string status
+    }
+    TALENT_REQUEST {
+        int id PK
+        string request_code UK
+        int client_id FK
+        string designation
+        string current_stage
+        string lifecycle_status
+        string customer_success_status
+        string ta_status
+        int created_by FK
+    }
+    CANDIDATE {
+        int id PK
+        string full_name
+        string email UK
+        string availability_status
+        string lever_external_id "unused by any live sync"
+    }
+    APPLICATION {
+        int id PK
+        int candidate_id FK
+        int talent_request_id FK
+        string current_stage
+        string status
+        float score
+        bool is_client_visible
+        string lever_opportunity_id "unused by any live sync"
+    }
+    INTERVIEW {
+        int id PK
+        int application_id FK
+        datetime scheduled_at
+        string interview_type
+        string status
+        bool client_visible
+    }
+    MESSAGE {
+        int id PK
+        int talent_request_id FK
+        int sender_id FK
+        string sender_role
+        string body
+    }
+    DOCUMENT {
+        int id PK
+        int talent_request_id FK
+        string file_name
+        string category
+        int uploaded_by FK
+        string storage_reference "metadata only, no real file store"
+    }
+    NOTIFICATION {
+        int id PK
+        int user_id FK
+        string type
+        bool is_read
+    }
+    AUDIT_LOG {
+        int id PK
+        int actor_id FK
+        string action
+        string entity_type
+        int entity_id
+    }
+    EXTERNAL_MAPPING {
+        int id PK
+        string provider
+        string external_object_type
+        string external_id
+        string internal_object_type
+        int internal_id
+    }
+    INTEGRATION_EVENT {
+        int id PK
+        string provider
+        string external_event_id UK
+        string processing_status
+    }

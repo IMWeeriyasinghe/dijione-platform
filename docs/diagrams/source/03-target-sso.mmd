@@ -1,0 +1,20 @@
+flowchart TD
+    U["User"] --> W["DijiOne Next.js"]
+    W --> R["Redirect to Microsoft Entra ID\nOIDC Authorization Code + PKCE"]
+    R --> ENT["Microsoft Entra ID\n(credentials + MFA)"]
+    ENT --> CB["Redirect back with auth code"]
+    CB --> EX["Exchange code for tokens"]
+    EX --> TOK["Bearer access token\n(signed JWT from Entra)"]
+    TOK --> W2["Next.js stores token,\nsends as Authorization header"]
+    W2 --> API["FastAPI: EntraAuthProvider.decode_token\n(NOT YET IMPLEMENTED)"]
+    API --> VAL["Validate: signature (JWKS), issuer,\naudience, expiry, role claims"]
+    VAL --> LOOKUP["Resolve local User by Entra\nobject id / email"]
+    LOOKUP --> ROLE["Load UserModuleRole:\nmodule_key, role, client_id"]
+    ROLE --> SCOPE["Resolve TalentScope\n(same mechanism as today)"]
+    SCOPE --> HOME["DijiOne Home"]
+    HOME --> TF["DijiTalentFlow"]
+    TF --> CW["Client Workspace"]
+    TF --> TA["TA Operations Workspace"]
+
+    classDef notbuilt fill:#fde2e1,stroke:#c62d26,color:#5c1a15;
+    class R,ENT,CB,EX,TOK,API,VAL notbuilt

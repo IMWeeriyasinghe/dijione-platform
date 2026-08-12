@@ -1,0 +1,27 @@
+flowchart TD
+    A["Client fills New Talent Request form"] --> B["POST /api/talent/requests\n(TALENT_CLIENT role required)"]
+    B --> C["TalentRequestService.create_request\nstage=REQUEST_SUBMITTED\nlifecycle=PENDING_REVIEW\ncustomer_success_status=PENDING_REVIEW"]
+    C --> D["AuditLog: talent_request.created"]
+    C --> E["Notification -> all CUSTOMER_SUCCESS users"]
+    E --> F["Customer Success / TA_MANAGER persona\nopens request, clicks Review"]
+    F --> G["POST /api/talent/requests/{id}/review\n{decision, reason}"]
+    G -->|APPROVED| H["lifecycle=APPROVED\nstage=REQUIREMENT_CONFIRMED\nta_status=VALIDATING\nNotify TA_MEMBER users"]
+    G -->|REJECTED| I["lifecycle=REJECTED\nNotify the submitting client"]
+    G -->|CLARIFICATION_REQUIRED| J["customer_success_status=CLARIFICATION_REQUIRED\nNotify the submitting client"]
+    H --> K["TA staff manually updates stage over time\nPOST /api/talent/requests/{id}/stage\n(SOURCING -> ... -> DEPLOYED)"]
+    K --> L["Client sees updated progress %\nand client_safe_status_text"]
+
+    subgraph NI["NOT IMPLEMENTED — no code path exists"]
+        M["Auto-create HubSpot deal/opportunity"]
+        N["Auto-create Lever requisition/opportunity"]
+        O["Any automatic ExternalMapping creation"]
+    end
+
+    C -. never calls .-> M
+    C -. never calls .-> N
+    K -. never calls .-> O
+
+    classDef done fill:#e3f3ea,stroke:#138a4b,color:#0d3b23;
+    classDef notdone fill:#fde2e1,stroke:#c62d26,color:#5c1a15,stroke-dasharray: 4 3;
+    class A,B,C,D,E,F,G,H,I,J,K,L done
+    class M,N,O notdone

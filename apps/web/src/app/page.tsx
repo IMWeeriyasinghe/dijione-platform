@@ -1,9 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Home, Sparkles } from "lucide-react";
+import { Home, ShieldCheck, Sparkles } from "lucide-react";
 import { listModules, listNotifications } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, usePlatformAdmin } from "@/lib/auth-context";
 import { AppShell } from "@/components/shell/AppShell";
 import { AuthGate } from "@/components/shell/AuthGate";
 import { Card } from "@/components/ui/Card";
@@ -20,17 +20,23 @@ function greeting(): string {
 
 function HomeContent() {
   const { user } = useAuth();
+  const isPlatformAdmin = usePlatformAdmin();
   const modulesQuery = useQuery({ queryKey: ["modules"], queryFn: listModules });
   const activityQuery = useQuery({ queryKey: ["notifications"], queryFn: () => listNotifications() });
 
   const firstName = user?.full_name.split(" ")[0] ?? "";
+
+  const navItems = [{ label: "DijiOne Home", href: "/", icon: Home, exact: true }];
+  if (isPlatformAdmin) {
+    navItems.push({ label: "Administration", href: "/admin", icon: ShieldCheck, exact: false });
+  }
 
   return (
     <AppShell
       eyebrow="Dijital Team"
       title="DijiOne"
       topNavTitle="DijiOne Home"
-      sections={[{ items: [{ label: "DijiOne Home", href: "/", icon: Home, exact: true }] }]}
+      sections={[{ items: navItems }]}
       footer={<p className="text-xs text-white/60">DijiOne · by Dijital Team</p>}
     >
       <div className="mb-8">

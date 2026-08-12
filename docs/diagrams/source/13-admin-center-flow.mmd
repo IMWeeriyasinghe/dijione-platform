@@ -1,0 +1,33 @@
+flowchart TD
+    U["Authenticated User"] --> HOME["DijiOne Home"]
+    HOME --> CHECK{"platform_permissions\nincludes platform.admin.access?"}
+    CHECK -->|no| HIDDEN["Administration nav item hidden\n(frontend convenience only)"]
+    CHECK -->|yes| NAV["Administration nav item shown"]
+
+    NAV --> ADMIN["/admin/*\nAdminLayout gates on usePlatformAdmin()"]
+    HIDDEN -. "direct /admin visit still blocked" .-> DENY
+
+    ADMIN --> ROUTES["GET/PATCH/PUT/DELETE /api/admin/*"]
+    ROUTES --> DEP1["require_platform_admin\n(any admin)"]
+    ROUTES --> DEP2["require_platform_permission(key)\n(specific action, e.g. manage_users)"]
+
+    DEP1 --> DENY["403 — independent of frontend state"]
+    DEP2 --> DENY
+
+    DEP1 -->|ok| SVC["AdminService"]
+    DEP2 -->|ok| SVC
+
+    SVC --> LOCKOUT{"Touches SUPER_ADMIN\nstatus/role?"}
+    LOCKOUT -->|"last active SUPER_ADMIN"| BLOCK["403 — lockout protection\n(CR §50)"]
+    LOCKOUT -->|"grants/revokes admin role\nwithout manage_admins"| BLOCK
+    LOCKOUT -->|ok| MUTATE["Apply change\n(User / UserModuleRole /\nUserModuleClientScope)"]
+
+    MUTATE --> AUDIT["AuditService.log()\nactor, action, entity,\nbefore/after state"]
+    AUDIT --> DB[("SQLite — same AuditLog table\nevery business workflow already uses")]
+
+    MUTATE -.enforced immediately.-> NEXTREQ["Affected user's next\nDijiTalentFlow request\n(GET /api/modules, TalentScope, ...)"]
+
+    classDef enforced fill:#e3f3ea,stroke:#138a4b,color:#0d3b23;
+    classDef blocked fill:#fde2e1,stroke:#c62d26,color:#5c1a15;
+    class DEP1,DEP2,SVC,MUTATE,AUDIT enforced
+    class DENY,BLOCK blocked

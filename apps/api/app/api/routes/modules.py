@@ -17,7 +17,9 @@ def list_my_modules(
 ) -> list[ModuleOut]:
     """Only modules the current user is authorized to see (CLAUDE.md §9)."""
     modules = ModuleRepository(db).list_enabled()
-    user_module_keys = {r.module_key for r in UserRepository(db).module_roles_for(user.id)}
+    user_module_keys = {
+        r.module_key for r in UserRepository(db).module_roles_for(user.id) if r.enabled
+    }
 
     visible = []
     for module in modules:

@@ -1,0 +1,8 @@
+{
+  "name": "dijione-platform",
+  "private": true,
+  "description": "Repository-level tooling for the DijiOne platform monorepo (apps/web, apps/api).",
+  "scripts": {
+    "diagrams": "node scripts/generate-diagrams.js"
+  }
+}
