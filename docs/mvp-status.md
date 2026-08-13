@@ -290,6 +290,42 @@ detail: `docs/platform/access-groups.md`, `docs/platform/effective-access.md`,
    `/applications/[key]` routes; refactored `/users/[id]`) and `shell-web`
    (redesigned Home).
 
+### Phase 2.6 final polish (UX + embedded Guide)
+
+9. ✅ **Group Detail Members UX** — the disjointed search-box +
+   unfiltered-dropdown + Add button was replaced with one searchable
+   `MemberSelector` combobox; the member list now shows Name/Email/Status/
+   Action columns with a clean empty state. Same `addGroupMember`/
+   `removeGroupMember` APIs, no backend change.
+10. ✅ **Admin header alignment** — `TopNav` (shared across admin-web,
+    shell-web, talent-web) reworked into a strict left/center/right flex
+    layout so notifications and the user avatar sit consistently at the far
+    right on every Admin Center route.
+11. ✅ **Guide & Access Model** (`/admin/guide`) — new native in-app
+    documentation page with a left local Table of Contents (sticky desktop /
+    collapsible mobile), an inline SVG access-hierarchy diagram (Entra → User
+    → Direct/Group → Role → Permissions → Client Scope → Effective Access →
+    Business Application, plus user/application/group-centric views), and a
+    full admin manual (Overview through Security Notes) written from the
+    platform's real seeded roles/permissions/modules.
+12. ✅ **Selective Guide export + module scoping** — `GuideExportDialog`
+    lets an admin pick individual sections and/or filter by module
+    (Platform / DijiTalentFlow / DijiBirthday / DijiSpark, the latter two
+    flagged Coming Soon); Download renders only the selection into a
+    branded, chrome-free `print:block` surface and calls `window.print()`
+    (Save as PDF) — no new PDF-library dependency.
+13. ✅ **Share Guide with Access Group (seam only)** — resolves a chosen
+    group's active members via the existing `getAdminGroup(id)` call and
+    reports the count; since no email provider (SMTP/SendGrid/etc.) is
+    configured anywhere in this codebase, the dialog explicitly states
+    delivery is not configured and the "Send Email" action stays disabled —
+    no fake "sent" confirmation is ever shown. Download remains fully
+    functional as the manual-distribution path.
+14. ✅ **Permissions page + contextual help** — explanatory copy above the
+    permissions list plus "Learn more in Guide & Access Model"; contextual
+    "Learn about…" links added on Groups, Client Access, and a user's
+    Effective Access tab.
+
 ### Known gaps (documented, not oversights)
 
 - Users list has no group-count column/filter — `AdminUserOut` doesn't

@@ -6,6 +6,7 @@ import type { AdminPermissionOut } from "@dijione/contracts";
 import { PageHeader } from "@dijione/design-system";
 import { Card } from "@dijione/design-system";
 import { LoadingState, ErrorState } from "@dijione/design-system";
+import { BookOpen } from "lucide-react";
 
 function groupByCategory(permissions: AdminPermissionOut[]) {
   const groups = new Map<string, AdminPermissionOut[]>();
@@ -27,6 +28,19 @@ export default function AdminPermissionsPage() {
         title="Permissions"
         description="Every atomic action a role can bundle. Permissions are read-only in this MVP — manage them by adjusting which roles include which permissions."
       />
+      <div className="mb-6 rounded-lg border border-dt-border bg-dt-surface-warm p-4 text-sm text-dt-text-secondary">
+        <p>
+          Permissions are fine-grained capabilities used to build application roles. They are not normally assigned
+          directly to users.
+        </p>
+        <p className="mt-1">Manage normal user access through Users, Groups and Applications.</p>
+        <a
+          href="/guide#permissions"
+          className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-dt-burnt-orange underline underline-offset-2"
+        >
+          <BookOpen className="size-3.5" /> Learn more in Guide &amp; Access Model
+        </a>
+      </div>
       {query.isLoading && <LoadingState label="Loading permissions…" />}
       {query.isError && <ErrorState message="Could not load permissions." onRetry={() => query.refetch()} />}
       {groups && (

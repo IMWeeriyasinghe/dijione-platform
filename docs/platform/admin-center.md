@@ -211,6 +211,83 @@ Detail Groups tab does for one user) would mean N group-detail fetches per
 row on the list screen — judged not worth it at current scale. Left as a
 documented gap rather than solved with an N+1 fetch pattern.
 
+## Guide & Access Model (Phase 2.6 final polish)
+
+`/admin/guide` (`apps/admin-web/src/app/guide/`) is a native, in-app
+documentation page — not a PDF — reached from a new "Guide & Access Model"
+nav item under Administration (placed after Client Access, before Audit).
+It exists so a new administrator can understand the DijiOne access model and
+perform common tasks without external documentation.
+
+- `AccessModelDiagram.tsx` — an inline SVG rendering the full authorization
+  chain (Entra → User → Application Access → Direct/Group → Role →
+  Permissions → Client Scope → Effective Access → Business Application),
+  plus the three administration perspectives (user-centric,
+  application-centric, group-centric). No external diagram library or
+  service dependency.
+- `content.tsx` — a structured `GUIDE_SECTIONS` array (id, title, module tag,
+  body) covering Overview, Access Model, Users, Applications, Groups, Roles,
+  Permissions, Client Scope, Direct vs Inherited, Effective Access, Common
+  Tasks, the Access Management Recommendation, Authentication/SSO, Service
+  Isolation, Troubleshooting, and Security Notes — content-only, no CMS.
+- `page.tsx` — the documentation shell: a left-hand local Table of Contents
+  (sticky on desktop, collapsible "On this page" `<details>` on mobile/
+  tablet), using `IntersectionObserver` to highlight the active section, and
+  a `GuideExportDialog` triggered from a "Download Guide" action.
+- `GuideExportDialog.tsx` — lets an admin pick individual sections (Select
+  All / Clear) and/or filter by module (Platform / DijiTalentFlow /
+  DijiBirthday / DijiSpark — the latter two are flagged as Coming Soon,
+  documentation-only). Choosing **Download** renders only the selected
+  sections into a hidden `print:block` surface with DijiOne branding, a
+  title, and a generation date, then calls `window.print()` so the admin can
+  save as PDF — no PDF-generation dependency was introduced, per CR §8 scope
+  discipline (no external SaaS conversion service either).
+- **Share with Group** — an admin can instead pick an Access Group; the
+  dialog resolves that group's active members via the existing
+  `getAdminGroup(id)` call (no new backend endpoint required) and reports
+  the resolved member count. No email provider is configured anywhere in
+  this codebase (confirmed: no SMTP/SendGrid/nodemailer integration exists),
+  so the dialog explicitly states delivery is not configured and never
+  claims a message was sent — the "Send Email" action stays disabled. This
+  is a UI + resolution seam, ready for a real `Guide Export / Share Service`
+  to be wired in later (Admin Web → Admin API → Share Service → email
+  provider), not a fake integration.
+
+Permissions (`/admin/permissions`) gained explanatory copy above the list
+("Permissions are fine-grained capabilities... not normally assigned
+directly to users") and a "Learn more in Guide & Access Model" link.
+Contextual "Learn about..." links were added on the Groups list, Group
+Detail Members section, Client Access, and the user's Effective Access tab,
+all pointing at the relevant Guide anchor.
+
+## Group Detail Members UX (Phase 2.6 final polish)
+
+The old Members control (a free-text search box plus a separately-typed,
+unfiltered `<select>` dropdown, plus an Add button — none of them actually
+wired together) was replaced with a single `MemberSelector` combobox
+(`apps/admin-web/src/app/groups/[id]/page.tsx`): one search input that
+filters candidates live by name/email, a dropdown of matching results, and
+an Add button that's disabled until a result has actually been selected.
+Existing group members are excluded from the candidate list. No backend
+change — same `addGroupMember` / `removeGroupMember` calls as before. The
+member list below now renders as a Name/Email/Status/Action table (Status
+looked up client-side from the already-fetched `listAdminUsers()` result,
+since `GroupMemberOut` doesn't carry `is_active`) with a clean empty state
+when a group has no members yet.
+
+## Admin header alignment (Phase 2.6 final polish)
+
+`TopNav` (`packages/design-system/src/shell/TopNav.tsx`, shared by
+admin-web, shell-web, and talent-web) previously mixed its layout rules —
+the search field carried a mobile-only `ml-auto`, so at some widths
+Notifications/UserMenu could end up visually adjacent to the search box
+instead of pinned to the page edge. It's now a strict three-region flex
+layout: a fixed-width title on the left, a flexible search region in the
+center, and a `ml-auto` right-hand cluster (`Ask DijiOne`, notifications,
+avatar) that always sits at the far right with consistent gap and vertical
+alignment. This is a layout-only change with no behavioral difference, so it
+applies uniformly across every app that renders `AppShell`/`TopNav`.
+
 ## What is intentionally not built in this phase
 
 - Role/permission **creation or deletion** UI — the catalog is seeded and

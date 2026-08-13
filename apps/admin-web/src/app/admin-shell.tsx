@@ -4,6 +4,7 @@ import { usePlatformAdmin } from "@dijione/auth-client";
 import { AppShell, AuthGate, EmptyState } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import {
+  BookOpen,
   FileClock,
   Grid3x3,
   KeyRound,
@@ -28,6 +29,7 @@ const ADMIN_SECTIONS: NavSection[] = [
       { label: "Roles", href: "/roles", icon: ShieldCheck },
       { label: "Permissions", href: "/permissions", icon: KeyRound },
       { label: "Client Access", href: "/client-access", icon: UsersIcon },
+      { label: "Guide & Access Model", href: "/guide", icon: BookOpen },
       { label: "Audit", href: "/audit", icon: FileClock },
     ],
   },

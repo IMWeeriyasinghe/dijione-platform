@@ -102,6 +102,9 @@ export default function AdminClientAccessPage() {
         title="Client Access"
         description="Assign DijiTalentFlow client/portfolio scope to Talent Acquisition and Customer Success staff. External client users (TALENT_CLIENT) are always scoped to their own organization and are managed from the user detail page instead."
       />
+      <Link href="/guide#client-scope" className="mb-6 inline-block text-sm font-medium text-dt-burnt-orange underline underline-offset-2">
+        Learn about client scope
+      </Link>
       {(usersQuery.isLoading || clientsQuery.isLoading) && <LoadingState label="Loading client access…" />}
       {(usersQuery.isError || clientsQuery.isError) && (
         <ErrorState message="Could not load client access data." onRetry={() => usersQuery.refetch()} />

@@ -105,6 +105,9 @@ export default function AdminGroupsPage() {
           </Button>
         }
       />
+      <Link href="/guide#direct-vs-inherited" className="mb-6 inline-block text-sm font-medium text-dt-burnt-orange underline underline-offset-2">
+        Learn about inherited access
+      </Link>
       {query.isLoading && <LoadingState label="Loading groups…" />}
       {query.isError && <ErrorState message="Could not load groups." onRetry={() => query.refetch()} />}
       {query.data && query.data.length === 0 && (

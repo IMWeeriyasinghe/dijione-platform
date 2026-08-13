@@ -461,6 +461,12 @@ export default function AdminUserDetailPage() {
 
       {tab === "Effective Access" && (
         <Card className="p-5">
+          <a
+            href="/guide#effective-access"
+            className="mb-4 inline-block text-sm font-medium text-dt-burnt-orange underline underline-offset-2"
+          >
+            How is effective access calculated?
+          </a>
           {effectiveQuery.isLoading && <LoadingState label="Resolving effective access…" />}
           {effectiveQuery.data && (
             <div className="space-y-5">

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Search, ShieldAlert, Trash2, UserPlus } from "lucide-react";
 import Link from "next/link";
 import {
   ApiError,
@@ -168,6 +168,94 @@ function GroupModuleAssignmentEditor({
   );
 }
 
+type CandidateUser = { id: number; full_name: string; email: string };
+
+function MemberSelector({
+  candidates,
+  onAdd,
+  isAdding,
+}: {
+  candidates: CandidateUser[];
+  onAdd: (userId: number) => void;
+  isAdding: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<CandidateUser | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+
+  const results = query.trim()
+    ? candidates.filter(
+        (u) =>
+          u.full_name.toLowerCase().includes(query.toLowerCase()) ||
+          u.email.toLowerCase().includes(query.toLowerCase())
+      )
+    : candidates;
+
+  return (
+    <div className="mb-4 flex items-end gap-2">
+      <div className="relative flex-1">
+        <label htmlFor="member-search" className="mb-1.5 block text-sm font-medium text-dt-text-primary">
+          Add member
+        </label>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-dt-text-secondary" />
+          <Input
+            id="member-search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelected(null);
+              setIsOpen(true);
+            }}
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => setTimeout(() => setIsOpen(false), 120)}
+            placeholder="Search or select user by name/email…"
+            className="h-10 pl-9"
+          />
+        </div>
+        {isOpen && (
+          <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-dt-border bg-dt-surface shadow-lg">
+            {results.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-dt-text-secondary">No matching users.</p>
+            ) : (
+              results.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setSelected(u);
+                    setQuery(`${u.full_name} (${u.email})`);
+                    setIsOpen(false);
+                  }}
+                  className="flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-dt-surface-warm"
+                >
+                  <span className="font-medium text-dt-text-primary">{u.full_name}</span>
+                  <span className="text-xs text-dt-text-secondary">{u.email}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+      <Button
+        size="sm"
+        className="h-10"
+        onClick={() => {
+          if (!selected) return;
+          onAdd(selected.id);
+          setSelected(null);
+          setQuery("");
+        }}
+        disabled={!selected}
+        loading={isAdding}
+      >
+        <Plus className="size-4" /> Add
+      </Button>
+    </div>
+  );
+}
+
 export default function AdminGroupDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -178,8 +266,6 @@ export default function AdminGroupDetailPage() {
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [editing, setEditing] = useState(false);
-  const [memberSearch, setMemberSearch] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState<number | "">("");
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["admin", "groups"] });
@@ -209,8 +295,6 @@ export default function AdminGroupDetailPage() {
     mutationFn: (userId: number) => addGroupMember(groupId, userId),
     onSuccess: () => {
       setError(null);
-      setSelectedUserId("");
-      setMemberSearch("");
       invalidate();
     },
     onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Could not add this member."),
@@ -240,14 +324,8 @@ export default function AdminGroupDetailPage() {
   const memberIds = new Set(group.members.map((m) => m.user_id));
   const isSystemGroup = group.group_type === "SYSTEM";
 
-  const candidateUsers = allUsers
-    .filter((u) => !memberIds.has(u.id))
-    .filter(
-      (u) =>
-        !memberSearch.trim() ||
-        u.full_name.toLowerCase().includes(memberSearch.toLowerCase()) ||
-        u.email.toLowerCase().includes(memberSearch.toLowerCase())
-    );
+  const candidateUsers = allUsers.filter((u) => !memberIds.has(u.id));
+  const userStatusById = new Map(allUsers.map((u) => [u.id, u.is_active]));
 
   return (
     <div>
@@ -326,62 +404,64 @@ export default function AdminGroupDetailPage() {
         )}
       </Card>
 
-      <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-dt-text-secondary">Members</p>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm font-semibold uppercase tracking-wide text-dt-text-secondary">Members</p>
+        <a href="/guide#direct-vs-inherited" className="text-xs font-medium text-dt-burnt-orange underline underline-offset-2">
+          Learn about inherited access
+        </a>
+      </div>
       <Card className="mb-6 p-5">
-        <div className="mb-4 flex flex-wrap items-end gap-2">
-          <FormField label="Add member" htmlFor="member-search" hint="Search by name or email">
-            <Input
-              id="member-search"
-              value={memberSearch}
-              onChange={(e) => setMemberSearch(e.target.value)}
-              placeholder="Search users…"
-              className="w-64"
-            />
-          </FormField>
-          <Select
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value ? Number(e.target.value) : "")}
-            className="max-w-xs"
-          >
-            <option value="">Select a user…</option>
-            {candidateUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name} ({u.email})
-              </option>
-            ))}
-          </Select>
-          <Button
-            size="sm"
-            onClick={() => selectedUserId && addMemberMutation.mutate(selectedUserId as number)}
-            disabled={!selectedUserId}
-            loading={addMemberMutation.isPending}
-          >
-            <Plus className="size-4" /> Add
-          </Button>
-        </div>
+        <MemberSelector
+          candidates={candidateUsers}
+          onAdd={(userId) => addMemberMutation.mutate(userId)}
+          isAdding={addMemberMutation.isPending}
+        />
 
-        {group.members.length === 0 && <p className="text-sm text-dt-text-secondary">No members yet.</p>}
-        <div className="flex flex-col divide-y divide-dt-border">
-          {group.members.map((m) => (
-            <div key={m.user_id} className="flex items-center justify-between py-2.5">
-              <div className="flex items-center gap-3">
-                <Avatar name={m.full_name} size={32} />
-                <div>
-                  <p className="text-sm font-medium text-dt-text-primary">{m.full_name}</p>
-                  <p className="text-xs text-dt-text-secondary">{m.email}</p>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => removeMemberMutation.mutate(m.user_id)}
-                loading={removeMemberMutation.isPending}
-              >
-                <Trash2 className="size-4 text-dt-danger" />
-              </Button>
-            </div>
-          ))}
-        </div>
+        {group.members.length === 0 ? (
+          <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-dt-border py-8 text-center">
+            <UserPlus className="size-5 text-dt-text-secondary" />
+            <p className="text-sm text-dt-text-secondary">No members yet. Add someone using the field above.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-dt-border text-left text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">
+                  <th className="py-2 pr-3 font-semibold">Name</th>
+                  <th className="py-2 pr-3 font-semibold">Email</th>
+                  <th className="py-2 pr-3 font-semibold">Status</th>
+                  <th className="py-2 pl-3 text-right font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dt-border">
+                {group.members.map((m) => (
+                  <tr key={m.user_id}>
+                    <td className="py-2.5 pr-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={m.full_name} size={28} />
+                        <span className="font-medium text-dt-text-primary">{m.full_name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 pr-3 text-dt-text-secondary">{m.email}</td>
+                    <td className="py-2.5 pr-3">
+                      <StatusBadge status={userStatusById.get(m.user_id) === false ? "INACTIVE" : "ACTIVE_CLIENT"} label={userStatusById.get(m.user_id) === false ? "Inactive" : "Active"} />
+                    </td>
+                    <td className="py-2.5 pl-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeMemberMutation.mutate(m.user_id)}
+                        loading={removeMemberMutation.isPending}
+                      >
+                        <Trash2 className="size-4 text-dt-danger" /> Remove
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-dt-text-secondary">Application Access</p>
