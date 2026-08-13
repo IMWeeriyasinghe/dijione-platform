@@ -27,21 +27,37 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole
+from app.models.access_group import (
+    AccessGroup,
+    AccessGroupStatus,
+    GroupModuleClientScope,
+    GroupModuleRole,
+    UserGroupMembership,
+)
 from app.models.module import ApplicationModule
 from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
 from app.schemas.admin import (
+    AccessGroupCreateIn,
+    AccessGroupDetailOut,
+    AccessGroupOut,
+    AccessSourceOut,
     AdminDashboardOut,
     AdminModuleOut,
     AdminPermissionOut,
     AdminRoleOut,
     AdminUserOut,
+    ApplicationAssignedGroupOut,
+    ApplicationAssignedUserOut,
+    ApplicationDetailOut,
     AuditLogOut,
     ClientScopeIn,
     ClientScopeOut,
     EffectiveAccessOut,
     EffectiveModuleAccessOut,
+    GroupMemberOut,
+    GroupModuleAssignmentOut,
     ModuleAssignmentOut,
 )
 from app.services.audit_service import AuditService
@@ -50,6 +66,12 @@ from app.services.authorization_service import AuthorizationService
 ADMIN_PLATFORM_ROLES = {PlatformRole.SUPER_ADMIN.value, PlatformRole.PLATFORM_ADMIN.value}
 
 _MODULE_DISPLAY_ORDER = [MODULE_TALENT_FLOW, MODULE_BIRTHDAY, MODULE_SPARK]
+
+# Audit entity_type convention for group mutations (Phase 2.6): group
+# lifecycle/module-assignment changes use entity_type="AccessGroup" with the
+# group's id as entity_id; membership changes use entity_type=
+# "UserGroupMembership" with the membership row's id as entity_id, since
+# they concern a (user, group) pair rather than the group alone.
 
 
 class AdminError(Exception):
@@ -69,6 +91,11 @@ class ForbiddenError(AdminError):
 
 class LastSuperAdminError(ForbiddenError):
     pass
+
+
+class SystemGroupProtectedError(ForbiddenError):
+    """SYSTEM access groups cannot be deleted or deactivated (mirrors the
+    LastSuperAdminError guard-rail pattern above)."""
 
 
 class AdminService:
@@ -395,27 +422,37 @@ class AdminService:
             raise NotFoundError(f"User {user_id} not found")
 
         module_names = self._module_names()
-        stmt = select(UserModuleRole).where(UserModuleRole.user_id == user_id)
-        module_roles = list(self.db.execute(stmt).scalars().all())
+        grants_by_module = self.authz.effective_module_roles(user)
 
         modules_out = []
-        for mr in module_roles:
-            role_row = self.authz.role_display(mr.module_key, mr.role)
-            permissions = sorted(self.authz.module_role_permissions(mr))
-            client_ids = self.authz.client_scope_for(mr)
+        for module_key, grants in grants_by_module.items():
+            # Back-compat single role/name: prefer a DIRECT grant when one
+            # exists (matches pre-group behavior exactly), else the first
+            # GROUP grant. See claims_service.build_claims for the same
+            # documented precedence choice.
+            primary = next((g for g in grants if g.source_type == "DIRECT"), grants[0])
+            role_row = self.authz.role_display(module_key, primary.role)
+            permissions = sorted(self.authz.effective_permissions(user, module_key))
+            client_ids, scope_sources = self.authz.effective_client_scope(user, module_key)
+            enabled = True  # only enabled grants are ever collected by effective_module_roles
+            sources = [
+                AccessSourceOut(type=g.source_type, role=g.role, group_name=g.source_name)
+                for g in grants
+            ]
             modules_out.append(
                 EffectiveModuleAccessOut(
-                    module_key=mr.module_key,
-                    module_name=module_names.get(mr.module_key, mr.module_key),
-                    enabled=mr.enabled,
-                    role=mr.role,
-                    role_name=role_row.name if role_row else mr.role,
+                    module_key=module_key,
+                    module_name=module_names.get(module_key, module_key),
+                    enabled=enabled,
+                    role=primary.role,
+                    role_name=role_row.name if role_row else primary.role,
                     client_scope=ClientScopeOut(
                         all_clients=client_ids is None,
                         client_ids=client_ids or [],
                         client_names=[],
                     ),
                     permissions=permissions,
+                    sources=sources,
                 )
             )
 
@@ -426,6 +463,322 @@ class AdminService:
             is_active=user.is_active,
             platform_permissions=sorted(self.authz.platform_permissions(user)),
             modules=modules_out,
+        )
+
+    # --- Access Groups (Phase 2.6, additive) --------------------------------
+
+    def _group_counts(self) -> tuple[dict[int, int], dict[int, int]]:
+        member_counts = dict(
+            self.db.execute(
+                select(UserGroupMembership.access_group_id, func.count(UserGroupMembership.id)).group_by(
+                    UserGroupMembership.access_group_id
+                )
+            ).all()
+        )
+        module_counts = dict(
+            self.db.execute(
+                select(GroupModuleRole.access_group_id, func.count(GroupModuleRole.id)).group_by(
+                    GroupModuleRole.access_group_id
+                )
+            ).all()
+        )
+        return member_counts, module_counts
+
+    def _to_group_out(self, group: AccessGroup, member_counts: dict, module_counts: dict) -> AccessGroupOut:
+        return AccessGroupOut(
+            id=group.id, key=group.key, display_name=group.display_name, description=group.description,
+            status=group.status, group_type=group.group_type,
+            member_count=member_counts.get(group.id, 0), module_count=module_counts.get(group.id, 0),
+            created_at=group.created_at, updated_at=group.updated_at,
+        )
+
+    def list_groups(self) -> list[AccessGroupOut]:
+        groups = list(self.db.execute(select(AccessGroup).order_by(AccessGroup.display_name)).scalars().all())
+        member_counts, module_counts = self._group_counts()
+        return [self._to_group_out(g, member_counts, module_counts) for g in groups]
+
+    def _get_group_or_404(self, group_id: int) -> AccessGroup:
+        group = self.db.get(AccessGroup, group_id)
+        if group is None:
+            raise NotFoundError(f"Access group {group_id} not found")
+        return group
+
+    def get_group(self, group_id: int) -> AccessGroupDetailOut:
+        group = self._get_group_or_404(group_id)
+        return self._to_group_detail_out(group)
+
+    def _to_group_detail_out(self, group: AccessGroup) -> AccessGroupDetailOut:
+        module_names = self._module_names()
+        member_stmt = (
+            select(User)
+            .join(UserGroupMembership, UserGroupMembership.user_id == User.id)
+            .where(UserGroupMembership.access_group_id == group.id)
+            .order_by(User.full_name)
+        )
+        members = [
+            GroupMemberOut(user_id=u.id, email=u.email, full_name=u.full_name)
+            for u in self.db.execute(member_stmt).scalars().all()
+        ]
+        role_stmt = select(GroupModuleRole).where(GroupModuleRole.access_group_id == group.id)
+        module_assignments = []
+        for gr in self.db.execute(role_stmt).scalars().all():
+            role_row = self.authz.role_display(gr.module_key, gr.role)
+            client_ids = self._group_client_scope(gr)
+            module_assignments.append(
+                GroupModuleAssignmentOut(
+                    module_key=gr.module_key,
+                    module_name=module_names.get(gr.module_key, gr.module_key),
+                    role=gr.role,
+                    role_name=role_row.name if role_row else gr.role,
+                    enabled=gr.enabled,
+                    client_scope=ClientScopeOut(
+                        all_clients=client_ids is None, client_ids=client_ids or [], client_names=[]
+                    ),
+                )
+            )
+        return AccessGroupDetailOut(
+            id=group.id, key=group.key, display_name=group.display_name, description=group.description,
+            status=group.status, group_type=group.group_type,
+            created_at=group.created_at, updated_at=group.updated_at,
+            members=members, module_assignments=module_assignments,
+        )
+
+    def _group_client_scope(self, group_module_role: GroupModuleRole) -> list[int] | None:
+        stmt = select(GroupModuleClientScope).where(
+            GroupModuleClientScope.group_module_role_id == group_module_role.id
+        )
+        scopes = list(self.db.execute(stmt).scalars().all())
+        if not scopes:
+            return None
+        if any(s.all_clients for s in scopes):
+            return None
+        return [s.client_id for s in scopes if s.client_id is not None]
+
+    def create_group(
+        self, *, actor: User, key: str, display_name: str, description: str = "", group_type: str = "TEAM"
+    ) -> AccessGroupDetailOut:
+        existing = self.db.execute(select(AccessGroup).where(AccessGroup.key == key)).scalars().first()
+        if existing is not None:
+            raise AdminError(f"Access group key '{key}' already exists")
+        group = AccessGroup(
+            key=key, display_name=display_name, description=description, group_type=group_type,
+            status=AccessGroupStatus.ACTIVE,
+        )
+        self.db.add(group)
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="access_group.created", entity_type="AccessGroup", entity_id=group.id,
+            new_state={"key": key, "display_name": display_name, "group_type": group_type},
+        )
+        self.db.commit()
+        return self._to_group_detail_out(group)
+
+    def update_group(
+        self, *, actor: User, group_id: int, display_name: str | None, description: str | None,
+        group_type: str | None,
+    ) -> AccessGroupDetailOut:
+        group = self._get_group_or_404(group_id)
+        previous = {
+            "display_name": group.display_name, "description": group.description, "group_type": group.group_type,
+        }
+        if display_name is not None:
+            group.display_name = display_name
+        if description is not None:
+            group.description = description
+        if group_type is not None:
+            group.group_type = group_type
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="access_group.updated", entity_type="AccessGroup", entity_id=group.id,
+            previous_state=previous,
+            new_state={
+                "display_name": group.display_name, "description": group.description,
+                "group_type": group.group_type,
+            },
+        )
+        self.db.commit()
+        return self._to_group_detail_out(group)
+
+    def set_group_status(self, *, actor: User, group_id: int, status: str) -> AccessGroupDetailOut:
+        group = self._get_group_or_404(group_id)
+        if status not in {AccessGroupStatus.ACTIVE, AccessGroupStatus.INACTIVE}:
+            raise AdminError(f"Unknown group status: {status}")
+        if status == AccessGroupStatus.INACTIVE and group.group_type == "SYSTEM":
+            raise SystemGroupProtectedError("SYSTEM access groups cannot be deactivated")
+        previous = group.status
+        group.status = status
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="access_group.updated", entity_type="AccessGroup", entity_id=group.id,
+            previous_state={"status": previous}, new_state={"status": status},
+        )
+        self.db.commit()
+        return self._to_group_detail_out(group)
+
+    def add_group_member(self, *, actor: User, group_id: int, target_user_id: int) -> AccessGroupDetailOut:
+        group = self._get_group_or_404(group_id)
+        target = self.db.get(User, target_user_id)
+        if target is None:
+            raise NotFoundError(f"User {target_user_id} not found")
+        existing = self.db.execute(
+            select(UserGroupMembership).where(
+                UserGroupMembership.access_group_id == group_id, UserGroupMembership.user_id == target_user_id
+            )
+        ).scalars().first()
+        if existing is not None:
+            return self._to_group_detail_out(group)
+        membership = UserGroupMembership(user_id=target_user_id, access_group_id=group_id)
+        self.db.add(membership)
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="access_group.member_added", entity_type="UserGroupMembership",
+            entity_id=membership.id,
+            new_state={"user_id": target_user_id, "access_group_id": group_id},
+        )
+        self.db.commit()
+        return self._to_group_detail_out(group)
+
+    def remove_group_member(self, *, actor: User, group_id: int, target_user_id: int) -> AccessGroupDetailOut:
+        group = self._get_group_or_404(group_id)
+        membership = self.db.execute(
+            select(UserGroupMembership).where(
+                UserGroupMembership.access_group_id == group_id, UserGroupMembership.user_id == target_user_id
+            )
+        ).scalars().first()
+        if membership is None:
+            raise NotFoundError(f"User {target_user_id} is not a member of group {group_id}")
+        membership_id = membership.id
+        self.audit.log(
+            actor_id=actor.id, action="access_group.member_removed", entity_type="UserGroupMembership",
+            entity_id=membership_id,
+            previous_state={"user_id": target_user_id, "access_group_id": group_id},
+        )
+        self.db.delete(membership)
+        self.db.commit()
+        return self._to_group_detail_out(group)
+
+    def upsert_group_module_assignment(
+        self, *, actor: User, group_id: int, module_key: str, role: str, enabled: bool,
+        client_scope: ClientScopeIn | None,
+    ) -> AccessGroupDetailOut:
+        group = self._get_group_or_404(group_id)
+        role_row = self.authz.role_display(module_key, role)
+        if role_row is None:
+            raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
+
+        stmt = select(GroupModuleRole).where(
+            GroupModuleRole.access_group_id == group_id, GroupModuleRole.module_key == module_key
+        )
+        group_role = self.db.execute(stmt).scalars().first()
+        previous_state = None
+        if group_role is None:
+            group_role = GroupModuleRole(access_group_id=group_id, module_key=module_key, role=role, enabled=enabled)
+            self.db.add(group_role)
+            self.db.flush()
+        else:
+            previous_state = {"role": group_role.role, "enabled": group_role.enabled}
+            group_role.role = role
+            group_role.enabled = enabled
+
+        if client_scope is not None:
+            self.db.execute(
+                GroupModuleClientScope.__table__.delete().where(
+                    GroupModuleClientScope.group_module_role_id == group_role.id
+                )
+            )
+            if client_scope.all_clients:
+                self.db.add(GroupModuleClientScope(group_module_role_id=group_role.id, all_clients=True))
+            else:
+                for client_id in client_scope.client_ids:
+                    self.db.add(
+                        GroupModuleClientScope(
+                            group_module_role_id=group_role.id, client_id=client_id, all_clients=False
+                        )
+                    )
+
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="group_module_assignment.upserted", entity_type="AccessGroup",
+            entity_id=group_id,
+            previous_state=previous_state,
+            new_state={
+                "module_key": module_key, "role": role, "enabled": enabled,
+                "client_scope": (
+                    "ALL_CLIENTS" if client_scope and client_scope.all_clients
+                    else (client_scope.client_ids if client_scope else None)
+                ),
+            },
+        )
+        self.db.commit()
+        return self._to_group_detail_out(group)
+
+    def remove_group_module_assignment(self, *, actor: User, group_id: int, module_key: str) -> AccessGroupDetailOut:
+        group = self._get_group_or_404(group_id)
+        stmt = select(GroupModuleRole).where(
+            GroupModuleRole.access_group_id == group_id, GroupModuleRole.module_key == module_key
+        )
+        group_role = self.db.execute(stmt).scalars().first()
+        if group_role is None:
+            raise NotFoundError(f"Group {group_id} has no assignment for module '{module_key}'")
+        self.audit.log(
+            actor_id=actor.id, action="group_module_assignment.removed", entity_type="AccessGroup",
+            entity_id=group_id,
+            previous_state={"module_key": module_key, "role": group_role.role},
+        )
+        self.db.delete(group_role)
+        self.db.commit()
+        return self._to_group_detail_out(group)
+
+    # --- Applications (app-centric admin view) ------------------------------
+
+    def application_detail(self, module_key: str) -> ApplicationDetailOut:
+        module = self.db.execute(
+            select(ApplicationModule).where(ApplicationModule.key == module_key)
+        ).scalars().first()
+        if module is None:
+            raise NotFoundError(f"Module '{module_key}' not found")
+
+        assigned_users = []
+        direct_stmt = select(UserModuleRole).where(UserModuleRole.module_key == module_key)
+        for mr in self.db.execute(direct_stmt).scalars().all():
+            user = self.db.get(User, mr.user_id)
+            if user is None:
+                continue
+            role_row = self.authz.role_display(module_key, mr.role)
+            client_ids = self.authz.client_scope_for(mr)
+            assigned_users.append(
+                ApplicationAssignedUserOut(
+                    user_id=user.id, email=user.email, full_name=user.full_name,
+                    role=mr.role, role_name=role_row.name if role_row else mr.role, enabled=mr.enabled,
+                    client_scope=ClientScopeOut(
+                        all_clients=client_ids is None, client_ids=client_ids or [], client_names=[]
+                    ),
+                )
+            )
+
+        assigned_groups = []
+        group_stmt = select(GroupModuleRole).where(GroupModuleRole.module_key == module_key)
+        for gr in self.db.execute(group_stmt).scalars().all():
+            group = self.db.get(AccessGroup, gr.access_group_id)
+            if group is None:
+                continue
+            role_row = self.authz.role_display(module_key, gr.role)
+            client_ids = self._group_client_scope(gr)
+            assigned_groups.append(
+                ApplicationAssignedGroupOut(
+                    group_id=group.id, group_key=group.key, group_name=group.display_name,
+                    role=gr.role, role_name=role_row.name if role_row else gr.role, enabled=gr.enabled,
+                    client_scope=ClientScopeOut(
+                        all_clients=client_ids is None, client_ids=client_ids or [], client_names=[]
+                    ),
+                )
+            )
+
+        return ApplicationDetailOut(
+            module_key=module.key, module_name=module.name, description=module.description,
+            status=module.status, enabled=module.enabled,
+            assigned_users=assigned_users, assigned_groups=assigned_groups,
+            direct_user_count=len(assigned_users), group_count=len(assigned_groups),
         )
 
     # --- Dashboard ----------------------------------------------------------

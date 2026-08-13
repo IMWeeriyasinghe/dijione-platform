@@ -3,6 +3,11 @@ erDiagram
     CLIENT ||--o{ USER_MODULE_ROLE : "client_id (nullable)"
     USER ||--o{ USER_MODULE_ROLE : "user_id"
     USER ||--o{ TALENT_REQUEST : "created_by"
+    ACCESS_GROUP ||--o{ USER_GROUP_MEMBERSHIP : "access_group_id"
+    USER ||--o{ USER_GROUP_MEMBERSHIP : "user_id"
+    ACCESS_GROUP ||--o{ GROUP_MODULE_ROLE : "access_group_id"
+    GROUP_MODULE_ROLE ||--o{ GROUP_MODULE_CLIENT_SCOPE : "group_module_role_id"
+    CLIENT ||--o{ GROUP_MODULE_CLIENT_SCOPE : "client_id (nullable)"
     TALENT_REQUEST ||--o{ APPLICATION : "talent_request_id"
     CANDIDATE ||--o{ APPLICATION : "candidate_id"
     APPLICATION ||--o{ INTERVIEW : "application_id"
@@ -103,6 +108,31 @@ erDiagram
         string action
         string entity_type
         int entity_id
+    }
+    ACCESS_GROUP {
+        int id PK
+        string key UK
+        string display_name
+        string status "ACTIVE/INACTIVE"
+        string group_type "TEAM/CLIENT/SYSTEM"
+    }
+    USER_GROUP_MEMBERSHIP {
+        int id PK
+        int user_id FK
+        int access_group_id FK
+    }
+    GROUP_MODULE_ROLE {
+        int id PK
+        int access_group_id FK
+        string module_key
+        string role
+        bool enabled
+    }
+    GROUP_MODULE_CLIENT_SCOPE {
+        int id PK
+        int group_module_role_id FK
+        int client_id "nullable"
+        bool all_clients
     }
     EXTERNAL_MAPPING {
         int id PK

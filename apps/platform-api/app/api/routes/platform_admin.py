@@ -19,13 +19,21 @@ from app.api.deps import require_platform_admin, require_platform_permission
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.admin import (
+    AccessGroupCreateIn,
+    AccessGroupDetailOut,
+    AccessGroupOut,
+    AccessGroupStatusIn,
+    AccessGroupUpdateIn,
+    AddGroupMemberIn,
     AdminDashboardOut,
     AdminModuleOut,
     AdminPermissionOut,
     AdminRoleOut,
     AdminUserOut,
+    ApplicationDetailOut,
     AuditLogOut,
     EffectiveAccessOut,
+    GroupModuleAssignmentIn,
     ModuleAssignmentIn,
     UpdatePlatformRoleIn,
     UpdateUserStatusIn,
@@ -157,3 +165,119 @@ def list_audit(
     db: Session = Depends(get_db),
 ) -> list[AuditLogOut]:
     return AdminService(db).list_audit(limit=limit, entity_type=entity_type)
+
+
+# --- Access Groups (Phase 2.6, additive) ------------------------------------
+# Group mutations reuse the existing "platform.admin.manage_users" permission
+# (no new one-per-resource permission key — matches the catalog's current
+# granularity, see app/core/permissions.py).
+
+
+@router.get("/groups", response_model=list[AccessGroupOut])
+def list_groups(_admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)) -> list[AccessGroupOut]:
+    return AdminService(db).list_groups()
+
+
+@router.post("/groups", response_model=AccessGroupDetailOut)
+def create_group(
+    payload: AccessGroupCreateIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AccessGroupDetailOut:
+    return _handle(
+        lambda: AdminService(db).create_group(
+            actor=admin, key=payload.key, display_name=payload.display_name,
+            description=payload.description, group_type=payload.group_type,
+        )
+    )
+
+
+@router.get("/groups/{group_id}", response_model=AccessGroupDetailOut)
+def get_group(
+    group_id: int, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
+) -> AccessGroupDetailOut:
+    return _handle(lambda: AdminService(db).get_group(group_id))
+
+
+@router.patch("/groups/{group_id}", response_model=AccessGroupDetailOut)
+def update_group(
+    group_id: int,
+    payload: AccessGroupUpdateIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AccessGroupDetailOut:
+    return _handle(
+        lambda: AdminService(db).update_group(
+            actor=admin, group_id=group_id, display_name=payload.display_name,
+            description=payload.description, group_type=payload.group_type,
+        )
+    )
+
+
+@router.patch("/groups/{group_id}/status", response_model=AccessGroupDetailOut)
+def set_group_status(
+    group_id: int,
+    payload: AccessGroupStatusIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AccessGroupDetailOut:
+    return _handle(lambda: AdminService(db).set_group_status(actor=admin, group_id=group_id, status=payload.status))
+
+
+@router.post("/groups/{group_id}/members", response_model=AccessGroupDetailOut)
+def add_group_member(
+    group_id: int,
+    payload: AddGroupMemberIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AccessGroupDetailOut:
+    return _handle(
+        lambda: AdminService(db).add_group_member(actor=admin, group_id=group_id, target_user_id=payload.user_id)
+    )
+
+
+@router.delete("/groups/{group_id}/members/{user_id}", response_model=AccessGroupDetailOut)
+def remove_group_member(
+    group_id: int,
+    user_id: int,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AccessGroupDetailOut:
+    return _handle(
+        lambda: AdminService(db).remove_group_member(actor=admin, group_id=group_id, target_user_id=user_id)
+    )
+
+
+@router.put("/groups/{group_id}/modules/{module_key}", response_model=AccessGroupDetailOut)
+def upsert_group_module_assignment(
+    group_id: int,
+    module_key: str,
+    payload: GroupModuleAssignmentIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AccessGroupDetailOut:
+    return _handle(
+        lambda: AdminService(db).upsert_group_module_assignment(
+            actor=admin, group_id=group_id, module_key=module_key, role=payload.role,
+            enabled=payload.enabled, client_scope=payload.client_scope,
+        )
+    )
+
+
+@router.delete("/groups/{group_id}/modules/{module_key}", response_model=AccessGroupDetailOut)
+def remove_group_module_assignment(
+    group_id: int,
+    module_key: str,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AccessGroupDetailOut:
+    return _handle(
+        lambda: AdminService(db).remove_group_module_assignment(actor=admin, group_id=group_id, module_key=module_key)
+    )
+
+
+@router.get("/applications/{module_key}", response_model=ApplicationDetailOut)
+def application_detail(
+    module_key: str, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
+) -> ApplicationDetailOut:
+    return _handle(lambda: AdminService(db).application_detail(module_key))

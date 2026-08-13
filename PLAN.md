@@ -2,12 +2,15 @@
 
 Status: Phase 1 (First Autonomous Run) complete; Phase 2 (Identity,
 Authorization, Administration) complete; Phase 2.5 (Application-Level
-Service Separation) complete. See `docs/mvp-status.md` for the full
-checklist and quality-gate results of all three phases.
+Service Separation) complete; Phase 2.6 (Enterprise Access Management +
+Intelligent Home) complete. See `docs/mvp-status.md` for the full
+checklist and quality-gate results of all four phases.
 Authoritative contract: [CLAUDE.md](./CLAUDE.md), extended by the DijiOne
-Phase 2 change request (identity/authorization/Admin Center) and the
+Phase 2 change request (identity/authorization/Admin Center), the
 Phase 2.5 change request (service separation — see
-`docs/platform/service-architecture.md`).
+`docs/platform/service-architecture.md`), and the Phase 2.6 change request
+(access groups + effective access + Home redesign — see
+`docs/platform/access-groups.md`).
 
 ## Repository state at start
 
@@ -109,6 +112,44 @@ Modular monolith per CLAUDE.md §6 (Phase 1/2, no longer current):
 - [x] Diagrams: service architecture, service boundaries, gateway
       routing, data ownership, failure isolation, local dev topology,
       future Azure deployment.
+
+## Phase 2.6 — Enterprise Access Management + Intelligent Home
+
+- [x] `AccessGroup` / `UserGroupMembership` / `GroupModuleRole` /
+      `GroupModuleClientScope` models (`apps/platform-api/app/models/access_group.py`),
+      additive alongside the existing direct-assignment tables; new Alembic
+      migration.
+- [x] `AuthorizationService` extended with `groups_for_user`,
+      `effective_module_roles`, `effective_client_scope`,
+      `effective_permissions` — additive-ALLOW resolution (union of direct +
+      active-group grants; ALL_CLIENTS overrides a concrete-client-list
+      contributor). Single resolution engine: `AdminService.effective_access`
+      and `claims_service.build_claims` both consume these same methods.
+- [x] `AdminService` group CRUD + `application_detail` (app-centric admin
+      view); SYSTEM-type groups protected from deactivation.
+- [x] New routes: `apps/platform-api/app/api/routes/platform_admin.py`
+      (`/groups/*`, `/applications/{module_key}`) and mirrored pass-through
+      routes in `apps/admin-api/app/api/routes/admin.py`.
+- [x] New TS contracts in `packages/contracts/src/types.ts`
+      (`AccessGroupOut`, `AccessGroupDetailOut`, `AccessSourceOut`,
+      `ApplicationDetailOut`, extended `EffectiveModuleAccessOut`).
+- [x] `admin-web`: new Groups list/detail screens, new Applications detail
+      screen, User Detail refactored into six tabs (Overview / Applications
+      / Groups / Client Access / Effective Access / Audit History) with
+      `sources`-based DIRECT/INHERITED-FROM badges, Users list search +
+      client-side filters, new "Groups" nav item.
+- [x] `shell-web`: Home reordered (Header → My Apps → Needs Your Attention
+      → Recent Activity + Platform Health + Ask DijiOne), new
+      `AttentionPanel.tsx` and `PlatformHealth` components (role-aware,
+      real-data-only, isolated per-service fetches), `ModuleCard.tsx` shows
+      operational summary fields + resolved role per app, COMING_SOON
+      modules visually de-emphasized.
+- [x] Regression: 40 new `platform-api` tests + 12 new `admin-api` tests,
+      all passing alongside the full pre-2.6 suite; both frontend apps build
+      clean.
+- [x] Docs: `docs/platform/access-groups.md`, `docs/platform/effective-access.md`
+      (new); `authorization.md`, `admin-center.md`, `module-framework.md`,
+      `service-architecture.md`, `mvp-status.md`, this file (updated).
 
 See `docs/mvp-status.md` for the full Definition-of-MVP-Done checklist and
 `docs/decisions/0001-monorepo-layout.md` for the repository-layout ADR

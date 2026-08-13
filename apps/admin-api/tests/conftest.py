@@ -74,6 +74,34 @@ def _build_stub_platform_app() -> FastAPI:
             raise HTTPException(404, f"User {user_id} not found")
         return STUB_USERS[user_id]
 
+    @stub.get("/api/platform/admin/groups")
+    def list_groups(authorization: str | None = Header(default=None)) -> list[dict]:
+        _require_admin_token(authorization)
+        return [
+            {
+                "id": 1, "key": "ta-team", "display_name": "TA Team", "description": "", "status": "ACTIVE",
+                "group_type": "TEAM", "member_count": 1, "module_count": 1,
+                "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+            }
+        ]
+
+    @stub.get("/api/platform/admin/applications/{module_key}")
+    def application_detail(module_key: str, authorization: str | None = Header(default=None)) -> dict:
+        _require_admin_token(authorization)
+        return {
+            "module_key": module_key, "module_name": "DijiTalentFlow", "description": "d", "status": "ACTIVE",
+            "enabled": True,
+            "assigned_users": [
+                {
+                    "user_id": 1, "email": "abc-user@example.com", "full_name": "ABC User",
+                    "role": "TALENT_CLIENT", "role_name": "Talent Client", "enabled": True,
+                    "client_scope": {"all_clients": False, "client_ids": [1], "client_names": []},
+                }
+            ],
+            "assigned_groups": [],
+            "direct_user_count": 1, "group_count": 0,
+        }
+
     return stub
 
 

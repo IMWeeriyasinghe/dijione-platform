@@ -1,9 +1,12 @@
 import type {
+  AccessGroupDetailOut,
+  AccessGroupOut,
   AdminDashboardOut,
   AdminModuleOut,
   AdminPermissionOut,
   AdminRoleOut,
   AdminUserOut,
+  ApplicationDetailOut,
   AuditLogOut,
   ClientScope,
   EffectiveAccessOut,
@@ -44,5 +47,54 @@ export const listAdminClients = () => request<{ id: number; name: string }[]>("/
 export const listAdminModules = () => request<AdminModuleOut[]>("/api/admin/modules");
 export const listAdminRoles = () => request<AdminRoleOut[]>("/api/admin/roles");
 export const listAdminPermissions = () => request<AdminPermissionOut[]>("/api/admin/permissions");
-export const listAdminAudit = (params: { entity_type?: string; limit?: number } = {}) =>
+export const listAdminAudit = (params: { entity_type?: string; entity_id?: number; limit?: number } = {}) =>
   request<AuditLogOut[]>(`/api/admin/audit${qs(params)}`);
+
+// --- Access Groups (Phase 2.6) ---------------------------------------------
+export const listAdminGroups = () => request<AccessGroupOut[]>("/api/admin/groups");
+export const getAdminGroup = (id: number) => request<AccessGroupDetailOut>(`/api/admin/groups/${id}`);
+export const createAdminGroup = (payload: {
+  key: string;
+  display_name: string;
+  description?: string;
+  group_type?: string;
+}) =>
+  request<AccessGroupDetailOut>("/api/admin/groups", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+export const updateAdminGroup = (
+  id: number,
+  payload: { display_name?: string; description?: string; group_type?: string }
+) =>
+  request<AccessGroupDetailOut>(`/api/admin/groups/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+export const setGroupStatus = (id: number, status: string) =>
+  request<AccessGroupDetailOut>(`/api/admin/groups/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+export const addGroupMember = (id: number, userId: number) =>
+  request<AccessGroupDetailOut>(`/api/admin/groups/${id}/members`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId }),
+  });
+export const removeGroupMember = (id: number, userId: number) =>
+  request<AccessGroupDetailOut>(`/api/admin/groups/${id}/members/${userId}`, { method: "DELETE" });
+export const upsertGroupModuleAssignment = (
+  id: number,
+  moduleKey: string,
+  payload: { role: string; enabled: boolean; client_scope?: ClientScope | { all_clients: boolean; client_ids: number[] } }
+) =>
+  request<AccessGroupDetailOut>(`/api/admin/groups/${id}/modules/${moduleKey}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+export const removeGroupModuleAssignment = (id: number, moduleKey: string) =>
+  request<AccessGroupDetailOut>(`/api/admin/groups/${id}/modules/${moduleKey}`, { method: "DELETE" });
+
+// --- Application-centric admin (Phase 2.6) ---------------------------------
+export const getApplicationDetail = (moduleKey: string) =>
+  request<ApplicationDetailOut>(`/api/admin/applications/${moduleKey}`);

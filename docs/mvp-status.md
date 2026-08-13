@@ -237,6 +237,80 @@ detail: `docs/platform/service-architecture.md`,
   for this phase (`docs/platform/failure-isolation.md` "Auth: signed
   claims, not a live dependency").
 
+## Phase 2.6 — Enterprise Access Management + Intelligent Home
+
+Delivered on top of the Phase 2.5 service-separated baseline, additive only
+— no existing table, endpoint contract, or UI screen was replaced. Full
+detail: `docs/platform/access-groups.md`, `docs/platform/effective-access.md`,
+`docs/platform/authorization.md` ("Access Groups (Phase 2.6)"),
+`docs/platform/admin-center.md` ("Groups screens" / "Applications detail").
+
+1. ✅ **Access Groups** (`platform-api`) — four new additive tables
+   (`AccessGroup`, `UserGroupMembership`, `GroupModuleRole`,
+   `GroupModuleClientScope`) alongside the untouched
+   `UserModuleRole`/`UserModuleClientScope` tables; one new Alembic
+   migration.
+2. ✅ **Single resolution engine, extended, not duplicated** —
+   `AuthorizationService` gained `groups_for_user`, `effective_module_roles`,
+   `effective_client_scope`, `effective_permissions`, implementing additive-
+   ALLOW resolution (union of direct + active-group grants; ALL_CLIENTS
+   overrides any concrete-client-list contributor). Both
+   `AdminService.effective_access` (Admin Center) and
+   `claims_service.build_claims` (JWT issuance) consume these same combined
+   methods.
+3. ✅ **Explainability** — `EffectiveModuleAccessOut` gained a
+   `sources: list[AccessSourceOut]` field (`DIRECT` vs `GROUP` + group name)
+   so the Admin Center's Effective Access tab can show *why* a user has a
+   given access, not just *that* they have it.
+4. ✅ **SYSTEM group protection** — groups with `group_type="SYSTEM"` are
+   rejected from deactivation by `AdminService` (`SystemGroupProtectedError`),
+   independent of any frontend check.
+5. ✅ **Admin Center** — new Groups screens (list + detail, user-centric
+   member/module-assignment editing), new Applications detail screen
+   (app-centric: assigned users + assigned groups for one module), User
+   Detail refactored into six tabs (Overview / Applications / Groups /
+   Client Access / Effective Access / Audit History), Users list gained
+   search + client-side filters.
+6. ✅ **DijiOne Home redesign** (`shell-web`) — reordered to Header → My
+   Apps → Needs Your Attention (new, role-aware, only real data,
+   `AttentionPanel.tsx`) → Recent Activity (trimmed to 5) + Platform Health
+   (new, rolled up from existing per-module runtime-status fetches) + Ask
+   DijiOne (shrunk). Module cards show operational summary fields plus the
+   user's resolved role per app; COMING_SOON modules are visually
+   de-emphasized. `ModuleCard`/`AttentionPanel`/`PlatformHealth` each keep
+   the existing per-service isolated-fetch pattern — no new `Promise.all`
+   coupling introduced (CR §39 still holds).
+7. ✅ Backend tests: 40 new `platform-api` tests (inheritance rules —
+   direct-only/group-only/direct+group union, ALL_CLIENTS override, inactive
+   group and disabled-assignment contribute nothing, tenant isolation
+   preserved through group paths, SYSTEM group protection, 403s, audit
+   coverage) + 12 new `admin-api` pass-through tests, all passing alongside
+   the full pre-2.6 suite.
+8. ✅ Frontend builds clean: `admin-web` (new `/groups`, `/groups/[id]`,
+   `/applications/[key]` routes; refactored `/users/[id]`) and `shell-web`
+   (redesigned Home).
+
+### Known gaps (documented, not oversights)
+
+- Users list has no group-count column/filter — `AdminUserOut` doesn't
+  carry a `groups` field; would need a backend change, left as a documented
+  gap rather than an N+1 client-side fetch on the list screen (see
+  `docs/platform/admin-center.md` "Users list improvements").
+- User Detail's Groups tab derives membership by cross-referencing every
+  group's detail client-side rather than a dedicated
+  `GET /api/admin/users/{id}/groups` endpoint — fine at current scale, noted
+  as a future improvement.
+- `birthday-api`/`spark-api`'s `/summary` endpoints return only
+  `service`/`status`/`product_status` (no operational counts), so their
+  DijiOne Home cards show no operational stats line — expected, they remain
+  skeletons per CR §9/§10/§51.
+- No claims-refresh/revocation mechanism for group-derived access — a group
+  membership or module-role change takes effect at the affected user's next
+  login/token refresh, exactly the same documented staleness trade-off
+  direct assignment changes already have (`docs/platform/failure-isolation.md`
+  "Auth: signed claims, not a live dependency"; see also
+  `docs/platform/effective-access.md` "Claims staleness").
+
 ## Next autonomous phase (when resumed)
 
 1. Request read-only Lever + HubSpot credentials (Phase D discovery).

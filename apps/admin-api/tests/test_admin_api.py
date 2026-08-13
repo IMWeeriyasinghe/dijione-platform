@@ -45,6 +45,25 @@ def test_clients_endpoint_forwards_talent_api(api_client):
     assert names == {"ABC Company", "XYZ Company"}
 
 
+def test_groups_endpoint_forwards_platform_api(api_client):
+    resp = api_client.get("/api/admin/groups", headers=VALID)
+    assert resp.status_code == 200
+    assert resp.json()[0]["key"] == "ta-team"
+
+
+def test_groups_endpoint_forwards_403(api_client):
+    resp = api_client.get("/api/admin/groups", headers=INVALID)
+    assert resp.status_code == 403
+
+
+def test_application_detail_endpoint_is_enriched_with_client_names(api_client):
+    resp = api_client.get("/api/admin/applications/talent-flow", headers=VALID)
+    assert resp.status_code == 200
+    scope = resp.json()["assigned_users"][0]["client_scope"]
+    assert scope["client_ids"] == [1]
+    assert scope["client_names"] == ["ABC Company"]
+
+
 def test_health(api_client):
     resp = api_client.get("/health")
     assert resp.status_code == 200

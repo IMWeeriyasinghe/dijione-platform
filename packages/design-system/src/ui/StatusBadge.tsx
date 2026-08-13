@@ -35,6 +35,11 @@ const STATUS_TONE: Record<string, Tone> = {
   // Misc
   ACTIVE_CLIENT: "success",
   COMING_SOON: "neutral",
+  // Access source / group status
+  DIRECT: "brand",
+  GROUP: "success",
+  SYSTEM: "neutral",
+  INACTIVE: "neutral",
 };
 
 const TONE_CLASSES: Record<Tone, string> = {

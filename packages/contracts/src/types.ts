@@ -313,6 +313,13 @@ export type AuditLogOut = {
   created_at: string;
 };
 
+export type AccessSourceOut = {
+  type: "DIRECT" | "GROUP";
+  role: string | null;
+  group_id: number | null;
+  group_name: string | null;
+};
+
 export type EffectiveModuleAccessOut = {
   module_key: string;
   module_name: string;
@@ -321,6 +328,7 @@ export type EffectiveModuleAccessOut = {
   role_name: string;
   client_scope: ClientScope;
   permissions: string[];
+  sources: AccessSourceOut[];
 };
 
 export type EffectiveAccessOut = {
@@ -330,6 +338,79 @@ export type EffectiveAccessOut = {
   is_active: boolean;
   platform_permissions: string[];
   modules: EffectiveModuleAccessOut[];
+};
+
+export type GroupMemberOut = {
+  user_id: number;
+  email: string;
+  full_name: string;
+};
+
+export type GroupModuleAssignmentOut = {
+  module_key: string;
+  module_name: string;
+  role: string;
+  role_name: string;
+  enabled: boolean;
+  client_scope: ClientScope | null;
+};
+
+export type AccessGroupOut = {
+  id: number;
+  key: string;
+  display_name: string;
+  description: string;
+  status: string;
+  group_type: string;
+  member_count: number;
+  module_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AccessGroupDetailOut = {
+  id: number;
+  key: string;
+  display_name: string;
+  description: string;
+  status: string;
+  group_type: string;
+  created_at: string;
+  updated_at: string;
+  members: GroupMemberOut[];
+  module_assignments: GroupModuleAssignmentOut[];
+};
+
+export type ApplicationAssignedUserOut = {
+  user_id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  role_name: string;
+  enabled: boolean;
+  client_scope: ClientScope;
+};
+
+export type ApplicationAssignedGroupOut = {
+  group_id: number;
+  group_key: string;
+  group_name: string;
+  role: string;
+  role_name: string;
+  enabled: boolean;
+  client_scope: ClientScope;
+};
+
+export type ApplicationDetailOut = {
+  module_key: string;
+  module_name: string;
+  description: string;
+  status: string;
+  enabled: boolean;
+  assigned_users: ApplicationAssignedUserOut[];
+  assigned_groups: ApplicationAssignedGroupOut[];
+  direct_user_count: number;
+  group_count: number;
 };
 
 export type AdminDashboardOut = {

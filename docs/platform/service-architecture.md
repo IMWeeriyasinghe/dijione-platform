@@ -88,9 +88,20 @@ patterns replace what a cross-database FK/JOIN used to do:
 
 | Service | Owns |
 |---|---|
-| `platform-api` | `users`, `user_module_roles`, `user_module_client_scopes`, `roles`, `permissions`, `role_permissions`, `application_modules`, `audit_logs`, `notifications` |
+| `platform-api` | `users`, `user_module_roles`, `user_module_client_scopes`, `roles`, `permissions`, `role_permissions`, `application_modules`, `audit_logs`, `notifications`, `access_groups`, `user_group_memberships`, `group_module_roles`, `group_module_client_scopes` |
 | `talent-api` | `clients`, `talent_requests`, `candidates`, `applications`, `interviews`, `messages`, `documents`, `external_mappings`, `integration_events` |
 | `admin-api` | Nothing — see below |
+
+**Phase 2.6** added the last four `platform-api` tables above
+(`access_groups`, `user_group_memberships`, `group_module_roles`,
+`group_module_client_scopes` — see `docs/platform/access-groups.md`). They
+don't disturb the no-cross-service-FK rule: `user_group_memberships.user_id`
+FKs to `users.id` (same service, same database — a normal in-service FK,
+not a cross-service one), and `group_module_client_scopes.client_id` is a
+plain nullable integer with no foreign key at all, exactly mirroring how
+`user_module_client_scopes.client_id` already references `talent-api`'s
+`clients` table by opaque id. Access Groups are entirely a `platform-api`-
+owned concept; no other service's schema changed to support them.
 
 ## Admin: a real HTTP client, not a shared database
 

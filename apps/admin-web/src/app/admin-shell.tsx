@@ -9,6 +9,7 @@ import {
   KeyRound,
   LayoutDashboard,
   ShieldCheck,
+  UsersRound,
   Users as UsersIcon,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ const ADMIN_SECTIONS: NavSection[] = [
     items: [
       { label: "Users", href: "/users", icon: UsersIcon },
       { label: "Applications", href: "/applications", icon: Grid3x3 },
+      { label: "Groups", href: "/groups", icon: UsersRound },
       { label: "Roles", href: "/roles", icon: ShieldCheck },
       { label: "Permissions", href: "/permissions", icon: KeyRound },
       { label: "Client Access", href: "/client-access", icon: UsersIcon },

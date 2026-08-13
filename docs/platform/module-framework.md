@@ -29,6 +29,16 @@ is only counted as "authorized" when the assignment is also
 DijiTalentFlow access (via the Admin Center) removes it from that user's
 DijiOne Home immediately, without touching the module registry itself.
 
+**Phase 2.6**: "authorized" here still means the module's row appears in
+`GET /api/modules`; it does not itself change with Access Groups (module
+registry visibility isn't group-aware). What *is* group-aware is the *role*
+that DijiOne Home shows next to a module card — `ModuleCard.tsx` reads it
+from `user.module_roles` in the resolved auth session, which (since
+`claims_service.build_claims` now calls
+`AuthorizationService.effective_module_roles`) already reflects group-
+granted roles, not only direct assignment. See
+`docs/platform/authorization.md` "Access Groups (Phase 2.6)".
+
 ## Adding a new module (Phase 2.5: a new service, not new routes)
 
 Pre-Phase-2.5, a new module meant adding routes to the shared monolith.

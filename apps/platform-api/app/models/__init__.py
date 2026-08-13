@@ -1,4 +1,10 @@
 from app.db.base import Base
+from app.models.access_group import (
+    AccessGroup,
+    GroupModuleClientScope,
+    GroupModuleRole,
+    UserGroupMembership,
+)
 from app.models.audit_log import AuditLog
 from app.models.module import ApplicationModule
 from app.models.notification import Notification
@@ -17,4 +23,8 @@ __all__ = [
     "User",
     "UserModuleRole",
     "UserModuleClientScope",
+    "AccessGroup",
+    "UserGroupMembership",
+    "GroupModuleRole",
+    "GroupModuleClientScope",
 ]
