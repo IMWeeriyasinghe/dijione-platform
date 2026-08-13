@@ -1,0 +1,17 @@
+flowchart TB
+    subgraph Scenario1["Scenario: talent-api goes down"]
+        direction LR
+        S1Shell["DijiOne Shell"] -->|"still loads —\ncard shows\n'Temporarily unavailable'"| S1Result1(["remains available"])
+        S1Admin["Admin Center"] -->|"Users/Roles/Permissions\nunaffected; pending-count\nfalls back to 0"| S1Result2(["remains available"])
+        S1Birthday["DijiBirthday card"] --> S1Result3(["unaffected"])
+        S1Spark["DijiSpark card"] --> S1Result4(["unaffected"])
+        S1Talent["DijiTalentFlow"] -->|"can't authenticate\n(its own service is down)"| S1Result5(["unavailable — the one\nservice actually affected"])
+    end
+
+    subgraph Scenario2["Scenario: platform-api goes down"]
+        direction LR
+        S2Login["New logins"] --> S2Result1(["blocked — platform-api\nis the only issuer"])
+        S2Talent2["talent-api, already-issued tokens"] -->|"claims verified locally,\nno call to platform-api"| S2Result2(["keeps serving\nauthenticated requests"])
+        S2Talent2Write["talent-api audit/notification writes"] -->|"best-effort, catches\nhttpx.HTTPError, logs, continues"| S2Result3(["the talent action\nstill succeeds"])
+        S2Admin2["admin-api"] -->|"has no data of its\nown to fall back to"| S2Result4(["503 — not survivable,\nby design (CR §38)"])
+    end

@@ -163,6 +163,80 @@ browser (both an ordinary client persona and a no-module-access
 SUPER_ADMIN persona now see the two cards) and covered by
 `tests/test_module_registry.py`.
 
+## Phase 2.5 — Application-Level Service Separation
+
+Turned the Phase 1/2 modular monolith into eight independently runnable
+services (three Next.js frontend apps behind a gateway, five FastAPI
+backend services each owning their own data), without rewriting
+DijiTalentFlow's business logic or Phase 2's authorization semantics. Full
+detail: `docs/platform/service-architecture.md`,
+`docs/platform/service-contracts.md`, `docs/platform/failure-isolation.md`,
+`docs/platform/local-development.md`.
+
+1. ✅ **Platform Core** (`platform-api`, :8000) — owns identity,
+   authorization, module registry, audit log, notifications. Issues JWTs
+   carrying signed authorization claims (module roles, permissions, client
+   scope) so business services no longer need a database join or a
+   synchronous call to authorize a request.
+2. ✅ **Admin** (`admin-api`, :8001 / `admin-web`, :3001) — rebuilt as a
+   genuinely zero-database service: every `/api/admin/*` request forwards
+   to `platform-api` with the caller's own bearer token (never a service-
+   asserted identity) and is enriched with `talent-api` data, best-effort.
+   Public contract and every screen unchanged from Phase 2.
+3. ✅ **DijiTalentFlow** (`talent-api`, :8002 / `talent-web`, :3002) — owns
+   its own database (`clients`, `talent_requests`, `candidates`,
+   `applications`, `interviews`, `messages`, `documents`,
+   `external_mappings`, `integration_events`); no foreign key crosses the
+   service boundary. Authorizes purely from JWT claims. Audit/notification
+   writes to Platform Core are best-effort (a `platform-api` outage doesn't
+   fail a talent action — verified by a dedicated resilience test).
+4. ✅ **DijiBirthday** / **DijiSpark** skeletons (`birthday-api` :8003,
+   `spark-api` :8004) — health/metadata/summary endpoints and the same
+   claims-based auth seam as `talent-api`, no business logic, no database.
+   Proves DijiOne can host a new independently bounded application before
+   any real workflow exists (CR §9/§10/§51).
+5. ✅ Shared packages, not copy-paste: `packages/design-system` (UI
+   primitives + shell chrome), `packages/auth-client-ts` (frontend
+   session/auth logic), `packages/auth-client-py` (JWT claims verification
+   + Platform Core HTTP client), `packages/contracts` (shared TS types).
+6. ✅ Gateway routing via Next.js rewrites (`shell-web`'s
+   `next.config.ts`) — a browser only ever talks to `localhost:3000`;
+   `admin-web`/`talent-web` use Next.js's "Multi Zones" pattern
+   (`basePath`) so each remains independently runnable/buildable on its
+   own port.
+7. ✅ DijiOne Home fetches each service's summary independently (own React
+   Query, 4s timeout, `retry: 0`) — never one `Promise.all` — so one dead
+   backend degrades one card, never the page (CR §39).
+8. ✅ Regression: all pre-existing test coverage re-homed to the owning
+   service and green (platform-api 24, admin-api 9, talent-api 27,
+   birthday-api 4, spark-api 4, packages/auth-client-py 6 — 74 backend
+   tests total), plus new service-isolation and contract tests. All three
+   frontend apps build and lint clean.
+9. ✅ Live smoke test (CR §47) against the real running stack with seeded
+   demo data, including killing `talent-api`'s process mid-session and
+   confirming Home/Admin stayed fully functional, then restarting it and
+   confirming recovery — see `docs/platform/failure-isolation.md` "Live
+   smoke test results" for the full walkthrough and the two real bugs
+   found and fixed along the way (a `next/image` + `basePath` proxying
+   edge case, and `next/link` silently no-op'ing across a zone boundary).
+
+### What was NOT built (by design, not by oversight)
+
+- Kubernetes, a message broker, a service mesh, distributed tracing, or
+  multiple production database servers — explicitly out of scope for this
+  phase (CR §57).
+- Production Azure infrastructure (Front Door/APIM, Application Insights,
+  Key Vault) — documented in `docs/platform/service-contracts.md`
+  "Production direction", not provisioned.
+- Live Microsoft Entra ID / Lever / HubSpot connectivity — unchanged from
+  Phase 1/2, still mock providers only.
+- Real DijiBirthday/DijiSpark business functionality — skeletons only, per
+  CR §9/§10/§51's explicit non-goal for this phase.
+- A permission-change revocation/refresh mechanism for claims-based auth —
+  the staleness window (token TTL) is the accepted, documented trade-off
+  for this phase (`docs/platform/failure-isolation.md` "Auth: signed
+  claims, not a live dependency").
+
 ## Next autonomous phase (when resumed)
 
 1. Request read-only Lever + HubSpot credentials (Phase D discovery).
@@ -174,5 +248,9 @@ SUPER_ADMIN persona now see the two cards) and covered by
 4. Real document storage (Azure Blob Storage).
 5. Role/permission creation-and-editing UI in the Admin Center (currently
    read-only/system-protected).
-6. DijiBirthday as the second module, proving the module framework end to
-   end (registry → roles → permissions → Admin Center → UI).
+6. Real DijiBirthday business functionality on top of the Phase 2.5
+   skeleton — BambooHR birthday source, cake ordering, duplicate
+   prevention — proving the full module framework end to end (registry →
+   roles → permissions → Admin Center → UI → its own service).
+7. Consider a lightweight claims-refresh or revocation mechanism if the
+   Phase 2.5 token-TTL staleness window proves too coarse in practice.

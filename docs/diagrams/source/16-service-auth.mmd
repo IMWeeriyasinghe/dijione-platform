@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant U as User (browser)
+    participant P as platform-api
+    participant T as talent-api
+    participant A as admin-api
+
+    Note over U,P: Login (Dev Identity Mode / future Entra ID)
+    U->>P: POST /api/auth/dev-login {persona_key}
+    P->>P: AuthorizationService resolves<br/>platform_permissions + module_roles<br/>+ client scope from DB
+    P-->>U: JWT with signed claims<br/>{platform_permissions, module_roles: {...}}
+
+    Note over U,T: Business service request — no DB join, no call to platform-api
+    U->>T: GET /api/talent/requests<br/>Authorization: Bearer <JWT>
+    T->>T: decode_claims() verifies signature,<br/>reads module_roles["talent-flow"] locally
+    T-->>U: 200 (tenant-scoped response)
+
+    Note over U,A: Admin request — pass-through auth, re-derived by Platform Core
+    U->>A: PATCH /api/admin/users/6/status<br/>Authorization: Bearer <JWT>
+    A->>P: PATCH /api/platform/admin/users/6/status<br/>Authorization: Bearer <JWT> (forwarded, unmodified)
+    P->>P: require_platform_permission(...)<br/>re-derives actor's permissions from THIS token
+    P-->>A: 200
+    A-->>U: 200
+
+    Note over T,P: Service-initiated write — no human actor
+    T->>P: POST /api/platform/internal/audit-events<br/>X-Internal-Token: shared secret
+    P-->>T: 201 (or logged warning + non-fatal continue if unreachable)

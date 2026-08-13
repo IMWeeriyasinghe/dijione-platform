@@ -35,7 +35,7 @@ status. See `docs/talent-flow/requirements.md` for the module-level list.
 ## Non-functional requirements
 
 - Tenant isolation is enforced exclusively in the repository layer and is
-  covered by automated tests (`apps/api/tests/test_tenant_isolation.py`).
+  covered by automated tests (`apps/talent-api/tests/test_tenant_isolation.py`).
 - Every workflow transition (request review, stage change, application
   status/score/visibility change, interview scheduling) writes an
   `AuditLog` entry and, where relevant, a `Notification`.

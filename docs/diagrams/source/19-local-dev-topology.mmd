@@ -1,0 +1,31 @@
+flowchart TB
+    Dev["Developer"] -->|"npm run dev:all"| Script["scripts/dev-all.js"]
+
+    subgraph Node["Node child processes"]
+        Script --> ShellProc["shell-web :3000\nnpm run dev"]
+        Script --> AdminProc["admin-web :3001\nnpm run dev"]
+        Script --> TalentProc["talent-web :3002\nnpm run dev"]
+    end
+
+    subgraph Python["Python child processes (repo-root .venv)"]
+        Script --> PlatformProc["platform-api :8000\nuvicorn --reload"]
+        Script --> AdminAPIProc["admin-api :8001\nuvicorn --reload"]
+        Script --> TalentAPIProc["talent-api :8002\nuvicorn --reload"]
+        Script --> BirthdayProc["birthday-api :8003\nuvicorn --reload"]
+        Script --> SparkProc["spark-api :8004\nuvicorn --reload"]
+    end
+
+    ShellProc -.rewrites to.-> AdminProc
+    ShellProc -.rewrites to.-> TalentProc
+    ShellProc -.rewrites to.-> PlatformProc
+    ShellProc -.rewrites to.-> AdminAPIProc
+    ShellProc -.rewrites to.-> TalentAPIProc
+    ShellProc -.rewrites to.-> BirthdayProc
+    ShellProc -.rewrites to.-> SparkProc
+
+    AdminAPIProc -.forwards to.-> PlatformProc
+    AdminAPIProc -.reads from.-> TalentAPIProc
+    TalentAPIProc -.writes to.-> PlatformProc
+
+    Script -->|"colored [service-name]\nprefixed log lines"| Console["Developer's terminal"]
+    Script -->|"Ctrl-C"| Shutdown["all 8 processes killed together"]

@@ -1,24 +1,30 @@
 flowchart TB
     U["User (browser)"]
 
-    subgraph FE["apps/web — Next.js 16"]
-        Switcher["Dev Persona Switcher\n(substitute for login page)"]
-        Shell["DijiOne Shell\nAppShell / Sidebar / TopNav"]
-        TF["DijiTalentFlow UI\nClient Workspace + TA Workspace"]
+    subgraph FRONTEND["Frontend zones (Next.js 16, Multi-Zones)"]
+        Shell["shell-web :3000\nDijiOne Home, common nav/auth,\ngateway rewrites (pages + APIs)"]
+        AdminWeb["admin-web :3001\nbasePath /admin\nAdmin Center pages"]
+        TalentWeb["talent-web :3002\nbasePath /talent-flow\nDijiTalentFlow pages"]
     end
 
-    subgraph BE["apps/api — FastAPI"]
-        AuthSeam["Auth seam\nDevAuthProvider (ACTIVE)\nEntraAuthProvider (STUB, raises NotImplementedError)\n/api/auth/entra/* seam (Phase 2, 501 until configured)"]
-        AuthZ["AuthorizationService (Phase 2)\nresolves platform + module permissions\nand client/portfolio scope from DB state"]
-        Routes["REST routes\n/api/talent/*, /api/modules,\n/api/notifications, /api/webhooks/*"]
-        AdminRoutes["/api/admin/* (Phase 2)\nusers, modules, roles, permissions,\nclient scope, audit, effective-access"]
-        Svc["Services\nworkflow, notifications, audit"]
-        Repo["Repositories\ntenant + portfolio-scoped queries"]
+    subgraph PACKAGES["Shared packages (npm workspace)"]
+        DS["@dijione/design-system\nUI primitives + shell chrome"]
+        AuthTS["@dijione/auth-client\nsession/auth logic"]
+        Contracts["@dijione/contracts\nshared TS types"]
     end
 
-    DB[("SQLite\nSQLAlchemy 2 + Alembic\n+ Role/Permission/RolePermission\n+ UserModuleClientScope (Phase 2)")]
+    subgraph BACKEND["Backend services (FastAPI)"]
+        Platform["platform-api :8000\nusers, roles, permissions,\nmodule registry, audit, notifications\nissues JWT + signed claims"]
+        AdminAPI["admin-api :8001\nNO database\nforwards caller's bearer token\nto platform-api"]
+        TalentAPI["talent-api :8002\nowns talent.db\nauthorizes from JWT claims"]
+        BirthdayAPI["birthday-api :8003\nskeleton — health/metadata/summary"]
+        SparkAPI["spark-api :8004\nskeleton — health/metadata/summary"]
+    end
 
-    subgraph MOCK["Mocked integration layer"]
+    PlatformDB[("platform.db")]
+    TalentDB[("talent.db")]
+
+    subgraph MOCK["Mocked integration layer (owned by talent-api)"]
         MLever["MockLeverClient"]
         MHub["MockHubSpotClient"]
     end
@@ -30,20 +36,31 @@ flowchart TB
         LiveHub["Live HubSpotClient"]
     end
 
-    U --> Switcher --> AuthSeam
-    U --> Shell --> TF
-    Shell -. "Administration nav\n(platform.admin.access only)" .-> AdminRoutes
-    AuthSeam --> AuthZ
-    TF -- "Bearer JWT" --> Routes
-    Routes --> AuthZ
-    AdminRoutes --> AuthZ
-    AuthZ --> DB
-    Routes --> Svc --> Repo --> DB
-    AdminRoutes --> Svc
-    Svc --> MLever
-    Svc --> MHub
+    U --> Shell
+    Shell -- "proxy /admin/*" --> AdminWeb
+    Shell -- "proxy /talent-flow/*" --> TalentWeb
+    Shell -- "proxy /api/auth,/api/modules,/api/notifications" --> Platform
+    Shell -- "proxy /api/admin/*" --> AdminAPI
+    Shell -- "proxy /api/talent/*" --> TalentAPI
+    Shell -- "proxy /api/birthday/*" --> BirthdayAPI
+    Shell -- "proxy /api/spark/*" --> SparkAPI
 
-    AuthSeam -.swap later.-> Entra
+    Shell -.-> DS
+    AdminWeb -.-> DS
+    TalentWeb -.-> DS
+    DS -.-> AuthTS
+    DS -.-> Contracts
+
+    AdminAPI -- "bearer token forwarded,\nre-authorized" --> Platform
+    AdminAPI -- "internal secret\nclient names/counts" --> TalentAPI
+    TalentAPI -- "internal secret\naudit + notifications\n(best-effort)" --> Platform
+
+    Platform --> PlatformDB
+    TalentAPI --> TalentDB
+    TalentAPI --> MLever
+    TalentAPI --> MHub
+
+    Platform -.swap later.-> Entra
     MLever -.swap later.-> LiveLever
     MHub -.swap later.-> LiveHub
-    Copilot -. "not built; would call Routes,\nnever bypassing AuthZ" .-> Routes
+    Copilot -. "not built; would call\nservice APIs, never bypassing auth" .-> Shell

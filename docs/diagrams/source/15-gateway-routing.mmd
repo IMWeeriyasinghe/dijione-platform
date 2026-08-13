@@ -1,0 +1,28 @@
+flowchart LR
+    Browser["Browser\n(localhost:3000 only)"]
+
+    subgraph Gateway["shell-web next.config.ts rewrites"]
+        direction TB
+        R1["/admin/*"]
+        R2["/talent-flow/*"]
+        R3["/api/auth/*\n/api/modules\n/api/notifications/*"]
+        R4["/api/admin/*"]
+        R5["/api/talent/*"]
+        R6["/api/birthday/*"]
+        R7["/api/spark/*"]
+    end
+
+    Browser --> Gateway
+
+    R1 --> AdminWeb["admin-web :3001\nbasePath /admin"]
+    R2 --> TalentWeb["talent-web :3002\nbasePath /talent-flow"]
+    R3 --> Platform["platform-api :8000"]
+    R4 --> AdminAPI["admin-api :8001"]
+    R5 --> TalentAPI["talent-api :8002"]
+    R6 --> BirthdayAPI["birthday-api :8003"]
+    R7 --> SparkAPI["spark-api :8004"]
+
+    subgraph Note["Independent standalone dev"]
+        direction TB
+        N1["admin-web/talent-web carry\nthe same platform-api rewrites\nin their OWN next.config.ts —\nrunnable/testable on their own\nport without shell-web"]
+    end

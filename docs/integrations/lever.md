@@ -12,7 +12,7 @@ via `ExternalMapping`.
 ## Architecture
 
 ```text
-apps/api/app/integrations/lever/
+apps/talent-api/app/integrations/lever/
 ├── client.py        # LeverClient — abstract interface
 ├── mock_client.py    # MockLeverClient — realistic in-memory data
 ├── mapper.py         # LEVER_STAGE_MAP — provider stage text → CanonicalStage

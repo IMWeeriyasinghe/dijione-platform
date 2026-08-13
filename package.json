@@ -1,8 +1,20 @@
 {
   "name": "dijione-platform",
   "private": true,
-  "description": "Repository-level tooling for the DijiOne platform monorepo (apps/web, apps/api).",
+  "description": "Repository-level tooling for the DijiOne platform monorepo — see docs/platform/local-development.md.",
+  "workspaces": [
+    "apps/shell-web",
+    "apps/admin-web",
+    "apps/talent-web",
+    "packages/design-system",
+    "packages/auth-client-ts",
+    "packages/contracts"
+  ],
   "scripts": {
-    "diagrams": "node scripts/generate-diagrams.js"
+    "diagrams": "node scripts/generate-diagrams.js",
+    "dev:all": "node scripts/dev-all.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
   }
 }

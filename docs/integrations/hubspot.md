@@ -16,7 +16,7 @@ adapter.
 ## Architecture
 
 ```text
-apps/api/app/integrations/hubspot/
+apps/talent-api/app/integrations/hubspot/
 ├── client.py        # HubSpotClient — abstract interface
 ├── mock_client.py    # MockHubSpotClient — realistic in-memory data
 └── schemas.py         # Provider-shaped DTOs (never returned to the frontend)

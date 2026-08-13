@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dijione-auth-client"
+version = "0.1.0"
+description = "Shared JWT claims verification + Platform Core HTTP client for DijiOne business services."
+requires-python = ">=3.12"
+dependencies = [
+    "python-jose[cryptography]>=3.3",
+    "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+include = ["auth_client_py*"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]

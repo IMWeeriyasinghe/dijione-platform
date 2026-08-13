@@ -1,0 +1,56 @@
+flowchart TB
+    subgraph Shell_Zone["DijiOne Shell"]
+        Shell["shell-web\nHome, nav, gateway"]
+    end
+
+    subgraph Platform_Zone["Platform Core"]
+        Platform["platform-api\nidentity · authZ · module registry\naudit · notifications"]
+    end
+
+    subgraph Admin_Zone["Admin"]
+        AdminWeb["admin-web"]
+        AdminAPI["admin-api\n(no database)"]
+    end
+
+    subgraph Talent_Zone["DijiTalentFlow"]
+        TalentWeb["talent-web"]
+        TalentAPI["talent-api\n(owns talent.db)"]
+        Lever["Lever adapter"]
+        HubSpot["HubSpot adapter"]
+    end
+
+    subgraph Birthday_Zone["DijiBirthday (skeleton)"]
+        BirthdayAPI["birthday-api"]
+    end
+
+    subgraph Spark_Zone["DijiSpark (skeleton)"]
+        SparkAPI["spark-api"]
+    end
+
+    Shell --> Platform
+    Shell --> AdminWeb
+    Shell --> TalentWeb
+    Shell --> BirthdayAPI
+    Shell --> SparkAPI
+
+    AdminWeb --> AdminAPI
+    AdminAPI -->|"bearer token\nforwarded"| Platform
+    AdminAPI -.->|"internal secret\nread-only"| TalentAPI
+
+    TalentWeb --> TalentAPI
+    TalentAPI -.->|"internal secret\naudit/notifications"| Platform
+    TalentAPI --> Lever
+    TalentAPI --> HubSpot
+
+    BirthdayAPI -.->|"claims seam only\nno data yet"| Platform
+    SparkAPI -.->|"claims seam only\nno data yet"| Platform
+
+    style Shell_Zone fill:#fff3e0,stroke:#c9431d
+    style Platform_Zone fill:#ffebee,stroke:#8f2417
+    style Admin_Zone fill:#fce4ec,stroke:#aa2f1d
+    style Talent_Zone fill:#fff8e1,stroke:#db4d18
+    style Birthday_Zone fill:#f5f5f5,stroke:#999
+    style Spark_Zone fill:#f5f5f5,stroke:#999
+
+    Note["No business service imports another\nbusiness service's internal code (CR §11).\nAdmin↔Platform sharing a trust relationship\nis the one documented exception — Admin has\nno database of its own at all."]
+    style Note fill:#ffffff,stroke:#333,stroke-dasharray: 4 4

@@ -2,6 +2,15 @@
 
 See also: [`docs/diagrams/rendered/13-admin-center-flow.png`](../diagrams/rendered/13-admin-center-flow.png) (source: [`docs/diagrams/source/13-admin-center-flow.mmd`](../diagrams/source/13-admin-center-flow.mmd)).
 
+**Phase 2.5**: the Admin Center is now served by its own app
+(`apps/admin-web`, proxied at `/admin`) calling its own zero-database API
+service (`apps/admin-api`, port 8001), which forwards every request to
+`platform-api` and enriches DijiTalentFlow client names/counts from
+`talent-api`. The screens, business rules, and public `/api/admin/*`
+contract below are byte-for-byte unchanged from Phase 2 — see
+`docs/platform/service-architecture.md` "Admin: a real HTTP client, not a
+shared database" for what moved and why.
+
 The Admin Center is a privileged platform module within DijiOne — not a
 separate product — visible only to users whose resolved
 `platform_permissions` include `platform.admin.access` (SUPER_ADMIN or
@@ -23,7 +32,7 @@ Administration
 └── Audit             /admin/audit         every administrative change
 ```
 
-`AdminLayout` (`apps/web/src/app/admin/layout.tsx`) gates the whole
+`AdminShell` (`apps/admin-web/src/app/admin-shell.tsx`) gates the whole
 subtree with `usePlatformAdmin()` — a non-admin persona sees an empty-state
 explaining why, with a link back to DijiOne Home, never a broken page.
 Every admin screen keeps a persistent "Back to DijiOne Home" footer link
@@ -32,17 +41,22 @@ Every admin screen keeps a persistent "Back to DijiOne Home" footer link
 ## Backend enforcement
 
 The frontend gate above is a UX convenience only. Every `/api/admin/*`
-route independently depends on `require_platform_admin` at minimum;
-mutating routes additionally depend on `require_platform_permission(...)`
-for the specific action (`platform.admin.manage_users`,
-`platform.admin.manage_admins` implicitly via `AdminService`'s own check,
-`platform.admin.view_audit`). See `docs/platform/authorization.md`.
+request `admin-api` receives is forwarded to `platform-api`'s internal
+`/api/platform/admin/*` surface with the *original caller's* bearer
+token — `platform-api` re-derives the actor's permissions from that token
+itself via `require_platform_admin` at minimum; mutating routes
+additionally depend on `require_platform_permission(...)` for the specific
+action (`platform.admin.manage_users`, `platform.admin.manage_admins`
+implicitly via `AdminService`'s own check, `platform.admin.view_audit`).
+`admin-api`'s own word for who is calling is never trusted on its own — see
+`docs/platform/authorization.md` and `docs/platform/service-contracts.md`
+"Service-to-service trust boundaries".
 
 ## User Detail / Access screen
 
 Matches CR §26: status toggle, platform role selector, and one editor card
 per registered module (`ModuleAssignmentEditor` in
-`app/admin/users/[id]/page.tsx`) with:
+`apps/admin-web/src/app/users/[id]/page.tsx`) with:
 
 - **Enabled** checkbox — disabling immediately removes the module from that
   user's DijiOne Home ("My Apps") on their next request, enforced
@@ -52,7 +66,12 @@ per registered module (`ModuleAssignmentEditor` in
   typing `TA_MEMBER` (CR §49 — no raw permission strings required).
 - **Client Scope** — "All Clients" checkbox, or a checkbox list of specific
   clients (CR §22/§30 portfolio scope), backed by
-  `PUT /api/admin/users/{id}/modules/{module_key}`.
+  `PUT /api/admin/users/{id}/modules/{module_key}`. The client id→name
+  mapping used to label these checkboxes is resolved by `admin-api` calling
+  `talent-api`'s `/api/talent/internal/clients-lite` (Client is
+  talent-owned data now) — if `talent-api` is down, the picker still
+  functions with ids shown instead of names rather than failing outright
+  (`docs/platform/failure-isolation.md`).
 
 Modules with no roles defined yet (DijiBirthday, DijiSpark) render as a
 read-only card explaining that no functional roles exist yet — CR §4.2/4.3
@@ -77,7 +96,10 @@ Enforced in `AdminService`, independent of any frontend check:
   already hold `platform.admin.manage_admins` (SUPER_ADMIN only) — a
   PLATFORM_ADMIN attempting this receives 403.
 
-Covered by `tests/test_admin_center.py`.
+Covered by `apps/platform-api/tests/test_platform_admin.py` (the business
+rules themselves) and `apps/admin-api/tests/test_admin_api.py` (that
+`admin-api` correctly forwards and translates `platform-api`'s responses,
+including its own `503` when `platform-api` is unreachable).
 
 ## Audit
 

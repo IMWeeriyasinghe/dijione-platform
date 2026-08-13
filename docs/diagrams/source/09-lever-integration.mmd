@@ -3,7 +3,7 @@ flowchart LR
         LV["Lever API\n(never called — no credentials)"]
     end
 
-    subgraph Backend["apps/api"]
+    subgraph Backend["apps/talent-api"]
         Iface["LeverClient\n(abstract interface)"]
         Mock["MockLeverClient\nhardcoded postings/opportunities/\nstages/interviews"]
         Mapper["LEVER_STAGE_MAP\nLever stage text -> CanonicalStage\n(placeholder mapping, unverified\nagainst a real Lever pipeline)"]

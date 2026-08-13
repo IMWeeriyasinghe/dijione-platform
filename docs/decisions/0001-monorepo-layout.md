@@ -1,6 +1,12 @@
 # ADR 0001: Monorepo layout — code-boundary vs directory-boundary modules
 
-Status: Accepted (Phase 0 of the first autonomous run)
+Status: Accepted (Phase 0 of the first autonomous run); **superseded by
+Phase 2.5** (see `docs/platform/service-architecture.md`), which executed
+exactly the extraction this ADR's "Consequences" section predicted was
+possible. Kept as the historical record of why the original single-app
+layout was chosen and what seam it deliberately left in place — the
+directory paths below (`apps/web`, `apps/api`) reflect that Phase 1/2
+layout and no longer exist.
 
 ## Context
 

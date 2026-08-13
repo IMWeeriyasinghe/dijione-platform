@@ -3,7 +3,7 @@ flowchart LR
         HS["HubSpot API\n(never called — no credentials)"]
     end
 
-    subgraph Backend["apps/api"]
+    subgraph Backend["apps/talent-api"]
         Iface["HubSpotClient\n(abstract interface)"]
         Mock["MockHubSpotClient\nhardcoded companies/contacts/deals\nmatching seeded demo clients"]
         Factory["factory.get_hubspot_client()\nalways returns Mock\n(INTEGRATIONS_MODE=mock)"]

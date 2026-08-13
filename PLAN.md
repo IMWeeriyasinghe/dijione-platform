@@ -1,19 +1,28 @@
 # DijiOne Platform — Build Plan
 
 Status: Phase 1 (First Autonomous Run) complete; Phase 2 (Identity,
-Authorization, Administration) complete. See `docs/mvp-status.md` for the
-full checklist and quality-gate results of both phases.
+Authorization, Administration) complete; Phase 2.5 (Application-Level
+Service Separation) complete. See `docs/mvp-status.md` for the full
+checklist and quality-gate results of all three phases.
 Authoritative contract: [CLAUDE.md](./CLAUDE.md), extended by the DijiOne
-Phase 2 change request (identity/authorization/Admin Center).
+Phase 2 change request (identity/authorization/Admin Center) and the
+Phase 2.5 change request (service separation — see
+`docs/platform/service-architecture.md`).
 
 ## Repository state at start
 
 Repository was blank except `CLAUDE.md` and `.claude/settings.json`. No git
 history existed. This plan documents the bootstrap from zero.
 
-## Architecture decision
+## Architecture decision (superseded by Phase 2.5 — see below)
 
-Modular monolith per CLAUDE.md §6:
+The layout below was the Phase 1/2 architecture. Phase 2.5 replaced it with
+eight application-level services; this section is kept as the historical
+record of the starting point the ADR at `docs/decisions/0001-monorepo-
+layout.md` and the Phase 2.5 change request both explicitly designed
+around. Current architecture: `docs/platform/service-architecture.md`.
+
+Modular monolith per CLAUDE.md §6 (Phase 1/2, no longer current):
 
 - `apps/web` — one Next.js 15 App Router application hosting the DijiOne
   shell and all module UIs (including DijiTalentFlow).
@@ -68,6 +77,38 @@ Modular monolith per CLAUDE.md §6:
 - [x] Docs: `docs/platform/authorization.md`, `docs/platform/admin-center.md`
       (new); `authentication.md`, `module-framework.md`, `architecture.md`
       updated.
+
+## Phase 2.5 — Application-Level Service Separation
+
+- [x] `platform-api` extracted: owns identity, authorization, module
+      registry, audit log, notifications; issues JWTs with signed
+      authorization claims.
+- [x] `packages/auth-client-py` built: claims verification +
+      `PlatformClient` HTTP wrapper shared by every business service.
+- [x] `admin-api` extracted as a zero-database service — forwards to
+      `platform-api` with the caller's own bearer token, enriched from
+      `talent-api`.
+- [x] `talent-api` extracted: owns its own database, authorizes from
+      claims, audit/notification writes are best-effort HTTP calls.
+- [x] `birthday-api` / `spark-api` skeletons: health/metadata/summary +
+      the same claims-based auth seam, no business logic.
+- [x] `packages/design-system`, `packages/auth-client-ts`,
+      `packages/contracts` extracted from `apps/web`; `shell-web`,
+      `admin-web`, `talent-web` split out as independent Next.js zones
+      behind `shell-web`'s gateway.
+- [x] Root npm workspace + `npm run dev:all` starts all eight services.
+- [x] `apps/web` and `apps/api` deleted after extraction was verified.
+- [x] Regression: 74 backend tests + 6 package tests, all frontend apps
+      build/lint clean, live browser smoke test including a real
+      `talent-api` outage/recovery cycle.
+- [x] Docs: `docs/platform/service-architecture.md`,
+      `service-contracts.md`, `failure-isolation.md`,
+      `local-development.md` (new); `architecture.md`, `authorization.md`,
+      `admin-center.md`, `module-framework.md`, `authentication.md`,
+      `mvp-status.md`, this file (updated).
+- [x] Diagrams: service architecture, service boundaries, gateway
+      routing, data ownership, failure isolation, local dev topology,
+      future Azure deployment.
 
 See `docs/mvp-status.md` for the full Definition-of-MVP-Done checklist and
 `docs/decisions/0001-monorepo-layout.md` for the repository-layout ADR

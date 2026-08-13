@@ -11,6 +11,23 @@
 
 ---
 
+> **Phase 2.5 addendum (Application-Level Service Separation).** This
+> contract was written for, and largely still describes, the Phase 1/2
+> modular monolith (one Next.js app, one FastAPI app). Phase 2.5 split that
+> monolith into eight independently runnable application-level services
+> without changing the business behavior, UI, or authorization semantics
+> this contract defines — every requirement below still holds, just spread
+> across services instead of one process. Before making changes, read
+> **`docs/platform/service-architecture.md`** (what the eight services are
+> and what each owns), **`docs/platform/service-contracts.md`** (each
+> service's API surface and the gateway routing table), and
+> **`docs/platform/failure-isolation.md`** (what happens when one service
+> is down) — they are the current source of truth for *where* code for a
+> given responsibility now lives; this document remains the source of
+> truth for *what* DijiOne and DijiTalentFlow must do.
+
+---
+
 
 # CRITICAL AUTONOMOUS EXECUTION AND SAFETY RULES
 

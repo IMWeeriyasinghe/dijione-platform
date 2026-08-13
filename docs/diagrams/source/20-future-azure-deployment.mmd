@@ -1,0 +1,27 @@
+flowchart TB
+    Internet["Internet"] --> AFD["Azure Front Door / API Management\n(path-based fan-out — same rules as\nshell-web's Next.js rewrites today)"]
+
+    AFD --> ShellWeb["DijiOne Web\n(Azure Container Apps / App Service)"]
+    AFD --> PlatformAPI["Platform API"]
+    AFD --> AdminWeb["Admin Web"]
+    AFD --> AdminAPI["Admin API"]
+    AFD --> TalentWeb["Talent Web"]
+    AFD --> TalentAPI["Talent API"]
+    AFD --> BirthdayAPI["Birthday API"]
+    AFD --> SparkAPI["Spark API"]
+
+    PlatformAPI --> PG[("PostgreSQL —\nplatform schema/database")]
+    TalentAPI --> PG2[("PostgreSQL —\ntalent schema/database")]
+
+    PlatformAPI --> KV["Key Vault\n(secrets, connection strings)"]
+    PlatformAPI --> Entra["Microsoft Entra ID"]
+
+    ShellWeb --> AI["Application Insights /\nOpenTelemetry"]
+    PlatformAPI --> AI
+    AdminAPI --> AI
+    TalentAPI --> AI
+    BirthdayAPI --> AI
+    SparkAPI --> AI
+
+    Note["Documentation only — not provisioned\nas part of Phase 2.5 (CR §52, §57).\nNo Kubernetes, no service mesh,\nno message broker introduced."]
+    style Note fill:#ffffff,stroke:#333,stroke-dasharray: 4 4

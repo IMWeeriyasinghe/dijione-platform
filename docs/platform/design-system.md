@@ -1,10 +1,19 @@
 # DijiOne Design System
 
+**Phase 2.5**: the components and tokens described below live in
+`packages/design-system` now (a shared npm workspace package, not
+`apps/web`) and are imported by all three frontend apps as
+`@dijione/design-system`. The brand logo is copied into each frontend
+app's own `public/brand/` (Next.js doesn't serve another package's
+`public/` directory) — see `docs/platform/module-framework.md`
+"Design-system inheritance".
+
 ## Brand research
 
 The public Dijital Team site (`https://www.dijitalteam.com/`) was fetched
 during this build. Its logo (`Dijital_Team_logo_XLGE.png`, saved locally at
-`apps/web/public/brand/dijital-team-logo.png`) uses a black wordmark with
+`apps/shell-web/public/brand/dijital-team-logo.png` and duplicated into
+`admin-web`/`talent-web`'s own `public/brand/`) uses a black wordmark with
 four accent dots in amber, green, orange and red — confirming the warm
 red/orange/amber direction already specified in CLAUDE.md §47-48, plus
 green as an accent (used here only for semantic "success" states, per
@@ -15,7 +24,10 @@ full palette below remains the CLAUDE.md-specified **derived** palette
 
 ## Tokens
 
-Defined once in `apps/web/src/app/globals.css` as CSS custom properties and
+Defined once in `packages/design-system/src/globals.css` (copied into each
+frontend app's own `src/app/globals.css` with a Tailwind v4 `@source`
+directive — see `docs/platform/module-framework.md`) as CSS custom
+properties and
 mapped into Tailwind v4 via `@theme inline`, so every utility class
 (`bg-dt-orange`, `text-dt-text-secondary`, …) resolves to the same source
 of truth:
@@ -53,7 +65,7 @@ never a hardcoded hex value.
 Used selectively (CLAUDE.md §49), never on every card:
 
 - Sidebar background: `from-dt-red-deep via-dt-red to-dt-burnt-orange`
-  (`components/shell/Sidebar.tsx`)
+  (`packages/design-system/src/shell/Sidebar.tsx`)
 - Primary buttons and the DijiOne "Ask DijiOne" panel:
   `from-dt-red to-dt-orange`
 - Module icon tiles on Home: `from-dt-red to-dt-orange`
@@ -86,19 +98,22 @@ licensed for the application.
 
 ## Components
 
-Shared primitives live in `apps/web/src/components/ui/`:
+Shared primitives live in `packages/design-system/src/ui/`, imported as
+`@dijione/design-system`:
 
 `Card`, `Button`, `StatusBadge`, `MetricCard`, `Table` (`Thead`/`Th`/`Tr`/`Td`),
 `StageTimeline` / `CompactStageStrip` / `StageProgressBar`, `Modal`,
 `FormField` (`Input`/`Textarea`/`Select`), `Avatar`, `PageHeader`,
 `EmptyState` / `LoadingState` / `ErrorState`.
 
-Shell-level composition lives in `components/shell/`: `AppShell`, `Sidebar`,
-`TopNav`, `NotificationsPanel`, `UserMenu`, `DevPersonaSwitcher`, `AuthGate`.
+Shell-level composition lives in `packages/design-system/src/shell/`:
+`AppShell`, `Sidebar`, `TopNav`, `NotificationsPanel`, `UserMenu`,
+`DevPersonaSwitcher`, `AuthGate`.
 
 Every DijiTalentFlow page composes these rather than re-implementing card/
-table/badge styling locally (CLAUDE.md §54). The Phase 2 DijiOne Admin
-Center (`apps/web/src/app/admin/*`) reuses the identical set — no new
+table/badge styling locally (CLAUDE.md §54). The DijiOne Admin Center
+(`apps/admin-web/src/app/*`, its own Next.js app since Phase 2.5) reuses
+the identical set via the same `@dijione/design-system` import — no new
 tokens, gradients, or primitive components were introduced for it, per the
 requirement that Admin screens "feel like a natural part of DijiOne."
 

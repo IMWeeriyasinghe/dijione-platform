@@ -1,0 +1,28 @@
+erDiagram
+    direction LR
+
+    PLATFORM_DB {
+        table users
+        table user_module_roles
+        table user_module_client_scopes
+        table roles
+        table permissions
+        table role_permissions
+        table application_modules
+        table audit_logs
+        table notifications
+    }
+
+    TALENT_DB {
+        table clients
+        table talent_requests
+        table candidates
+        table applications
+        table interviews
+        table messages
+        table documents
+        table external_mappings
+        table integration_events
+    }
+
+    PLATFORM_DB ||..o{ TALENT_DB : "no foreign key, opaque ids only"

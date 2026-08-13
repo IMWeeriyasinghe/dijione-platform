@@ -8,6 +8,8 @@ This document describes what the code **actually does today**, not what CLAUDE.m
 
 **Phase 2 note:** this snapshot predates the DijiOne Phase 2 identity/authorization/Admin Center change request. Its architecture and authentication sections (1-2, 12-13) are superseded by [`docs/platform/authorization.md`](./platform/authorization.md) and [`docs/platform/admin-center.md`](./platform/admin-center.md) — this file is kept as a historical point-in-time inspection record rather than rewritten, per its own "read-only inspection report" scope; see [`docs/mvp-status.md`](./mvp-status.md) for the current, actively maintained status.
 
+**Phase 2.5 note:** this snapshot also predates the application-level service separation. Every `apps/web/...` and `apps/api/...` file path below refers to the pre-split monolith location and **no longer exists** — the same code now lives in `apps/shell-web`/`apps/admin-web`/`apps/talent-web` (frontend) and `apps/platform-api`/`apps/admin-api`/`apps/talent-api` (backend), per the mapping in [`docs/platform/service-architecture.md`](./platform/service-architecture.md). The business behavior this document describes is otherwise still accurate — only the physical location of the code moved. See [`docs/platform/service-contracts.md`](./platform/service-contracts.md) for the current API surface.
+
 ---
 
 ## How to read the status labels used throughout

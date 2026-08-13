@@ -53,16 +53,32 @@ Flow:
 2. `POST /api/auth/dev-login {persona_key}` — rejects deactivated accounts
    (403), stamps `User.last_login_at`, and issues a short-lived HS256 JWT
    (`app/core/security.py: DevAuthProvider`) encoding the user id.
-3. Frontend stores the token in `localStorage` and sends it as
-   `Authorization: Bearer <token>` on every request.
+3. Frontend stores the token in `localStorage`
+   (`packages/auth-client-ts/src/http.ts`, shared by all three frontend
+   apps) and sends it as `Authorization: Bearer <token>` on every request.
+   Phase 2.5 note: `localStorage` is scoped per browser-perceived origin,
+   and since `shell-web`'s gateway proxies both pages and APIs for
+   `admin-web`/`talent-web`, the browser only ever sees
+   `http://localhost:3000` — so the token set at login is visible to every
+   zone without any cross-origin cookie machinery. See
+   `docs/platform/service-contracts.md` "Gateway / routing".
 4. `GET /api/auth/me` returns the current user, their `module_roles`, and
    their resolved `platform_permissions` — the frontend never infers
    authorization from the `platform_role` string itself (see
-   `docs/platform/authorization.md`).
+   `docs/platform/authorization.md`). Since Phase 2.5, the *access token
+   itself* also carries this same information as signed claims, for
+   `talent-api`/`birthday-api`/`spark-api` to read locally — see
+   "Claims-based authorization for business services" in
+   `docs/platform/authorization.md`.
+
+All authentication (token issuance, dev personas, the Entra seam) lives
+exclusively in `platform-api` — the only service that owns `User` records.
+Every other backend service trusts a token `platform-api` issued rather
+than authenticating anyone itself.
 
 ## Microsoft Entra ID integration seam (not yet activated)
 
-`app/api/routes/auth_entra.py` exposes the concrete OIDC Authorization Code
+`apps/platform-api/app/api/routes/auth_entra.py` exposes the concrete OIDC Authorization Code
 + PKCE integration points the CR requires (Phase 2 §8), each failing fast
 with a typed 501 until `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` /
 `ENTRA_CLIENT_SECRET` / `ENTRA_REDIRECT_URI` are configured:
@@ -81,7 +97,7 @@ and record the tenant/client id + client secret into `.env` (never commit
 them). No other application code changes — `get_auth_provider()` remains
 the single seam (CLAUDE.md §12).
 
-## The auth seam (`app/core/security.py`)
+## The auth seam (`apps/platform-api/app/core/security.py`)
 
 ```python
 class AuthProvider(ABC):
@@ -116,7 +132,9 @@ roles additionally resolve a *portfolio* (`TalentScope.client_ids`): either
 a specific list of authorized clients or `None` for unrestricted
 (ALL_CLIENTS) access, backed by `user_module_client_scopes`.
 
-`app/api/deps.py: TalentScope` resolves this once per request:
+`apps/talent-api/app/api/deps.py: TalentScope` resolves this once per
+request — from JWT claims, not a database query, since Phase 2.5 (see
+`docs/platform/authorization.md`):
 
 ```python
 scope.client_id    # None for staff, a specific client id for TALENT_CLIENT

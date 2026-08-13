@@ -12,7 +12,7 @@ erDiagram
     USER_MODULE_ROLE }o--|| CLIENT : scoped_to
 ```
 
-## Entities (`apps/api/app/models/`)
+## Entities (`apps/talent-api/app/models/`)
 
 | Model | Purpose | Tenant key |
 |---|---|---|
@@ -49,7 +49,7 @@ buggy client request cannot widen its own scope by passing a different
 honored as an additional *staff-side* filter (`filter_client_id`), applied
 only when the caller's own `scope.client_id is None`.
 
-This is proven by `apps/api/tests/test_tenant_isolation.py`, which
+This is proven by `apps/talent-api/tests/test_tenant_isolation.py`, which
 attempts all four vectors called out in CLAUDE.md §14:
 
 1. **List endpoint** — `GET /api/talent/requests` as Client A never
