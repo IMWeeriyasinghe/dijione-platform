@@ -33,6 +33,20 @@ class ModuleRoleClaims:
 
 
 @dataclass(frozen=True)
+class SupplierClaims:
+    """Phase-Next §5 — carried alongside module_roles for
+    BIRTHDAY_SUPPLIER users. ``supplier_id`` is resolved server-side at
+    token-issuance time from the caller's own identity (Entra B2B guest
+    ``oid`` -> SupplierUser -> supplier_id, or the dev persona provider
+    doing the same lookup) — it is never a client-supplied value, and
+    downstream authorization code must never accept a ``supplier_id``
+    parameter from the request instead of this claim."""
+
+    supplier_id: int
+    supplier_user_id: int
+
+
+@dataclass(frozen=True)
 class AuthClaims:
     user_id: int
     is_active: bool
@@ -41,6 +55,7 @@ class AuthClaims:
     platform_role: str
     platform_permissions: frozenset[str]
     module_roles: dict[str, ModuleRoleClaims]
+    supplier: SupplierClaims | None = None
 
     def module(self, module_key: str) -> ModuleRoleClaims | None:
         return self.module_roles.get(module_key)
@@ -76,6 +91,16 @@ def decode_claims(
             )
             for module_key, claim in payload.get("module_roles", {}).items()
         }
+        supplier_claim_raw = payload.get("supplier")
+        supplier_claim = (
+            SupplierClaims(
+                supplier_id=int(supplier_claim_raw["supplier_id"]),
+                supplier_user_id=int(supplier_claim_raw["supplier_user_id"]),
+            )
+            if supplier_claim_raw
+            else None
+        )
+
         return AuthClaims(
             user_id=user_id,
             is_active=bool(payload.get("is_active", True)),
@@ -84,6 +109,7 @@ def decode_claims(
             platform_role=payload.get("platform_role", "PLATFORM_USER"),
             platform_permissions=frozenset(payload.get("platform_permissions", [])),
             module_roles=module_roles,
+            supplier=supplier_claim,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise InvalidTokenError(f"Token is missing expected Phase 2.5 claims: {exc}") from exc

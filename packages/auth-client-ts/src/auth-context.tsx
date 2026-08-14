@@ -1,6 +1,12 @@
 "use client";
 
-import { MODULE_TALENT_FLOW, STAFF_ROLES, type CurrentUser } from "@dijione/contracts";
+import {
+  BIRTHDAY_STAFF_ROLES,
+  MODULE_BIRTHDAY,
+  MODULE_TALENT_FLOW,
+  STAFF_ROLES,
+  type CurrentUser,
+} from "@dijione/contracts";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { devLogin, getMe } from "./auth-api";
 import { getToken, setToken } from "./http";
@@ -95,6 +101,25 @@ export function useTalentScope() {
       isStaff: STAFF_ROLES.has(role.role),
       isClient: role.role === "TALENT_CLIENT",
       isCustomerSuccessOrManager: role.role === "CUSTOMER_SUCCESS" || role.role === "TA_MANAGER",
+    };
+  }, [user]);
+}
+
+/** DijiBirthday module-role scope for the current user, or null if they
+ * hold no role in the module. Note: this drives client-side UI only (e.g.
+ * hiding Hold/Release/Cancel buttons) — every mutating birthday-api route
+ * re-checks the caller's permission set server-side via
+ * `require_birthday_permission`, so this hook is never the sole
+ * enforcement point. */
+export function useBirthdayScope() {
+  const { user } = useAuth();
+  return useMemo(() => {
+    if (!user) return null;
+    const role = user.module_roles.find((r) => r.module_key === MODULE_BIRTHDAY);
+    if (!role) return null;
+    return {
+      role: role.role,
+      isAdmin: BIRTHDAY_STAFF_ROLES.has(role.role),
     };
   }, [user]);
 }

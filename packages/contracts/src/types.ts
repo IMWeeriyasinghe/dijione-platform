@@ -235,6 +235,331 @@ export const STAFF_ROLES = new Set([TA_MEMBER, CUSTOMER_SUCCESS, TA_MANAGER]);
 
 export const MODULE_TALENT_FLOW = "talent-flow";
 
+// --- DijiBirthday (Phase C) -------------------------------------------
+// Mirrors apps/birthday-api/app/schemas/{order,dashboard,config}.py.
+
+export const MODULE_BIRTHDAY = "birthday";
+
+export const BIRTHDAY_ADMIN = "BIRTHDAY_ADMIN";
+export const BIRTHDAY_USER = "BIRTHDAY_USER";
+export const BIRTHDAY_SUPPLIER = "BIRTHDAY_SUPPLIER";
+export const BIRTHDAY_STAFF_ROLES = new Set([BIRTHDAY_ADMIN]);
+
+export type OrderEventOut = {
+  id: number;
+  event_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  actor_id: number | null;
+  actor_type: string;
+  detail: string | null;
+  created_at: string;
+};
+
+export type SpecialRequirementOut = {
+  id: number;
+  order_id: number;
+  kind: string;
+  text: string;
+  created_by: number | null;
+  created_at: string;
+};
+
+export type SpecialRequirementCreateInput = {
+  kind: string;
+  text: string;
+};
+
+export type BirthdayOrderSummary = {
+  id: number;
+  order_reference: string;
+  employee_id: string;
+  employee_number: string | null;
+  employee_name: string;
+  birthday_date: string;
+  birthday_year: number;
+  office_location: string;
+  lead_time_class: string;
+  status: string;
+  supplier_id: number | null;
+  delivery_date: string | null;
+  catalogue_item_id: number | null;
+  requires_admin_review: boolean;
+  is_overdue: boolean;
+  address_verification_status: string;
+};
+
+export type BirthdayOrderOut = {
+  id: number;
+  order_reference: string;
+  employee_id: string;
+  employee_number: string | null;
+  employee_name: string;
+  employee_email: string;
+  birthday_date: string;
+  birthday_year: number;
+  office_location: string;
+  detected_at: string | null;
+  lead_time_days: number;
+  lead_time_class: string;
+  quantity: number;
+  status: string;
+  hold_reason: string | null;
+  address_verification_status: string;
+  supplier_id: number | null;
+  delivery_date: string | null;
+  catalogue_item_id: number | null;
+  is_manual_override: boolean;
+  requires_admin_review: boolean;
+  is_overdue: boolean;
+  has_delivery_issue: boolean;
+  retry_count: number;
+  last_failure_reason: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+  events: OrderEventOut[];
+  special_requirements: SpecialRequirementOut[];
+};
+
+export type AddressVerificationUpdateInput = {
+  status: string;
+  note?: string;
+};
+
+export type BirthdayOrderCreateInput = {
+  employee_id: string;
+  employee_number?: string;
+  employee_name: string;
+  employee_email: string;
+  birthday_date: string;
+  office_location: string;
+  quantity?: number;
+  special_requirements?: SpecialRequirementCreateInput[];
+};
+
+export type BirthdayOrderUpdateInput = {
+  quantity?: number;
+  hold_reason?: string;
+  office_location?: string;
+  supplier_id?: number | null;
+  delivery_date?: string | null;
+  catalogue_item_id?: number | null;
+};
+
+export type BirthdayOrderListResponse = {
+  items: BirthdayOrderSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type ReadinessCheckResponse = {
+  ready: boolean;
+  missing: string[];
+};
+
+export type RejectRequestInput = {
+  reason: string;
+};
+
+export type SupplierOrderView = {
+  id: number;
+  order_reference: string;
+  employee_name: string;
+  birthday_date: string;
+  delivery_date: string | null;
+  office_location: string;
+  quantity: number;
+  catalogue_item_name: string | null;
+  address_verified: boolean;
+  status: string;
+  special_instructions: string[];
+};
+
+export type SupplierOrderListResponse = {
+  items: SupplierOrderView[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type BirthdayDashboardSummary = {
+  total_orders: number;
+  by_status: Record<string, number>;
+  by_lead_time_class: Record<string, number>;
+  upcoming_count: number;
+  exceptions_count: number;
+};
+
+export type BirthdayUpcomingResponse = {
+  days_ahead: number;
+  orders: BirthdayOrderSummary[];
+};
+
+export type UpcomingBirthdayItem = {
+  employee_id: string;
+  employee_number: string | null;
+  display_name: string;
+  birthday: string; // MM-DD, no birth year
+  days_until_birthday: number;
+  department: string;
+  location: string;
+  cake_order_status: string;
+  hire_date: string | null;
+  eligible: boolean;
+  eligibility_reason: string;
+  address_verification_status: string | null;
+};
+
+export type UpcomingBirthdaysResponse = {
+  days: number;
+  birthdays: UpcomingBirthdayItem[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type BirthdaySummaryOut = {
+  service: string;
+  status: string;
+  product_status: string;
+  total_orders: number;
+  exceptions_count: number;
+  upcoming_count: number;
+};
+
+export type BirthdayDetectionConfigOut = {
+  id: number;
+  normal_threshold_days: number;
+  short_notice_threshold_days: number;
+  urgent_threshold_days: number;
+  window_lookback_days: number;
+  window_lookahead_days: number;
+  updated_by: number | null;
+};
+
+export type BirthdayDetectionConfigUpdateInput = {
+  normal_threshold_days?: number;
+  short_notice_threshold_days?: number;
+  urgent_threshold_days?: number;
+  window_lookback_days?: number;
+  window_lookahead_days?: number;
+};
+
+// --- DijiBirthday Supplier Management (Phase D) -------------------------
+// Mirrors apps/birthday-api/app/schemas/supplier.py.
+
+export type SupplierOut = {
+  id: number;
+  name: string;
+  status: string;
+  primary_contact_name: string;
+  primary_contact_email: string;
+  primary_contact_phone: string;
+  escalation_contact_name: string;
+  escalation_contact_email: string;
+  lead_time_days: number;
+  working_days: string;
+  cutoff_time: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierListResponse = {
+  items: SupplierOut[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type SupplierCreateInput = {
+  name: string;
+  status?: string;
+  primary_contact_name?: string;
+  primary_contact_email?: string;
+  primary_contact_phone?: string;
+  escalation_contact_name?: string;
+  escalation_contact_email?: string;
+  lead_time_days?: number;
+  working_days?: string;
+  cutoff_time?: string;
+  notes?: string;
+};
+
+export type SupplierUpdateInput = {
+  name?: string;
+  status?: string;
+  primary_contact_name?: string;
+  primary_contact_email?: string;
+  primary_contact_phone?: string;
+  escalation_contact_name?: string;
+  escalation_contact_email?: string;
+  lead_time_days?: number;
+  working_days?: string;
+  cutoff_time?: string;
+  notes?: string;
+};
+
+export type SupplierLocationOut = {
+  id: number;
+  supplier_id: number;
+  office_location: string;
+  is_primary: boolean;
+};
+
+export type SupplierLocationCreateInput = {
+  office_location: string;
+  is_primary?: boolean;
+};
+
+export type SupplierCatalogueItemOut = {
+  id: number;
+  supplier_id: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+};
+
+export type SupplierCatalogueItemCreateInput = {
+  name: string;
+  description?: string;
+  is_active?: boolean;
+};
+
+export type SupplierCatalogueItemUpdateInput = {
+  name?: string;
+  description?: string;
+  is_active?: boolean;
+};
+
+export type SupplierUserOut = {
+  id: number;
+  supplier_id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  status: string;
+  entra_object_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierUserCreateInput = {
+  email: string;
+  full_name?: string;
+  role?: string;
+  status?: string;
+};
+
+export type SupplierUserUpdateInput = {
+  email?: string;
+  full_name?: string;
+  role?: string;
+  status?: string;
+};
+
 // --- DijiOne Admin Center (Phase 2) ----------------------------------------
 // Mirrors apps/api/app/schemas/admin.py.
 

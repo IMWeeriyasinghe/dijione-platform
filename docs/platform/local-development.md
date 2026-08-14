@@ -38,6 +38,7 @@ Running all eight DijiOne services locally. See
 | `shell-web` | 3000 | `GET http://localhost:3000/` |
 | `admin-web` | 3001 | `GET http://localhost:3001/admin` (its `basePath`) |
 | `talent-web` | 3002 | `GET http://localhost:3002/talent-flow` (its `basePath`) |
+| `birthday-web` | 3003 | `GET http://localhost:3003/birthday` (its `basePath`) |
 | `platform-api` | 8000 | `GET http://localhost:8000/health` |
 | `admin-api` | 8001 | `GET http://localhost:8001/health` |
 | `talent-api` | 8002 | `GET http://localhost:8002/health` |
@@ -55,7 +56,7 @@ common nav/auth chrome and cross-zone links back to Home.
 npm run dev:all
 ```
 
-Runs `scripts/dev-all.js`, which spawns all eight processes (Python
+Runs `scripts/dev-all.js`, which spawns all nine processes (Python
 services via the repo-root `.venv`, Next.js apps via their own workspace
 `dev` script), tags every log line with a colored `[service-name]` prefix,
 and shuts everything down together on Ctrl-C. No Docker required — this is
@@ -135,7 +136,16 @@ cd apps/talent-web && npm run build && npx eslint .
   timeout — if it's still spinning past that, the browser tab may be
   throttled (backgrounded) rather than the service being slow; React
   Query's timers pause in background tabs.
-- **First navigation into `/admin` or `/talent-flow` is slow (several
-  seconds).** Expected in dev — Next.js/Turbopack compiles each route on
-  first request. Subsequent loads are fast. Don't mistake this for a
-  gateway/proxy problem.
+- **First navigation into `/admin`, `/talent-flow`, or `/birthday` (or any
+  route inside them, especially dynamic routes like `/birthday/orders/42`)
+  is slow — sometimes several seconds, occasionally much longer on a
+  loaded dev machine.** Expected in dev — Next.js/Turbopack compiles each
+  route on first request in that zone's process; subsequent loads of the
+  same route are 10-90x faster. Cross-zone navigation is always a full
+  browser page load (plain `<a>`, not `next/link` — see
+  `docs/platform/service-contracts.md`), so this compile tax is paid once
+  per zone process per dev session, not once globally. Confirmed
+  dev-mode-only: a production build (`next build && next start`) shows no
+  cold/warm gap at all. Don't mistake this for a gateway/proxy problem —
+  see `docs/platform/performance-investigation.md` for the full
+  measurement writeup.

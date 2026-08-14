@@ -91,7 +91,7 @@ frontend app — following the pattern `apps/birthday-api` and
 | Key           | Name           | Status      | Backend | Frontend | Notes |
 |----------------|----------------|-------------|---------|----------|-------|
 | `talent-flow`  | DijiTalentFlow | ACTIVE      | `talent-api` :8002 | `talent-web` :3002 | First major module — see `docs/talent-flow/*`. |
-| `birthday`     | DijiBirthday   | COMING_SOON | `birthday-api` :8003 (skeleton) | none yet | Health/metadata/summary + auth seam only; no business logic (CR §9). |
+| `birthday`     | DijiBirthday   | ACTIVE      | `birthday-api` :8003 | `birthday-web` :3003 | Automated birthday-cake ordering (BambooHR detection, idempotent orders, dashboard/upcoming/orders register/order detail, supplier management, Microsoft Graph email send) — V1 (Phases A–D) complete; see `docs/birthday/requirements.md`. Supplier portal (F), automated reply-capture (E/G), and Cowork hooks (H) are later phases. |
 | `spark`        | DijiSpark      | COMING_SOON | `spark-api` :8004 (skeleton) | none yet | Health/metadata/summary + auth seam only; no business logic (CR §10). |
 
 ## Design-system inheritance

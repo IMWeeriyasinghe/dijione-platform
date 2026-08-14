@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.constants import MODULE_TALENT_FLOW, PlatformRole
+from app.core.constants import MODULE_BIRTHDAY, MODULE_TALENT_FLOW, PlatformRole
 
 
 @dataclass(frozen=True)
@@ -262,5 +262,88 @@ TALENT_ROLES: list[RoleDef] = [
     ),
 ]
 
-ALL_PERMISSIONS: list[PermissionDef] = PLATFORM_PERMISSIONS + TALENT_PERMISSIONS
-ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES
+
+# --- DijiBirthday permissions (module_key="birthday") ----------------------
+# Platform Core stores these rows so it can resolve birthday permissions
+# into signed JWT claims at login — it does not implement or depend on any
+# birthday-api business logic.
+
+BIRTHDAY_PERMISSIONS: list[PermissionDef] = [
+    PermissionDef(
+        "birthday.dashboard.read", "View Dashboard", "View the DijiBirthday dashboard.",
+        MODULE_BIRTHDAY, "Dashboard",
+    ),
+    PermissionDef(
+        "birthday.orders.read", "View Cake Orders", "View the cake orders register and order detail.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.create", "Create Manual Order", "Manually create a birthday cake order.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.update", "Edit Order", "Edit an existing birthday cake order.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.hold_release", "Hold/Release Orders", "Place an order on hold or release it.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.cancel", "Cancel Order", "Cancel a birthday cake order.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.send_supplier", "Send Order to Supplier", "Send/resend an order to its supplier.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.approve", "Approve/Reject Orders", "Approve or reject an order in the approval workflow.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.delete", "Delete Draft Orders", "Hard-delete a never-actioned DRAFT order.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.suppliers.read", "View Suppliers", "View the supplier directory.",
+        MODULE_BIRTHDAY, "Suppliers",
+    ),
+    PermissionDef(
+        "birthday.suppliers.manage", "Manage Suppliers", "Create/update suppliers, locations and catalogue.",
+        MODULE_BIRTHDAY, "Suppliers",
+    ),
+    PermissionDef(
+        "birthday.config.manage", "Manage Detection Configuration", "Edit birthday detection thresholds/window.",
+        MODULE_BIRTHDAY, "Administration",
+    ),
+    PermissionDef(
+        "birthday.portal.access", "Supplier Portal Access", "Access the supplier portal.",
+        MODULE_BIRTHDAY, "Supplier Portal",
+    ),
+    PermissionDef(
+        "birthday.portal.respond", "Respond to Orders (Supplier)", "Confirm/request change/reject an order.",
+        MODULE_BIRTHDAY, "Supplier Portal",
+    ),
+]
+
+BIRTHDAY_ROLES: list[RoleDef] = [
+    RoleDef(
+        "BIRTHDAY_USER", "HR/Birthday User", "View dashboard, upcoming birthdays, and orders.", MODULE_BIRTHDAY,
+        ("birthday.dashboard.read", "birthday.orders.read", "birthday.suppliers.read"),
+    ),
+    RoleDef(
+        "BIRTHDAY_ADMIN", "HR/Birthday Admin", "Full order/supplier/config management.", MODULE_BIRTHDAY,
+        tuple(
+            p.key for p in BIRTHDAY_PERMISSIONS
+            if p.key not in ("birthday.portal.access", "birthday.portal.respond")
+        ),
+    ),
+    RoleDef(
+        "BIRTHDAY_SUPPLIER", "Birthday Supplier", "Isolated supplier-portal-only role.", MODULE_BIRTHDAY,
+        ("birthday.portal.access", "birthday.portal.respond"),
+    ),
+]
+
+ALL_PERMISSIONS: list[PermissionDef] = PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS
+ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES

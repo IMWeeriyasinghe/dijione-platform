@@ -12,7 +12,7 @@ def test_metadata(api_client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["key"] == "birthday"
-    assert body["product_status"] == "COMING_SOON"
+    assert body["product_status"] == "ACTIVE"
 
 
 def test_summary(api_client):
@@ -21,7 +21,10 @@ def test_summary(api_client):
     body = resp.json()
     assert body["service"] == "birthday-api"
     assert body["status"] == "healthy"
-    assert body["product_status"] == "COMING_SOON"
+    assert body["product_status"] == "ACTIVE"
+    assert "total_orders" in body
+    assert "exceptions_count" in body
+    assert "upcoming_count" in body
 
 
 def test_whoami_requires_a_valid_platform_core_token(api_client):

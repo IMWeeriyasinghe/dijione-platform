@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from pydantic import BaseModel, ConfigDict
+
+
+class OrderEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_type: str
+    from_status: str | None
+    to_status: str | None
+    actor_id: int | None
+    actor_type: str
+    detail: str | None
+    created_at: datetime
+
+
+class SpecialRequirementCreate(BaseModel):
+    kind: str
+    text: str
+
+
+class SpecialRequirementRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_id: int
+    kind: str
+    text: str
+    created_by: int | None
+    created_at: datetime
+
+
+class BirthdayOrderSummary(BaseModel):
+    """Lighter list-view shape — no nested events/special_requirements."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_reference: str
+    employee_id: str
+    employee_number: str | None = None
+    employee_name: str
+    birthday_date: date
+    birthday_year: int
+    office_location: str
+    lead_time_class: str
+    status: str
+    supplier_id: int | None
+    delivery_date: date | None = None
+    catalogue_item_id: int | None = None
+    requires_admin_review: bool
+    is_overdue: bool
+    address_verification_status: str
+
+
+class BirthdayOrderRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_reference: str
+    employee_id: str
+    employee_number: str | None = None
+    employee_name: str
+    employee_email: str
+    birthday_date: date
+    birthday_year: int
+    office_location: str
+    detected_at: datetime | None
+    lead_time_days: int
+    lead_time_class: str
+    quantity: int
+    status: str
+    hold_reason: str | None
+    address_verification_status: str
+    supplier_id: int | None
+    delivery_date: date | None = None
+    catalogue_item_id: int | None = None
+    is_manual_override: bool
+    requires_admin_review: bool
+    is_overdue: bool
+    has_delivery_issue: bool
+    retry_count: int
+    last_failure_reason: str | None
+    created_by: int | None
+    created_at: datetime
+    updated_at: datetime
+    events: list[OrderEventRead] = []
+    special_requirements: list[SpecialRequirementRead] = []
+
+
+class BirthdayOrderCreate(BaseModel):
+    employee_id: str
+    employee_number: str | None = None
+    employee_name: str
+    employee_email: str
+    birthday_date: date
+    office_location: str
+    quantity: int = 1
+    special_requirements: list[SpecialRequirementCreate] = []
+
+
+class BirthdayOrderUpdate(BaseModel):
+    """Partial/PATCH-able non-status fields only — status changes always go
+    through the dedicated hold/release/cancel endpoints and
+    ``order_status_service``."""
+
+    quantity: int | None = None
+    hold_reason: str | None = None
+    office_location: str | None = None
+    supplier_id: int | None = None
+    delivery_date: date | None = None
+    catalogue_item_id: int | None = None
+
+
+class HoldRequest(BaseModel):
+    hold_reason: str
+
+
+class ReleaseRequest(BaseModel):
+    note: str | None = None
+
+
+class CancelRequest(BaseModel):
+    reason: str | None = None
+
+
+class RejectRequest(BaseModel):
+    reason: str
+
+
+class ReadinessCheckResponse(BaseModel):
+    ready: bool
+    missing: list[str] = []
+
+
+class BirthdayOrderListResponse(BaseModel):
+    """Stable paginated envelope (Phase-Next §4) — replaces the old bare
+    list response so the frontend can render real page controls instead of
+    a "disable Next by heuristic" guess."""
+
+    items: list[BirthdayOrderSummary]
+    total: int
+    page: int
+    page_size: int
+
+
+class OrderConflict(BaseModel):
+    """409 response body when a manual create collides with an existing
+    employee_id+birthday_year order."""
+
+    detail: str
+    existing_order: BirthdayOrderSummary
+
+
+class AddressVerificationUpdate(BaseModel):
+    status: str
+    note: str | None = None
+
+
+class SupplierOrderView(BaseModel):
+    """What a supplier is allowed to see (plan §6) — fulfilment facts only,
+    deliberately NOT the full ``BirthdayOrderRead``/``Summary`` shape: no
+    HR eligibility logic, hire dates, termination dates, employment
+    status, eligibility reasons, INTERNAL_NOTE-kind requirements, or any
+    other supplier's data ever cross into this DTO — fields are only ever
+    selected into this model, never filtered out of a richer one, so a
+    future field added to the internal schema cannot leak here by
+    accident. ``employee_name`` is intentionally the recipient's full
+    display name (needed for cake personalization / delivery matching —
+    not treated as sensitive on its own)."""
+
+    model_config = ConfigDict(from_attributes=False)
+
+    id: int
+    order_reference: str
+    employee_name: str
+    birthday_date: date
+    delivery_date: date | None = None
+    office_location: str
+    quantity: int
+    catalogue_item_name: str | None = None
+    address_verified: bool
+    status: str
+    special_instructions: list[str] = []
+
+
+class SupplierOrderListResponse(BaseModel):
+    items: list[SupplierOrderView]
+    total: int
+    page: int
+    page_size: int
+
+
+class SupplierStatusUpdateRequest(BaseModel):
+    status: str
+
+
+class SupplierIssueRequest(BaseModel):
+    detail: str

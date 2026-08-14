@@ -50,26 +50,90 @@ def seed_authorization_catalog(db) -> None:
     single source of truth in ``app.core.permissions``. Mirrors the Alembic
     migration's backfill so a fresh ``--reset`` reseed and a migrated
     existing database end up identical.
+
+    Idempotent/convergent: get-or-create by key rather than unconditional
+    insert, so re-running after ``ALL_PERMISSIONS``/``ALL_ROLES`` gained new
+    entries (e.g. the DijiBirthday role/permission catalog, added after this
+    local DB was first seeded) picks up the new rows on the next run instead
+    of raising a unique-constraint error or silently staying stale.
     """
     permission_ids: dict[str, int] = {}
     for perm in ALL_PERMISSIONS:
-        row = Permission(
-            key=perm.key, name=perm.name, description=perm.description,
-            module_key=perm.module_key, category=perm.category,
-        )
-        db.add(row)
-        db.flush()
+        row = db.query(Permission).filter_by(key=perm.key).one_or_none()
+        if row is None:
+            row = Permission(
+                key=perm.key, name=perm.name, description=perm.description,
+                module_key=perm.module_key, category=perm.category,
+            )
+            db.add(row)
+            db.flush()
         permission_ids[perm.key] = row.id
 
     for role_def in ALL_ROLES:
-        role = Role(
-            module_key=role_def.module_key, key=role_def.key, name=role_def.name,
-            description=role_def.description, is_system=True,
+        role = (
+            db.query(Role)
+            .filter_by(module_key=role_def.module_key, key=role_def.key)
+            .one_or_none()
         )
-        db.add(role)
-        db.flush()
+        if role is None:
+            role = Role(
+                module_key=role_def.module_key, key=role_def.key, name=role_def.name,
+                description=role_def.description, is_system=True,
+            )
+            db.add(role)
+            db.flush()
+        existing_perm_ids = {
+            rp.permission_id
+            for rp in db.query(RolePermission).filter_by(role_id=role.id).all()
+        }
         for perm_key in role_def.permissions:
-            db.add(RolePermission(role_id=role.id, permission_id=permission_ids[perm_key]))
+            perm_id = permission_ids[perm_key]
+            if perm_id not in existing_perm_ids:
+                db.add(RolePermission(role_id=role.id, permission_id=perm_id))
+    db.commit()
+
+
+def seed_module_registry(db) -> None:
+    """Get-or-create + converge the ``ApplicationModule`` registry rows.
+
+    Unlike the old ``db.add_all(...)`` this always runs and always brings
+    each row's mutable fields (status/enabled/route/required_roles/
+    display_order/name/description/icon) in line with the source-of-truth
+    definitions below, even if the row already existed from an earlier
+    seed run — e.g. flipping DijiBirthday from COMING_SOON to ACTIVE after
+    Phase A-D shipped real functionality, without needing ``--reset``.
+    """
+    definitions = [
+        dict(
+            key=MODULE_TALENT_FLOW, name="DijiTalentFlow",
+            description="Talent Operations and Client Tracking", icon="Users",
+            route="/talent-flow", status="ACTIVE", enabled=True,
+            display_order=1, required_roles="ANY",
+        ),
+        dict(
+            key=MODULE_BIRTHDAY, name="DijiBirthday",
+            description="Birthday Workflow Automation", icon="Cake",
+            route="/birthday", status="ACTIVE", enabled=True,
+            display_order=2,
+            # Phase A-D shipped real functionality (birthday-api +
+            # birthday-web) — same gating as DijiTalentFlow: only users
+            # with an actual BIRTHDAY_* module assignment see the card.
+            required_roles="ANY",
+        ),
+        dict(
+            key=MODULE_SPARK, name="DijiSpark",
+            description="HR / Spark Hire Workflows", icon="Sparkles",
+            route="/spark", status="COMING_SOON", enabled=True,
+            display_order=3, required_roles="",
+        ),
+    ]
+    for fields in definitions:
+        existing = db.query(ApplicationModule).filter_by(key=fields["key"]).one_or_none()
+        if existing is None:
+            db.add(ApplicationModule(**fields))
+        else:
+            for attr, value in fields.items():
+                setattr(existing, attr, value)
     db.commit()
 
 
@@ -86,120 +150,113 @@ def seed() -> None:
         seed_authorization_catalog(db)
 
         # --- Module registry --------------------------------------------
-        db.add_all(
-            [
-                ApplicationModule(
-                    key=MODULE_TALENT_FLOW,
-                    name="DijiTalentFlow",
-                    description="Talent Operations and Client Tracking",
-                    icon="Users",
-                    route="/talent-flow",
-                    status="ACTIVE",
-                    enabled=True,
-                    display_order=1,
-                    required_roles="ANY",
-                ),
-                ApplicationModule(
-                    key=MODULE_BIRTHDAY,
-                    name="DijiBirthday",
-                    description="Birthday Workflow Automation",
-                    icon="Cake",
-                    route="/birthday",
-                    status="COMING_SOON",
-                    enabled=True,
-                    display_order=2,
-                    # Empty = visible to every authenticated platform user.
-                    # Coming Soon cards are inert teasers with no functional
-                    # access to gate, unlike DijiTalentFlow above which
-                    # requires an actual module assignment.
-                    required_roles="",
-                ),
-                ApplicationModule(
-                    key=MODULE_SPARK,
-                    name="DijiSpark",
-                    description="HR / Spark Hire Workflows",
-                    icon="Sparkles",
-                    route="/spark",
-                    status="COMING_SOON",
-                    enabled=True,
-                    display_order=3,
-                    required_roles="",
-                ),
-            ]
-        )
-        db.commit()
+        seed_module_registry(db)
 
         # --- Users / dev personas -----------------------------------------
-        madushanka = User(
-            email="madushanka@dijitalteam.com", full_name="Madushanka Weeriyasinghe",
-            title="Talent Acquisition Specialist", platform_role=PlatformRole.PLATFORM_USER.value,
-            persona_key="madushanka-ta", avatar_color="#c9431d",
-        )
-        cs_user = User(
-            email="tharindu.fernando@dijitalteam.com", full_name="Tharindu Fernando",
-            title="Customer Success Lead", platform_role=PlatformRole.PLATFORM_USER.value,
-            persona_key="customer-success", avatar_color="#db4d18",
-        )
-        ta_manager = User(
-            email="sanduni.wickrama@dijitalteam.com", full_name="Sanduni Wickrama",
-            title="TA Manager", platform_role=PlatformRole.PLATFORM_USER.value,
-            persona_key="ta-manager", avatar_color="#aa2f1d",
-        )
-        platform_admin = User(
-            email="admin@dijitalteam.com", full_name="Dilani Rathnayake",
-            title="Platform Administrator", platform_role=PlatformRole.PLATFORM_ADMIN.value,
-            persona_key="platform-admin", avatar_color="#8f2417",
-        )
-        super_admin = User(
-            email="superadmin@dijitalteam.com", full_name="Priyantha Bandara",
-            title="DijiOne Super Admin", platform_role=PlatformRole.SUPER_ADMIN.value,
-            persona_key="super-admin", avatar_color="#5c1a15",
-        )
-        abc_client_user = User(
-            email="amal.perera@abc-company.example", full_name="Amal Perera",
-            title="Head of Talent, ABC Company", platform_role=PlatformRole.PLATFORM_USER.value,
-            persona_key="abc-client", avatar_color="#f26a1b",
-        )
-        xyz_client_user = User(
-            email="nadeesha.silva@xyz-company.example", full_name="Nadeesha Silva",
-            title="VP Engineering, XYZ Company", platform_role=PlatformRole.PLATFORM_USER.value,
-            persona_key="xyz-client", avatar_color="#f59e0b",
-        )
-        nova_client_user = User(
-            email="kasun.jayasuriya@nova-solutions.example", full_name="Kasun Jayasuriya",
-            title="COO, Nova Solutions", platform_role=PlatformRole.PLATFORM_USER.value,
-            persona_key="nova-client", avatar_color="#fbc34a",
-        )
-        ta_portfolio_user = User(
-            email="ruwan.gunasekara@dijitalteam.com", full_name="Ruwan Gunasekara",
-            title="Talent Acquisition Specialist (ABC + XYZ Portfolio)",
-            platform_role=PlatformRole.PLATFORM_USER.value,
-            persona_key="ta-portfolio", avatar_color="#f26a1b",
-        )
-        db.add_all(
-            [
-                madushanka, cs_user, ta_manager, platform_admin, super_admin,
-                abc_client_user, xyz_client_user, nova_client_user, ta_portfolio_user,
-            ]
-        )
-        db.flush()
+        # Get-or-create by email so a second run without --reset converges
+        # rather than raising a unique-constraint error, and so module-role
+        # assignments below can be added onto personas that already exist
+        # in the local DB from an earlier seed run.
+        persona_defs = [
+            dict(
+                email="madushanka@dijitalteam.com", full_name="Madushanka Weeriyasinghe",
+                title="Talent Acquisition Specialist", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="madushanka-ta", avatar_color="#c9431d",
+            ),
+            dict(
+                email="tharindu.fernando@dijitalteam.com", full_name="Tharindu Fernando",
+                title="Customer Success Lead", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="customer-success", avatar_color="#db4d18",
+            ),
+            dict(
+                email="sanduni.wickrama@dijitalteam.com", full_name="Sanduni Wickrama",
+                title="TA Manager", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="ta-manager", avatar_color="#aa2f1d",
+            ),
+            dict(
+                email="admin@dijitalteam.com", full_name="Dilani Rathnayake",
+                title="Platform Administrator", platform_role=PlatformRole.PLATFORM_ADMIN.value,
+                persona_key="platform-admin", avatar_color="#8f2417",
+            ),
+            dict(
+                email="superadmin@dijitalteam.com", full_name="Priyantha Bandara",
+                title="DijiOne Super Admin", platform_role=PlatformRole.SUPER_ADMIN.value,
+                persona_key="super-admin", avatar_color="#5c1a15",
+            ),
+            dict(
+                email="amal.perera@abc-company.example", full_name="Amal Perera",
+                title="Head of Talent, ABC Company", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="abc-client", avatar_color="#f26a1b",
+            ),
+            dict(
+                email="nadeesha.silva@xyz-company.example", full_name="Nadeesha Silva",
+                title="VP Engineering, XYZ Company", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="xyz-client", avatar_color="#f59e0b",
+            ),
+            dict(
+                email="kasun.jayasuriya@nova-solutions.example", full_name="Kasun Jayasuriya",
+                title="COO, Nova Solutions", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="nova-client", avatar_color="#fbc34a",
+            ),
+            dict(
+                email="ruwan.gunasekara@dijitalteam.com", full_name="Ruwan Gunasekara",
+                title="Talent Acquisition Specialist (ABC + XYZ Portfolio)",
+                platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="ta-portfolio", avatar_color="#f26a1b",
+            ),
+        ]
+        users_by_persona: dict[str, User] = {}
+        for fields in persona_defs:
+            existing = db.query(User).filter_by(email=fields["email"]).one_or_none()
+            if existing is None:
+                existing = User(**fields)
+                db.add(existing)
+                db.flush()
+            users_by_persona[fields["persona_key"]] = existing
+        db.commit()
+
+        madushanka = users_by_persona["madushanka-ta"]
+        cs_user = users_by_persona["customer-success"]
+        ta_manager = users_by_persona["ta-manager"]
+        platform_admin = users_by_persona["platform-admin"]
+        super_admin = users_by_persona["super-admin"]
+        abc_client_user = users_by_persona["abc-client"]
+        xyz_client_user = users_by_persona["xyz-client"]
+        nova_client_user = users_by_persona["nova-client"]
+        ta_portfolio_user = users_by_persona["ta-portfolio"]
 
         # Demonstrates DijiOne Phase 2 client/portfolio scope (CR §22): every
         # staff assignment defaults to ALL_CLIENTS except ta_portfolio_user,
         # who is explicitly restricted to ABC + XYZ (Nova excluded).
         module_roles = [
-            (madushanka, "TA_MEMBER", None, None),
-            (cs_user, "CUSTOMER_SUCCESS", None, None),
-            (ta_manager, "TA_MANAGER", None, None),
-            (platform_admin, "TA_MANAGER", None, None),
-            (abc_client_user, "TALENT_CLIENT", ABC_CLIENT_ID, None),
-            (xyz_client_user, "TALENT_CLIENT", XYZ_CLIENT_ID, None),
-            (nova_client_user, "TALENT_CLIENT", NOVA_CLIENT_ID, None),
-            (ta_portfolio_user, "TA_MEMBER", None, [ABC_CLIENT_ID, XYZ_CLIENT_ID]),
+            (madushanka, MODULE_TALENT_FLOW, "TA_MEMBER", None, None),
+            (cs_user, MODULE_TALENT_FLOW, "CUSTOMER_SUCCESS", None, None),
+            (ta_manager, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
+            (platform_admin, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
+            (abc_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", ABC_CLIENT_ID, None),
+            (xyz_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", XYZ_CLIENT_ID, None),
+            (nova_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", NOVA_CLIENT_ID, None),
+            (ta_portfolio_user, MODULE_TALENT_FLOW, "TA_MEMBER", None, [ABC_CLIENT_ID, XYZ_CLIENT_ID]),
+            # DijiBirthday (Phase A-D): grant the Super Admin dev persona
+            # BIRTHDAY_ADMIN so the "Super Admin can't see DijiBirthday"
+            # local-env bug has a persona to actually demo the fix with —
+            # mirrors platform_admin's explicit TA_MANAGER grant above.
+            # DijiOne's authorization model is module-aware by design (CLAUDE.md
+            # §11): SUPER_ADMIN is a *platform* role and does not implicitly
+            # carry business-module roles, so this must be explicit, same as
+            # every other persona/module pairing in this table.
+            (super_admin, MODULE_BIRTHDAY, "BIRTHDAY_ADMIN", None, None),
         ]
-        for user, role, client_id, portfolio in module_roles:
+        for user, module_key, role, client_id, portfolio in module_roles:
+            existing_role = (
+                db.query(UserModuleRole)
+                .filter_by(user_id=user.id, module_key=module_key, role=role)
+                .one_or_none()
+            )
+            if existing_role is not None:
+                continue
             module_role = UserModuleRole(
-                user_id=user.id, module_key=MODULE_TALENT_FLOW, role=role, client_id=client_id,
+                user_id=user.id, module_key=module_key, role=role, client_id=client_id,
             )
             db.add(module_role)
             db.flush()

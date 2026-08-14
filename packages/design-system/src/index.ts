@@ -9,6 +9,7 @@ export * from "./ui/PageHeader";
 export * from "./ui/States";
 export * from "./ui/StatusBadge";
 export * from "./ui/Table";
+export * from "./ui/DataTable";
 export * from "./ui/Timeline";
 
 // Shell chrome — shared across every DijiOne frontend app

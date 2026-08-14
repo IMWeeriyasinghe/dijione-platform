@@ -6,6 +6,8 @@
     "apps/shell-web",
     "apps/admin-web",
     "apps/talent-web",
+    "apps/birthday-web",
+    "apps/birthday-supplier-web",
     "packages/design-system",
     "packages/auth-client-ts",
     "packages/contracts"

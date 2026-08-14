@@ -1,7 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import birthday, health
+from app.api.routes import (
+    birthday,
+    config,
+    dashboard,
+    dev_auth,
+    employees,
+    health,
+    internal,
+    orders,
+    portal,
+    suppliers,
+)
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -27,3 +38,11 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(birthday.router)
+app.include_router(internal.router)
+app.include_router(dashboard.router)
+app.include_router(orders.router)
+app.include_router(config.router)
+app.include_router(suppliers.router)
+app.include_router(employees.router)
+app.include_router(portal.router)
+app.include_router(dev_auth.router)
