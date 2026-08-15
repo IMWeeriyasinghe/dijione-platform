@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import ApplicationStatus, CanonicalStage
@@ -40,6 +42,18 @@ class Application(TimestampMixin, Base):
     is_client_visible: Mapped[bool] = mapped_column(Boolean, default=False)
 
     lever_opportunity_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # Raw Lever archive-reason text — internal/staff diagnostic only, never
+    # returned in a client-safe DTO. `status` (ApplicationStatus) carries
+    # the collapsed canonical outcome (HIRED / WITHDRAWN / REJECTED).
+    lever_archive_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Minimal offer-lifecycle signal only — never compensation, documents,
+    # or other sensitive offer fields (CLAUDE.md §60 discovery findings).
+    lever_offer_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lever_offer_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     candidate: Mapped[Candidate] = relationship(back_populates="applications")  # noqa: F821
     talent_request: Mapped[TalentRequest] = relationship(  # noqa: F821

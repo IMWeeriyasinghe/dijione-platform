@@ -164,3 +164,30 @@ class ProcessingStatus(StrEnum):
     PROCESSED = "PROCESSED"
     IGNORED_DUPLICATE = "IGNORED_DUPLICATE"
     FAILED = "FAILED"
+
+
+class PostingClientMappingStatus(StrEnum):
+    """Trust state of a Posting -> Client relationship.
+
+    UNMAPPED is the default for every newly-ingested Posting and must fail
+    closed: a client-scoped caller may never see a Posting (or anything
+    under it) unless its mapping is VERIFIED for their own client_id.
+    """
+
+    UNMAPPED = "UNMAPPED"
+    VERIFIED = "VERIFIED"
+    REJECTED = "REJECTED"
+
+
+class PostingClientMappingSource(StrEnum):
+    """Provenance of a verified Posting -> Client mapping.
+
+    Only MANUAL is settable by anything built so far. The others are seeded
+    now so a future HubSpot-backed or Lever-structured-field resolver is an
+    additive change, not a schema migration.
+    """
+
+    MANUAL = "MANUAL"
+    LEVER_STRUCTURED_FIELD = "LEVER_STRUCTURED_FIELD"
+    HUBSPOT = "HUBSPOT"
+    OTHER_VERIFIED_SOURCE = "OTHER_VERIFIED_SOURCE"

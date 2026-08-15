@@ -32,6 +32,7 @@ class SyncService:
         event_type = str(payload.get("event", "unknown"))
         existing = self.event_repo.find_by_external_id(IntegrationProvider.LEVER.value, external_event_id)
         if existing is not None:
+            existing.processing_status = ProcessingStatus.IGNORED_DUPLICATE.value
             return existing
 
         event = IntegrationEvent(
@@ -94,6 +95,7 @@ class SyncService:
             IntegrationProvider.HUBSPOT.value, external_event_id
         )
         if existing is not None:
+            existing.processing_status = ProcessingStatus.IGNORED_DUPLICATE.value
             return existing
 
         from datetime import UTC, datetime

@@ -2181,6 +2181,82 @@ Initial live integration must be read-only.
 
 Never write to Lever production data without explicit authorization.
 
+## LIVE LEVER SAFETY CONTRACT
+
+A real Lever production API credential may now be configured locally for
+DijiTalentFlow live-data discovery.
+
+Lever MUST currently be treated as a READ-ONLY external production system.
+
+The coding agent MAY:
+
+- authenticate to the Lever API;
+- perform GET/read operations;
+- inspect Lever object structures and schemas;
+- retrieve candidates;
+- retrieve opportunities/applications;
+- retrieve postings;
+- retrieve requisitions;
+- retrieve pipeline stages;
+- retrieve interviews;
+- retrieve users;
+- retrieve archive reasons;
+- retrieve other recruitment metadata required for discovery;
+- map Lever records into DijiTalentFlow internal DTOs;
+- store synchronized/read copies in the DijiOne local database;
+- build and test read-only synchronization;
+- document discovered Lever mappings.
+
+The coding agent MUST NOT:
+
+- create Lever records;
+- update Lever records;
+- delete Lever records;
+- archive or unarchive candidates/opportunities;
+- move candidates between Lever stages;
+- change application stages;
+- modify postings or requisitions;
+- create or modify interviews;
+- create or modify offers;
+- modify candidate information;
+- upload files or resumes to Lever;
+- modify Lever users;
+- modify Lever configuration;
+- create, modify, enable or disable Lever webhooks;
+- rotate or generate Lever API credentials;
+- revoke existing Lever integrations or authorized applications;
+- modify the existing HubSpot, Spark Hire, TestGorilla, Xref, Workato,
+  LinkedIn, or other Lever integrations;
+- perform POST, PUT, PATCH or DELETE requests against Lever production APIs.
+
+For the current development phase:
+
+    LEVER ACCESS MODE = READ ONLY
+
+Only GET/read requests are authorized.
+
+If implementation requires a Lever write operation, STOP that specific
+operation and report it as requiring explicit user authorization.
+
+Do not bypass this restriction.
+
+The existence of a valid Lever API key does NOT constitute permission to
+write to Lever.
+
+The Lever API key:
+
+- MUST remain in apps/talent-api/.env;
+- MUST NOT be written into CLAUDE.md;
+- MUST NOT be added to .env.example;
+- MUST NOT be committed to Git;
+- MUST NOT be printed in logs;
+- MUST NOT be exposed to frontend code;
+- MUST NOT be included in screenshots, documentation, test fixtures or
+  agent summaries.
+
+Live discovery must prefer the minimum number of API requests reasonably
+necessary to understand the production Lever data model.
+
 ---
 
 # 61. HUBSPOT PROVIDER

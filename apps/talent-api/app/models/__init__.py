@@ -7,6 +7,9 @@ from app.models.external_mapping import ExternalMapping
 from app.models.integration_event import IntegrationEvent
 from app.models.interview import Interview
 from app.models.message import Message
+from app.models.posting import Posting
+from app.models.posting_application import PostingApplication
+from app.models.posting_client_mapping import PostingClientMapping
 from app.models.talent_request import TalentRequest
 
 __all__ = [
@@ -19,5 +22,8 @@ __all__ = [
     "IntegrationEvent",
     "Interview",
     "Message",
+    "Posting",
+    "PostingApplication",
+    "PostingClientMapping",
     "TalentRequest",
 ]

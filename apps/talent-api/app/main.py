@@ -12,6 +12,7 @@ from app.api.routes import (
     talent_internal,
     talent_interviews,
     talent_messages,
+    talent_postings,
     talent_requests,
     talent_summary,
     webhooks,
@@ -50,5 +51,6 @@ app.include_router(talent_interviews.router)
 app.include_router(talent_messages.router)
 app.include_router(talent_documents.router)
 app.include_router(talent_dashboard.router)
+app.include_router(talent_postings.router)
 app.include_router(integrations.router)
 app.include_router(webhooks.router)
