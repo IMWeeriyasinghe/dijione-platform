@@ -189,7 +189,8 @@ def test_upcoming_birthdays_endpoint_returns_expected_shape(api_client, db):
         item = body["birthdays"][0]
         assert set(item.keys()) == {
             "employee_id", "employee_number", "display_name", "days_until_birthday",
-            "birthday", "department", "location", "cake_order_status", "hire_date",
+            "birthday", "department", "location", "city", "state_province",
+            "cake_order_status", "order_id", "hire_date",
             "eligible", "eligibility_reason", "address_verification_status",
         }
 

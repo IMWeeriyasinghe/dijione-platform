@@ -7,6 +7,7 @@ import type {
   BirthdayOrderUpdateInput,
   BirthdaySummaryOut,
   BirthdayUpcomingResponse,
+  DeliveryAddressUpdateInput,
   ReadinessCheckResponse,
   RejectRequestInput,
   SpecialRequirementCreateInput,
@@ -42,6 +43,7 @@ export const getUpcomingBirthdays = (params: {
   days?: number;
   search?: string;
   filter?: string;
+  province?: string;
   sort_by?: string;
   sort_direction?: string;
   page?: number;
@@ -99,6 +101,12 @@ export const addSpecialRequirement = (id: number, payload: SpecialRequirementCre
 
 export const updateAddressVerification = (id: number, payload: AddressVerificationUpdateInput) =>
   request<BirthdayOrderOut>(`/api/birthday/orders/${id}/address-verification`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const updateDeliveryAddress = (id: number, payload: DeliveryAddressUpdateInput) =>
+  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/delivery-address`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
@@ -191,3 +199,19 @@ export const updateSupplierUser = (supplierId: number, userId: number, payload: 
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+
+// --- Admin -------------------------------------------------
+// Calls the same detection service the production external scheduler
+// triggers — for UAT/ops use, never a separate/duplicated detection path.
+export type RunDetectionResult = {
+  run_id: string;
+  employees_scanned: number;
+  orders_created: number;
+  orders_existing: number;
+  exceptions: number;
+  ineligible_skipped: number;
+  errors: Array<{ employee_id: string | null; error: string }>;
+};
+
+export const runBirthdayDetection = () =>
+  request<RunDetectionResult>("/api/birthday/admin/run-detection", { method: "POST" });

@@ -31,7 +31,7 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
   const sections: NavSection[] = [
     {
       items: [
-        { label: "Dashboard", href: "/", icon: LayoutDashboard },
+        { label: "Dashboard", href: "/", icon: LayoutDashboard, exact: true },
         { label: "Upcoming Birthdays", href: "/upcoming", icon: CakeSlice },
         { label: "Cake Orders", href: "/orders", icon: ListOrdered },
         { label: "Suppliers", href: "/suppliers", icon: Truck },
@@ -45,6 +45,7 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
       title="DijiBirthday"
       topNavTitle="Birthday Workflow Automation"
       sections={sections}
+      homeHref="/"
       footer={<p className="text-xs text-white/60">DijiBirthday · by Dijital Team</p>}
     >
       {children}

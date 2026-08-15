@@ -8,6 +8,7 @@ export function AppShell({
   sections,
   footer,
   topNavTitle,
+  homeHref,
   children,
 }: {
   eyebrow?: string;
@@ -15,12 +16,13 @@ export function AppShell({
   sections: NavSection[];
   footer?: React.ReactNode;
   topNavTitle?: string;
+  homeHref?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-screen print:block">
       <div className="print:hidden">
-        <Sidebar eyebrow={eyebrow} title={title} sections={sections} footer={footer} />
+        <Sidebar eyebrow={eyebrow} title={title} sections={sections} footer={footer} homeHref={homeHref} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col print:block">
         <div className="print:hidden">

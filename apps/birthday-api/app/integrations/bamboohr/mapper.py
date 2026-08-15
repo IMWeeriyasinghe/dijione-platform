@@ -37,4 +37,10 @@ def map_employee(employee: BambooHREmployee) -> dict:
         "employment_status": employee.employment_status,
         "hire_date": _parse_iso_date(employee.hire_date),
         "termination_date": _parse_iso_date(employee.termination_date),
+        "address_line1": employee.address_line1,
+        "address_line2": employee.address_line2,
+        "city": employee.city,
+        "state_province": employee.state_province,
+        "postal_code": employee.postal_code,
+        "country": employee.country,
     }

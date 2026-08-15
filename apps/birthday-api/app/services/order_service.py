@@ -43,8 +43,22 @@ def create_or_get_order(
     requires_admin_review: bool,
     hold_reason: str | None,
     supplier_id: int | None,
+    delivery_address_line1: str | None = None,
+    delivery_address_line2: str | None = None,
+    delivery_city: str | None = None,
+    delivery_state_province: str | None = None,
+    delivery_postal_code: str | None = None,
+    delivery_country: str | None = None,
 ) -> tuple[BirthdayOrder, bool]:
     repo = BirthdayOrderRepository(db)
+
+    # Address snapshot at detection time (plan §3E) — only marked as a
+    # BambooHR-sourced snapshot when at least one field was actually
+    # supplied, so a bare/no-address BambooHR record doesn't falsely claim
+    # a "BAMBOOHR" source with nothing behind it.
+    has_address = any(
+        [delivery_address_line1, delivery_address_line2, delivery_city, delivery_state_province, delivery_postal_code, delivery_country]
+    )
 
     order = BirthdayOrder(
         order_reference=order_reference,
@@ -61,6 +75,13 @@ def create_or_get_order(
         hold_reason=hold_reason,
         supplier_id=supplier_id,
         requires_admin_review=requires_admin_review,
+        delivery_address_line1=delivery_address_line1,
+        delivery_address_line2=delivery_address_line2,
+        delivery_city=delivery_city,
+        delivery_state_province=delivery_state_province,
+        delivery_postal_code=delivery_postal_code,
+        delivery_country=delivery_country,
+        delivery_address_source="BAMBOOHR" if has_address else None,
     )
 
     try:
@@ -105,6 +126,7 @@ def to_supplier_view(order: BirthdayOrder) -> SupplierOrderView:
     dates, or the internal eligibility machinery. Callers (the
     supplier-portal routes) are responsible for only ever calling this on
     orders already scoped to the caller's own supplier_id."""
+    is_verified = order.address_verification_status == AddressVerificationStatus.VERIFIED.value
     return SupplierOrderView(
         id=order.id,
         order_reference=order.order_reference,
@@ -114,7 +136,16 @@ def to_supplier_view(order: BirthdayOrder) -> SupplierOrderView:
         office_location=order.office_location,
         quantity=order.quantity,
         catalogue_item_name=order.catalogue_item.name if order.catalogue_item else None,
-        address_verified=order.address_verification_status == AddressVerificationStatus.VERIFIED.value,
+        address_verified=is_verified,
+        # Delivery address fields are only ever populated here once
+        # VERIFIED (plan §3F/H) — an unverified snapshot must never reach a
+        # supplier, even if the fields exist on the order.
+        delivery_address_line1=order.delivery_address_line1 if is_verified else None,
+        delivery_address_line2=order.delivery_address_line2 if is_verified else None,
+        delivery_city=order.delivery_city if is_verified else None,
+        delivery_state_province=order.delivery_state_province if is_verified else None,
+        delivery_postal_code=order.delivery_postal_code if is_verified else None,
+        delivery_country=order.delivery_country if is_verified else None,
         status=order.status,
         special_instructions=[
             req.text

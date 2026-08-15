@@ -306,6 +306,13 @@ export type BirthdayOrderOut = {
   status: string;
   hold_reason: string | null;
   address_verification_status: string;
+  delivery_address_line1: string | null;
+  delivery_address_line2: string | null;
+  delivery_city: string | null;
+  delivery_state_province: string | null;
+  delivery_postal_code: string | null;
+  delivery_country: string | null;
+  delivery_address_source: string | null;
   supplier_id: number | null;
   delivery_date: string | null;
   catalogue_item_id: number | null;
@@ -325,6 +332,15 @@ export type BirthdayOrderOut = {
 export type AddressVerificationUpdateInput = {
   status: string;
   note?: string;
+};
+
+export type DeliveryAddressUpdateInput = {
+  delivery_address_line1?: string | null;
+  delivery_address_line2?: string | null;
+  delivery_city?: string | null;
+  delivery_state_province?: string | null;
+  delivery_postal_code?: string | null;
+  delivery_country?: string | null;
 };
 
 export type BirthdayOrderCreateInput = {
@@ -373,6 +389,12 @@ export type SupplierOrderView = {
   quantity: number;
   catalogue_item_name: string | null;
   address_verified: boolean;
+  delivery_address_line1: string | null;
+  delivery_address_line2: string | null;
+  delivery_city: string | null;
+  delivery_state_province: string | null;
+  delivery_postal_code: string | null;
+  delivery_country: string | null;
   status: string;
   special_instructions: string[];
 };
@@ -405,7 +427,10 @@ export type UpcomingBirthdayItem = {
   days_until_birthday: number;
   department: string;
   location: string;
+  city: string | null;
+  state_province: string | null;
   cake_order_status: string;
+  order_id: number | null;
   hire_date: string | null;
   eligible: boolean;
   eligibility_reason: string;

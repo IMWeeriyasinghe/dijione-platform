@@ -56,6 +56,7 @@ _SORT_KEYS = {
     "hire_date": lambda i: i.hire_date or "",
     "employee_name": lambda i: i.display_name.lower(),
     "employee_number": lambda i: i.employee_number or "",
+    "city": lambda i: (i.city or "").lower(),
 }
 
 
@@ -68,6 +69,7 @@ def list_upcoming_birthdays(
     audit_service: AuditService | None = None,
     search: str | None = None,
     group_filter: str | None = None,
+    province: str | None = None,
     sort_by: str | None = None,
     sort_direction: str = "asc",
 ) -> list[UpcomingBirthdayItem]:
@@ -135,7 +137,10 @@ def list_upcoming_birthdays(
                     days_until_birthday=days_until,
                     department=employee.get("department") or "",
                     location=employee["office_location"],
+                    city=employee.get("city"),
+                    state_province=employee.get("state_province"),
                     cake_order_status=cake_order_status,
+                    order_id=order.id if order is not None else None,
                     hire_date=employee["hire_date"].isoformat() if employee.get("hire_date") else None,
                     eligible=eligible,
                     eligibility_reason=reason.value,
@@ -155,6 +160,10 @@ def list_upcoming_birthdays(
     if group_filter and group_filter != "ALL":
         items = [i for i in items if group_for(i) == group_filter]
 
+    if province:
+        needle = province.strip().lower()
+        items = [i for i in items if (i.state_province or "").strip().lower() == needle]
+
     if search:
         needle = search.strip().lower()
         items = [
@@ -162,6 +171,7 @@ def list_upcoming_birthdays(
             if needle in i.display_name.lower()
             or needle in (i.employee_number or "").lower()
             or needle in i.employee_id.lower()
+            or needle in (i.city or "").lower()
         ]
 
     sort_key = _SORT_KEYS.get(sort_by or "", _SORT_KEYS["days_until_birthday"])

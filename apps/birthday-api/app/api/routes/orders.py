@@ -26,6 +26,7 @@ from app.schemas.order import (
     BirthdayOrderSummary,
     BirthdayOrderUpdate,
     CancelRequest,
+    DeliveryAddressUpdate,
     HoldRequest,
     ReadinessCheckResponse,
     RejectRequest,
@@ -382,6 +383,23 @@ def update_address_verification(
         ) from exc
     return address_verification_service.set_address_verification_status(
         db, order, new_status, actor_id=scope.user.id, note=payload.note,
+    )
+
+
+@router.patch("/{order_id}/delivery-address", response_model=BirthdayOrderRead)
+def update_delivery_address(
+    order_id: int,
+    payload: DeliveryAddressUpdate,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.update")),
+) -> BirthdayOrder:
+    """P&C-manual correction of the delivery address (plan §3D/G) — does
+    not change address_verification_status; the caller is expected to
+    separately PATCH address-verification once the corrected address has
+    been confirmed with the team member."""
+    order = _get_order_or_404(db, order_id)
+    return address_verification_service.update_delivery_address(
+        db, order, payload.model_dump(exclude_unset=True), actor_id=scope.user.id,
     )
 
 

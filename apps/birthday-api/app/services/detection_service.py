@@ -174,6 +174,12 @@ def run_daily_scan(
                 requires_admin_review=requires_admin_review,
                 hold_reason=hold_reason,
                 supplier_id=supplier.id if supplier else None,
+                delivery_address_line1=employee.get("address_line1"),
+                delivery_address_line2=employee.get("address_line2"),
+                delivery_city=employee.get("city"),
+                delivery_state_province=employee.get("state_province"),
+                delivery_postal_code=employee.get("postal_code"),
+                delivery_country=employee.get("country"),
             )
 
             if created:

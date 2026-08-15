@@ -22,6 +22,7 @@ def get_upcoming_birthdays(
     days: int = 30,
     search: str | None = None,
     filter: str | None = None,  # noqa: A002 - matches the documented API parameter name
+    province: str | None = None,
     sort_by: str | None = None,
     sort_direction: str = "asc",
     page: int = 1,
@@ -39,7 +40,7 @@ def get_upcoming_birthdays(
     client = get_bamboohr_client()
     try:
         birthdays = list_upcoming_birthdays(
-            db, client, days=days, search=search, group_filter=filter,
+            db, client, days=days, search=search, group_filter=filter, province=province,
             sort_by=sort_by, sort_direction=sort_direction,
         )
     except BambooHRFetchError as exc:

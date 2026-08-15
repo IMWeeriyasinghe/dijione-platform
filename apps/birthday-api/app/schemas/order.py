@@ -58,6 +58,10 @@ class BirthdayOrderSummary(BaseModel):
 
 
 class BirthdayOrderRead(BaseModel):
+    """Note: delivery_address_* fields below are the internal (P&C-facing)
+    view — always populated once known, regardless of verification status.
+    The supplier-facing equivalent (SupplierOrderView) only ever exposes
+    them once VERIFIED — see order_service.to_supplier_view."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -76,6 +80,13 @@ class BirthdayOrderRead(BaseModel):
     status: str
     hold_reason: str | None
     address_verification_status: str
+    delivery_address_line1: str | None = None
+    delivery_address_line2: str | None = None
+    delivery_city: str | None = None
+    delivery_state_province: str | None = None
+    delivery_postal_code: str | None = None
+    delivery_country: str | None = None
+    delivery_address_source: str | None = None
     supplier_id: int | None
     delivery_date: date | None = None
     catalogue_item_id: int | None = None
@@ -161,6 +172,19 @@ class AddressVerificationUpdate(BaseModel):
     note: str | None = None
 
 
+class DeliveryAddressUpdate(BaseModel):
+    """P&C-manual correction of the delivery address snapshot (plan §3D/G)
+    — does not change address_verification_status; callers typically PATCH
+    this and then separately PATCH address-verification to VERIFIED."""
+
+    delivery_address_line1: str | None = None
+    delivery_address_line2: str | None = None
+    delivery_city: str | None = None
+    delivery_state_province: str | None = None
+    delivery_postal_code: str | None = None
+    delivery_country: str | None = None
+
+
 class SupplierOrderView(BaseModel):
     """What a supplier is allowed to see (plan §6) — fulfilment facts only,
     deliberately NOT the full ``BirthdayOrderRead``/``Summary`` shape: no
@@ -184,6 +208,14 @@ class SupplierOrderView(BaseModel):
     quantity: int
     catalogue_item_name: str | None = None
     address_verified: bool
+    # Only ever populated once address_verified is True — see
+    # order_service.to_supplier_view. Never the raw/unverified snapshot.
+    delivery_address_line1: str | None = None
+    delivery_address_line2: str | None = None
+    delivery_city: str | None = None
+    delivery_state_province: str | None = None
+    delivery_postal_code: str | None = None
+    delivery_country: str | None = None
     status: str
     special_instructions: list[str] = []
 

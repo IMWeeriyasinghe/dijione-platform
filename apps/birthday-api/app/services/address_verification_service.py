@@ -68,3 +68,57 @@ def set_address_verification_status(
         pass
 
     return order
+
+
+_ADDRESS_FIELDS = (
+    "delivery_address_line1",
+    "delivery_address_line2",
+    "delivery_city",
+    "delivery_state_province",
+    "delivery_postal_code",
+    "delivery_country",
+)
+
+
+def update_delivery_address(
+    db: Session,
+    order: BirthdayOrder,
+    fields: dict[str, str | None],
+    *,
+    actor_id: int | None,
+    audit_service: AuditService | None = None,
+) -> BirthdayOrder:
+    """P&C-manual correction of the delivery-address snapshot (plan §3D).
+    Only ever called by a human — never by detection/automation. Marks the
+    snapshot as ``MANUAL_CORRECTION`` so the UI can distinguish an edited
+    address from the raw BambooHR value. The audit log records only which
+    field NAMES changed, never the address content itself (same privacy
+    precedent as the status-change log above)."""
+    changed_fields = [
+        name for name in _ADDRESS_FIELDS if name in fields and getattr(order, name) != fields[name]
+    ]
+    for name in changed_fields:
+        setattr(order, name, fields[name])
+    if changed_fields:
+        order.delivery_address_source = "MANUAL_CORRECTION"
+
+    db.commit()
+    db.refresh(order)
+
+    if changed_fields:
+        service = audit_service or AuditService()
+        try:
+            # No address values in the audit trail — field names only.
+            service.log(
+                actor_id=actor_id,
+                action="birthday.order.address_corrected",
+                entity_type="birthday_order",
+                entity_id=order.id,
+                previous_state=None,
+                new_state=None,
+                metadata={"fields_changed": changed_fields},
+            )
+        except Exception:  # noqa: BLE001 - best-effort, never fails the update
+            pass
+
+    return order

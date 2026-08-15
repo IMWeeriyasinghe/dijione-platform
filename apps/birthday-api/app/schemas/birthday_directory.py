@@ -19,8 +19,11 @@ class UpcomingBirthdayItem(BaseModel):
     birthday: str  # MM-DD, no birth year (BambooHR withholds birth year)
     days_until_birthday: int
     department: str
-    location: str
+    location: str  # office/country value (BambooHR `location`) — kept for supplier-resolution parity, not for display
+    city: str | None = None  # BambooHR `city` — the actual Location column display value (plan §5)
+    state_province: str | None = None  # BambooHR `state` (Province for LK records) — used for the Location filter
     cake_order_status: str
+    order_id: int | None = None  # links to the BirthdayOrder when one exists (address verification lives there)
     hire_date: str | None = None  # ISO date, None if genuinely missing from BambooHR
     eligible: bool
     eligibility_reason: str  # EligibilityReason value — always present, ELIGIBLE when eligible=True

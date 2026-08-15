@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useBirthdayScope } from "@dijione/auth-client";
 import {
@@ -49,6 +49,7 @@ const EMPTY_FORM: SupplierCreateInput = {
 
 export default function SuppliersPage() {
   const scope = useBirthdayScope();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<SupplierCreateInput>(EMPTY_FORM);
@@ -152,30 +153,40 @@ export default function SuppliersPage() {
               </Tr>
             </Thead>
             <tbody>
-              {suppliers.map((supplier) => (
-                <Tr key={supplier.id}>
-                  <Td>
-                    <Link
-                      href={`/suppliers/${supplier.id}`}
-                      className="font-medium text-dt-text-primary hover:underline"
-                    >
-                      {supplier.name}
-                    </Link>
-                  </Td>
-                  <Td>
-                    <StatusBadge status={supplier.status} />
-                  </Td>
-                  <Td>{supplier.lead_time_days} days</Td>
-                  <Td>{supplier.working_days || "—"}</Td>
-                  <Td>{supplier.cutoff_time || "—"}</Td>
-                  <Td>
-                    {supplier.escalation_contact_name || "—"}
-                    {supplier.escalation_contact_email && (
-                      <p className="text-xs text-dt-text-secondary">{supplier.escalation_contact_email}</p>
-                    )}
-                  </Td>
-                </Tr>
-              ))}
+              {suppliers.map((supplier) => {
+                const goToDetail = () => router.push(`/suppliers/${supplier.id}`);
+                return (
+                  <Tr
+                    key={supplier.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={goToDetail}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        goToDetail();
+                      }
+                    }}
+                    className="cursor-pointer hover:bg-dt-cream/40"
+                  >
+                    <Td>
+                      <span className="font-medium text-dt-text-primary">{supplier.name}</span>
+                    </Td>
+                    <Td>
+                      <StatusBadge status={supplier.status} />
+                    </Td>
+                    <Td>{supplier.lead_time_days} days</Td>
+                    <Td>{supplier.working_days || "—"}</Td>
+                    <Td>{supplier.cutoff_time || "—"}</Td>
+                    <Td>
+                      {supplier.escalation_contact_name || "—"}
+                      {supplier.escalation_contact_email && (
+                        <p className="text-xs text-dt-text-secondary">{supplier.escalation_contact_email}</p>
+                      )}
+                    </Td>
+                  </Tr>
+                );
+              })}
             </tbody>
           </Table>
           <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />

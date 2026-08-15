@@ -48,6 +48,14 @@ _REPORT_FIELDS = [
     "status",
     "hireDate",
     "terminationDate",
+    # Address/geography — confirmed live 2026-08-15, see
+    # docs/platform/bamboohr-live-discovery.md. Never written back.
+    "address1",
+    "address2",
+    "city",
+    "state",
+    "zipcode",
+    "country",
 ]
 
 
@@ -122,6 +130,12 @@ class BambooHRHttpClient(BambooHRClient):
                     employment_status=status,
                     hire_date=row.get("hireDate") or None,
                     termination_date=row.get("terminationDate") or None,
+                    address_line1=row.get("address1") or None,
+                    address_line2=row.get("address2") or None,
+                    city=row.get("city") or None,
+                    state_province=row.get("state") or None,
+                    postal_code=row.get("zipcode") or None,
+                    country=row.get("country") or None,
                 )
             )
         return employees

@@ -102,3 +102,65 @@ happen to contain a real example of it.
 
 No BambooHR write endpoint was called at any point during this survey or
 during application testing.
+
+## Address & geography follow-up discovery (2026-08-15)
+
+Read-only, same `dijitalteam` tenant, performed to answer two open product
+questions: (1) can a real residential/delivery address be retrieved for the
+address-verification workflow, and (2) is there a more meaningful
+Sri-Lanka geography value than the coarse `location` field (which reads
+"Sri Lanka" for the vast majority of records)?
+
+`GET /v1/meta/fields` was queried first (400 total fields for this tenant)
+to find the real field catalogue instead of guessing candidate names.
+Address/geography-shaped fields found (id | name | alias | type):
+
+| id | name | alias | type |
+|---|---|---|---|
+| 8 | Address Line 1 | `address1` | text |
+| 9 | Address Line 2 | `address2` | text |
+| 10 | City | `city` | text |
+| 11 | State | `state` | state |
+| 12 | Zip Code | `zipcode` | text |
+| 3991 | Country | `country` | country |
+| 4622 | City | `customCity` | text |
+| 4623 | Province | `customProvince` | text |
+| 4624 | Postal Code | `customPostalCode` | text |
+| 4625 | Country | `customCountry` | text |
+
+(`Dependent City/State/ZIP` and `Emergency Contact City/State/ZIP` were
+also present but excluded — they describe a different person, not the
+employee's own address.)
+
+A live report pull requesting `id, displayName, address1, address2, city,
+state, zipcode, country, customCity, customProvince, customPostalCode,
+customCountry, location` against the same 484-record roster returned:
+
+| Field | Present | Notes |
+|---|---|---|
+| `address1` | 482/484 | Free-text street address, e.g. "196/C, Rividewgama, Bodhiraja Mawatha, Paratta, Panadura". |
+| `address2` | 468/484 | Secondary line, often empty for LK addresses. |
+| `city` | 482/484 | Real city/town names — Colombo, Galle, Matara, Dehiwala, Kadawatha, Piliyandala, Gampaha, Kuliyapitiya, Awissawella, Moratuwa, Agarapathana, etc. Meaningfully granular, highly populated. |
+| `state` | 474/484 | Province for LK records — Western, Southern, Central, North Western (a few blank strings). AU state (Queensland) for the Brisbane office. |
+| `zipcode` | 468/484 | Populated LK postal codes (e.g. 12500, 10650, 10300, 11850). |
+| `country` | 483/484 | "Sri Lanka" / "Australia". |
+| `customCity` / `customProvince` / `customPostalCode` / `customCountry` | 72-77/484 | Sparse, not used — standard fields above are the reliable source. |
+
+**Cross-tab with `location`**: for the 451 records where `location ==
+"Sri Lanka"`, `city` independently holds real town names (Dehiwala,
+Hanwella, Piliyandala, Kadawatha, Gampaha, Matara, Colombo, Galle,
+Moratuwa, ...) and `state` holds the province. This confirms `location` is
+a coarse country/office field — it is not derived from, and does not
+derive, `city`/`state`.
+
+**Conclusions, adopted in code**:
+- Residential/delivery address is reliably constructible from `address1 +
+  address2 (optional) + city + state + zipcode + country` and is used to
+  seed a `BirthdayOrder`'s delivery-address snapshot at detection time
+  (never written back to BambooHR — see `app/services/order_service.py`
+  and `app/services/address_verification_service.py`).
+- The Upcoming Birthdays "Location" column now displays `city` (not
+  `location`/`office_location`, which remains solely the supplier-
+  resolution key in `detection_service.resolve_supplier_for_office`) —
+  see `app/services/directory_service.py`. `state` (province) powers a
+  Location filter.

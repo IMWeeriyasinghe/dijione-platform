@@ -36,6 +36,27 @@ Confirmed real field names:
   ``employeeNumber="239"`` (the number Dijital Team actually uses). Can be
   blank for some employees (observed live) — callers must not assume it is
   always present.
+
+Address/geography field mapping verified against a real tenant (2026-08-15
+live discovery, same ``dijitalteam`` subdomain) — see
+``docs/platform/bamboohr-live-discovery.md`` for the full survey:
+
+- ``address1`` / ``address2`` -> street address (482/484 and 468/484
+  populated respectively). ``address2`` is often empty for LK addresses.
+- ``city`` -> real town/city names (482/484 populated), e.g. "Colombo",
+  "Galle", "Dehiwala" — confirmed independently populated even for the 451
+  records where ``location`` is the coarse value "Sri Lanka".
+- ``state`` -> Province for LK records (474/484 populated), e.g.
+  "Western", "Southern", "Central", "North Western"; the AU state for the
+  Brisbane office. Mapped to ``state_province`` to make the "province, not
+  a country-level state" meaning explicit.
+- ``zipcode`` -> postal code (468/484 populated).
+- ``country`` -> "Sri Lanka" / "Australia" (483/484 populated).
+
+Tenant-custom fields ``customCity``/``customProvince``/``customPostalCode``/
+``customCountry`` were also surveyed but are sparse (72-77/484 populated)
+and are deliberately NOT used — the standard fields above are the reliable
+source.
 """
 
 from pydantic import BaseModel
@@ -55,3 +76,14 @@ class BambooHREmployee(BaseModel):
     employment_status: str
     hire_date: str | None = None  # ISO "YYYY-MM-DD"; None if genuinely missing
     termination_date: str | None = None  # ISO date; None if not terminated
+    # Residential/delivery address snapshot — used only to seed a
+    # BirthdayOrder's delivery address at detection time (never written
+    # back to BambooHR, never stored anywhere other than the order
+    # snapshot + this transient DTO). All optional: some records lack one
+    # or more of these fields.
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state_province: str | None = None
+    postal_code: str | None = None
+    country: str | None = None

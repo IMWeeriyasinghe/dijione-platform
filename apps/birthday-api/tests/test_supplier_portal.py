@@ -113,6 +113,39 @@ def test_supplier_order_view_excludes_hr_fields(api_client, db):
     assert forbidden_fields.isdisjoint(item.keys())
 
 
+def test_supplier_order_view_exposes_delivery_address_only_when_verified(api_client, db):
+    supplier_a, _ = _make_suppliers(db)
+    order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-addr")
+    order.delivery_address_line1 = "12 Test Lane"
+    order.delivery_city = "Colombo"
+    db.commit()
+
+    resp = api_client.get("/api/birthday/portal/orders", headers=supplier_headers_for(db, supplier_a))
+    item = resp.json()["items"][0]
+    assert item["address_verified"] is True
+    assert item["delivery_address_line1"] == "12 Test Lane"
+    assert item["delivery_city"] == "Colombo"
+
+
+def test_supplier_order_view_hides_delivery_address_when_not_verified(api_client, db):
+    from app.models.birthday_order import BirthdayOrder
+
+    supplier_a, _ = _make_suppliers(db)
+    order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-unverified")
+    order.address_verification_status = "NEEDS_UPDATE"
+    order.delivery_address_line1 = "12 Test Lane"
+    order.delivery_city = "Colombo"
+    db.commit()
+    db.refresh(order)
+
+    from app.services.order_service import to_supplier_view
+
+    view = to_supplier_view(order)
+    assert view.address_verified is False
+    assert view.delivery_address_line1 is None
+    assert view.delivery_city is None
+
+
 def test_acknowledge_and_status_progression(api_client, db):
     supplier_a, _ = _make_suppliers(db)
     order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-7")

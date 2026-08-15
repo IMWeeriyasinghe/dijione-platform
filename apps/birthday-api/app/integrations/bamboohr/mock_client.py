@@ -52,6 +52,11 @@ def _build_roster() -> list[BambooHREmployee]:
             office_location="Colombo",
             employment_status="Active",
             hire_date=_LONG_TENURED_HIRE_DATE,
+            address_line1="12 Galle Road",
+            city="Colombo",
+            state_province="Western",
+            postal_code="00300",
+            country="Sri Lanka",
         ),
         BambooHREmployee(
             id="bhr-1002",

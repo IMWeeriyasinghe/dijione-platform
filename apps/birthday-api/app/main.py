@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
+    admin,
     birthday,
     config,
     dashboard,
@@ -46,3 +47,4 @@ app.include_router(suppliers.router)
 app.include_router(employees.router)
 app.include_router(portal.router)
 app.include_router(dev_auth.router)
+app.include_router(admin.router)

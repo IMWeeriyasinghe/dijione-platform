@@ -95,7 +95,7 @@ export default function OrdersPage() {
         <SearchInput
           value={search}
           onChange={(v) => resetAndSet(setSearch, v)}
-          placeholder="Search employee number, name, or order reference…"
+          placeholder="Search team member ID, name, or order reference…"
           className="max-w-md"
         />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -184,7 +184,7 @@ export default function OrdersPage() {
                   onSort={toggleSort}
                 />
                 <SortableTh
-                  label="Employee"
+                  label="Team Member"
                   sortKey="employee_name"
                   activeSortBy={sortBy}
                   sortDirection={sortDirection}
@@ -236,7 +236,7 @@ export default function OrdersPage() {
                     <p className="text-xs text-dt-text-secondary">
                       {order.employee_number ?? (
                         <span className="italic text-dt-text-secondary/70">
-                          {order.employee_id} (internal id — no employee #)
+                          {order.employee_id} (internal id — no team member ID)
                         </span>
                       )}
                     </p>

@@ -77,6 +77,21 @@ class BirthdayOrder(TimestampMixin, Base):
         String(32), default=AddressVerificationStatus.NOT_CHECKED.value
     )
 
+    # Delivery-address snapshot (P&C-manual verification workflow) — never
+    # written back to BambooHR. All nullable: unset until an order is
+    # created and a BambooHR/manual value is captured. See
+    # app/services/address_verification_service.py.
+    delivery_address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery_address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery_city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    delivery_state_province: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    delivery_postal_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    delivery_country: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # "BAMBOOHR" (raw snapshot at detection time) | "MANUAL_CORRECTION"
+    # (P&C edited it) — lets the UI show whether the current snapshot is
+    # the original BambooHR value or a human correction.
+    delivery_address_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     supplier_id: Mapped[int | None] = mapped_column(
         ForeignKey("suppliers.id"), nullable=True
     )

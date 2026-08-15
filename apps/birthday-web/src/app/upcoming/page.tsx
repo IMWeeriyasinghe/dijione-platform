@@ -1,10 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
-import { getUpcomingBirthdays } from "@/lib/api";
+import { useBirthdayScope } from "@dijione/auth-client";
+import { getUpcomingBirthdays, runBirthdayDetection, type RunDetectionResult } from "@/lib/api";
 import type { UpcomingBirthdayItem } from "@dijione/contracts";
 import {
+  Button,
   ErrorState,
   LoadingState,
   Pagination,
@@ -25,6 +28,22 @@ import {
 
 const DAYS_OPTIONS = [7, 14, 30, 60];
 const PAGE_SIZE = 25;
+
+// Provinces observed live for this tenant's Sri Lanka roster (see
+// docs/platform/bamboohr-live-discovery.md, 2026-08-15 discovery) — a
+// fixed list keeps the filter a simple dropdown rather than a free-text
+// field with inconsistent casing/spelling.
+const PROVINCE_OPTIONS = [
+  "Western",
+  "Southern",
+  "Central",
+  "North Western",
+  "Sabaragamuwa",
+  "Uva",
+  "North Central",
+  "Northern",
+  "Eastern",
+];
 
 // Any ineligible reason other than FUTURE_STARTER (INACTIVE_EMPLOYEE,
 // EMPLOYMENT_ENDED, MISSING_HIRE_DATE, MISSING_BIRTHDAY,
@@ -74,17 +93,21 @@ const GROUP_FILTER_OPTIONS: Array<Group | "ALL"> = [
 // all computed/applied server-side (Phase-Next §4) — this page only
 // renders the result.
 export default function UpcomingPage() {
+  const scope = useBirthdayScope();
   const [days, setDays] = useState(30);
   const [groupFilter, setGroupFilter] = useState<Group | "ALL">("ALL");
+  const [province, setProvince] = useState("");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [page, setPage] = useState(1);
+  const [scanResult, setScanResult] = useState<RunDetectionResult | null>(null);
 
   const params = {
     days,
     search: search || undefined,
     filter: groupFilter !== "ALL" ? groupFilter : undefined,
+    province: province || undefined,
     sort_by: sortBy || undefined,
     sort_direction: sortDirection,
     page,
@@ -94,6 +117,14 @@ export default function UpcomingPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["birthday-upcoming-birthdays", params],
     queryFn: () => getUpcomingBirthdays(params),
+  });
+
+  const runDetectionMutation = useMutation({
+    mutationFn: () => runBirthdayDetection(),
+    onSuccess: (result) => {
+      setScanResult(result);
+      refetch();
+    },
   });
 
   const toggleSort = useSortToggle(sortBy, sortDirection, setSortBy, setSortDirection);
@@ -108,9 +139,9 @@ export default function UpcomingPage() {
     <div>
       <PageHeader
         title="Upcoming Birthdays"
-        description="Active employees with birthdays approaching, sourced from BambooHR, with eligibility and address-verification status for each cake order."
+        description="Active team members with birthdays approaching, sourced from BambooHR, with eligibility and address-verification status for each cake order."
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Select
               value={groupFilter}
               onChange={(e) => resetAndSet(setGroupFilter, e.target.value as Group | "ALL")}
@@ -123,6 +154,14 @@ export default function UpcomingPage() {
                 </option>
               ))}
             </Select>
+            <Select value={province} onChange={(e) => resetAndSet(setProvince, e.target.value)} className="w-auto">
+              <option value="">All provinces</option>
+              {PROVINCE_OPTIONS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
             <Select value={days} onChange={(e) => resetAndSet(setDays, Number(e.target.value))} className="w-auto">
               {DAYS_OPTIONS.map((d) => (
                 <option key={d} value={d}>
@@ -130,14 +169,44 @@ export default function UpcomingPage() {
                 </option>
               ))}
             </Select>
+            {scope?.isAdmin && (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={runDetectionMutation.isPending}
+                onClick={() => runDetectionMutation.mutate()}
+              >
+                Run Birthday Detection
+              </Button>
+            )}
           </div>
         }
       />
 
+      {scanResult && (
+        <div className="mb-4 rounded-xl border border-dt-border bg-dt-surface-warm/60 p-3 text-sm text-dt-text-primary">
+          <p className="font-medium">
+            Scan complete — scanned {scanResult.employees_scanned}, created {scanResult.orders_created}, already
+            existed {scanResult.orders_existing}, skipped/ineligible {scanResult.ineligible_skipped}, exceptions{" "}
+            {scanResult.exceptions}
+            {scanResult.errors.length > 0 && `, failed ${scanResult.errors.length}`}.
+          </p>
+          {scanResult.errors.length > 0 && (
+            <ul className="mt-1 list-disc pl-5 text-xs text-dt-text-secondary">
+              {scanResult.errors.map((err, i) => (
+                <li key={i}>
+                  {err.employee_id ?? "unknown"}: {err.error}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <SearchInput
         value={search}
         onChange={(v) => resetAndSet(setSearch, v)}
-        placeholder="Search employee number or name…"
+        placeholder="Search team member ID, name, or city…"
         className="mb-4 max-w-md"
       />
 
@@ -148,7 +217,7 @@ export default function UpcomingPage() {
       ) : birthdays.length === 0 ? (
         <EmptyState
           title="No matches"
-          description={`No employees found within the next ${days} days for the current search/filter.`}
+          description={`No team members found within the next ${days} days for the current search/filter.`}
         />
       ) : (
         <>
@@ -156,7 +225,7 @@ export default function UpcomingPage() {
             <Thead>
               <Tr>
                 <SortableTh
-                  label="Employee"
+                  label="Team Member"
                   sortKey="employee_number"
                   activeSortBy={sortBy}
                   sortDirection={sortDirection}
@@ -178,7 +247,13 @@ export default function UpcomingPage() {
                   onSort={toggleSort}
                 />
                 <Th>Eligibility</Th>
-                <Th>Location</Th>
+                <SortableTh
+                  label="Location"
+                  sortKey="city"
+                  activeSortBy={sortBy}
+                  sortDirection={sortDirection}
+                  onSort={toggleSort}
+                />
                 <Th>Address Verification</Th>
                 <Th>Cake Order Status</Th>
               </Tr>
@@ -193,7 +268,7 @@ export default function UpcomingPage() {
                       <p className="text-xs text-dt-text-secondary">
                         {item.employee_number ?? (
                           <span className="italic text-dt-text-secondary/70">
-                            {item.employee_id} (internal id — no employee #)
+                            {item.employee_id} (internal id — no team member ID)
                           </span>
                         )}
                       </p>
@@ -209,12 +284,24 @@ export default function UpcomingPage() {
                         </p>
                       )}
                     </Td>
-                    <Td>{item.location}</Td>
+                    <Td>{item.city ?? "—"}</Td>
                     <Td>
-                      {item.address_verification_status ? (
-                        <StatusBadge status={item.address_verification_status} />
+                      {item.order_id == null ? (
+                        <span className="text-dt-text-secondary">No order yet</span>
                       ) : (
-                        <span className="text-dt-text-secondary">—</span>
+                        <div className="flex items-center gap-2">
+                          {item.address_verification_status ? (
+                            <StatusBadge status={item.address_verification_status} />
+                          ) : (
+                            <span className="text-dt-text-secondary">—</span>
+                          )}
+                          <Link
+                            href={`/orders/${item.order_id}`}
+                            className="text-xs font-medium text-dt-burnt-orange hover:underline"
+                          >
+                            Verify address
+                          </Link>
+                        </div>
                       )}
                     </Td>
                     <Td>

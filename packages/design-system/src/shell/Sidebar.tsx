@@ -29,36 +29,56 @@ export function Sidebar({
   title,
   sections,
   footer,
+  homeHref,
 }: {
   eyebrow?: string;
   title: string;
   sections: NavSection[];
   footer?: React.ReactNode;
+  /** When set, the brand/logo block becomes a link back to DijiOne Home.
+   * Always a plain `<a>` (never next/link): this leaves the current zone
+   * entirely, same cross-zone rationale as NavItem.external. */
+  homeHref?: string;
 }) {
   const pathname = usePathname();
 
+  const brand = (
+    <>
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/15 p-1.5">
+        {/* unoptimized: next/image's optimizer mishandles basePath for
+            local images when this app is reached through another zone's
+            rewrite proxy (shell-web -> admin-web/talent-web) — a tiny
+            static brand logo gains nothing from on-demand resizing. */}
+        <Image
+          src="/brand/dijital-team-logo.png"
+          alt=""
+          width={28}
+          height={28}
+          unoptimized
+          className="h-auto w-full object-contain"
+        />
+      </div>
+      <div className="min-w-0">
+        {eyebrow && <p className="truncate text-[11px] font-medium uppercase tracking-wide text-white/70">{eyebrow}</p>}
+        <p className="truncate text-base font-semibold leading-tight">{title}</p>
+      </div>
+    </>
+  );
+
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col bg-linear-to-b from-dt-red-deep via-dt-red to-dt-burnt-orange text-white">
-      <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/15 p-1.5">
-          {/* unoptimized: next/image's optimizer mishandles basePath for
-              local images when this app is reached through another zone's
-              rewrite proxy (shell-web -> admin-web/talent-web) — a tiny
-              static brand logo gains nothing from on-demand resizing. */}
-          <Image
-            src="/brand/dijital-team-logo.png"
-            alt=""
-            width={28}
-            height={28}
-            unoptimized
-            className="h-auto w-full object-contain"
-          />
-        </div>
-        <div className="min-w-0">
-          {eyebrow && <p className="truncate text-[11px] font-medium uppercase tracking-wide text-white/70">{eyebrow}</p>}
-          <p className="truncate text-base font-semibold leading-tight">{title}</p>
-        </div>
-      </div>
+      {homeHref ? (
+        // eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone escape, see NavItem.external
+        <a
+          href={homeHref}
+          title="DijiOne Home"
+          className="flex items-center gap-2.5 px-5 pb-5 pt-6 transition hover:opacity-90"
+        >
+          {brand}
+        </a>
+      ) : (
+        <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">{brand}</div>
+      )}
 
       <nav className="dt-scrollbar flex-1 space-y-5 overflow-y-auto px-3 pb-4">
         {sections.map((section, i) => (
