@@ -3,7 +3,7 @@ change, audit trail, and its effect on supplier-send gating."""
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 
 from tests.conftest import headers_for
 

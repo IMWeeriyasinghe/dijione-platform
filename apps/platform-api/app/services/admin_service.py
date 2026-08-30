@@ -39,7 +39,6 @@ from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
 from app.schemas.admin import (
-    AccessGroupCreateIn,
     AccessGroupDetailOut,
     AccessGroupOut,
     AccessSourceOut,

@@ -32,7 +32,7 @@ export default function SupplierDashboardPage() {
     <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-dt-text-primary">Dashboard</h2>
-        <p className="text-sm text-dt-text-secondary">Today's fulfilment work, at a glance.</p>
+        <p className="text-sm text-dt-text-secondary">Today&apos;s fulfilment work, at a glance.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -113,7 +113,7 @@ class BirthdayOrderRead(BaseModel):
     updated_at: datetime
     events: list[OrderEventRead] = []
     special_requirements: list[SpecialRequirementRead] = []
-    issues: list["OrderIssueRead"] = []
+    issues: list[OrderIssueRead] = []
 
 
 class BirthdayOrderCreate(BaseModel):
@@ -171,7 +171,7 @@ class ConfirmReleaseRequest(BaseModel):
 
 
 class VerifyAddressResponse(BaseModel):
-    order: "BirthdayOrderRead"
+    order: BirthdayOrderRead
     auto_released: bool
     flagged_reasons: list[str] = []
 

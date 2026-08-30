@@ -2,7 +2,7 @@
 INTERNAL_NOTE isolation requirement, plan §11) and the send success/failure
 paths against MockGraphEmailClient."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 
 from tests.conftest import headers_for
 

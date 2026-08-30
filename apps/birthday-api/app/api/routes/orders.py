@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import BirthdayScope, require_birthday_permission
 from app.api.routes.config import get_or_create_config
-from app.core.constants import ActorType, AddressVerificationStatus, OrderIssueStatus, OrderStatus
+from app.core.constants import AddressVerificationStatus, OrderIssueStatus, OrderStatus
 from app.db.session import get_db
 from app.models.birthday_order import BirthdayOrder
 from app.models.order_event import OrderEvent

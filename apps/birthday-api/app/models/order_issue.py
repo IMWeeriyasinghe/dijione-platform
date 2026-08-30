@@ -29,4 +29,4 @@ class OrderIssue(TimestampMixin, Base):
     resolved_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    order: Mapped["BirthdayOrder"] = relationship(back_populates="issues")  # noqa: F821
+    order: Mapped[BirthdayOrder] = relationship(back_populates="issues")  # noqa: F821

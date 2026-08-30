@@ -146,7 +146,7 @@ class BirthdayOrder(TimestampMixin, Base):
     special_requirements: Mapped[list[SpecialRequirement]] = relationship(  # noqa: F821
         back_populates="order", cascade="all, delete-orphan"
     )
-    issues: Mapped[list["OrderIssue"]] = relationship(  # noqa: F821
+    issues: Mapped[list[OrderIssue]] = relationship(  # noqa: F821
         back_populates="order", cascade="all, delete-orphan"
     )
 

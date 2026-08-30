@@ -78,7 +78,6 @@ def get_supplier_dashboard(
     does not mirror the internal dashboard. Every count is scoped to this
     supplier's own orders via the same repository methods the order list
     uses, so isolation holds here too."""
-    repo = BirthdayOrderRepository(db)
     today = date.today()
 
     def _count(*extra_where):

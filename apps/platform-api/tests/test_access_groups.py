@@ -149,7 +149,7 @@ def test_effective_permissions_direct_only(db, two_tenant_world):
 
 
 def test_effective_permissions_group_only(db, two_tenant_world):
-    plain_user = two_tenant_world["abc_user"]  # has a direct TALENT_CLIENT role too but use a fresh case
+    # two_tenant_world["abc_user"] has a direct TALENT_CLIENT role, so use a fresh user instead.
     from app.models.user import User
 
     fresh = User(email="fresh@example.com", full_name="Fresh User", platform_role="PLATFORM_USER", persona_key="fresh")
@@ -235,9 +235,10 @@ def test_disabled_group_assignment_contributes_nothing(db, two_tenant_world):
 
 
 def test_effective_client_scope_all_clients_override(db, two_tenant_world):
-    from tests.conftest import assign_client_scope
     from sqlalchemy import select
+
     from app.models.user import UserModuleRole
+    from tests.conftest import assign_client_scope
 
     ta_user = two_tenant_world["ta_user"]
     ta_role = db.execute(
@@ -258,9 +259,10 @@ def test_effective_client_scope_all_clients_override(db, two_tenant_world):
 
 
 def test_effective_client_scope_union_rule(db, two_tenant_world):
-    from tests.conftest import assign_client_scope
     from sqlalchemy import select
+
     from app.models.user import UserModuleRole
+    from tests.conftest import assign_client_scope
 
     ta_user = two_tenant_world["ta_user"]
     ta_role = db.execute(
@@ -283,9 +285,10 @@ def test_effective_client_scope_union_rule(db, two_tenant_world):
 def test_tenant_isolation_preserved_via_group_path(db, two_tenant_world):
     """A group granting TALENT_CLIENT-like scope to ABC only must never leak
     NOVA/XYZ visibility — union rule only ever adds ids explicitly scoped."""
-    from tests.conftest import assign_client_scope
     from sqlalchemy import select
+
     from app.models.user import UserModuleRole
+    from tests.conftest import assign_client_scope
 
     ta_user = two_tenant_world["ta_user"]
     ta_role = db.execute(
