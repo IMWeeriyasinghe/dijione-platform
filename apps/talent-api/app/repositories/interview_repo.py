@@ -10,8 +10,23 @@ class InterviewRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_by_id(self, interview_id: int) -> Interview | None:
-        return self.db.get(Interview, interview_id)
+    def get_by_id(
+        self, interview_id: int, *, allowed_client_ids: list[int] | None = None
+    ) -> Interview | None:
+        if allowed_client_ids is None:
+            return self.db.get(Interview, interview_id)
+        # Portfolio-scoped staff: the interview must belong (via its
+        # application's talent request) to one of their assigned clients.
+        stmt = (
+            select(Interview)
+            .join(Application, Interview.application_id == Application.id)
+            .join(TalentRequest, Application.talent_request_id == TalentRequest.id)
+            .where(
+                Interview.id == interview_id,
+                TalentRequest.client_id.in_(allowed_client_ids),
+            )
+        )
+        return self.db.execute(stmt).scalars().first()
 
     def list_for_application(self, application_id: int) -> list[Interview]:
         stmt = select(Interview).where(Interview.application_id == application_id)

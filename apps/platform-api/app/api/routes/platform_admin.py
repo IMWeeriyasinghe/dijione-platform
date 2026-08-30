@@ -39,6 +39,7 @@ from app.schemas.admin import (
     UpdateUserStatusIn,
 )
 from app.services.admin_service import AdminError, AdminService, ForbiddenError, NotFoundError
+from app.services.client_directory import ClientDirectoryUnavailableError
 
 router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
 
@@ -50,6 +51,12 @@ def _handle(action):
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except ForbiddenError as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except ClientDirectoryUnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Cannot validate client scope: DijiTalentFlow (client directory) is unavailable. "
+            "Try again once it is reachable.",
+        ) from exc
     except AdminError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 

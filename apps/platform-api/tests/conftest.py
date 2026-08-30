@@ -81,6 +81,22 @@ def api_client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _client_directory_stub(monkeypatch):
+    """The temporary client-scope guard (app/services/client_directory.py)
+    resolves client ids against talent-api over HTTP. No test should pay for
+    a real (failing) network call just because it sets a client scope —
+    default to the three seed-convention ids being valid. Tests that
+    specifically exercise the guard patch this again with their own set."""
+    from app.services import client_directory
+
+    monkeypatch.setattr(
+        client_directory,
+        "known_client_ids",
+        lambda: {ABC_CLIENT_ID, XYZ_CLIENT_ID, NOVA_CLIENT_ID},
+    )
+
+
 @pytest.fixture()
 def two_tenant_world(db):
     """Two "clients" (opaque ids — the Client rows themselves live in

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # "Service-to-service trust boundaries".
     internal_service_secret: str = "dev-only-internal-secret-change-me"
 
+    # talent-api base URL — used only by the temporary client-scope guard
+    # (app/services/client_directory.py) to validate that a client_id in a
+    # module/group scope actually exists in talent-api. Remove once the
+    # Commercial/CRM domain issues canonical client ids (Architecture v2 §6).
+    talent_api_url: str = "http://localhost:8002"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

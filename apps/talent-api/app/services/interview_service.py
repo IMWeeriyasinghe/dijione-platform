@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.core.constants import NotificationType
+from app.core.constants import InterviewStatus, InterviewType, NotificationType
 from app.models.interview import Interview
 from app.repositories.application_repo import ApplicationRepository
 from app.repositories.interview_repo import InterviewRepository
@@ -17,6 +17,16 @@ class InterviewNotFoundError(Exception):
     pass
 
 
+class InvalidInterviewValueError(Exception):
+    """A client-supplied interview status/type value is not a recognised enum member."""
+
+    pass
+
+
+_VALID_INTERVIEW_STATUSES = {s.value for s in InterviewStatus}
+_VALID_INTERVIEW_TYPES = {t.value for t in InterviewType}
+
+
 class InterviewService:
     def __init__(self, db: Session):
         self.db = db
@@ -25,8 +35,18 @@ class InterviewService:
         self.audit = AuditService()
         self.notifications = NotificationService()
 
-    def create_interview(self, *, actor_id: int, payload: InterviewCreate) -> Interview:
-        application = self.application_repo.get_by_id(payload.application_id)
+    def create_interview(
+        self,
+        *,
+        actor_id: int,
+        payload: InterviewCreate,
+        allowed_client_ids: list[int] | None = None,
+    ) -> Interview:
+        if payload.interview_type not in _VALID_INTERVIEW_TYPES:
+            raise InvalidInterviewValueError(f"Unknown interview type '{payload.interview_type}'")
+        application = self.application_repo.get_by_id(
+            payload.application_id, allowed_client_ids=allowed_client_ids
+        )
         if application is None:
             raise ApplicationNotFoundError(payload.application_id)
         interview = Interview(
@@ -49,8 +69,18 @@ class InterviewService:
             self._notify_client(application, interview)
         return interview
 
-    def update_status(self, *, interview_id: int, actor_id: int, status: str, notes: str) -> Interview:
-        interview = self.repo.get_by_id(interview_id)
+    def update_status(
+        self,
+        *,
+        interview_id: int,
+        actor_id: int,
+        status: str,
+        notes: str,
+        allowed_client_ids: list[int] | None = None,
+    ) -> Interview:
+        if status not in _VALID_INTERVIEW_STATUSES:
+            raise InvalidInterviewValueError(f"Unknown interview status '{status}'")
+        interview = self.repo.get_by_id(interview_id, allowed_client_ids=allowed_client_ids)
         if interview is None:
             raise InterviewNotFoundError(interview_id)
         previous = interview.status

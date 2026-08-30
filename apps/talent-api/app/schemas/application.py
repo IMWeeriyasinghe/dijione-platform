@@ -10,7 +10,11 @@ class ApplicationCreate(BaseModel):
 
 
 class ApplicationStageUpdate(BaseModel):
-    current_stage: str
+    # Canonical request field is `stage` — the handler, the service method
+    # parameter, and the frontend (`updateApplicationStage`) all use `stage`.
+    # (Was `current_stage`, which never matched the handler or the client and
+    # made this endpoint always 422 — see docs/talent-flow/authorization-review.md.)
+    stage: str
 
 
 class ApplicationStatusUpdate(BaseModel):

@@ -59,6 +59,7 @@ from app.schemas.admin import (
     GroupModuleAssignmentOut,
     ModuleAssignmentOut,
 )
+from app.services import client_directory
 from app.services.audit_service import AuditService
 from app.services.authorization_service import AuthorizationService
 
@@ -102,6 +103,19 @@ class AdminService:
         self.db = db
         self.authz = AuthorizationService(db)
         self.audit = AuditService(db)
+
+    @staticmethod
+    def _validate_client_scope(client_scope: ClientScopeIn | None) -> None:
+        """Temporary guard (Architecture v2 §9): a concrete client_id in a
+        module/group scope must actually exist in talent-api. Fail-safe —
+        ``ClientDirectoryUnavailableError`` (talent-api unreachable) propagates
+        to the route as a 503; an unknown id becomes an ``AdminError`` (400)."""
+        if client_scope is None or client_scope.all_clients or not client_scope.client_ids:
+            return
+        try:
+            client_directory.validate_client_ids(client_scope.client_ids)
+        except client_directory.UnknownClientIdError as exc:
+            raise AdminError(str(exc)) from exc
 
     # --- Users -----------------------------------------------------------
 
@@ -249,6 +263,7 @@ class AdminService:
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
+        self._validate_client_scope(client_scope)
 
         stmt = select(UserModuleRole).where(
             UserModuleRole.user_id == target_user_id, UserModuleRole.module_key == module_key
@@ -664,6 +679,7 @@ class AdminService:
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
+        self._validate_client_scope(client_scope)
 
         stmt = select(GroupModuleRole).where(
             GroupModuleRole.access_group_id == group_id, GroupModuleRole.module_key == module_key
