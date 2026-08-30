@@ -13,11 +13,17 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./platform.db"
 
-    dev_identity_mode: bool = True
+    # "dev"  -> Dev Identity Mode persona switcher (local + first shared DEV)
+    # "entra" -> Microsoft Entra ID OIDC (Authorization Code + PKCE)
+    auth_mode: str = "dev"
+    dev_identity_mode: bool = True  # legacy flag, still honoured alongside auth_mode
     entra_tenant_id: str = ""
     entra_client_id: str = ""
     entra_client_secret: str = ""
     entra_redirect_uri: str = ""
+    # Public origin of this environment (e.g. https://dijione-dev.example.com).
+    # Used to build the Entra front-channel logout redirect.
+    public_base_url: str = ""
 
     # Next.js falls back to :3001, :3002, ... when :3000 is already in use
     # by another local process, so local dev allows a small range rather
@@ -50,6 +56,26 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
+
+    @property
+    def dev_auth_enabled(self) -> bool:
+        """Dev Identity Mode is active only when explicitly selected AND not
+        overridden to Entra. Both switches must agree, so an environment that
+        sets AUTH_MODE=entra can never accidentally leave the passwordless
+        persona switcher exposed."""
+        return self.auth_mode == "dev" and self.dev_identity_mode
+
+    @property
+    def entra_authority(self) -> str:
+        return f"https://login.microsoftonline.com/{self.entra_tenant_id}"
+
+    @property
+    def entra_issuer(self) -> str:
+        return f"https://login.microsoftonline.com/{self.entra_tenant_id}/v2.0"
+
+    @property
+    def entra_jwks_uri(self) -> str:
+        return f"{self.entra_authority}/discovery/v2.0/keys"
 
 
 @lru_cache

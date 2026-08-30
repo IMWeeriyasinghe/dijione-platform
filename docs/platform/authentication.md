@@ -76,26 +76,55 @@ exclusively in `platform-api` — the only service that owns `User` records.
 Every other backend service trusts a token `platform-api` issued rather
 than authenticating anyone itself.
 
-## Microsoft Entra ID integration seam (not yet activated)
+## Microsoft Entra ID SSO (`AUTH_MODE=entra`)
 
-`apps/platform-api/app/api/routes/auth_entra.py` exposes the concrete OIDC Authorization Code
-+ PKCE integration points the CR requires (Phase 2 §8), each failing fast
-with a typed 501 until `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` /
-`ENTRA_CLIENT_SECRET` / `ENTRA_REDIRECT_URI` are configured:
+`AUTH_MODE` selects the sign-in path:
 
-- `GET /api/auth/entra/login-url` — builds the Microsoft identity platform
-  v2.0 `/authorize` URL for the Next.js login page to redirect to.
-- `POST /api/auth/entra/token` — where the authorization-code exchange,
-  `EntraAuthProvider` JWKS validation, and DijiOne `User` resolution (by
-  `entra_object_id`, falling back to email on first login) will happen.
+| `AUTH_MODE` | Sign-in | `/api/auth/dev-*` | `/api/auth/entra/*` |
+|---|---|---|---|
+| `dev` (default) | Dev Identity Mode persona switcher | active | 501 |
+| `entra` | Microsoft Entra ID (OIDC Authorization Code + PKCE) | **404** | active (needs the four `ENTRA_*` values, else 501) |
 
-Required Entra app-registration steps once credentials are available:
-register a single-tenant (or multi-tenant, per Dijital Team's decision) app
-registration, add a Web platform redirect URI matching
-`ENTRA_REDIRECT_URI`, expose `openid profile email` delegated permissions,
-and record the tenant/client id + client secret into `.env` (never commit
-them). No other application code changes — `get_auth_provider()` remains
-the single seam (CLAUDE.md §12).
+**Entra authenticates; DijiOne still issues the session token.** The Entra
+`id_token` is verified once, at `/api/auth/entra/token`, then discarded — a
+DijiOne HS256 claims token (`issue_session_token`, issuer
+`dijione-dev-identity`) is minted from it, exactly as `dev-login` does. So
+`talent-api` / `birthday-api` / `spark-api` and `packages/auth-client-py`
+are **unchanged** — they never see an Entra token.
+
+Flow (`apps/platform-api/app/api/routes/auth_entra.py`,
+`apps/shell-web/src/app/{login,api/auth/callback}/route.ts`):
+
+1. `GET /login` (shell-web) → `GET /api/auth/entra/login-url` builds the v2.0
+   `/authorize` URL with `state` / `nonce` / PKCE `S256` and returns a
+   short-lived signed **flow token** carrying `{state, nonce, code_verifier}`;
+   shell-web stores it in an httpOnly cookie and 302s to Entra.
+2. Entra redirects to `/api/auth/callback` (a shell-web filesystem route,
+   matched before the `/api/auth/*` proxy). It POSTs `{code, state,
+   flow_token}` to `POST /api/auth/entra/token`.
+3. `platform-api` validates `state`, exchanges the code (confidential client
+   + `code_verifier`), validates the `id_token` (`EntraTokenVerifier`: RS256
+   against Entra's cached JWKS, `iss` / `aud` / `exp` / `nonce` / `tid`),
+   resolves the DijiOne `User` (§first-login below), and issues the DijiOne
+   session token.
+4. shell-web's callback stores that token in `localStorage` (same key the app
+   already uses) and navigates to `/`. `GET /api/auth/logout` returns the
+   Entra front-channel logout URL.
+
+**First-login policy (option C).** No existing `User` for the Entra `oid` →
+match on email → else **auto-create `is_active=False`**; login is then
+refused (403 "ask an admin to activate") until a platform admin activates the
+account and assigns access in the Admin Center. Pre-provision the demo users'
+email so they are active immediately.
+
+**Entra app registration** (one, single-tenant): Web platform, redirect URI
+`= ENTRA_REDIRECT_URI` (`https://<host>/api/auth/callback`), delegated
+`openid profile email`, one client secret. No separate API registration —
+DijiOne's services consume the DijiOne session token, not an Entra token.
+Record `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` /
+`ENTRA_REDIRECT_URI` / `PUBLIC_BASE_URL` into `.env` or the host secret store
+(never commit). `EntraAuthProvider` in `security.py` remains an unused stub —
+the id_token verifier + session issuer are the working path.
 
 ## The auth seam (`apps/platform-api/app/core/security.py`)
 
@@ -108,10 +137,10 @@ class DevAuthProvider(AuthProvider): ...   # active when DEV_IDENTITY_MODE=true
 class EntraAuthProvider(AuthProvider): ... # production seam, not yet implemented
 ```
 
-`get_auth_provider()` returns whichever implementation is active based on
-`Settings.dev_identity_mode`. Route and service code depend only on
-`AuthProvider` — swapping in real Entra ID token validation later touches
-exactly this one file, never business logic.
+`get_auth_provider()` returns `DevAuthProvider` when `Settings.dev_auth_enabled`
+(`AUTH_MODE=dev` **and** `DEV_IDENTITY_MODE=true`). In `entra` mode the Entra
+`id_token` is verified by `EntraTokenVerifier` and the DijiOne session token
+is minted by `issue_session_token` — see "Microsoft Entra ID SSO" above.
 
 ## Role model
 

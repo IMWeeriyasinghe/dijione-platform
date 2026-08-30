@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import get_settings
 from app.core.security import get_auth_provider
 from app.db.session import get_db
 from app.models.user import User
@@ -13,6 +14,15 @@ from app.services.authorization_service import AuthorizationService
 from app.services.claims_service import build_claims
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _require_dev_auth() -> None:
+    if not get_settings().dev_auth_enabled:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Dev Identity Mode is disabled in this environment (AUTH_MODE=entra). "
+            "Use Microsoft sign-in.",
+        )
 
 
 def _module_roles_payload(user: User, repo: UserRepository) -> list[dict]:
@@ -38,7 +48,8 @@ def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> Curre
 @router.get("/dev-personas", response_model=list[DevPersonaOut])
 def list_dev_personas(db: Session = Depends(get_db)) -> list[DevPersonaOut]:
     """Public listing used by the local DEV IDENTITY MODE persona switcher.
-    Not present/enabled once DEV_IDENTITY_MODE is off."""
+    404s once AUTH_MODE=entra."""
+    _require_dev_auth()
     repo = UserRepository(db)
     return [
         DevPersonaOut(
@@ -55,6 +66,7 @@ def list_dev_personas(db: Session = Depends(get_db)) -> list[DevPersonaOut]:
 
 @router.post("/dev-login", response_model=TokenResponse)
 def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    _require_dev_auth()
     repo = UserRepository(db)
     user = repo.get_by_persona_key(payload.persona_key)
     if user is None:
@@ -75,3 +87,24 @@ def get_me(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> CurrentUserOut:
     return _to_current_user_out(user, UserRepository(db), db)
+
+
+@router.get("/config")
+def auth_config() -> dict:
+    """Public — tells the frontend which sign-in UI to render."""
+    return {"auth_mode": "dev" if get_settings().dev_auth_enabled else "entra"}
+
+
+@router.get("/logout")
+def logout() -> dict:
+    """Return the Entra front-channel logout URL (or None in dev mode). The
+    frontend clears its local token and, if a URL is returned, navigates to
+    it so the Entra session is also ended."""
+    settings = get_settings()
+    if settings.dev_auth_enabled or not settings.entra_tenant_id:
+        return {"logout_url": None}
+    post = settings.public_base_url or ""
+    url = f"{settings.entra_authority}/oauth2/v2.0/logout"
+    if post:
+        url += f"?post_logout_redirect_uri={post}"
+    return {"logout_url": url}
