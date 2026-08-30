@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1
+#
+# One image for every Next.js app. Build context = repo root.
+#   docker build -f deploy/Dockerfile.web --build-arg APP=shell-web  -t dijione/shell-web .
+#   docker build -f deploy/Dockerfile.web --build-arg APP=talent-web -t dijione/talent-web .
+#   (also: admin-web, birthday-web, birthday-supplier-web)
+#
+# Uses Next.js `output: "standalone"` (set in each app's next.config.ts).
+# The apps `transpilePackages` the workspace packages (design-system,
+# auth-client-ts, contracts) from source, so the whole repo is the context
+# and `npm ci` at the root wires the workspace symlinks.
+#
+# Upstream URLs are read from the environment at server start
+# (PLATFORM_API_URL, TALENT_API_URL, ...) — see each next.config.ts.
+
+ARG NODE_VERSION=22
+
+# ---- build ----
+FROM node:${NODE_VERSION}-slim AS build
+ARG APP
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /repo
+
+COPY package.json package-lock.json .nvmrc ./
+COPY packages ./packages
+COPY apps ./apps
+RUN npm ci
+RUN npm run build --workspace apps/${APP}
+
+# ---- run ----
+FROM node:${NODE_VERSION}-slim AS run
+ARG APP
+ENV APP=${APP} \
+    NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1
+WORKDIR /app
+
+# Standalone bundle: a self-contained server + traced node_modules + the
+# traced workspace packages. In a monorepo the server entry is at
+# apps/<APP>/server.js relative to the standalone root.
+COPY --from=build /repo/apps/${APP}/.next/standalone ./
+COPY --from=build /repo/apps/${APP}/.next/static ./apps/${APP}/.next/static
+COPY --from=build /repo/apps/${APP}/public ./apps/${APP}/public
+
+# Container Apps sets $PORT; Next standalone honours PORT/HOSTNAME.
+ENV PORT=3000 HOSTNAME=0.0.0.0
+EXPOSE 3000
+CMD ["sh", "-c", "exec node apps/${APP}/server.js"]

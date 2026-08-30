@@ -1,0 +1,16 @@
+# Build context is the repo root. Keep it small and never ship local state.
+**/.venv
+**/node_modules
+**/.next
+**/.git
+**/.ruff_cache
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.db
+**/test_*.db
+**/.env
+**/.env.*
+!**/.env.example
+**/*.tsbuildinfo
+docs/diagrams/rendered

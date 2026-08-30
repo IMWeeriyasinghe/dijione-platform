@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+#
+# One image for every FastAPI service. Build context = repo root.
+#   docker build -f deploy/Dockerfile.api --build-arg SERVICE=platform-api -t dijione/platform-api .
+#   docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api    -t dijione/talent-api .
+#   (also: admin-api, birthday-api, spark-api)
+#
+# admin-api / talent-api / birthday-api / spark-api install
+# `packages/auth-client-py` editable via `-e ../../packages/auth-client-py`
+# in their requirements.txt, so that path must exist relative to the
+# requirements file inside the image — hence the repo-relative layout below.
+
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim AS run
+
+ARG SERVICE
+ENV SERVICE=${SERVICE} \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Shared editable package first (referenced by ../../packages/auth-client-py).
+COPY packages/auth-client-py ./packages/auth-client-py
+
+# Dependencies (cached layer — only re-runs when requirements.txt changes).
+COPY apps/${SERVICE}/requirements.txt ./apps/${SERVICE}/requirements.txt
+RUN pip install -r apps/${SERVICE}/requirements.txt
+
+# Application code.
+COPY apps/${SERVICE} ./apps/${SERVICE}
+
+WORKDIR /app/apps/${SERVICE}
+
+# Container Apps sets $PORT; default 8000 for local runs.
+EXPOSE 8000
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
