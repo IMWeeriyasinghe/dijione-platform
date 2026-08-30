@@ -1,0 +1,50 @@
+name: web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/*-web/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".nvmrc"
+      - ".github/workflows/web.yml"
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - shell-web
+          - admin-web
+          - talent-web
+          - birthday-web
+          - birthday-supplier-web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm --workspace apps/${{ matrix.app }} run lint
+
+      - name: Build
+        run: npm --workspace apps/${{ matrix.app }} run build

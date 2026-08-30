@@ -1,0 +1,20 @@
+# Normalize all text to LF in the repo and in every working tree.
+# The repo index is already 100% LF; this keeps it that way regardless of
+# each contributor's core.autocrlf setting.
+* text=auto eol=lf
+
+# Explicit binaries (never diffed, never EOL-converted)
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff  binary
+*.woff2 binary
+
+# Diagram sources are text
+*.mmd text
+
+# Generated lockfile: keep as text, collapse diffs, mark generated
+package-lock.json linguist-generated -diff

@@ -1,0 +1,55 @@
+name: api
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/*-api/**"
+      - "packages/auth-client-py/**"
+      - ".python-version"
+      - ".github/workflows/api.yml"
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - platform-api
+          - admin-api
+          - talent-api
+          - birthday-api
+          - spark-api
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.service }}
+    env:
+      # Never let a test reach a real external system.
+      INTEGRATIONS_MODE: mock
+      EMAIL_SENDING_MODE: mock
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest -q

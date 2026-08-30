@@ -1,0 +1,5 @@
+# Default owner for everything in this repo.
+# Add per-area owners below as the team grows, e.g.:
+#   /apps/talent-api/   @some-user
+#   /apps/birthday-api/  @another-user
+*       @IMWeeriyasinghe

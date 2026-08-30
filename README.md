@@ -30,6 +30,8 @@ switcher — no credentials required locally (see
 | [`PLAN.md`](PLAN.md) | Build plan, phases, architecture decisions |
 | [`docs/mvp-status.md`](docs/mvp-status.md) | What's done vs. deferred |
 | [`docs/platform/local-development.md`](docs/platform/local-development.md) | Full local setup, all 8 services |
+| [`docs/platform/environment.md`](docs/platform/environment.md) | Environment & secrets contract — what may/may not be committed |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Setup short version, branch/PR workflow, quality gates |
 | [`docs/platform/service-architecture.md`](docs/platform/service-architecture.md) | The 8 services, what each owns |
 | [`docs/platform/service-contracts.md`](docs/platform/service-contracts.md) | API surface per service, gateway routing |
 | [`docs/platform/failure-isolation.md`](docs/platform/failure-isolation.md) | What happens when one service is down |

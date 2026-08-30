@@ -2,7 +2,9 @@
 node_modules/
 .next/
 out/
+.turbo/
 npm-debug.log*
+*.tsbuildinfo
 
 # Python
 __pycache__/
@@ -13,10 +15,20 @@ venv/
 .pytest_cache/
 .ruff_cache/
 
-# Env
+# Env — real secrets are NEVER committed; only *.example templates are tracked
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
+
+# Key material (defensive — nothing like this exists today; keep it that way)
+*.pem
+*.key
+*.pfx
+*.p12
+*.keystore
+serviceAccount*.json
+**/secrets.json
 
 # Database
 *.db
@@ -28,6 +40,9 @@ venv/
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+
+# Local tooling overrides
+.claude/settings.local.json
 
 # Build artifacts
 dist/

@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Frontend workspaces + shared TS packages (single npm tree at the repo root)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Python services + shared auth client
+  - package-ecosystem: pip
+    directories:
+      - /apps/platform-api
+      - /apps/admin-api
+      - /apps/talent-api
+      - /apps/birthday-api
+      - /apps/spark-api
+      - /packages/auth-client-py
+    schedule:
+      interval: weekly
+    groups:
+      pip-minor-patch:
+        update-types: [minor, patch]
