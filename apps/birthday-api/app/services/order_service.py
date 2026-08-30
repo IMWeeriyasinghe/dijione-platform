@@ -14,7 +14,7 @@ employees in one session/transaction and commits once at the end.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -43,6 +43,10 @@ def create_or_get_order(
     requires_admin_review: bool,
     hold_reason: str | None,
     supplier_id: int | None,
+    delivery_date: date | None = None,
+    catalogue_item_id: int | None = None,
+    verify_by: date | None = None,
+    exception_reason: str | None = None,
     delivery_address_line1: str | None = None,
     delivery_address_line2: str | None = None,
     delivery_city: str | None = None,
@@ -57,7 +61,14 @@ def create_or_get_order(
     # supplied, so a bare/no-address BambooHR record doesn't falsely claim
     # a "BAMBOOHR" source with nothing behind it.
     has_address = any(
-        [delivery_address_line1, delivery_address_line2, delivery_city, delivery_state_province, delivery_postal_code, delivery_country]
+        [
+            delivery_address_line1,
+            delivery_address_line2,
+            delivery_city,
+            delivery_state_province,
+            delivery_postal_code,
+            delivery_country,
+        ]
     )
 
     order = BirthdayOrder(
@@ -68,6 +79,12 @@ def create_or_get_order(
         employee_email=employee_email,
         birthday_date=birthday_date,
         birthday_year=birthday_year,
+        # §8: delivery date defaults to the birthday occurrence when the
+        # caller does not specify one; still fully editable afterwards.
+        delivery_date=delivery_date or birthday_date,
+        catalogue_item_id=catalogue_item_id,
+        verify_by=verify_by,
+        exception_reason=exception_reason,
         office_location=office_location,
         lead_time_days=lead_time_days,
         lead_time_class=str(lead_time_class),
@@ -75,6 +92,7 @@ def create_or_get_order(
         hold_reason=hold_reason,
         supplier_id=supplier_id,
         requires_admin_review=requires_admin_review,
+        detected_at=datetime.now(UTC),
         delivery_address_line1=delivery_address_line1,
         delivery_address_line2=delivery_address_line2,
         delivery_city=delivery_city,

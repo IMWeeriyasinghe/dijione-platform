@@ -31,7 +31,7 @@ from app.services.eligibility_service import compute_eligibility
 NOT_CREATED_STATUS = "not_created"
 DEFAULT_CAKE_QUANTITY = 1  # fixed constant — no AI/dynamic quantity logic in this path
 
-_NEEDS_ATTENTION_ORDER_STATUSES = {"REQUIRES_ATTENTION", "ON_HOLD"}
+_NEEDS_ATTENTION_ORDER_STATUSES = {"REQUIRES_ATTENTION", "REQUIRES_REVIEW", "ON_HOLD"}
 _NEEDS_ATTENTION_ADDRESS_STATUSES = {"NEEDS_UPDATE", "VERIFICATION_REQUESTED"}
 
 
@@ -141,6 +141,7 @@ def list_upcoming_birthdays(
                     state_province=employee.get("state_province"),
                     cake_order_status=cake_order_status,
                     order_id=order.id if order is not None else None,
+                    order_reference=order.order_reference if order is not None else None,
                     hire_date=employee["hire_date"].isoformat() if employee.get("hire_date") else None,
                     eligible=eligible,
                     eligibility_reason=reason.value,

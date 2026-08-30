@@ -50,10 +50,12 @@ class BirthdayOrderSummary(BaseModel):
     lead_time_class: str
     status: str
     supplier_id: int | None
+    supplier_name: str | None = None
     delivery_date: date | None = None
     catalogue_item_id: int | None = None
     requires_admin_review: bool
-    is_overdue: bool
+    exception_reason: str | None = None
+    verify_by: date | None = None
     address_verification_status: str
 
 
@@ -88,19 +90,30 @@ class BirthdayOrderRead(BaseModel):
     delivery_country: str | None = None
     delivery_address_source: str | None = None
     supplier_id: int | None
+    supplier_name: str | None = None
     delivery_date: date | None = None
     catalogue_item_id: int | None = None
     is_manual_override: bool
     requires_admin_review: bool
-    is_overdue: bool
-    has_delivery_issue: bool
+    exception_reason: str | None = None
+    verify_by: date | None = None
     retry_count: int
     last_failure_reason: str | None
+    released_at: datetime | None = None
+    released_by: int | None = None
+    review_confirmed_at: datetime | None = None
+    review_confirmed_by: int | None = None
+    accepted_at: datetime | None = None
+    preparing_at: datetime | None = None
+    out_for_delivery_at: datetime | None = None
+    delivered_at: datetime | None = None
+    completed_at: datetime | None = None
     created_by: int | None
     created_at: datetime
     updated_at: datetime
     events: list[OrderEventRead] = []
     special_requirements: list[SpecialRequirementRead] = []
+    issues: list["OrderIssueRead"] = []
 
 
 class BirthdayOrderCreate(BaseModel):
@@ -111,6 +124,8 @@ class BirthdayOrderCreate(BaseModel):
     birthday_date: date
     office_location: str
     quantity: int = 1
+    # Optional — defaults server-side to the birthday occurrence (§8).
+    delivery_date: date | None = None
     special_requirements: list[SpecialRequirementCreate] = []
 
 
@@ -139,8 +154,51 @@ class CancelRequest(BaseModel):
     reason: str | None = None
 
 
-class RejectRequest(BaseModel):
-    reason: str
+class VerifyAddressRequest(BaseModel):
+    """The one routine human checkpoint (plan §J/§K). ``corrected=True``
+    tells the verify service the address was edited, not just confirmed as
+    snapshotted — a correction always flags the order for review rather
+    than auto-releasing it."""
+
+    corrected: bool = False
+    note: str | None = None
+
+
+class ConfirmReleaseRequest(BaseModel):
+    """One-click release for a REQUIRES_REVIEW (flagged) order."""
+
+    note: str | None = None
+
+
+class VerifyAddressResponse(BaseModel):
+    order: "BirthdayOrderRead"
+    auto_released: bool
+    flagged_reasons: list[str] = []
+
+
+class OrderIssueCreate(BaseModel):
+    type: str
+    detail: str
+
+
+class OrderIssueResolve(BaseModel):
+    resolution_detail: str
+
+
+class OrderIssueRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_id: int
+    raised_by_type: str
+    raised_by_id: int | None
+    type: str
+    detail: str
+    status: str
+    resolution_detail: str | None = None
+    resolved_by: int | None = None
+    resolved_at: datetime | None = None
+    created_at: datetime
 
 
 class ReadinessCheckResponse(BaseModel):
@@ -232,4 +290,12 @@ class SupplierStatusUpdateRequest(BaseModel):
 
 
 class SupplierIssueRequest(BaseModel):
+    """Legacy free-text-only issue payload — superseded by OrderIssueCreate
+    (typed) but kept so any existing caller of POST /portal/orders/{id}/issue
+    still works during the transition."""
+
     detail: str
+
+
+BirthdayOrderRead.model_rebuild()
+VerifyAddressResponse.model_rebuild()

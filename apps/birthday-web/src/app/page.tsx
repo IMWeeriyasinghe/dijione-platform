@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CakeSlice, Clock3, ListOrdered } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CakeSlice, Clock3, ListOrdered } from "lucide-react";
 import Link from "next/link";
 import { getDashboardSummary, getUpcoming } from "@/lib/api";
 import {
@@ -39,15 +39,29 @@ export default function DashboardPage() {
         description="Operational overview of the cake-ordering workflow."
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard label="Total Orders" value={summary.total_orders} icon={ListOrdered} tone="brand" />
-        <MetricCard label="Upcoming (14 days)" value={summary.upcoming_count} icon={CakeSlice} />
-        <MetricCard label="Exceptions" value={summary.exceptions_count} icon={AlertTriangle} />
-        <MetricCard
-          label="Urgent Lead Time"
-          value={summary.by_lead_time_class["URGENT"] ?? 0}
-          icon={Clock3}
-        />
+      {/* Actionable attention cards (plan §M) — each links straight to the
+          filtered queue it counts, not a static vanity number. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <Link href="/orders?status_filter=PENDING_VERIFICATION" className="block">
+          <MetricCard label="Address verification required" value={summary.pending_verification_count} icon={BadgeCheck} tone="brand" />
+        </Link>
+        <Link href="/orders?status_filter=PENDING_VERIFICATION" className="block">
+          <MetricCard label="Verification overdue" value={summary.verification_overdue_count} icon={Clock3} />
+        </Link>
+        <Link href="/orders?status_filter=REQUIRES_REVIEW" className="block">
+          <MetricCard label="In review" value={summary.requires_review_count} icon={ListOrdered} />
+        </Link>
+        <Link href="/orders?status_filter=REQUIRES_ATTENTION" className="block">
+          <MetricCard label="Exceptions" value={summary.exceptions_count} icon={AlertTriangle} />
+        </Link>
+        <Link href="/orders?status_filter=SENT_TO_SUPPLIER" className="block">
+          <MetricCard label="Supplier not yet accepted" value={summary.supplier_not_accepted_count} icon={CakeSlice} />
+        </Link>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <MetricCard label="Upcoming (14 days)" value={summary.upcoming_count} icon={CakeSlice} tone="brand" />
+        <MetricCard label="Deliveries today at risk" value={summary.deliveries_today_at_risk_count} icon={AlertTriangle} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">

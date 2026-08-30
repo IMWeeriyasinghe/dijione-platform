@@ -34,6 +34,9 @@ const services = [
   { name: "admin-web", color: "\x1b[95m", cwd: "apps/admin-web", cmd: "npm", args: ["run", "dev"] },
   { name: "talent-web", color: "\x1b[93m", cwd: "apps/talent-web", cmd: "npm", args: ["run", "dev"] },
   { name: "birthday-web", color: "\x1b[92m", cwd: "apps/birthday-web", cmd: "npm", args: ["run", "dev"] },
+  // External-facing supplier portal (separate app, port 3006). Not proxied
+  // through shell-web — it is reached directly by external supplier users.
+  { name: "birthday-supplier-web", color: "\x1b[96m", cwd: "apps/birthday-supplier-web", cmd: "npm", args: ["run", "dev"] },
 ];
 
 const RESET = "\x1b[0m";

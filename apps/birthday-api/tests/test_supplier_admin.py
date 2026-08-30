@@ -279,6 +279,72 @@ def test_supplier_user_management_requires_manage_permission(api_client, db):
     assert resp.status_code == 403
 
 
+def test_only_one_supplier_can_be_the_island_wide_default(api_client, db):
+    admin = headers_for(330, role="BIRTHDAY_ADMIN")
+    a = _create_supplier(api_client, admin, name="Default A")
+    b = _create_supplier(api_client, admin, name="Default B")
+
+    set_a = api_client.patch(
+        f"/api/birthday/suppliers/{a['id']}", json={"is_default": True}, headers=admin,
+    )
+    assert set_a.status_code == 200
+    assert set_a.json()["is_default"] is True
+
+    # Setting B as default clears A.
+    set_b = api_client.patch(
+        f"/api/birthday/suppliers/{b['id']}", json={"is_default": True}, headers=admin,
+    )
+    assert set_b.json()["is_default"] is True
+    assert api_client.get(f"/api/birthday/suppliers/{a['id']}", headers=admin).json()["is_default"] is False
+
+
+def test_link_entra_object_id_to_supplier_user(api_client, db):
+    """§22/§23: an internal admin can set the durable Entra B2B guest
+    identity link on a SupplierUser during onboarding."""
+    admin = headers_for(320, role="BIRTHDAY_ADMIN")
+    supplier = _create_supplier(api_client, admin, name="Entra Link Bakes")
+    created = api_client.post(
+        f"/api/birthday/suppliers/{supplier['id']}/users",
+        json={"email": "guest@entralink.example.com", "full_name": "Guest User"},
+        headers=admin,
+    ).json()
+    assert created["entra_object_id"] is None
+
+    linked = api_client.patch(
+        f"/api/birthday/suppliers/{supplier['id']}/users/{created['id']}",
+        json={"entra_object_id": "00000000-1111-2222-3333-444444444444"},
+        headers=admin,
+    )
+    assert linked.status_code == 200
+    assert linked.json()["entra_object_id"] == "00000000-1111-2222-3333-444444444444"
+
+
+def test_entra_object_id_must_be_unique_across_supplier_users(api_client, db):
+    admin = headers_for(321, role="BIRTHDAY_ADMIN")
+    supplier = _create_supplier(api_client, admin, name="Entra Unique Bakes")
+    oid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    u1 = api_client.post(
+        f"/api/birthday/suppliers/{supplier['id']}/users",
+        json={"email": "u1@entraunique.example.com"}, headers=admin,
+    ).json()
+    u2 = api_client.post(
+        f"/api/birthday/suppliers/{supplier['id']}/users",
+        json={"email": "u2@entraunique.example.com"}, headers=admin,
+    ).json()
+
+    first = api_client.patch(
+        f"/api/birthday/suppliers/{supplier['id']}/users/{u1['id']}",
+        json={"entra_object_id": oid}, headers=admin,
+    )
+    assert first.status_code == 200
+
+    clash = api_client.patch(
+        f"/api/birthday/suppliers/{supplier['id']}/users/{u2['id']}",
+        json={"entra_object_id": oid}, headers=admin,
+    )
+    assert clash.status_code == 409
+
+
 def test_cross_supplier_isolation_still_passes_with_real_supplier_users(api_client, db):
     """Re-confirms Phase-Next §5 isolation continues to hold once
     SupplierScope re-validates against real DB rows (this admin phase's

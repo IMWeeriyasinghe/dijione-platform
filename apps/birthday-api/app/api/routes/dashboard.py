@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_birthday_permission
+from app.api.routes.config import get_or_create_config
 from app.core.constants import LeadTimeClass, OrderStatus
 from app.db.session import get_db
 from app.models.birthday_order import BirthdayOrder
@@ -40,7 +43,11 @@ def get_dashboard(
         by_lead_time_class[class_value] = count
 
     exceptions_count = sum(by_status.get(s, 0) for s in EXCEPTION_STATUSES)
-    upcoming_count = len(BirthdayOrderRepository(db).list_upcoming(days_ahead=14))
+    repo = BirthdayOrderRepository(db)
+    upcoming_count = len(repo.list_upcoming(days_ahead=14))
+
+    config = get_or_create_config(db)
+    sla_cutoff = datetime.now(UTC) - timedelta(hours=config.acknowledgement_sla_hours)
 
     return DashboardSummary(
         total_orders=total_orders,
@@ -48,6 +55,11 @@ def get_dashboard(
         by_lead_time_class=by_lead_time_class,
         upcoming_count=upcoming_count,
         exceptions_count=exceptions_count,
+        pending_verification_count=repo.count_pending_verification(),
+        verification_overdue_count=repo.count_verification_overdue(),
+        requires_review_count=repo.count_requires_review(),
+        supplier_not_accepted_count=repo.count_supplier_not_accepted(older_than=sla_cutoff),
+        deliveries_today_at_risk_count=repo.count_deliveries_today_at_risk(),
     )
 
 

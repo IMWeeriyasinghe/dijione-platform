@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -23,6 +23,13 @@ class Supplier(TimestampMixin, Base):
     working_days: Mapped[str] = mapped_column(String(255), default="")
     cutoff_time: Mapped[str] = mapped_column(String(32), default="")
     notes: Mapped[str] = mapped_column(Text, default="")  # internal-only, never supplier-visible
+
+    # Island-wide / catch-all supplier: when detection cannot resolve a
+    # supplier from the team member's office location, the single supplier
+    # flagged is_default (if any, and ACTIVE) is used instead. At most one
+    # supplier may hold this flag — the create/update routes clear it on
+    # every other row when it is set.
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     locations: Mapped[list[SupplierLocation]] = relationship(  # noqa: F821
         back_populates="supplier", cascade="all, delete-orphan"

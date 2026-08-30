@@ -21,12 +21,12 @@ settings = get_settings()
 app = FastAPI(
     title="DijiBirthday API",
     description=(
-        "DijiBirthday service skeleton (CR §9) — proves DijiOne can host a "
-        "second independently bounded application. No BambooHR connection, "
-        "no cake-ordering logic, no database yet; see "
-        "docs/platform/service-architecture.md."
+        "DijiBirthday API — BambooHR-driven birthday-cake ordering: live "
+        "employee-directory discovery, eligibility, idempotent detection, "
+        "delivery-address verification, the explicit approval workflow, and "
+        "the supplier-portal boundary. See docs/birthday/end-to-end-workflow.md."
     ),
-    version="0.1.0",
+    version="1.0.0",
 )
 
 app.add_middleware(

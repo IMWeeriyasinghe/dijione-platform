@@ -49,7 +49,7 @@ const PROVINCE_OPTIONS = [
 // EMPLOYMENT_ENDED, MISSING_HIRE_DATE, MISSING_BIRTHDAY,
 // INVALID_EMPLOYEE_DATA) falls into the "Not Eligible" group by default in
 // groupFor() below — no explicit list needed here.
-const NEEDS_ATTENTION_ORDER_STATUSES = new Set(["REQUIRES_ATTENTION", "ON_HOLD"]);
+const NEEDS_ATTENTION_ORDER_STATUSES = new Set(["REQUIRES_ATTENTION", "REQUIRES_REVIEW", "ON_HOLD"]);
 const NEEDS_ATTENTION_ADDRESS_STATUSES = new Set(["NEEDS_UPDATE", "VERIFICATION_REQUESTED"]);
 
 type Group = "ELIGIBLE" | "FUTURE_STARTER" | "NOT_ELIGIBLE" | "NEEDS_ATTENTION";
@@ -256,6 +256,7 @@ export default function UpcomingPage() {
                 />
                 <Th>Address Verification</Th>
                 <Th>Cake Order Status</Th>
+                <Th>Order Reference</Th>
               </Tr>
             </Thead>
             <tbody>
@@ -264,14 +265,16 @@ export default function UpcomingPage() {
                 return (
                   <Tr key={item.employee_id}>
                     <Td>
-                      <p className="font-medium text-dt-text-primary">{item.display_name}</p>
-                      <p className="text-xs text-dt-text-secondary">
-                        {item.employee_number ?? (
-                          <span className="italic text-dt-text-secondary/70">
-                            {item.employee_id} (internal id — no team member ID)
-                          </span>
-                        )}
-                      </p>
+                      <span className="font-medium text-dt-text-primary">{item.display_name}</span>{" "}
+                      {item.employee_number ? (
+                        <span className="whitespace-nowrap font-mono text-xs text-dt-text-secondary">
+                          ({item.employee_number})
+                        </span>
+                      ) : (
+                        <span className="whitespace-nowrap text-xs italic text-dt-text-secondary/70">
+                          (no Team Member ID)
+                        </span>
+                      )}
                     </Td>
                     <Td>{item.birthday}</Td>
                     <Td>{item.days_until_birthday}d</Td>
@@ -306,6 +309,18 @@ export default function UpcomingPage() {
                     </Td>
                     <Td>
                       <StatusBadge status={item.cake_order_status} />
+                    </Td>
+                    <Td>
+                      {item.order_id != null && item.order_reference ? (
+                        <Link
+                          href={`/orders/${item.order_id}`}
+                          className="font-mono text-xs text-dt-burnt-orange hover:underline"
+                        >
+                          {item.order_reference}
+                        </Link>
+                      ) : (
+                        <span className="text-dt-text-secondary">No order yet</span>
+                      )}
                     </Td>
                   </Tr>
                 );

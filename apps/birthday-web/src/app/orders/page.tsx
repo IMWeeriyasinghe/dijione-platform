@@ -2,8 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { listOrders } from "@/lib/api";
+import {
+  ADDRESS_VERIFICATION_STATUSES,
+  LEAD_TIME_CLASSES,
+  ORDER_STATUSES,
+} from "@dijione/contracts";
 import {
   EmptyState,
   ErrorState,
@@ -24,39 +30,27 @@ import {
   type SortDirection,
 } from "@dijione/design-system";
 
-const STATUS_OPTIONS = [
-  "DRAFT",
-  "READY_FOR_APPROVAL",
-  "APPROVED",
-  "REJECTED",
-  "PLANNED",
-  "ON_HOLD",
-  "SENT_TO_SUPPLIER",
-  "SUPPLIER_REVIEW",
-  "CHANGE_REQUESTED",
-  "CONFIRMED",
-  "PREPARING",
-  "OUT_FOR_DELIVERY",
-  "DELIVERED",
-  "COMPLETED",
-  "UNABLE_TO_FULFIL",
-  "CANCELLED",
-  "REQUIRES_ATTENTION",
-];
-
-const LEAD_TIME_OPTIONS = ["NORMAL", "SHORT_NOTICE", "URGENT"];
-const ADDRESS_STATUS_OPTIONS = ["NOT_CHECKED", "VERIFICATION_REQUESTED", "VERIFIED", "NEEDS_UPDATE", "NOT_APPLICABLE"];
+// Imported from @dijione/contracts (semi-automation future-state plan §P)
+// instead of a locally re-declared literal array — this was one of the
+// ~20 places the status set used to be independently typed.
+const STATUS_OPTIONS = ORDER_STATUSES;
+const LEAD_TIME_OPTIONS = LEAD_TIME_CLASSES;
+const ADDRESS_STATUS_OPTIONS = ADDRESS_VERIFICATION_STATUSES;
 
 const PAGE_SIZE = 20;
 
 export default function OrdersPage() {
+  // Dashboard attention cards deep-link here with a pre-set filter (plan
+  // §M/§36 — "avoid static KPI cards with no action") — read it once on
+  // load so /orders?status_filter=REQUIRES_ATTENTION actually filters.
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status_filter") ?? "");
   const [leadTimeClass, setLeadTimeClass] = useState("");
   const [officeLocation, setOfficeLocation] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [addressStatus, setAddressStatus] = useState("");
-  const [sortBy, setSortBy] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<string | null>(searchParams.get("sort_by"));
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [page, setPage] = useState(1);
 
@@ -243,7 +237,7 @@ export default function OrdersPage() {
                   </Td>
                   <Td>{order.birthday_date}</Td>
                   <Td>{order.delivery_date ?? "—"}</Td>
-                  <Td>{order.supplier_id ?? "Unassigned"}</Td>
+                  <Td>{order.supplier_name ?? (order.supplier_id != null ? `Supplier #${order.supplier_id}` : "Unassigned")}</Td>
                   <Td>
                     <StatusBadge status={order.status} />
                   </Td>

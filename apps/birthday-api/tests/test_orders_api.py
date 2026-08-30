@@ -70,7 +70,7 @@ def test_hold_release_cancel_lifecycle(api_client, db):
     }
     created = api_client.post("/api/birthday/orders", json=payload, headers=headers).json()
     order_id = created["id"]
-    assert created["status"] == "DRAFT"  # Phase-Next §2: manual orders now start DRAFT, not PLANNED
+    assert created["status"] == "PENDING_VERIFICATION"
 
     held = api_client.post(f"/api/birthday/orders/{order_id}/hold", json={"hold_reason": "check details"}, headers=headers)
     assert held.status_code == 200
@@ -78,7 +78,7 @@ def test_hold_release_cancel_lifecycle(api_client, db):
 
     released = api_client.post(f"/api/birthday/orders/{order_id}/release", json={}, headers=headers)
     assert released.status_code == 200
-    assert released.json()["status"] == "PLANNED"
+    assert released.json()["status"] == "PENDING_VERIFICATION"  # not the legacy PLANNED status
 
     cancelled = api_client.post(f"/api/birthday/orders/{order_id}/cancel", json={"reason": "cancelled"}, headers=headers)
     assert cancelled.status_code == 200

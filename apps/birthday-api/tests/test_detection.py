@@ -30,6 +30,10 @@ def _default_config() -> BirthdayDetectionConfig:
         urgent_threshold_days=2,
         window_lookback_days=1,
         window_lookahead_days=14,
+        default_quantity=1,
+        verify_buffer_days=2,
+        acknowledgement_sla_hours=24,
+        auto_release_enabled=True,
     )
 
 
@@ -85,20 +89,24 @@ def test_window_boundary_included_and_excluded():
     assert is_within_scan_window(-2, config) is False
 
 
-def test_new_joiner_late_detection_planned_when_supplier_can_still_fulfil(db):
+def test_new_joiner_late_detection_pending_verification_when_supplier_can_still_fulfil(db):
     supplier = Supplier(name="Fast Bakes", lead_time_days=1)
     db.add(supplier)
     db.flush()
 
-    status, requires_review, hold_reason = determine_initial_status(
+    status, exception_reason = determine_initial_status(
         lead_time_class=LeadTimeClass.URGENT,
         days_remaining=2,
         supplier=supplier,
         has_work_email=True,
+        has_default_cake=False,
     )
-    assert status == OrderStatus.DRAFT  # Phase-Next §2: auto-detected orders start DRAFT, not PLANNED
-    assert requires_review is True  # URGENT/SHORT_NOTICE always flagged for review
-    assert hold_reason is None
+    # A resolvable, in-time order lands in PENDING_VERIFICATION regardless
+    # of lead-time class — URGENT/SHORT_NOTICE flags the order for review
+    # only *after* verification (see address_verification_service), not
+    # by keeping it out of the queue.
+    assert status == OrderStatus.PENDING_VERIFICATION
+    assert exception_reason is None
 
 
 def test_new_joiner_late_detection_on_hold_when_supplier_cannot_fulfil(db):
@@ -106,15 +114,15 @@ def test_new_joiner_late_detection_on_hold_when_supplier_cannot_fulfil(db):
     db.add(supplier)
     db.flush()
 
-    status, requires_review, hold_reason = determine_initial_status(
+    status, exception_reason = determine_initial_status(
         lead_time_class=LeadTimeClass.URGENT,
         days_remaining=2,
         supplier=supplier,
         has_work_email=True,
+        has_default_cake=False,
     )
     assert status == OrderStatus.ON_HOLD
-    assert requires_review is False
-    assert hold_reason == "Supplier lead time exceeds remaining days"
+    assert exception_reason is None
 
 
 def test_missing_email_requires_attention_regardless_of_supplier(db):
@@ -122,27 +130,46 @@ def test_missing_email_requires_attention_regardless_of_supplier(db):
     db.add(supplier)
     db.flush()
 
-    status, requires_review, hold_reason = determine_initial_status(
+    status, exception_reason = determine_initial_status(
         lead_time_class=LeadTimeClass.NORMAL,
         days_remaining=10,
         supplier=supplier,
         has_work_email=False,
+        has_default_cake=False,
     )
     assert status == OrderStatus.REQUIRES_ATTENTION
-    assert requires_review is False
-    assert hold_reason == "Missing employee email"
+    assert exception_reason == "MISSING_EMAIL"
 
 
 def test_no_resolvable_supplier_requires_attention():
-    status, requires_review, hold_reason = determine_initial_status(
+    status, exception_reason = determine_initial_status(
         lead_time_class=LeadTimeClass.NORMAL,
         days_remaining=10,
         supplier=None,
         has_work_email=True,
+        has_default_cake=False,
     )
     assert status == OrderStatus.REQUIRES_ATTENTION
-    assert requires_review is False
-    assert hold_reason == "No supplier resolved for office"
+    assert exception_reason == "NO_SUPPLIER"
+
+
+def test_no_default_cake_requires_attention_when_supplier_has_catalogue():
+    from app.models.supplier_catalogue_item import SupplierCatalogueItem
+
+    supplier = Supplier(name="Multi Cake Bakes", lead_time_days=1)
+    supplier.catalogue_items = [
+        SupplierCatalogueItem(name="Chocolate", is_active=True, is_default=False),
+        SupplierCatalogueItem(name="Vanilla", is_active=True, is_default=False),
+    ]
+    status, exception_reason = determine_initial_status(
+        lead_time_class=LeadTimeClass.NORMAL,
+        days_remaining=10,
+        supplier=supplier,
+        has_work_email=True,
+        has_default_cake=False,
+    )
+    assert status == OrderStatus.REQUIRES_ATTENTION
+    assert exception_reason == "NO_DEFAULT_CAKE"
 
 
 def test_order_reference_format_and_increment(db):
@@ -255,7 +282,7 @@ def test_7_days_away_birthday_is_within_scan_window_and_creates_order(db):
     )
     assert order is not None
     assert order.status in (
-        OrderStatus.DRAFT.value, OrderStatus.READY_FOR_APPROVAL.value, OrderStatus.ON_HOLD.value,
+        OrderStatus.PENDING_VERIFICATION.value, OrderStatus.ON_HOLD.value,
     )
 
 

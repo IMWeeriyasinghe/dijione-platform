@@ -14,25 +14,34 @@ import {
   FormField,
   LoadingState,
   Modal,
+  Select,
   StatusBadge,
   Textarea,
 } from "@dijione/design-system";
-import { acknowledgePortalOrder, getPortalOrder, raisePortalIssue, updatePortalOrderStatus } from "@/lib/api";
+import { SUPPLIER_DRIVABLE_TARGETS, type OrderIssueType } from "@dijione/contracts";
+import { acceptPortalOrder, getPortalOrder, raisePortalIssue, updatePortalOrderStatus } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 
-// Allow-listed status progressions a supplier may set directly — mirrors
-// birthday-api's portal router `_SUPPLIER_ALLOWED_TARGETS` exactly; the
-// server re-validates regardless, this only drives which buttons show.
-const NEXT_STATUS_OPTIONS: Record<string, { value: string; label: string }[]> = {
-  SUPPLIER_REVIEW: [
-    { value: "CONFIRMED", label: "Confirm / Accept" },
-    { value: "CHANGE_REQUESTED", label: "Request Change" },
-    { value: "UNABLE_TO_FULFIL", label: "Unable to Fulfil" },
-  ],
-  CONFIRMED: [{ value: "PREPARING", label: "Start Preparing" }],
-  PREPARING: [{ value: "OUT_FOR_DELIVERY", label: "Out for Delivery" }],
-  OUT_FOR_DELIVERY: [{ value: "DELIVERED", label: "Mark Delivered" }],
+// Labels for the transitions a supplier may set directly. The allow-list
+// itself is imported from @dijione/contracts — derived from the backend's
+// order_status_service.SUPPLIER_DRIVABLE, not a second hand-typed copy
+// (the drift that motivated this: this file used to re-declare the whole
+// table "mirrors ... exactly" with nothing enforcing the mirror).
+const STATUS_LABELS: Record<string, string> = {
+  CONFIRMED: "Confirm / Accept",
+  CHANGE_REQUESTED: "Request Change",
+  UNABLE_TO_FULFIL: "Unable to Fulfil",
+  PREPARING: "Start Preparing",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DELIVERED: "Mark Delivered",
 };
+
+const ISSUE_TYPE_OPTIONS: { value: OrderIssueType; label: string }[] = [
+  { value: "CHANGE_REQUEST", label: "Request a change" },
+  { value: "CANNOT_FULFIL", label: "Cannot fulfil this order" },
+  { value: "DELIVERY_ISSUE", label: "Delivery problem" },
+  { value: "OTHER", label: "Other" },
+];
 
 export default function SupplierOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -40,6 +49,7 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
   const { token } = useSupplierAuth();
   const queryClient = useQueryClient();
   const [issueOpen, setIssueOpen] = useState(false);
+  const [issueType, setIssueType] = useState<OrderIssueType>("OTHER");
   const [issueText, setIssueText] = useState("");
 
   const { data: order, isLoading, isError, refetch } = useQuery({
@@ -53,8 +63,10 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
     queryClient.invalidateQueries({ queryKey: ["portal-orders"] });
   };
 
-  const ackMutation = useMutation({
-    mutationFn: () => acknowledgePortalOrder(token!, orderId),
+  // Merged acknowledge+confirm (plan §O) — one commitment, one click:
+  // "we have it and we will fulfil it."
+  const acceptMutation = useMutation({
+    mutationFn: () => acceptPortalOrder(token!, orderId),
     onSuccess: invalidate,
   });
 
@@ -64,23 +76,26 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
   });
 
   const issueMutation = useMutation({
-    mutationFn: () => raisePortalIssue(token!, orderId, issueText),
+    mutationFn: () => raisePortalIssue(token!, orderId, issueType, issueText),
     onSuccess: () => {
       invalidate();
       setIssueOpen(false);
       setIssueText("");
+      setIssueType("OTHER");
     },
   });
 
   if (isLoading) return <LoadingState label="Loading order…" />;
   if (isError || !order) return <ErrorState onRetry={() => refetch()} />;
 
-  const nextOptions = NEXT_STATUS_OPTIONS[order.status] ?? [];
-  const canAcknowledge = order.status === "SENT_TO_SUPPLIER";
+  // CONFIRMED is reached via the Accept button below, not a status pill —
+  // avoids showing "Confirm / Accept" twice for the same transition.
+  const nextOptions = (SUPPLIER_DRIVABLE_TARGETS[order.status] ?? []).filter((s) => s !== "CONFIRMED");
+  const canAccept = order.status === "SENT_TO_SUPPLIER";
 
   return (
     <div>
-      <Link href="/" className="mb-4 inline-flex items-center gap-1.5 text-sm text-dt-text-secondary hover:text-dt-text-primary">
+      <Link href="/orders" className="mb-4 inline-flex items-center gap-1.5 text-sm text-dt-text-secondary hover:text-dt-text-primary">
         <ArrowLeft className="size-4" />
         Back to orders
       </Link>
@@ -96,26 +111,26 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canAcknowledge && (
-            <Button size="sm" loading={ackMutation.isPending} onClick={() => ackMutation.mutate()}>
+          {canAccept && (
+            <Button size="sm" loading={acceptMutation.isPending} onClick={() => acceptMutation.mutate()}>
               <CheckCircle2 className="size-4" />
-              Acknowledge
+              Accept
             </Button>
           )}
-          {nextOptions.map((opt) => (
+          {nextOptions.map((value) => (
             <Button
-              key={opt.value}
+              key={value}
               size="sm"
-              variant={opt.value === "UNABLE_TO_FULFIL" ? "danger" : "secondary"}
+              variant={value === "UNABLE_TO_FULFIL" ? "danger" : "secondary"}
               loading={statusMutation.isPending}
-              onClick={() => statusMutation.mutate(opt.value)}
+              onClick={() => statusMutation.mutate(value)}
             >
-              {opt.label}
+              {STATUS_LABELS[value] ?? value}
             </Button>
           ))}
           <Button size="sm" variant="secondary" onClick={() => setIssueOpen(true)}>
             <TriangleAlert className="size-4" />
-            Raise Issue
+            Report a Problem
           </Button>
         </div>
       </div>
@@ -145,6 +160,36 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
             </span>
             <p className="text-sm text-dt-text-primary">{order.address_verified ? "Yes" : "No"}</p>
           </div>
+          <div className="sm:col-span-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-dt-text-secondary">
+              Delivery Address
+            </span>
+            {order.address_verified && order.delivery_address_line1 ? (
+              <address className="mt-1 text-sm not-italic text-dt-text-primary">
+                {order.delivery_address_line1}
+                {order.delivery_address_line2 && (
+                  <>
+                    <br />
+                    {order.delivery_address_line2}
+                  </>
+                )}
+                <br />
+                {[order.delivery_city, order.delivery_state_province, order.delivery_postal_code]
+                  .filter(Boolean)
+                  .join(", ")}
+                {order.delivery_country && (
+                  <>
+                    <br />
+                    {order.delivery_country}
+                  </>
+                )}
+              </address>
+            ) : (
+              <p className="mt-1 text-sm text-dt-text-secondary">
+                Released once the delivery address has been verified by Dijital Team.
+              </p>
+            )}
+          </div>
           {order.special_instructions.length > 0 && (
             <div className="sm:col-span-2">
               <span className="text-xs font-medium uppercase tracking-wide text-dt-text-secondary">
@@ -160,9 +205,18 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
 
-      <Modal open={issueOpen} onClose={() => setIssueOpen(false)} title="Raise an Issue">
+      <Modal open={issueOpen} onClose={() => setIssueOpen(false)} title="Report a Problem">
         <div className="flex flex-col gap-4">
-          <FormField label="Issue detail" htmlFor="issue-detail" required>
+          <FormField label="What's the problem?" htmlFor="issue-type" required>
+            <Select id="issue-type" value={issueType} onChange={(e) => setIssueType(e.target.value as OrderIssueType)}>
+              {ISSUE_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField label="Detail" htmlFor="issue-detail" required>
             <Textarea
               id="issue-detail"
               value={issueText}

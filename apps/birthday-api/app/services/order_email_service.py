@@ -46,11 +46,18 @@ class AddressNotVerifiedError(Exception):
     dropped; it just cannot progress to SENT_TO_SUPPLIER yet."""
 
 
-class ApprovalRequiredError(Exception):
-    """Raised when an order has not been through the explicit approval
-    workflow (Phase-Next §2/§3) — only APPROVED orders (or
-    REQUIRES_ATTENTION orders retrying a previously-approved send) may
-    become supplier-visible/actionable."""
+class NotReleasableError(Exception):
+    """Raised when an order's current status is not one release/send may
+    be called from (plan §K: "verification is the approval" — there is no
+    separate approval gate any more, only a status-reachability check)."""
+
+
+# Statuses from which an order may become SENT_TO_SUPPLIER. Reachable via
+# auto-release (standard, from PENDING_VERIFICATION), one-click confirm
+# (flagged, from REQUIRES_REVIEW), or a manual resend after an exception.
+_SENDABLE_STATUSES = {
+    OrderStatus.PENDING_VERIFICATION, OrderStatus.REQUIRES_REVIEW, OrderStatus.REQUIRES_ATTENTION,
+}
 
 
 def render_supplier_email(order: BirthdayOrder) -> tuple[str, str]:
@@ -162,17 +169,19 @@ def _handle_failure(
 
 def _send(
     db: Session, order: BirthdayOrder, *, actor_id: int | None, target_status: OrderStatus,
+    released_by: int | None = None,
 ) -> BirthdayOrder:
     if order.supplier is None:
         raise NoSupplierAssignedError(f"Order {order.order_reference} has no supplier assigned")
-    # Approval gate (Phase-Next §2/§3): only an APPROVED order may become
-    # supplier-visible for the first time; REQUIRES_ATTENTION is allowed so
-    # a previously-approved send that failed can be retried without
-    # re-running the approval step.
-    if order.status not in (OrderStatus.APPROVED.value, OrderStatus.REQUIRES_ATTENTION.value):
-        raise ApprovalRequiredError(
-            f"Order {order.order_reference} must be APPROVED before it can be sent to "
-            f"the supplier (current status: {order.status})"
+    # "Verification is the approval" (decision A): there is no separate
+    # approval gate. The only status check is reachability — a standard
+    # order auto-releases from PENDING_VERIFICATION, a flagged order
+    # releases from REQUIRES_REVIEW via one-click confirm, and a prior
+    # failure may retry from REQUIRES_ATTENTION.
+    if OrderStatus(order.status) not in _SENDABLE_STATUSES:
+        raise NotReleasableError(
+            f"Order {order.order_reference} is not in a sendable state "
+            f"(current status: {order.status})"
         )
     # Cake-order gate (plan requirement #10): eligibility was already
     # enforced at order-creation time (an ineligible employee never gets a
@@ -216,10 +225,13 @@ def _send(
         db, order, subject=subject, body=body, status=CommunicationStatus.SENT.value,
         message_id=result.message_id, last_error=None, retry_count=retry_count,
     )
+    order.released_at = datetime.now(UTC)
+    order.released_by = released_by
     order = order_status_service.transition(
         db, order, target_status,
         actor_id=actor_id, actor_type=ActorType.SYSTEM if actor_id is None else ActorType.USER,
         detail=f"Email sent, message_id={result.message_id}",
+        event_type="AUTO_RELEASED" if released_by is None else "STATUS_CHANGE",
     )
     db.add(
         OrderEvent(
@@ -238,12 +250,27 @@ def _send(
 
 
 def send_order_to_supplier(db: Session, order: BirthdayOrder, *, actor_id: int | None) -> BirthdayOrder:
-    return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER)
+    """Manual release — used for held orders and one-off ad hoc sends.
+    Recorded as human-released (released_by=actor_id)."""
+    return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)
+
+
+def auto_release_order(db: Session, order: BirthdayOrder) -> BirthdayOrder:
+    """The standard-order path (plan §F step 10): triggered by
+    address_verification_service the instant a standard order is marked
+    VERIFIED. released_by stays NULL — this is a SYSTEM action."""
+    return _send(db, order, actor_id=None, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=None)
+
+
+def confirm_release_order(db: Session, order: BirthdayOrder, *, actor_id: int) -> BirthdayOrder:
+    """The one-click "Confirm & release" action for a flagged
+    (REQUIRES_REVIEW) order — the exception-only approval (plan §K)."""
+    order.review_confirmed_at = datetime.now(UTC)
+    order.review_confirmed_by = actor_id
+    return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)
 
 
 def resend_order_to_supplier(db: Session, order: BirthdayOrder, *, actor_id: int | None) -> BirthdayOrder:
     """Manual retry for orders already SENT_TO_SUPPLIER/REQUIRES_ATTENTION
     after a prior failure — same order_reference, never a second order."""
-    target_status = OrderStatus.SENT_TO_SUPPLIER
-    order = _send(db, order, actor_id=actor_id, target_status=target_status)
-    return order
+    return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)

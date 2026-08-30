@@ -7,9 +7,11 @@ import type {
   BirthdayOrderUpdateInput,
   BirthdaySummaryOut,
   BirthdayUpcomingResponse,
+  ConfirmReleaseInput,
   DeliveryAddressUpdateInput,
+  OrderIssueCreateInput,
+  OrderIssueOut,
   ReadinessCheckResponse,
-  RejectRequestInput,
   SpecialRequirementCreateInput,
   SpecialRequirementOut,
   SupplierCatalogueItemCreateInput,
@@ -25,6 +27,8 @@ import type {
   SupplierUserOut,
   SupplierUserUpdateInput,
   UpcomingBirthdaysResponse,
+  VerifyAddressInput,
+  VerifyAddressResponse,
 } from "@dijione/contracts";
 import { qs, request } from "@dijione/auth-client";
 
@@ -123,16 +127,34 @@ export const deleteOrder = (id: number) =>
 export const getOrderReadiness = (id: number) =>
   request<ReadinessCheckResponse>(`/api/birthday/orders/${id}/readiness`);
 
-export const submitForApproval = (id: number) =>
-  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/submit-for-approval`, { method: "POST" });
-
-export const approveOrder = (id: number) =>
-  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/approve`, { method: "POST" });
-
-export const rejectOrder = (id: number, payload: RejectRequestInput) =>
-  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/reject`, {
+// "Verification is the approval" (plan §K) — the one routine human
+// checkpoint. Auto-releases a standard order; flags a non-standard one
+// into REQUIRES_REVIEW for confirmRelease below.
+export const verifyAddress = (id: number, payload: VerifyAddressInput = {}) =>
+  request<VerifyAddressResponse>(`/api/birthday/orders/${id}/verify`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+
+export const confirmRelease = (id: number, payload: ConfirmReleaseInput = {}) =>
+  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/confirm-release`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const listOrderIssues = (id: number) =>
+  request<OrderIssueOut[]>(`/api/birthday/orders/${id}/issues`);
+
+export const raiseOrderIssue = (id: number, payload: OrderIssueCreateInput) =>
+  request<OrderIssueOut>(`/api/birthday/orders/${id}/issues`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const resolveOrderIssue = (id: number, issueId: number, resolution_detail: string) =>
+  request<OrderIssueOut>(`/api/birthday/orders/${id}/issues/${issueId}/resolve`, {
+    method: "PATCH",
+    body: JSON.stringify({ resolution_detail }),
   });
 
 // --- Suppliers -------------------------------------------------
@@ -215,3 +237,39 @@ export type RunDetectionResult = {
 
 export const runBirthdayDetection = () =>
   request<RunDetectionResult>("/api/birthday/admin/run-detection", { method: "POST" });
+
+export type ScanRunOut = {
+  run_id: string;
+  trigger: string;
+  started_at: string | null;
+  finished_at: string | null;
+  employees_scanned: number;
+  orders_created: number;
+  orders_existing: number;
+  exceptions: number;
+  ineligible_skipped: number;
+  errors: Array<{ employee_id: string | null; error: string }>;
+};
+
+export const listScanRuns = (limit?: number) =>
+  request<ScanRunOut[]>(`/api/birthday/admin/scan-runs${qs({ limit })}`);
+
+// --- Config -------------------------------------------------
+export type DetectionConfig = {
+  id: number;
+  normal_threshold_days: number;
+  short_notice_threshold_days: number;
+  urgent_threshold_days: number;
+  window_lookback_days: number;
+  window_lookahead_days: number;
+  default_quantity: number;
+  verify_buffer_days: number;
+  acknowledgement_sla_hours: number;
+  auto_release_enabled: boolean;
+  updated_by: number | null;
+};
+
+export const getConfig = () => request<DetectionConfig>("/api/birthday/config");
+
+export const updateConfig = (payload: Partial<DetectionConfig>) =>
+  request<DetectionConfig>("/api/birthday/config", { method: "PATCH", body: JSON.stringify(payload) });

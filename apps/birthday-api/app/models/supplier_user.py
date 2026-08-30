@@ -7,9 +7,13 @@ from app.db.base import Base, TimestampMixin
 
 
 class SupplierUser(TimestampMixin, Base):
-    """Domain modeled now, portal built in Phase F. No auth fields yet —
-    auth mechanism is a Phase F decision; this table only carries the
-    ``supplier_id`` tenant-isolation boundary now."""
+    """Application-level authorization mapping for the supplier portal:
+    ``entra_object_id`` (the durable Microsoft Entra ID B2B guest identity
+    key) -> this row -> ``supplier_id`` -> supplier-scoped access. ``role``
+    (SUPPLIER_USER | SUPPLIER_ADMIN) and ``status`` (ACTIVE | INACTIVE)
+    gate portal access; ``status`` is re-checked on every request, not
+    just at token issuance. No password / magic-link fields by design —
+    Entra B2B guest is the only production auth mechanism."""
 
     __tablename__ = "supplier_users"
 

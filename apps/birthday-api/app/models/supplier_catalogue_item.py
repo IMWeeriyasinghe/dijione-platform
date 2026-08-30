@@ -17,5 +17,9 @@ class SupplierCatalogueItem(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The supplier's default cake — detection auto-applies this to every
+    # new order for the supplier (plan §31/§L). At most one per supplier;
+    # enforced in app/api/routes/suppliers.py, not at the DB level (V1).
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 
     supplier: Mapped[Supplier] = relationship(back_populates="catalogue_items")  # noqa: F821

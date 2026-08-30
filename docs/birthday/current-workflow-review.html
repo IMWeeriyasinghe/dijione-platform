@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DijiBirthday — Current Workflow Review</title>
+<style>
+  :root{
+    --ink:#24140f; --muted:#6b5147; --line:#e0d3ca; --bg:#faf7f4; --surface:#fff;
+    --sys:#1f6feb; --sys-bg:#eaf2ff;
+    --human:#b0480f; --human-bg:#fdeee2;
+    --decision:#8a6400; --decision-bg:#fff4d6;
+    --exc:#b3261e; --exc-bg:#fdecea;
+    --ext:#2f7d32; --ext-bg:#e9f4e9;
+    --ok:#137a3b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:20px;margin:44px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+  h3{font-size:14px;margin:22px 0 8px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  p{margin:8px 0}
+  .sub{color:var(--muted);margin-bottom:20px}
+  code{background:#f0e9e4;border-radius:4px;padding:1px 5px;font-size:.92em}
+  .callout{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--sys);
+    border-radius:8px;padding:12px 16px;margin:14px 0}
+
+  .legend{display:flex;flex-wrap:wrap;gap:10px 18px;background:var(--surface);border:1px solid var(--line);
+    border-radius:10px;padding:14px 16px;margin:16px 0 22px}
+  .legend span{display:inline-flex;align-items:center;gap:7px;font-size:13px}
+  .chip{width:15px;height:15px;border:1.5px solid rgba(0,0,0,.2);display:inline-block}
+  .chip.r{border-radius:3px}.chip.d{transform:rotate(45deg);width:12px;height:12px}
+  .chip.t{border-radius:999px}
+  .c-sys{background:var(--sys-bg);border-color:var(--sys)}
+  .c-human{background:var(--human-bg);border-color:var(--human)}
+  .c-decision{background:var(--decision-bg);border-color:var(--decision)}
+  .c-exc{background:var(--exc-bg);border-color:var(--exc)}
+  .c-ext{background:var(--ext-bg);border-color:var(--ext)}
+  .c-term{background:#ece5e0;border-color:var(--ink)}
+
+  .chartscroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:8px}
+  svg.flowchart{display:block;min-width:1040px;width:100%;height:auto}
+  svg.flowchart .box{stroke-width:1.5;rx:8}
+  svg.flowchart text{font-family:inherit;fill:var(--ink)}
+  svg.flowchart .t-title{font-size:13px;font-weight:700}
+  svg.flowchart .t-body{font-size:11.5px;fill:var(--muted)}
+  svg.flowchart .b-sys{fill:var(--sys-bg);stroke:var(--sys)}
+  svg.flowchart .b-human{fill:var(--human-bg);stroke:var(--human)}
+  svg.flowchart .b-ext{fill:var(--ext-bg);stroke:var(--ext)}
+  svg.flowchart .b-dec{fill:var(--decision-bg);stroke:var(--decision)}
+  svg.flowchart .b-exc{fill:var(--exc-bg);stroke:var(--exc)}
+  svg.flowchart .b-term{fill:#ece5e0;stroke:var(--ink)}
+  svg.flowchart .b-fix{fill:#e7f6ec;stroke:var(--ok)}
+  svg.flowchart .edge{stroke:#9c8a80;stroke-width:1.6;fill:none}
+  svg.flowchart .edge.loop{stroke-dasharray:5 4}
+  svg.flowchart .elabel{font-size:11px;font-weight:700}
+  svg.flowchart .elabel.yes{fill:var(--ok)}
+  svg.flowchart .elabel.no{fill:var(--exc)}
+  svg.flowchart .lane{fill:none;stroke:var(--line);stroke-dasharray:3 4}
+  svg.flowchart .lanelbl{font-size:12px;font-weight:800;letter-spacing:.08em;fill:var(--muted)}
+  svg.flowchart .badge{font-size:10px;font-weight:700;fill:var(--ok)}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin-top:12px}
+  table{border-collapse:collapse;width:100%;min-width:1180px;font-size:12.5px;background:var(--surface)}
+  th,td{border:1px solid var(--line);padding:7px 9px;vertical-align:top;text-align:left}
+  th{background:#f3ebe5;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase}
+  tbody tr:nth-child(even){background:#fdfbf9}
+  td.iss{color:var(--exc)} td.auto{color:var(--sys)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;border:1px solid}
+  .pill.sys{color:var(--sys);border-color:var(--sys);background:var(--sys-bg)}
+  .pill.human{color:var(--human);border-color:var(--human);background:var(--human-bg)}
+  .pill.int{color:var(--muted);border-color:var(--line);background:#fff}
+  .pill.ext{color:var(--ext);border-color:var(--ext);background:var(--ext-bg)}
+  .fixed{color:var(--ok);font-weight:700}
+  .status-done{color:var(--ok);font-weight:700}.status-open{color:var(--exc);font-weight:700}
+  ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:3px 0}
+  .rec{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px 16px;margin:12px 0}
+  .rec h4{margin:12px 0 4px;font-size:14px}
+  .foot{margin-top:40px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>DijiBirthday — Current Workflow Review</h1>
+  <p class="sub">
+    As implemented on 2026-08-29, <strong>after</strong> the section 1–10 corrections (Team Member ID display,
+    order-reference identity fix + backfill, supplier auto-selection, product = Cake, delivery-date default = birthday).
+    This is the workflow <em>as coded today</em>. Recommendations are in section 3, kept separate from the flow.
+  </p>
+
+  <div class="legend" aria-label="Legend">
+    <span><i class="chip r c-sys"></i> System step (automatic)</span>
+    <span><i class="chip r c-human"></i> Internal human step</span>
+    <span><i class="chip r c-ext"></i> Supplier (external portal) step</span>
+    <span><i class="chip d c-decision"></i> Decision (Yes / No)</span>
+    <span><i class="chip r c-exc"></i> Exception / stop</span>
+    <span><i class="chip t c-term"></i> Start / End</span>
+    <span><i class="chip r" style="background:#e7f6ec;border-color:#137a3b"></i> Changed in this round</span>
+  </div>
+
+  <div class="callout">
+    <strong>Two applications, one API.</strong>
+    <em>Internal</em> = <code>apps/birthday-web</code> + <code>apps/birthday-api</code>.
+    <em>External</em> = <code>apps/birthday-supplier-web</code>, which only calls <code>/api/birthday/portal/*</code>.
+    <code>EMAIL_SENDING_MODE=mock</code> — no real supplier email is sent.
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>1 · Current workflow — decision flowchart</h2>
+
+  <div class="chartscroll">
+  <svg class="flowchart" viewBox="0 0 1110 3560" role="img"
+       aria-label="DijiBirthday current workflow decision flowchart">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#9c8a80"/>
+      </marker>
+    </defs>
+
+    <!-- lane guides -->
+    <line class="lane" x1="30" y1="1330" x2="1050" y2="1330"/>
+    <text class="lanelbl" x="40" y="1322">SYSTEM · DETECTION  (birthday-api)</text>
+    <line class="lane" x1="30" y1="2510" x2="1050" y2="2510"/>
+    <text class="lanelbl" x="40" y="2502">INTERNAL · DijiBirthday operator + approver  (birthday-web)</text>
+    <line class="lane" x1="30" y1="3210" x2="1050" y2="3210"/>
+    <text class="lanelbl" x="40" y="3202">EXTERNAL · Supplier Portal (B2B)  →  back to Internal for close-out</text>
+
+    <!-- ================= SYSTEM / DETECTION SPINE ================= -->
+
+    <!-- 1 START -->
+    <rect class="box b-term" x="360" y="30" width="240" height="42" rx="21"/>
+    <text class="t-title" x="480" y="56" text-anchor="middle">START — detection triggered</text>
+    <text class="t-body" x="480" y="90" text-anchor="middle">Prod: Azure scheduler → /internal/run-daily-scan   ·   UAT: admin “Run Birthday Detection”</text>
+    <line class="edge" x1="480" y1="96" x2="480" y2="120" marker-end="url(#arrow)"/>
+
+    <!-- 2 fetch -->
+    <rect class="box b-sys" x="300" y="122" width="360" height="52" rx="8"/>
+    <text class="t-title" x="480" y="143" text-anchor="middle">Fetch BambooHR active employees</text>
+    <text class="t-body" x="480" y="160" text-anchor="middle">READ-ONLY · status = "Active" only · map id / employeeNumber / birthday / address</text>
+    <line class="edge" x1="480" y1="174" x2="480" y2="210" marker-end="url(#arrow)"/>
+    <!-- fetch fail -->
+    <line class="edge" x1="660" y1="148" x2="800" y2="148" marker-end="url(#arrow)"/>
+    <rect class="box b-exc" x="800" y="126" width="250" height="46" rx="8"/>
+    <text class="t-body" x="808" y="146">BambooHR unreachable → 502 on</text>
+    <text class="t-body" x="808" y="162">directory; per-employee error logged</text>
+
+    <!-- 3 occurrence -->
+    <rect class="box b-sys" x="300" y="212" width="360" height="52" rx="8"/>
+    <text class="t-title" x="480" y="233" text-anchor="middle">Compute next birthday occurrence</text>
+    <text class="t-body" x="480" y="250" text-anchor="middle">Year-boundary safe (Dec→Jan) · Feb 29 → Mar 1 in non-leap years</text>
+    <line class="edge" x1="480" y1="264" x2="480" y2="300" marker-end="url(#arrow)"/>
+
+    <!-- 4 window? -->
+    <polygon class="box b-dec" points="480,296 645,360 480,424 315,360"/>
+    <text class="t-title" x="480" y="356" text-anchor="middle">Inside detection</text>
+    <text class="t-title" x="480" y="372" text-anchor="middle">window?</text>
+    <line class="edge" x1="645" y1="360" x2="800" y2="360" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="660" y="352">NO</text>
+    <rect class="box b-exc" x="800" y="336" width="250" height="48" rx="8"/>
+    <text class="t-body" x="808" y="356">Not upcoming yet — shown in</text>
+    <text class="t-body" x="808" y="372">Upcoming Birthdays list, no order</text>
+    <line class="edge" x1="480" y1="424" x2="480" y2="460" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="446">YES</text>
+
+    <!-- 5 eligible? -->
+    <polygon class="box b-dec" points="480,456 645,520 480,584 315,520"/>
+    <text class="t-title" x="480" y="516" text-anchor="middle">Team Member</text>
+    <text class="t-title" x="480" y="532" text-anchor="middle">eligible?</text>
+    <line class="edge" x1="645" y1="520" x2="800" y2="520" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="660" y="512">NO</text>
+    <rect class="box b-exc" x="800" y="486" width="250" height="70" rx="8"/>
+    <text class="t-body" x="808" y="504">No order. Reason shown per row:</text>
+    <text class="t-body" x="808" y="520">future starter · inactive · terminated ·</text>
+    <text class="t-body" x="808" y="536">missing / invalid birthday · no hire date</text>
+    <line class="edge" x1="480" y1="584" x2="480" y2="620" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="606">YES</text>
+
+    <!-- 6 exists? -->
+    <polygon class="box b-dec" points="480,616 665,684 480,752 295,684"/>
+    <text class="t-title" x="480" y="678" text-anchor="middle">Existing order for</text>
+    <text class="t-title" x="480" y="694" text-anchor="middle">(internal id + year)?</text>
+    <line class="edge" x1="665" y1="684" x2="800" y2="684" marker-end="url(#arrow)"/>
+    <text class="elabel" x="672" y="676" fill="#8a6400">YES</text>
+    <rect class="box b-sys" x="800" y="654" width="250" height="60" rx="8"/>
+    <text class="t-body" x="808" y="674">Reuse existing order untouched</text>
+    <text class="t-body" x="808" y="690">(idempotent — DB unique constraint;</text>
+    <text class="t-body" x="808" y="704">quantity never changed)</text>
+    <line class="edge" x1="480" y1="752" x2="480" y2="788" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="774">NO</text>
+
+    <!-- 7 create -->
+    <rect class="box b-sys" x="330" y="790" width="300" height="42" rx="8"/>
+    <text class="t-title" x="480" y="816" text-anchor="middle">Create BirthdayOrder</text>
+    <line class="edge" x1="480" y1="832" x2="480" y2="860" marker-end="url(#arrow)"/>
+
+    <!-- 8 reference (FIX) -->
+    <rect class="box b-fix" x="270" y="862" width="420" height="60" rx="8"/>
+    <text class="badge" x="480" y="878" text-anchor="middle">CHANGED THIS ROUND</text>
+    <text class="t-title" x="480" y="896" text-anchor="middle">Reference = BDAY-EMP{employeeNumber}-YYYY-NNNNN</text>
+    <text class="t-body" x="480" y="912" text-anchor="middle">Uses the business Team Member ID, not BambooHR internal id · falls back to internal id only if none</text>
+    <line class="edge" x1="480" y1="922" x2="480" y2="950" marker-end="url(#arrow)"/>
+
+    <!-- 9 address snapshot -->
+    <rect class="box b-sys" x="300" y="952" width="360" height="52" rx="8"/>
+    <text class="t-title" x="480" y="973" text-anchor="middle">Copy BambooHR address → order snapshot</text>
+    <text class="t-body" x="480" y="990" text-anchor="middle">delivery_address_source = BAMBOOHR (or null) · status = NOT_CHECKED · never written back</text>
+    <line class="edge" x1="480" y1="1004" x2="480" y2="1032" marker-end="url(#arrow)"/>
+
+    <!-- 10 defaults (FIX) -->
+    <rect class="box b-fix" x="250" y="1034" width="460" height="68" rx="8"/>
+    <text class="badge" x="480" y="1050" text-anchor="middle">CHANGED THIS ROUND</text>
+    <text class="t-title" x="480" y="1068" text-anchor="middle">Apply system-known defaults</text>
+    <text class="t-body" x="480" y="1084" text-anchor="middle">Supplier: sole ACTIVE → office-location rule → is_default → none</text>
+    <text class="t-body" x="480" y="1098" text-anchor="middle">Delivery date = birthday occurrence · Quantity = 1 · Product = Cake (implicit)</text>
+    <line class="edge" x1="480" y1="1102" x2="480" y2="1140" marker-end="url(#arrow)"/>
+
+    <!-- 11 critical data? -->
+    <polygon class="box b-dec" points="480,1136 675,1206 480,1276 285,1206"/>
+    <text class="t-title" x="480" y="1200" text-anchor="middle">Critical data present?</text>
+    <text class="t-body" x="480" y="1216" text-anchor="middle">work email · supplier · lead time</text>
+    <line class="edge" x1="675" y1="1206" x2="800" y2="1206" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="684" y="1198">NO</text>
+    <rect class="box b-exc" x="800" y="1176" width="250" height="60" rx="8"/>
+    <text class="t-body" x="808" y="1196">Status = REQUIRES_ATTENTION</text>
+    <text class="t-body" x="808" y="1212">or ON_HOLD + EXCEPTION event.</text>
+    <text class="t-body" x="808" y="1226">Operator recovers it below ↓</text>
+    <!-- dashed re-join to operator lane -->
+    <path class="edge loop" d="M925,1236 L925,1372 L662,1372" marker-end="url(#arrow)"/>
+    <line class="edge" x1="480" y1="1276" x2="480" y2="1360" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="1300">YES → status = DRAFT</text>
+
+    <!-- ================= INTERNAL OPERATOR LANE ================= -->
+
+    <!-- 12 open order -->
+    <rect class="box b-human" x="300" y="1362" width="360" height="46" rx="8"/>
+    <text class="t-title" x="480" y="1383" text-anchor="middle">Operator opens the order</text>
+    <text class="t-body" x="480" y="1399" text-anchor="middle">Cake Orders register · or Upcoming Birthdays link</text>
+    <line class="edge" x1="480" y1="1408" x2="480" y2="1440" marker-end="url(#arrow)"/>
+
+    <!-- 13 fulfilment assignment (FIX) -->
+    <rect class="box b-fix" x="270" y="1442" width="420" height="64" rx="8"/>
+    <text class="badge" x="480" y="1458" text-anchor="middle">CHANGED THIS ROUND</text>
+    <text class="t-title" x="480" y="1476" text-anchor="middle">Fulfilment Assignment — pre-filled</text>
+    <text class="t-body" x="480" y="1492" text-anchor="middle">Supplier + delivery date pre-selected · Product: Cake (read-only) · variant optional</text>
+    <text class="t-body" x="480" y="1504" text-anchor="middle">Adjust only exceptions, then Save assignment</text>
+    <line class="edge" x1="480" y1="1506" x2="480" y2="1544" marker-end="url(#arrow)"/>
+
+    <!-- 14 address confirmed? -->
+    <polygon class="box b-dec" points="480,1540 690,1614 480,1688 270,1614"/>
+    <text class="t-title" x="480" y="1608" text-anchor="middle">Delivery address confirmed</text>
+    <text class="t-title" x="480" y="1624" text-anchor="middle">with Team Member?</text>
+    <text class="t-body" x="480" y="1640" text-anchor="middle">P&amp;C outreach — no automated contact</text>
+    <line class="edge" x1="690" y1="1614" x2="800" y2="1614" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="700" y="1606">NO</text>
+    <rect class="box b-human" x="800" y="1582" width="250" height="64" rx="8"/>
+    <text class="t-body" x="808" y="1602">Set NEEDS_UPDATE → edit address</text>
+    <text class="t-body" x="808" y="1618">(source = MANUAL_CORRECTION)</text>
+    <text class="t-body" x="808" y="1634">→ VERIFIED</text>
+    <path class="edge loop" d="M925,1646 L925,1720 L690,1655" marker-end="url(#arrow)"/>
+    <line class="edge" x1="480" y1="1688" x2="480" y2="1724" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="1710">YES → set VERIFIED</text>
+
+    <!-- 15 readiness? -->
+    <polygon class="box b-dec" points="480,1720 710,1800 480,1880 250,1800"/>
+    <text class="t-title" x="480" y="1792" text-anchor="middle">Readiness complete?</text>
+    <text class="t-body" x="480" y="1808" text-anchor="middle">address VERIFIED · supplier · delivery date</text>
+    <text class="t-body" x="480" y="1822" text-anchor="middle">· office · quantity ≥ 1 · name</text>
+    <line class="edge" x1="710" y1="1800" x2="800" y2="1800" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="718" y="1792">NO</text>
+    <rect class="box b-human" x="800" y="1772" width="250" height="56" rx="8"/>
+    <text class="t-body" x="808" y="1792">Stays in preparation · missing[]</text>
+    <text class="t-body" x="808" y="1808">shown → back to Fulfilment</text>
+    <path class="edge loop" d="M1050,1800 L1085,1800 L1085,1474 L690,1474" marker-end="url(#arrow)"/>
+    <line class="edge" x1="480" y1="1880" x2="480" y2="1916" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="1902">YES</text>
+
+    <!-- 16 submit -->
+    <rect class="box b-human b-fix" x="280" y="1918" width="400" height="56" rx="8"/>
+    <text class="badge" x="480" y="1934" text-anchor="middle">CHANGED THIS ROUND</text>
+    <text class="t-title" x="480" y="1952" text-anchor="middle">Submit for Approval → READY_FOR_APPROVAL</text>
+    <text class="t-body" x="480" y="1968" text-anchor="middle">now also from REQUIRES_ATTENTION / ON_HOLD (server re-checks readiness)</text>
+    <line class="edge" x1="480" y1="1974" x2="480" y2="2006" marker-end="url(#arrow)"/>
+
+    <!-- 17 approved? -->
+    <polygon class="box b-dec" points="480,2002 645,2066 480,2130 315,2066"/>
+    <text class="t-title" x="480" y="2062" text-anchor="middle">Approver</text>
+    <text class="t-title" x="480" y="2078" text-anchor="middle">approves?</text>
+    <line class="edge" x1="645" y1="2066" x2="800" y2="2066" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="655" y="2058">NO</text>
+    <rect class="box b-exc" x="800" y="2038" width="250" height="56" rx="8"/>
+    <text class="t-body" x="808" y="2058">Reject (reason) → REJECTED</text>
+    <text class="t-body" x="808" y="2074">Hold → ON_HOLD · Cancel → CANCELLED</text>
+    <line class="edge" x1="480" y1="2130" x2="480" y2="2166" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="2150">YES → APPROVED  (stamp approved_by / approved_at)</text>
+
+    <!-- 18 send gate? -->
+    <polygon class="box b-dec" points="480,2162 690,2236 480,2310 270,2236"/>
+    <text class="t-title" x="480" y="2230" text-anchor="middle">Send gate OK?</text>
+    <text class="t-body" x="480" y="2246" text-anchor="middle">approved_at set · supplier · address VERIFIED</text>
+    <line class="edge" x1="690" y1="2236" x2="800" y2="2236" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="700" y="2228">NO</text>
+    <rect class="box b-exc" x="800" y="2214" width="250" height="42" rx="8"/>
+    <text class="t-body" x="808" y="2240">409 — cannot release</text>
+    <line class="edge" x1="480" y1="2310" x2="480" y2="2346" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="2332">YES</text>
+
+    <!-- 19 release -->
+    <rect class="box b-human" x="290" y="2348" width="380" height="56" rx="8"/>
+    <text class="t-title" x="480" y="2369" text-anchor="middle">Release to supplier → SENT_TO_SUPPLIER</text>
+    <text class="t-body" x="480" y="2385" text-anchor="middle">render + “send” email (MOCK) · SUPPLIER_INSTRUCTION notes only</text>
+    <line class="edge" x1="670" y1="2376" x2="800" y2="2376" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="710" y="2368">FAIL</text>
+    <rect class="box b-exc" x="800" y="2352" width="250" height="48" rx="8"/>
+    <text class="t-body" x="808" y="2372">Send fails → REQUIRES_ATTENTION</text>
+    <text class="t-body" x="808" y="2388">→ Resend (same reference)</text>
+    <line class="edge" x1="480" y1="2404" x2="480" y2="2540" marker-end="url(#arrow)"/>
+
+    <!-- ================= SUPPLIER PORTAL LANE ================= -->
+
+    <!-- 20 auth? -->
+    <polygon class="box b-dec" points="480,2536 700,2610 480,2684 260,2610"/>
+    <text class="t-title" x="480" y="2604" text-anchor="middle">Supplier authenticated?</text>
+    <text class="t-body" x="480" y="2620" text-anchor="middle">Entra B2B guest token: signature / issuer /</text>
+    <text class="t-body" x="480" y="2634" text-anchor="middle">audience / expiry → oid claim</text>
+    <line class="edge" x1="700" y1="2610" x2="800" y2="2610" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="708" y="2602">NO</text>
+    <rect class="box b-exc" x="800" y="2588" width="250" height="42" rx="8"/>
+    <text class="t-body" x="808" y="2614">401 / login screen</text>
+    <line class="edge" x1="480" y1="2684" x2="480" y2="2720" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="2706">YES → oid → SupplierUser (ACTIVE) → Supplier (ACTIVE) → supplier_id</text>
+
+    <!-- 21 owns? -->
+    <polygon class="box b-dec" points="480,2716 700,2790 480,2864 260,2790"/>
+    <text class="t-title" x="480" y="2784" text-anchor="middle">Supplier owns this order?</text>
+    <text class="t-body" x="480" y="2800" text-anchor="middle">supplier_id resolved server-side · must be</text>
+    <text class="t-body" x="480" y="2814" text-anchor="middle">in a supplier-visible status</text>
+    <line class="edge" x1="700" y1="2790" x2="800" y2="2790" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="708" y="2782">NO</text>
+    <rect class="box b-exc" x="800" y="2768" width="250" height="44" rx="8"/>
+    <text class="t-body" x="808" y="2794">404 — same as “not found”</text>
+    <line class="edge" x1="480" y1="2864" x2="480" y2="2900" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="2886">YES → SupplierOrderView DTO (no HR fields; address only if VERIFIED)</text>
+
+    <!-- 22 acknowledge -->
+    <rect class="box b-ext" x="320" y="2902" width="320" height="42" rx="8"/>
+    <text class="t-title" x="480" y="2928" text-anchor="middle">Acknowledge → SUPPLIER_REVIEW</text>
+    <line class="edge" x1="480" y1="2944" x2="480" y2="2976" marker-end="url(#arrow)"/>
+
+    <!-- 23 can fulfil? -->
+    <polygon class="box b-dec" points="480,2972 645,3036 480,3100 315,3036"/>
+    <text class="t-title" x="480" y="3032" text-anchor="middle">Supplier can</text>
+    <text class="t-title" x="480" y="3048" text-anchor="middle">fulfil?</text>
+    <line class="edge" x1="645" y1="3036" x2="800" y2="3036" marker-end="url(#arrow)"/>
+    <text class="elabel no" x="655" y="3028">NO</text>
+    <rect class="box b-exc" x="800" y="3000" width="250" height="72" rx="8"/>
+    <text class="t-body" x="808" y="3020">Request change → CHANGE_REQUESTED</text>
+    <text class="t-body" x="808" y="3036">Unable → UNABLE_TO_FULFIL →</text>
+    <text class="t-body" x="808" y="3050">REQUIRES_ATTENTION · Raise issue →</text>
+    <text class="t-body" x="808" y="3064">notify BIRTHDAY_ADMIN</text>
+    <path class="edge loop" d="M1050,3036 L1095,3036 L1095,1372 L662,1372" marker-end="url(#arrow)"/>
+    <line class="edge" x1="480" y1="3100" x2="480" y2="3136" marker-end="url(#arrow)"/>
+    <text class="elabel yes" x="490" y="3122">YES → Confirm → CONFIRMED</text>
+
+    <!-- 24 lifecycle -->
+    <rect class="box b-ext" x="280" y="3138" width="400" height="42" rx="8"/>
+    <text class="t-title" x="480" y="3164" text-anchor="middle">PREPARING → OUT_FOR_DELIVERY → DELIVERED</text>
+    <line class="edge" x1="480" y1="3180" x2="480" y2="3240" marker-end="url(#arrow)"/>
+
+    <!-- 25 close-out -->
+    <rect class="box b-human" x="300" y="3242" width="360" height="46" rx="8"/>
+    <text class="t-title" x="480" y="3263" text-anchor="middle">DELIVERED → COMPLETED (internal)</text>
+    <text class="t-body" x="480" y="3279" text-anchor="middle">Full OrderEvent + platform audit history retained</text>
+    <line class="edge" x1="480" y1="3288" x2="480" y2="3320" marker-end="url(#arrow)"/>
+
+    <!-- END -->
+    <rect class="box b-term" x="400" y="3322" width="160" height="42" rx="21"/>
+    <text class="t-title" x="480" y="3348" text-anchor="middle">END</text>
+
+    <!-- terminal / off-flow note -->
+    <rect class="box b-exc" x="60" y="2040" width="200" height="70" rx="8"/>
+    <text class="t-body" x="70" y="2060">Cancel is available from</text>
+    <text class="t-body" x="70" y="2076">almost any non-terminal state</text>
+    <text class="t-body" x="70" y="2092">→ CANCELLED (terminal,</text>
+    <text class="t-body" x="70" y="2106">non-destructive; history kept)</text>
+  </svg>
+  </div>
+
+  <p class="sub" style="margin-top:10px">
+    Dashed arrows are loop-backs / re-entry (a <code>REQUIRES_ATTENTION</code> order, a <code>NEEDS_UPDATE</code> address,
+    an unmet readiness check, or a supplier change request all return the order to the operator lane).
+  </p>
+
+  <!-- ============================================================ -->
+  <h2>2 · Current-state workflow table</h2>
+  <div class="tablewrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Step</th><th>Application</th><th>Actor</th><th>Trigger</th><th>System Action</th>
+        <th>Decision</th><th>YES result</th><th>NO result</th>
+        <th>Current automation</th><th>Current manual action</th><th>Known issue / bottleneck</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1 Trigger scan</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span> / <span class="pill human">Admin</span> (UAT)</td>
+        <td>Azure schedule / “Run Birthday Detection”</td><td><code>run_daily_scan</code> starts, <code>run_id</code></td>
+        <td>—</td><td>—</td><td>—</td>
+        <td class="auto">Endpoint + service ready; prod scheduler external</td><td>Admin button for UAT</td>
+        <td class="iss">No scheduler in repo (deployment); no ScanRun history (501)</td>
+      </tr>
+      <tr>
+        <td>2 Fetch BambooHR</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>Scan running</td><td><code>list_active_employees()</code>, map fields</td>
+        <td>BambooHR reachable?</td><td>Process roster</td><td>502; per-employee error logged</td>
+        <td class="auto">Live, READ-ONLY</td><td>—</td><td class="iss">Full roster pulled every request (no cache)</td>
+      </tr>
+      <tr>
+        <td>3 Occurrence + window</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>Per employee</td><td>Next occurrence, <code>days_remaining</code></td>
+        <td>Within <code>[−lookback, +lookahead]</code>?</td><td>Continue</td><td>Upcoming Birthdays only; no order</td>
+        <td class="auto">Year-boundary + Feb-29 safe</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td>4 Eligibility</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>In window</td><td><code>compute_eligibility(...)</code></td>
+        <td>Eligible?</td><td>Continue</td><td>No order; reason per row</td>
+        <td class="auto">One central rule; never re-derived client-side</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td>5 Dedup</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>Eligible</td><td>Look up <code>(employee_id, birthday_year)</code></td>
+        <td>Order exists?</td><td>Reuse untouched</td><td>Create new order</td>
+        <td class="auto">DB unique constraint is enforcement point</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td>6 Order reference</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>New order</td><td><code>BDAY-EMP{employeeNumber}-{year}-{seq}</code></td>
+        <td>Has <code>employeeNumber</code>?</td><td>Use it (Team Member ID)</td><td>Fall back to internal id (tagged)</td>
+        <td class="auto"><span class="fixed">Now uses employeeNumber</span>; retry-safe counter</td><td>—</td>
+        <td class="iss"><span class="status-done">FIXED</span> — was internal id (EMP530 vs EMP396); dev rows backfilled</td>
+      </tr>
+      <tr>
+        <td>7 Address snapshot</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>New order</td><td>Copy address; <code>source=BAMBOOHR</code>; <code>NOT_CHECKED</code></td>
+        <td>Address present?</td><td>Snapshot stored</td><td><code>source=null</code>; blocked at readiness</td>
+        <td class="auto">Owned by BirthdayOrder; never written back</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td>8 Defaults</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>New order</td><td>Supplier resolve · date = birthday · qty 1 · Cake</td>
+        <td>Exactly one ACTIVE supplier?</td><td>Auto-assign it</td><td>Office rule → <code>is_default</code> → none</td>
+        <td class="auto"><span class="fixed">Sole-supplier + birthday-date defaulting added</span></td><td>—</td>
+        <td class="iss">Office-string matching brittle for real BambooHR values — mitigated</td>
+      </tr>
+      <tr>
+        <td>9 Initial status</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>New order</td><td><code>determine_initial_status</code>; DETECTED event</td>
+        <td>Email + supplier + lead time OK?</td><td><code>DRAFT</code></td><td><code>REQUIRES_ATTENTION</code> / <code>ON_HOLD</code></td>
+        <td class="auto">Auto-promote attempt (rarely fires)</td><td>—</td>
+        <td class="iss">Auto-promote near-dead at scan time (address NOT_CHECKED)</td>
+      </tr>
+      <tr>
+        <td>10 Open order</td><td><span class="pill int">Internal</span></td><td><span class="pill human">Ops / P&amp;C</span></td>
+        <td>Register / Upcoming link</td><td>Load order + readiness</td>
+        <td>—</td><td>—</td><td>—</td><td>—</td><td>Operator navigates to the order</td><td>—</td>
+      </tr>
+      <tr>
+        <td>11 Fulfilment assignment</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span> pre-fill / <span class="pill human">Ops</span> adjust</td>
+        <td>Order opened</td><td>Panel pre-filled; product = Cake read-only</td>
+        <td>Any exception to defaults?</td><td>Edit + <em>Save assignment</em></td><td>Nothing to do</td>
+        <td class="auto"><span class="fixed">Product dropdown removed; supplier + date pre-selected</span></td>
+        <td>One <em>Save</em> click for pre-fix orders</td>
+        <td class="iss">Residual: legacy-order defaults not persisted until saved once</td>
+      </tr>
+      <tr>
+        <td>12 Address verification</td><td><span class="pill int">Internal</span></td><td><span class="pill human">P&amp;C</span></td>
+        <td>Operator on order page</td><td>Transitions → OrderEvent + audit (field names only)</td>
+        <td>Address correct (confirmed with Team Member)?</td>
+        <td><code>VERIFIED</code></td><td><code>NEEDS_UPDATE</code> → edit → <code>VERIFIED</code></td>
+        <td>No automated Team Member contact (by design)</td><td>P&amp;C outreach + set status</td>
+        <td class="iss">The single manual bottleneck per order</td>
+      </tr>
+      <tr>
+        <td>13 Readiness</td><td><span class="pill int">Internal</span></td><td><span class="pill sys">System</span></td>
+        <td>Submit / approve</td><td><code>readiness_service.check()</code> re-run</td>
+        <td>address + supplier + date + office + qty + name?</td>
+        <td>Allow <code>READY_FOR_APPROVAL</code></td><td>409 + <code>missing[]</code></td>
+        <td class="auto">Re-validated on every submit and approve</td><td>—</td>
+        <td class="iss">Product / catalogue item deliberately not a gate</td>
+      </tr>
+      <tr>
+        <td>14 Submit for approval</td><td><span class="pill int">Internal</span></td><td><span class="pill human">Ops</span></td>
+        <td>Readiness met</td><td>→ <code>READY_FOR_APPROVAL</code>; OrderEvent + audit</td>
+        <td>—</td><td>—</td><td>—</td>
+        <td class="auto"><span class="fixed">Now also from REQUIRES_ATTENTION / ON_HOLD</span></td>
+        <td>Operator clicks <em>Submit for Approval</em></td>
+        <td class="iss"><span class="status-done">FIXED</span> — was DRAFT-only; RA orders were a dead end</td>
+      </tr>
+      <tr>
+        <td>15 Approval</td><td><span class="pill int">Internal</span></td><td><span class="pill human">Approver</span></td>
+        <td><code>READY_FOR_APPROVAL</code></td><td>Stamp <code>approved_by</code>/<code>approved_at</code>; OrderEvent + audit</td>
+        <td>Approve?</td><td><code>APPROVED</code></td><td><code>REJECTED</code> / <code>ON_HOLD</code> / <code>CANCELLED</code></td>
+        <td class="auto">Readiness re-checked at approve</td><td>Approver decision (<code>birthday.orders.approve</code>)</td><td>—</td>
+      </tr>
+      <tr>
+        <td>16 Release to supplier</td><td><span class="pill int">Internal</span></td><td><span class="pill human">Ops</span></td>
+        <td><code>APPROVED</code></td><td>“Send” email (mock); <code>EMAIL_SENT</code>; → <code>SENT_TO_SUPPLIER</code></td>
+        <td><code>approved_at</code> + supplier + VERIFIED?</td>
+        <td>Supplier-visible</td><td>409 (approval / address / supplier gate)</td>
+        <td class="auto">Gate is approval provenance (<code>approved_at</code>)</td><td>Operator clicks <em>Send to Supplier</em></td>
+        <td class="iss"><code>EMAIL_SENDING_MODE=mock</code> — no real email</td>
+      </tr>
+      <tr>
+        <td>17 Supplier auth</td><td><span class="pill ext">Portal</span></td><td><span class="pill sys">System</span></td>
+        <td>Supplier opens portal</td><td>Validate token → <code>oid</code> → SupplierUser → supplier_id</td>
+        <td>Authenticated + SupplierUser ACTIVE + Supplier ACTIVE?</td>
+        <td>Supplier-scoped session</td><td>401</td>
+        <td class="auto">supplier_id server-side only, re-checked each request</td><td>Supplier signs in (dev: persona)</td>
+        <td class="iss">Real Entra RS256/JWKS/issuer/audience validation is a deployment task</td>
+      </tr>
+      <tr>
+        <td>18 Order ownership</td><td><span class="pill ext">Portal</span></td><td><span class="pill sys">System</span></td>
+        <td>List / open order</td><td><code>get_for_supplier(...)</code>; DTO = <code>SupplierOrderView</code></td>
+        <td>Owns it AND supplier-visible?</td>
+        <td>Fulfilment facts only (address if VERIFIED)</td><td>404</td>
+        <td class="auto">Isolation is structural, not a filter</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td>19 Acknowledge</td><td><span class="pill ext">Portal</span></td><td><span class="pill human">Supplier</span></td>
+        <td>Order visible</td><td><code>SENT_TO_SUPPLIER → SUPPLIER_REVIEW</code></td>
+        <td>—</td><td>—</td><td>—</td><td>—</td><td>Supplier clicks <em>Acknowledge</em></td><td>—</td>
+      </tr>
+      <tr>
+        <td>20 Fulfil decision</td><td><span class="pill ext">Portal</span></td><td><span class="pill human">Supplier</span></td>
+        <td><code>SUPPLIER_REVIEW</code></td><td>Transition validated; notifications on exceptions</td>
+        <td>Can fulfil?</td><td><code>CONFIRMED</code></td>
+        <td><code>CHANGE_REQUESTED</code> / <code>UNABLE_TO_FULFIL</code> / raise issue → ops</td>
+        <td class="auto">Issue only while in progress</td><td>Supplier chooses an action</td><td>—</td>
+      </tr>
+      <tr>
+        <td>21 Fulfilment lifecycle</td><td><span class="pill ext">Portal</span></td><td><span class="pill human">Supplier</span></td>
+        <td><code>CONFIRMED</code></td><td>Each PATCH validated; OrderEvent + audit</td>
+        <td>Progress step?</td><td><code>PREPARING → OUT_FOR_DELIVERY → DELIVERED</code></td><td>Stays; may raise issue</td>
+        <td class="auto">Allowed targets restricted per status</td><td>Supplier advances status</td><td>—</td>
+      </tr>
+      <tr>
+        <td>22 Close-out</td><td><span class="pill int">Internal</span></td><td><span class="pill human">Ops</span> / <span class="pill sys">System</span></td>
+        <td><code>DELIVERED</code></td><td><code>DELIVERED → COMPLETED</code>; history retained</td>
+        <td>—</td><td>—</td><td>—</td><td>—</td><td>Internal close-out</td>
+        <td class="iss">Supplier communications absent from <code>BirthdayOrderRead</code>; timeline is OrderEvents only</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>3 · Observed bottlenecks &amp; recommendations <span style="font-weight:400;color:var(--muted);font-size:13px">(separate from the current flow)</span></h2>
+
+  <div class="rec">
+    <h4>Addressed in this round <span class="status-done">— done</span></h4>
+    <ul class="tight">
+      <li><strong>Wrong order-reference identity</strong> — was <code>EMP{internal id}</code> (EMP530); now <code>EMP{employeeNumber}</code> (EMP396) in detection <em>and</em> manual creation. Existing dev rows corrected by an idempotent, uniqueness-safe backfill (<code>scripts/backfill_order_references.py</code>).</li>
+      <li><strong>Unnecessary supplier selection</strong> — the sole ACTIVE supplier is auto-resolved at creation and pre-selected in the panel; still editable; not hardcoded.</li>
+      <li><strong>Unnecessary product-type selection</strong> — the generic Product dropdown is gone; <em>Product: Cake</em> is a fixed field. Cake variant stays optional and only shows when the supplier has catalogue items.</li>
+      <li><strong>Unnecessary delivery-date entry</strong> — defaults to the birthday occurrence at creation; editable for weekend / holiday / supplier / employee-availability; no extra approval for using the default.</li>
+      <li><strong>REQUIRES_ATTENTION dead end</strong> — <em>Submit for Approval</em> now works from <code>REQUIRES_ATTENTION</code> and <code>ON_HOLD</code>; the Fulfilment Assignment panel supplies the supplier/date controls that were missing.</li>
+      <li><strong>Team Member ID display</strong> — Option A: <em>Team Member Name (396)</em> on one line; when absent, “(no Team Member ID)”. The BambooHR internal id is no longer shown in the UI.</li>
+    </ul>
+  </div>
+
+  <div class="rec">
+    <h4>Still open — for the next round of business-rule decisions <span class="status-open">— review</span></h4>
+    <ul class="tight">
+      <li><strong>Address verification is the one remaining manual gate per order</strong> (intentional — no automated Team Member contact). Decision: re-verify every year, or carry a VERIFIED + unchanged BambooHR address forward to the next occurrence?</li>
+      <li><strong>Auto-promotion at scan time is effectively dead</strong> (address is always <code>NOT_CHECKED</code> then). Either remove the step, or fire the readiness evaluation when the address becomes <code>VERIFIED</code> so the order jumps straight to <code>READY_FOR_APPROVAL</code> with no manual <em>Submit</em>.</li>
+      <li><strong>“Save assignment” click for legacy orders.</strong> New orders carry the defaults; pre-fix orders still need one save. A one-off backfill of <code>delivery_date = birthday_date</code> (+ sole supplier) for open orders removes it.</li>
+      <li><strong>Office-location → supplier mapping is brittle</strong> for real BambooHR office strings. Sole-active + <code>is_default</code> cover the current single-supplier reality; a region / service-area model is needed before a second supplier.</li>
+      <li><strong>Approval for the fully-defaulted happy path.</strong> Every order needs an explicit human approve even when supplier, date, product, quantity and a VERIFIED address are all system-known. Decide whether a “standard order” (all defaults, address verified, normal lead time) may auto-approve, with approval reserved for exceptions (manual override, short lead time, changed address, reassigned supplier).</li>
+      <li><strong>Scan-run history</strong> — <code>GET /api/birthday/internal/scan-runs/{id}</code> returns 501; outcomes exist only in the synchronous response.</li>
+      <li><strong>Supplier communications not exposed</strong> in <code>BirthdayOrderRead</code>; the order-detail timeline shows OrderEvents only.</li>
+      <li><strong>Two supplier roles</strong> (<code>SUPPLIER_USER</code>, <code>SUPPLIER_ADMIN</code>) currently get identical portal permissions.</li>
+      <li><strong>BambooHR pulled live every request</strong> (Upcoming Birthdays + detection). A local read model / nightly sync would speed the UI and decouple detection from BambooHR availability.</li>
+      <li><strong>Module <code>/summary</code> endpoint is unauthenticated</strong> (platform-wide convention; three integer counts only).</li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    Generated for logic review — <code>docs/birthday/current-workflow-review.html</code>. Reflects
+    <code>apps/birthday-api</code> / <code>apps/birthday-web</code> / <code>apps/birthday-supplier-web</code> after the
+    sections 1–10 corrections. No workflow was redesigned in producing this document.
+  </div>
+
+</div>
+</body>
+</html>

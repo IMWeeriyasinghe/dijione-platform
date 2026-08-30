@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  CheckCircle2,
+  BadgeCheck,
   PauseCircle,
   PlayCircle,
   RefreshCcw,
@@ -30,22 +30,41 @@ import {
   Textarea,
 } from "@dijione/design-system";
 import {
-  approveOrder,
   cancelOrder,
+  confirmRelease,
   deleteOrder,
   getOrder,
   holdOrder,
-  rejectOrder,
+  listSupplierCatalogue,
+  listSuppliers,
   releaseOrder,
   resendOrderToSupplier,
   sendOrderToSupplier,
-  submitForApproval,
   updateAddressVerification,
   updateDeliveryAddress,
+  updateOrder,
+  verifyAddress,
 } from "@/lib/api";
-import type { DeliveryAddressUpdateInput } from "@dijione/contracts";
+import type { BirthdayOrderOut, DeliveryAddressUpdateInput, SupplierOut } from "@dijione/contracts";
 
-type ActionKind = "hold" | "release" | "cancel" | "reject" | null;
+type ActionKind = "hold" | "release" | "cancel" | null;
+
+type FulfilmentEdit = { supplier_id?: string; delivery_date?: string; catalogue_item_id?: string };
+
+/** Resolves the *effective* fulfilment values shown in the assignment panel:
+ * an unsaved operator edit wins; otherwise the value already on the order;
+ * otherwise a safe system default — the sole ACTIVE supplier (§5/§6) for
+ * supplier, and the birthday occurrence (§8) for delivery date. Product
+ * type is always "Cake" and is not part of this (§7). */
+function effectiveFulfilment(order: BirthdayOrderOut, activeSuppliers: SupplierOut[], edit: FulfilmentEdit) {
+  const soleSupplierId = activeSuppliers.length === 1 ? String(activeSuppliers[0].id) : "";
+  return {
+    supplierId: edit.supplier_id ?? (order.supplier_id != null ? String(order.supplier_id) : soleSupplierId),
+    deliveryDate: edit.delivery_date ?? order.delivery_date ?? order.birthday_date ?? "",
+    catalogueId:
+      edit.catalogue_item_id ?? (order.catalogue_item_id != null ? String(order.catalogue_item_id) : ""),
+  };
+}
 
 // P&C-manual only (plan requirement #7-9) — never set by automation, and
 // setting one of these never triggers any outbound contact to the
@@ -81,6 +100,11 @@ export function OrderDetail({ orderId }: { orderId: number }) {
   const [reasonText, setReasonText] = useState("");
   const [addressEditOpen, setAddressEditOpen] = useState(false);
   const [addressForm, setAddressForm] = useState<DeliveryAddressUpdateInput>({});
+  // Fulfilment-assignment edits. Each field is `undefined` until the
+  // operator touches it, then a string (including "" to clear) — so a
+  // touched-then-emptied field stays empty rather than snapping back to the
+  // order's value. Avoids seeding state from an effect.
+  const [fulfilmentEdit, setFulfilmentEdit] = useState<FulfilmentEdit>({});
 
   const {
     data: order,
@@ -88,6 +112,23 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     isError,
     refetch,
   } = useQuery({ queryKey: ["birthday-order", orderId], queryFn: () => getOrder(orderId) });
+
+  const suppliersQuery = useQuery({
+    queryKey: ["birthday-suppliers-picker"],
+    queryFn: () => listSuppliers({ page_size: 200 }),
+  });
+
+  const suppliers = suppliersQuery.data?.items ?? [];
+  const activeSuppliers = suppliers.filter((s) => s.status === "ACTIVE");
+  const eff = order
+    ? effectiveFulfilment(order, activeSuppliers, fulfilmentEdit)
+    : { supplierId: "", deliveryDate: "", catalogueId: "" };
+
+  const catalogueQuery = useQuery({
+    queryKey: ["birthday-order-catalogue", eff.supplierId],
+    queryFn: () => listSupplierCatalogue(Number(eff.supplierId)),
+    enabled: eff.supplierId !== "",
+  });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["birthday-order", orderId] });
@@ -145,22 +186,33 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     },
   });
 
-  const submitForApprovalMutation = useMutation({
-    mutationFn: () => submitForApproval(orderId),
+  // "Verification is the approval" (plan §K) — this one call is the
+  // entire routine happy path. A standard order auto-releases straight
+  // to SENT_TO_SUPPLIER; a flagged order lands in REQUIRES_REVIEW for
+  // the one-click confirmReleaseMutation below.
+  const verifyMutation = useMutation({
+    mutationFn: () => verifyAddress(orderId, {}),
     onSuccess: () => invalidate(),
   });
 
-  const approveMutation = useMutation({
-    mutationFn: () => approveOrder(orderId),
+  const confirmReleaseMutation = useMutation({
+    mutationFn: () => confirmRelease(orderId, {}),
     onSuccess: () => invalidate(),
   });
 
-  const rejectMutation = useMutation({
-    mutationFn: (reason: string) => rejectOrder(orderId, { reason }),
+  const updateOrderMutation = useMutation({
+    // Persists the *effective* values (system defaults included) — so
+    // saving an order that had no supplier writes the auto-selected sole
+    // supplier, and one with no delivery date writes the birthday default.
+    mutationFn: () =>
+      updateOrder(orderId, {
+        supplier_id: eff.supplierId ? Number(eff.supplierId) : null,
+        delivery_date: eff.deliveryDate || null,
+        catalogue_item_id: eff.catalogueId ? Number(eff.catalogueId) : null,
+      }),
     onSuccess: () => {
       invalidate();
-      setActionOpen(null);
-      setReasonText("");
+      setFulfilmentEdit({});
     },
   });
 
@@ -181,30 +233,46 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     cancelMutation.isPending ||
     sendToSupplierMutation.isPending ||
     resendMutation.isPending ||
-    submitForApprovalMutation.isPending ||
-    approveMutation.isPending ||
-    rejectMutation.isPending ||
+    verifyMutation.isPending ||
+    confirmReleaseMutation.isPending ||
+    updateOrderMutation.isPending ||
     deleteMutation.isPending;
 
-  // Approval workflow gate (Phase-Next §2): only an APPROVED order can be
-  // sent — mirrors birthday-api's order_email_service._send check exactly,
-  // this is a UX convenience only, never the enforcement point.
+  const supplierName = (id: number | null | undefined) =>
+    id == null ? "Unassigned" : (suppliers.find((s) => s.id === id)?.name ?? `Supplier #${id}`);
+
+  // "Dirty" = the effective values (which include system defaults like the
+  // sole supplier / birthday delivery date) differ from what is actually
+  // saved on the order — so "Save assignment" lights up when a default
+  // needs persisting, not only after a manual edit.
+  const fulfilmentDirty =
+    eff.supplierId !== (order.supplier_id != null ? String(order.supplier_id) : "") ||
+    eff.deliveryDate !== (order.delivery_date ?? "") ||
+    eff.catalogueId !== (order.catalogue_item_id != null ? String(order.catalogue_item_id) : "");
+  const catalogueItems = catalogueQuery.data ?? [];
+
+  // "Verification is the approval" (plan §K): the Verify button is the
+  // single routine happy-path action, available any time the address
+  // isn't already VERIFIED. Manual Send/Resend remain for held orders and
+  // exception recovery — mirrors birthday-api's order_email_service._send
+  // reachability check exactly; this is a UX convenience only, never the
+  // enforcement point.
+  const canVerify = order.address_verification_status !== "VERIFIED" && !["CANCELLED", "COMPLETED"].includes(order.status);
+  const canConfirmRelease = order.status === "REQUIRES_REVIEW";
   const canSendToSupplier =
-    order.status === "APPROVED" &&
+    ["PENDING_VERIFICATION", "REQUIRES_ATTENTION"].includes(order.status) &&
     order.supplier_id != null &&
     order.address_verification_status === "VERIFIED";
   const canResend = ["REQUIRES_ATTENTION", "CHANGE_REQUESTED"].includes(order.status) && order.supplier_id != null;
-  const canSubmitForApproval = order.status === "DRAFT";
-  const canApproveOrReject = order.status === "READY_FOR_APPROVAL";
-  // Hard delete is DRAFT-only and never-actioned (server is the real
-  // boundary — see the 409 birthday-api returns otherwise).
-  const canDelete = order.status === "DRAFT";
+  const verifyError = verifyMutation.error as Error | null;
+  // Hard delete is PENDING_VERIFICATION-only and never-actioned (server is
+  // the real boundary — see the 409 birthday-api returns otherwise).
+  const canDelete = order.status === "PENDING_VERIFICATION";
 
   function submitAction() {
     if (actionOpen === "hold") holdMutation.mutate(reasonText);
     if (actionOpen === "release") releaseMutation.mutate(reasonText);
     if (actionOpen === "cancel") cancelMutation.mutate(reasonText);
-    if (actionOpen === "reject") rejectMutation.mutate(reasonText);
   }
 
   return (
@@ -235,31 +303,24 @@ export function OrderDetail({ orderId }: { orderId: number }) {
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button
               size="sm"
-              variant="secondary"
-              disabled={!canSubmitForApproval || isMutating}
-              loading={submitForApprovalMutation.isPending}
-              onClick={() => submitForApprovalMutation.mutate()}
+              variant="primary"
+              disabled={!canVerify || isMutating}
+              loading={verifyMutation.isPending}
+              onClick={() => verifyMutation.mutate()}
+              title="The one routine checkpoint — marks the address VERIFIED and auto-releases a standard order to the supplier"
             >
-              Submit for Approval
+              <BadgeCheck className="size-4" />
+              Verify Address
             </Button>
             <Button
               size="sm"
               variant="primary"
-              disabled={!canApproveOrReject || isMutating}
-              loading={approveMutation.isPending}
-              onClick={() => approveMutation.mutate()}
+              disabled={!canConfirmRelease || isMutating}
+              loading={confirmReleaseMutation.isPending}
+              onClick={() => confirmReleaseMutation.mutate()}
+              title="This order was flagged for a look before release — confirm to send it to the supplier"
             >
-              <CheckCircle2 className="size-4" />
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={!canApproveOrReject || isMutating}
-              onClick={() => setActionOpen("reject")}
-            >
-              <XCircle className="size-4" />
-              Reject
+              Confirm &amp; Release
             </Button>
             <Button
               size="sm"
@@ -327,6 +388,12 @@ export function OrderDetail({ orderId }: { orderId: number }) {
         )}
       </div>
 
+      {verifyError && (
+        <div className="mb-6 rounded-xl border border-dt-danger/40 bg-dt-danger/5 p-3 text-sm text-dt-danger">
+          Could not verify: {verifyError.message}.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
           <Card>
@@ -340,11 +407,22 @@ export function OrderDetail({ orderId }: { orderId: number }) {
               <DetailRow label="Lead Time" value={`${order.lead_time_days} days`} />
               <DetailRow label="Lead Time Class" value={<StatusBadge status={order.lead_time_class} />} />
               <DetailRow label="Quantity" value={order.quantity} />
+              <DetailRow label="Product" value="Cake" />
               <DetailRow label="Delivery Date" value={order.delivery_date ?? "—"} />
-              <DetailRow label="Supplier" value={order.supplier_id ?? "Unassigned"} />
+              <DetailRow label="Supplier" value={order.supplier_name ?? supplierName(order.supplier_id)} />
               <DetailRow label="Manual Override" value={order.is_manual_override ? "Yes" : "No"} />
-              <DetailRow label="Overdue" value={order.is_overdue ? "Yes" : "No"} />
-              <DetailRow label="Delivery Issue" value={order.has_delivery_issue ? "Yes" : "No"} />
+              <DetailRow label="Verify By" value={order.verify_by ?? "—"} />
+              {order.exception_reason && (
+                <DetailRow label="Exception" value={<StatusBadge status="REQUIRES_ATTENTION" label={order.exception_reason} />} />
+              )}
+              <DetailRow
+                label="Released"
+                value={
+                  order.released_at
+                    ? `${new Date(order.released_at).toLocaleString()}${order.released_by ? "" : " · system (auto-released)"}`
+                    : "Not yet released"
+                }
+              />
               <DetailRow label="Retry Count" value={order.retry_count} />
               {order.hold_reason && <DetailRow label="Hold Reason" value={order.hold_reason} />}
               {order.last_failure_reason && (
@@ -353,6 +431,117 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             </CardContent>
           </Card>
 
+          {scope?.isAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Fulfilment Assignment</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-3 text-sm text-dt-text-secondary">
+                  The system pre-fills what it already knows — the only supplier (when there is just
+                  one), the birthday as the delivery date, and Cake as the product. Adjust only where
+                  an exception applies, then <strong>Save assignment</strong>.
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField label="Supplier" htmlFor="fa-supplier">
+                    <Select
+                      id="fa-supplier"
+                      value={eff.supplierId}
+                      onChange={(e) =>
+                        setFulfilmentEdit((f) => ({
+                          ...f,
+                          supplier_id: e.target.value,
+                          // supplier changed → clear the variant, its catalogue no longer applies
+                          catalogue_item_id: "",
+                        }))
+                      }
+                    >
+                      <option value="">Unassigned</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={String(s.id)}>
+                          {s.name}
+                          {s.status !== "ACTIVE" ? " (inactive)" : ""}
+                          {s.is_default ? " · default" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                    {order.supplier_id == null && eff.supplierId !== "" && (
+                      <p className="mt-1 text-xs text-dt-text-secondary">
+                        Auto-selected (only active supplier). Save to apply.
+                      </p>
+                    )}
+                  </FormField>
+                  <FormField label="Delivery Date" htmlFor="fa-date">
+                    <input
+                      id="fa-date"
+                      type="date"
+                      className="w-full rounded-lg border border-dt-border px-3 py-2 text-sm"
+                      value={eff.deliveryDate}
+                      onChange={(e) =>
+                        setFulfilmentEdit((f) => ({ ...f, delivery_date: e.target.value }))
+                      }
+                    />
+                    {eff.deliveryDate === order.birthday_date && (
+                      <p className="mt-1 text-xs text-dt-text-secondary">
+                        Defaulted to the birthday — change for a weekend / holiday / supplier
+                        constraint.
+                      </p>
+                    )}
+                  </FormField>
+                  <FormField label="Product" htmlFor="fa-product-type">
+                    <input
+                      id="fa-product-type"
+                      value="Cake"
+                      readOnly
+                      className="w-full cursor-default rounded-lg border border-dt-border bg-dt-surface-warm/40 px-3 py-2 text-sm text-dt-text-primary"
+                    />
+                  </FormField>
+                  {catalogueItems.length > 0 && (
+                    <FormField label="Cake variant (optional)" htmlFor="fa-variant">
+                      <Select
+                        id="fa-variant"
+                        value={eff.catalogueId}
+                        onChange={(e) =>
+                          setFulfilmentEdit((f) => ({ ...f, catalogue_item_id: e.target.value }))
+                        }
+                      >
+                        <option value="">Standard cake (no specific variant)</option>
+                        {catalogueItems
+                          .filter((c) => c.is_active || String(c.id) === eff.catalogueId)
+                          .map((c) => (
+                            <option key={c.id} value={String(c.id)}>
+                              {c.name}
+                              {!c.is_active ? " (inactive)" : ""}
+                            </option>
+                          ))}
+                      </Select>
+                    </FormField>
+                  )}
+                </div>
+                {updateOrderMutation.error && (
+                  <p className="mt-2 text-sm text-dt-danger">
+                    Could not save: {(updateOrderMutation.error as Error).message}
+                  </p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={!fulfilmentDirty || isMutating}
+                    loading={updateOrderMutation.isPending}
+                    onClick={() => updateOrderMutation.mutate()}
+                  >
+                    Save assignment
+                  </Button>
+                  {fulfilmentDirty && (
+                    <Button size="sm" variant="secondary" onClick={() => setFulfilmentEdit({})}>
+                      Discard changes
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Address Verification</CardTitle>
@@ -360,8 +549,10 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <CardContent>
               <p className="mb-3 text-sm text-dt-text-secondary">
                 P&C-manual only — set this after confirming the delivery address directly with the
-                team member. Nothing here contacts the team member automatically, and the order
-                cannot be sent to the supplier until this is <strong>Verified</strong>.
+                team member. Nothing here contacts the team member automatically. This is the one
+                routine checkpoint: use the <strong>Verify Address</strong> button above once
+                confirmed — a standard order releases to the supplier immediately, a flagged one
+                (e.g. a corrected address) moves to a quick review instead.
               </p>
 
               <div className="mb-3 rounded-xl border border-dt-border p-3">
@@ -518,9 +709,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             ? "Put order on hold"
             : actionOpen === "release"
               ? "Release order from hold"
-              : actionOpen === "reject"
-                ? "Reject order"
-                : "Cancel order"
+              : "Cancel order"
         }
       >
         <div className="flex flex-col gap-4">
@@ -541,10 +730,10 @@ export function OrderDetail({ orderId }: { orderId: number }) {
               Cancel
             </Button>
             <Button
-              variant={actionOpen === "cancel" || actionOpen === "reject" ? "danger" : "primary"}
+              variant={actionOpen === "cancel" ? "danger" : "primary"}
               size="sm"
               loading={isMutating}
-              disabled={(actionOpen === "hold" || actionOpen === "reject") && reasonText.trim() === ""}
+              disabled={actionOpen === "hold" && reasonText.trim() === ""}
               onClick={submitAction}
             >
               Confirm

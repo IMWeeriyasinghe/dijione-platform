@@ -163,7 +163,7 @@ def test_cake_order_status_reflects_existing_order(db):
         birthday_date=date(2026, 1, 11),
         birthday_year=2026,
         office_location="Colombo",
-        status=OrderStatus.PLANNED.value,
+        status=OrderStatus.PENDING_VERIFICATION.value,
     )
     db.add(order)
     db.commit()
@@ -172,7 +172,7 @@ def test_cake_order_status_reflects_existing_order(db):
     results = list_upcoming_birthdays(db, client, days=30, today=today)
 
     assert len(results) == 1
-    assert results[0].cake_order_status == OrderStatus.PLANNED.value
+    assert results[0].cake_order_status == OrderStatus.PENDING_VERIFICATION.value
 
 
 def test_upcoming_birthdays_endpoint_returns_expected_shape(api_client, db):
@@ -190,7 +190,7 @@ def test_upcoming_birthdays_endpoint_returns_expected_shape(api_client, db):
         assert set(item.keys()) == {
             "employee_id", "employee_number", "display_name", "days_until_birthday",
             "birthday", "department", "location", "city", "state_province",
-            "cake_order_status", "order_id", "hire_date",
+            "cake_order_status", "order_id", "order_reference", "hire_date",
             "eligible", "eligibility_reason", "address_verification_status",
         }
 

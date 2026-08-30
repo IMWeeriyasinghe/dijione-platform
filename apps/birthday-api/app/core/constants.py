@@ -23,28 +23,59 @@ class LeadTimeClass(StrEnum):
 
 
 class OrderStatus(StrEnum):
-    # Pre-fulfilment / approval-workflow states (Phase-Next §2). Orders are
-    # created DRAFT; the readiness check auto-promotes to
-    # READY_FOR_APPROVAL once eligible+address-verified+supplier-assigned;
-    # APPROVED is a human decision (never automatic) and is the only status
-    # from which an order may be sent to a supplier.
-    DRAFT = "DRAFT"
-    READY_FOR_APPROVAL = "READY_FOR_APPROVAL"
-    APPROVED = "APPROVED"
-    PLANNED = "PLANNED"  # legacy pre-approval-workflow status, kept for backward compatibility
+    """Optimized future-state state machine (DijiBirthday semi-automation
+    plan §P). "Verification is the approval": a standard order goes
+    PENDING_VERIFICATION -> SENT_TO_SUPPLIER automatically the moment a
+    human marks the address VERIFIED; only orders carrying an exception
+    trigger route through REQUIRES_REVIEW for a one-click human confirm.
+    Legacy DRAFT/READY_FOR_APPROVAL/APPROVED/PLANNED/REJECTED/
+    SUPPLIER_REVIEW statuses have been retired — there is no persisted
+    production data to migrate (dev-only SQLite, mock integrations)."""
+
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"  # the one routine human gate
+    REQUIRES_REVIEW = "REQUIRES_REVIEW"  # flagged order awaiting one-click confirm & release
+    REQUIRES_ATTENTION = "REQUIRES_ATTENTION"  # typed exception queue
     ON_HOLD = "ON_HOLD"
     SENT_TO_SUPPLIER = "SENT_TO_SUPPLIER"
-    SUPPLIER_REVIEW = "SUPPLIER_REVIEW"
     CHANGE_REQUESTED = "CHANGE_REQUESTED"
-    CONFIRMED = "CONFIRMED"
+    CONFIRMED = "CONFIRMED"  # supplier accepted (merged acknowledge+confirm)
     PREPARING = "PREPARING"
     OUT_FOR_DELIVERY = "OUT_FOR_DELIVERY"
     DELIVERED = "DELIVERED"
-    COMPLETED = "COMPLETED"
-    REJECTED = "REJECTED"
+    COMPLETED = "COMPLETED"  # auto-set by the system the moment DELIVERED lands
     UNABLE_TO_FULFIL = "UNABLE_TO_FULFIL"
     CANCELLED = "CANCELLED"
-    REQUIRES_ATTENTION = "REQUIRES_ATTENTION"
+
+
+class ExceptionReason(StrEnum):
+    """Typed reason an order landed in REQUIRES_ATTENTION or was flagged
+    into REQUIRES_REVIEW — drives the exception/review queues and
+    dashboard drilldowns (plan §Q)."""
+
+    MISSING_EMAIL = "MISSING_EMAIL"
+    NO_SUPPLIER = "NO_SUPPLIER"
+    NO_DEFAULT_CAKE = "NO_DEFAULT_CAKE"
+    SHORT_NOTICE_LEAD_TIME = "SHORT_NOTICE_LEAD_TIME"
+    ADDRESS_MANUALLY_CORRECTED = "ADDRESS_MANUALLY_CORRECTED"
+    DELIVERY_DATE_CHANGED = "DELIVERY_DATE_CHANGED"
+    QUANTITY_CHANGED = "QUANTITY_CHANGED"
+    CAKE_OVERRIDDEN = "CAKE_OVERRIDDEN"
+    SUPPLIER_OVERRIDDEN = "SUPPLIER_OVERRIDDEN"
+    SEND_FAILED = "SEND_FAILED"
+    DELIVERY_FAILED = "DELIVERY_FAILED"
+    SUPPLIER_CANNOT_FULFIL = "SUPPLIER_CANNOT_FULFIL"
+
+
+class OrderIssueType(StrEnum):
+    CHANGE_REQUEST = "CHANGE_REQUEST"
+    CANNOT_FULFIL = "CANNOT_FULFIL"
+    DELIVERY_ISSUE = "DELIVERY_ISSUE"
+    OTHER = "OTHER"
+
+
+class OrderIssueStatus(StrEnum):
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
 
 
 class CommunicationChannel(StrEnum):

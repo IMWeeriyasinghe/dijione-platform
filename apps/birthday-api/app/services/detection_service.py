@@ -6,16 +6,19 @@ initial-status determination (CR §5/§10/§12).
 from __future__ import annotations
 
 import calendar
+import json
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.constants import EligibilityReason, LeadTimeClass, OrderStatus
+from app.core.constants import EligibilityReason, ExceptionReason, LeadTimeClass, OrderStatus
 from app.integrations.bamboohr.client import BambooHRClient
 from app.integrations.bamboohr.mapper import map_employee
 from app.models.detection_config import BirthdayDetectionConfig
+from app.models.scan_run import ScanRun
 from app.models.supplier import Supplier
+from app.models.supplier_catalogue_item import SupplierCatalogueItem
 from app.repositories.supplier_repository import SupplierRepository
 from app.services.eligibility_service import compute_eligibility
 from app.services.order_sequence_service import next_order_reference
@@ -58,7 +61,42 @@ def is_within_scan_window(days_remaining: int, config: BirthdayDetectionConfig) 
 
 
 def resolve_supplier_for_office(office_location: str, db: Session) -> Supplier | None:
-    return SupplierRepository(db).get_by_office_location(office_location)
+    """Deterministic supplier resolution, in priority order (§5/§6):
+
+    1. exactly one ACTIVE supplier exists            -> that supplier
+    2. an office-location rule matches               -> the mapped supplier
+    3. one ACTIVE supplier is flagged is_default     -> that supplier
+    4. otherwise                                     -> None (operator picks)
+
+    Nothing hardcodes an id or assumes a single supplier forever — step 1
+    simply stops making the operator choose when there is no choice.
+    """
+    repo = SupplierRepository(db)
+    return (
+        repo.get_sole_active_supplier()
+        or repo.get_by_office_location(office_location)
+        or repo.get_default()
+    )
+
+
+def resolve_default_catalogue_item(supplier: Supplier | None, db: Session) -> SupplierCatalogueItem | None:
+    """The supplier's default cake (plan §31/§L) — auto-applied to every
+    new order for that supplier. A supplier with no catalogue items is
+    fine (no exception — "Cake" alone is a valid product); a supplier
+    with catalogue items but none flagged default, or more than one, is
+    ambiguous and raises NO_DEFAULT_CAKE unless exactly one item exists
+    (in which case that lone item is the obvious default)."""
+    if supplier is None:
+        return None
+    items = [item for item in supplier.catalogue_items if item.is_active]
+    if not items:
+        return None
+    defaults = [item for item in items if item.is_default]
+    if len(defaults) == 1:
+        return defaults[0]
+    if len(items) == 1:
+        return items[0]
+    return None  # ambiguous -> NO_DEFAULT_CAKE exception
 
 
 def determine_initial_status(
@@ -67,25 +105,29 @@ def determine_initial_status(
     days_remaining: int,
     supplier: Supplier | None,
     has_work_email: bool,
-) -> tuple[OrderStatus, bool, str | None]:
-    """Returns (status, requires_admin_review, hold_reason).
+    has_default_cake: bool,
+) -> tuple[OrderStatus, str | None]:
+    """Returns (status, exception_reason).
 
     Missing critical employee data (no work_email) is checked first and
-    always wins, regardless of lead time or supplier resolution.
+    always wins, regardless of lead time or supplier resolution. A
+    standard, resolvable order lands in PENDING_VERIFICATION — the one
+    routine human checkpoint (plan §F) — never in an auto-approved state;
+    there is no separate approval status any more (decision A).
     """
     if not has_work_email:
-        return OrderStatus.REQUIRES_ATTENTION, False, "Missing employee email"
+        return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.MISSING_EMAIL.value
 
     if supplier is None:
-        return OrderStatus.REQUIRES_ATTENTION, False, "No supplier resolved for office"
+        return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.NO_SUPPLIER.value
+
+    if not has_default_cake and supplier.catalogue_items:
+        return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.NO_DEFAULT_CAKE.value
 
     if days_remaining >= supplier.lead_time_days:
-        # DRAFT, not PLANNED (Phase-Next §2): auto-detected orders now go
-        # through the same explicit approval workflow as manual ones —
-        # nothing is auto-sent to a supplier without a human APPROVE.
-        return OrderStatus.DRAFT, lead_time_class != LeadTimeClass.NORMAL, None
+        return OrderStatus.PENDING_VERIFICATION, None
 
-    return OrderStatus.ON_HOLD, False, "Supplier lead time exceeds remaining days"
+    return OrderStatus.ON_HOLD, None
 
 
 def run_daily_scan(
@@ -94,9 +136,15 @@ def run_daily_scan(
     config: BirthdayDetectionConfig,
     *,
     today: date | None = None,
+    trigger: str = "MANUAL",
 ) -> dict:
     run_id = str(uuid.uuid4())
     today = today or datetime.now(UTC).date()
+    started_at = datetime.now(UTC)
+
+    scan_run = ScanRun(run_id=run_id, trigger=trigger, started_at=started_at)
+    db.add(scan_run)
+    db.commit()
 
     employees_scanned = 0
     orders_created = 0
@@ -148,15 +196,28 @@ def run_daily_scan(
             lead_time_class = classify_lead_time(days_remaining, config)
             supplier = resolve_supplier_for_office(employee["office_location"], db)
             has_work_email = bool(employee["work_email"])
+            default_catalogue_item = resolve_default_catalogue_item(supplier, db)
 
-            status, requires_admin_review, hold_reason = determine_initial_status(
+            status, exception_reason = determine_initial_status(
                 lead_time_class=lead_time_class,
                 days_remaining=days_remaining,
                 supplier=supplier,
                 has_work_email=has_work_email,
+                has_default_cake=default_catalogue_item is not None,
             )
+            requires_admin_review = status == OrderStatus.PENDING_VERIFICATION and lead_time_class != LeadTimeClass.NORMAL
+            hold_reason = "Supplier lead time exceeds remaining days" if status == OrderStatus.ON_HOLD else None
 
-            order_reference = next_order_reference(db, employee["employee_id"], occurrence_year)
+            # SLA anchor (plan §J): when this order must be verified by, so
+            # the "verification overdue" queue/dashboard card has something
+            # to sort and alert on.
+            lead_days = supplier.lead_time_days if supplier else 0
+            verify_by = occurrence_date - timedelta(days=lead_days + config.verify_buffer_days)
+
+            # Business-facing Team Member ID (BambooHR employeeNumber), NOT
+            # the internal record id — see order_sequence_service docstring.
+            team_member_id = employee.get("employee_number") or employee["employee_id"]
+            order_reference = next_order_reference(db, team_member_id, occurrence_year)
 
             _order, created = create_or_get_order(
                 db,
@@ -167,6 +228,9 @@ def run_daily_scan(
                 order_reference=order_reference,
                 birthday_date=occurrence_date,
                 birthday_year=occurrence_year,
+                # Default delivery date = the birthday occurrence (§8) —
+                # editable later in Fulfilment Assignment.
+                delivery_date=occurrence_date,
                 office_location=employee["office_location"],
                 lead_time_days=days_remaining,
                 lead_time_class=lead_time_class.value,
@@ -174,6 +238,9 @@ def run_daily_scan(
                 requires_admin_review=requires_admin_review,
                 hold_reason=hold_reason,
                 supplier_id=supplier.id if supplier else None,
+                catalogue_item_id=default_catalogue_item.id if default_catalogue_item else None,
+                verify_by=verify_by,
+                exception_reason=exception_reason,
                 delivery_address_line1=employee.get("address_line1"),
                 delivery_address_line2=employee.get("address_line2"),
                 delivery_city=employee.get("city"),
@@ -186,20 +253,13 @@ def run_daily_scan(
                 orders_created += 1
                 if status in (OrderStatus.REQUIRES_ATTENTION, OrderStatus.ON_HOLD):
                     exceptions += 1
-                elif status == OrderStatus.DRAFT:
-                    # Auto-promote DRAFT -> READY_FOR_APPROVAL when every
-                    # mandatory fact is already present (rare at detection
-                    # time, since address verification is P&C-manual, but
-                    # possible for a re-verified employee's next-year
-                    # occurrence). Staying DRAFT is not an error.
-                    from app.services import order_status_service, readiness_service
-
-                    readiness = readiness_service.check(_order)
-                    if readiness.ready:
-                        try:
-                            order_status_service.submit_for_approval(db, _order, actor_id=None)
-                        except order_status_service.ReadinessNotMetError:
-                            pass
+                # No auto-promotion step here any more: a freshly-detected
+                # order's address is always NOT_CHECKED, so there is never
+                # anything to promote at detection time. Auto-release
+                # happens later, exactly once, the moment a human marks
+                # the address VERIFIED — see address_verification_service.
+                # verify_and_release. (The old auto-promote-at-scan-time
+                # code was dead for this exact reason and has been removed.)
             else:
                 orders_existing += 1
 
@@ -212,6 +272,15 @@ def run_daily_scan(
             db.rollback()
             exceptions += 1
             errors.append({"employee_id": getattr(raw_employee, "id", None), "error": str(exc)})
+
+    scan_run.finished_at = datetime.now(UTC)
+    scan_run.employees_scanned = employees_scanned
+    scan_run.orders_created = orders_created
+    scan_run.orders_existing = orders_existing
+    scan_run.exceptions = exceptions
+    scan_run.ineligible_skipped = ineligible_skipped
+    scan_run.errors_json = json.dumps(errors)
+    db.commit()
 
     return {
         "run_id": run_id,

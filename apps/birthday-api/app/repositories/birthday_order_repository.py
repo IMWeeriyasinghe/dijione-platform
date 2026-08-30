@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.constants import OrderStatus
 from app.models.birthday_order import BirthdayOrder
+from app.services.order_status_service import SUPPLIER_VISIBLE_STATUSES
 
 _SORTABLE_COLUMNS = {
     "employee_number": BirthdayOrder.employee_number,
@@ -128,10 +130,10 @@ class BirthdayOrderRepository:
     # (SENT_TO_SUPPLIER or later, i.e. not still DRAFT/pending internal
     # approval) — a supplier must never see an order before it's approved
     # and sent.
-    _SUPPLIER_VISIBLE_STATUSES = (
-        "SENT_TO_SUPPLIER", "SUPPLIER_REVIEW", "CHANGE_REQUESTED", "CONFIRMED",
-        "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED", "UNABLE_TO_FULFIL",
-    )
+    # Includes terminal states (CANCELLED) so a cancelled order shows the
+    # supplier a tombstone with a reason instead of silently 404-ing —
+    # plan §Y "internal->supplier changes must not be silent".
+    _SUPPLIER_VISIBLE_STATUSES = SUPPLIER_VISIBLE_STATUSES
 
     def _supplier_scoped_stmt(self, *, supplier_id: int, search: str | None = None):
         stmt = select(BirthdayOrder).where(
@@ -172,6 +174,57 @@ class BirthdayOrderRepository:
         if order.status not in self._SUPPLIER_VISIBLE_STATUSES:
             return None
         return order
+
+    # -- Attention / exception / dashboard aggregates (plan §L/§M) -------
+
+    def count_pending_verification(self) -> int:
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.status == OrderStatus.PENDING_VERIFICATION.value
+        )
+        return self.db.execute(stmt).scalar_one()
+
+    def count_verification_overdue(self, *, today: date | None = None) -> int:
+        today = today or date.today()
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.status == OrderStatus.PENDING_VERIFICATION.value,
+            BirthdayOrder.verify_by.is_not(None),
+            BirthdayOrder.verify_by < today,
+        )
+        return self.db.execute(stmt).scalar_one()
+
+    def count_requires_review(self) -> int:
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.status == OrderStatus.REQUIRES_REVIEW.value
+        )
+        return self.db.execute(stmt).scalar_one()
+
+    def count_requires_attention(self) -> int:
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.status == OrderStatus.REQUIRES_ATTENTION.value
+        )
+        return self.db.execute(stmt).scalar_one()
+
+    def count_supplier_not_accepted(self, *, older_than: datetime) -> int:
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value,
+            BirthdayOrder.released_at.is_not(None),
+            BirthdayOrder.released_at < older_than,
+        )
+        return self.db.execute(stmt).scalar_one()
+
+    def count_deliveries_today_at_risk(self, *, today: date | None = None) -> int:
+        today = today or date.today()
+        at_risk_statuses = (
+            OrderStatus.PENDING_VERIFICATION.value, OrderStatus.REQUIRES_REVIEW.value,
+            OrderStatus.REQUIRES_ATTENTION.value, OrderStatus.ON_HOLD.value,
+            OrderStatus.SENT_TO_SUPPLIER.value, OrderStatus.CHANGE_REQUESTED.value,
+            OrderStatus.CONFIRMED.value, OrderStatus.PREPARING.value,
+        )
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.delivery_date == today,
+            BirthdayOrder.status.in_(at_risk_statuses),
+        )
+        return self.db.execute(stmt).scalar_one()
 
     def list_upcoming(self, *, days_ahead: int) -> list[BirthdayOrder]:
         today = date.today()

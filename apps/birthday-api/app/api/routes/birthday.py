@@ -1,12 +1,13 @@
-"""DijiBirthday service skeleton (CR §9, §36, §51).
+"""DijiBirthday module metadata / summary / whoami surface.
 
-This phase proves DijiOne can host a second independently bounded
-application, not the Birthday workflow itself: no BambooHR connection, no
-cake-ordering logic, no database. Real functionality (birthday detection,
-duplicate prevention, supplier ordering, failure tracking) lands in a later
-phase, on top of exactly this skeleton — metadata/summary contract, module
-registry entry (COMING_SOON), and the same claims-based auth seam every
-other DijiOne service uses.
+These three endpoints back DijiOne Home's module card (``/metadata``,
+``/summary``) and the shared claims-auth seam smoke check (``/whoami``).
+The birthday workflow itself lives in the other route modules
+(``orders``, ``suppliers``, ``portal``, ``employees``, ``admin``,
+``internal``). ``/summary`` is intentionally unauthenticated, matching the
+platform-wide module-summary convention (talent-api does the same) so the
+shell can render the card before per-module auth resolves — it exposes
+only three aggregate integer counts, no per-order data.
 """
 
 from auth_client_py import AuthClaims
@@ -63,7 +64,7 @@ def summary(db: Session = Depends(get_db)) -> dict:
 
 @router.get("/whoami")
 def whoami(claims: AuthClaims = Depends(get_claims)) -> dict:
-    """Proves the Platform Core authorization seam decodes real claims end
-    to end — not wired to any actual permission check yet since there is no
-    birthday-flow business capability to gate."""
+    """Smoke check that the Platform Core authorization seam decodes real
+    claims end to end. The business endpoints enforce fine-grained
+    permissions via ``require_birthday_permission`` / ``SupplierScope``."""
     return {"user_id": claims.user_id, "full_name": claims.full_name}

@@ -24,6 +24,7 @@ class UpcomingBirthdayItem(BaseModel):
     state_province: str | None = None  # BambooHR `state` (Province for LK records) — used for the Location filter
     cake_order_status: str
     order_id: int | None = None  # links to the BirthdayOrder when one exists (address verification lives there)
+    order_reference: str | None = None  # the BirthdayOrder's human-readable reference, when an order exists (§8)
     hire_date: str | None = None  # ISO date, None if genuinely missing from BambooHR
     eligible: bool
     eligibility_reason: str  # EligibilityReason value — always present, ELIGIBLE when eligible=True

@@ -68,6 +68,32 @@ class SupplierRepository:
         self.db.flush()
         return supplier
 
+    def get_sole_active_supplier(self) -> Supplier | None:
+        """The single ACTIVE supplier when exactly one exists — nothing when
+        there are zero or two-plus. Lets detection and the fulfilment UI
+        auto-select "the only supplier" without hardcoding an id or
+        assuming there will only ever be one (§5/§6)."""
+        rows = self.db.execute(
+            select(Supplier).where(Supplier.status == "ACTIVE").limit(2)
+        ).scalars().all()
+        return rows[0] if len(rows) == 1 else None
+
+    def get_default(self) -> Supplier | None:
+        """The single ACTIVE supplier flagged is_default, if any — the
+        island-wide / catch-all supplier detection falls back to when no
+        office-location match exists."""
+        stmt = select(Supplier).where(Supplier.is_default.is_(True), Supplier.status == "ACTIVE")
+        return self.db.execute(stmt).scalars().first()
+
+    def clear_default_except(self, keep_id: int | None) -> None:
+        """Enforces the at-most-one-default invariant — called by the
+        create/update routes whenever a supplier is set as default."""
+        stmt = select(Supplier).where(Supplier.is_default.is_(True))
+        for supplier in self.db.execute(stmt).scalars().all():
+            if supplier.id != keep_id:
+                supplier.is_default = False
+        self.db.flush()
+
     def get_by_office_location(self, office_location: str) -> Supplier | None:
         """Only ever resolves an ACTIVE supplier — an INACTIVE supplier
         must not be auto-assigned to newly detected orders (plan

@@ -298,7 +298,14 @@ BIRTHDAY_PERMISSIONS: list[PermissionDef] = [
         MODULE_BIRTHDAY, "Orders",
     ),
     PermissionDef(
-        "birthday.orders.approve", "Approve/Reject Orders", "Approve or reject an order in the approval workflow.",
+        "birthday.orders.verify", "Verify Delivery Address",
+        "Mark a delivery address VERIFIED — the one routine checkpoint that "
+        "auto-releases a standard order to its supplier.",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
+        "birthday.orders.review", "Confirm & Release Flagged Orders",
+        "One-click release for an order flagged into REQUIRES_REVIEW.",
         MODULE_BIRTHDAY, "Orders",
     ),
     PermissionDef(

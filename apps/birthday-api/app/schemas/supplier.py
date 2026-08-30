@@ -22,6 +22,7 @@ class SupplierRead(BaseModel):
     working_days: str
     cutoff_time: str
     notes: str
+    is_default: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -38,6 +39,7 @@ class SupplierCreate(BaseModel):
     working_days: str = ""
     cutoff_time: str = ""
     notes: str = ""
+    is_default: bool = False
 
 
 class SupplierListResponse(BaseModel):
@@ -59,6 +61,7 @@ class SupplierUpdate(BaseModel):
     working_days: str | None = None
     cutoff_time: str | None = None
     notes: str | None = None
+    is_default: bool | None = None
 
 
 class SupplierLocationRead(BaseModel):
@@ -83,18 +86,21 @@ class SupplierCatalogueItemRead(BaseModel):
     name: str
     description: str
     is_active: bool
+    is_default: bool
 
 
 class SupplierCatalogueItemCreate(BaseModel):
     name: str
     description: str = ""
     is_active: bool = True
+    is_default: bool = False
 
 
 class SupplierCatalogueItemUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     is_active: bool | None = None
+    is_default: bool | None = None
 
 
 class SupplierUserRead(BaseModel):
@@ -119,11 +125,17 @@ class SupplierUserCreate(BaseModel):
 
 
 class SupplierUserUpdate(BaseModel):
-    """Email/name/role change over time as supplier contacts change;
-    entra_object_id is deliberately NOT editable here — it is only ever
-    set by the real Entra B2B guest-linking flow, never hand-entered."""
+    """Email/name/role/status change over time as supplier contacts change.
+
+    ``entra_object_id`` (§22/§23) is the durable Microsoft Entra ID B2B
+    guest identity link. It is normally written by the automated B2B
+    guest-linking callback once provisioning completes, but an internal
+    admin can also set/correct it here during onboarding — it is unique
+    per row and, once set, becomes the authoritative identity key (email
+    may change; the object id does not)."""
 
     email: str | None = None
     full_name: str | None = None
     role: str | None = None
     status: str | None = None
+    entra_object_id: str | None = None

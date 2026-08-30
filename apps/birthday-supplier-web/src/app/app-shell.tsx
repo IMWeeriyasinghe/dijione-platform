@@ -2,11 +2,15 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { SupplierAuthProvider, useSupplierAuth } from "@/lib/supplier-auth";
 import { LoginScreen } from "./login-screen";
 
 function Shell({ children }: { children: React.ReactNode }) {
+  // `token` comes from useSyncExternalStore: the first client render uses the
+  // server snapshot (null) to match SSR, then re-renders with the stored
+  // token — so there is no hydration mismatch and no flash to guard against.
   const { token, setToken } = useSupplierAuth();
 
   if (!token) return <LoginScreen />;
@@ -20,6 +24,14 @@ function Shell({ children }: { children: React.ReactNode }) {
           </p>
           <h1 className="text-lg font-semibold text-dt-text-primary">Supplier Portal</h1>
         </div>
+        <nav className="flex items-center gap-4 text-sm font-medium text-dt-text-secondary">
+          <Link href="/" className="hover:text-dt-text-primary">
+            Dashboard
+          </Link>
+          <Link href="/orders" className="hover:text-dt-text-primary">
+            Orders
+          </Link>
+        </nav>
         <button
           type="button"
           onClick={() => setToken(null)}

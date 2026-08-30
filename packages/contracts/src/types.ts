@@ -245,6 +245,57 @@ export const BIRTHDAY_USER = "BIRTHDAY_USER";
 export const BIRTHDAY_SUPPLIER = "BIRTHDAY_SUPPLIER";
 export const BIRTHDAY_STAFF_ROLES = new Set([BIRTHDAY_ADMIN]);
 
+// Semi-automation future-state plan §P — the single source of truth for
+// the order-status set, imported by both birthday-web and
+// birthday-supplier-web instead of each re-declaring its own literal
+// array (the drift that motivated this: the two apps + the backend used
+// to define this set in three separate places).
+export const ORDER_STATUSES = [
+  "PENDING_VERIFICATION",
+  "REQUIRES_REVIEW",
+  "REQUIRES_ATTENTION",
+  "ON_HOLD",
+  "SENT_TO_SUPPLIER",
+  "CHANGE_REQUESTED",
+  "CONFIRMED",
+  "PREPARING",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "COMPLETED",
+  "UNABLE_TO_FULFIL",
+  "CANCELLED",
+] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+// Derived from the backend's order_status_service.SUPPLIER_DRIVABLE —
+// kept here, imported by the supplier portal, rather than re-typed there.
+export const SUPPLIER_DRIVABLE_TARGETS: Record<string, OrderStatus[]> = {
+  SENT_TO_SUPPLIER: ["CONFIRMED", "CHANGE_REQUESTED", "UNABLE_TO_FULFIL"],
+  CONFIRMED: ["PREPARING"],
+  PREPARING: ["OUT_FOR_DELIVERY"],
+  OUT_FOR_DELIVERY: ["DELIVERED"],
+};
+
+export const ADDRESS_VERIFICATION_STATUSES = [
+  "NOT_CHECKED",
+  "VERIFICATION_REQUESTED",
+  "VERIFIED",
+  "NEEDS_UPDATE",
+  "NOT_APPLICABLE",
+] as const;
+export type AddressVerificationStatus = (typeof ADDRESS_VERIFICATION_STATUSES)[number];
+
+export const LEAD_TIME_CLASSES = ["NORMAL", "SHORT_NOTICE", "URGENT"] as const;
+export type LeadTimeClass = (typeof LEAD_TIME_CLASSES)[number];
+
+export const ORDER_ISSUE_TYPES = [
+  "CHANGE_REQUEST",
+  "CANNOT_FULFIL",
+  "DELIVERY_ISSUE",
+  "OTHER",
+] as const;
+export type OrderIssueType = (typeof ORDER_ISSUE_TYPES)[number];
+
 export type OrderEventOut = {
   id: number;
   event_type: string;
@@ -270,6 +321,20 @@ export type SpecialRequirementCreateInput = {
   text: string;
 };
 
+export type OrderIssueOut = {
+  id: number;
+  order_id: number;
+  raised_by_type: string;
+  raised_by_id: number | null;
+  type: string;
+  detail: string;
+  status: string;
+  resolution_detail: string | null;
+  resolved_by: number | null;
+  resolved_at: string | null;
+  created_at: string;
+};
+
 export type BirthdayOrderSummary = {
   id: number;
   order_reference: string;
@@ -280,13 +345,15 @@ export type BirthdayOrderSummary = {
   birthday_year: number;
   office_location: string;
   lead_time_class: string;
-  status: string;
+  status: OrderStatus;
   supplier_id: number | null;
+  supplier_name: string | null;
   delivery_date: string | null;
   catalogue_item_id: number | null;
   requires_admin_review: boolean;
-  is_overdue: boolean;
-  address_verification_status: string;
+  exception_reason: string | null;
+  verify_by: string | null;
+  address_verification_status: AddressVerificationStatus;
 };
 
 export type BirthdayOrderOut = {
@@ -303,9 +370,9 @@ export type BirthdayOrderOut = {
   lead_time_days: number;
   lead_time_class: string;
   quantity: number;
-  status: string;
+  status: OrderStatus;
   hold_reason: string | null;
-  address_verification_status: string;
+  address_verification_status: AddressVerificationStatus;
   delivery_address_line1: string | null;
   delivery_address_line2: string | null;
   delivery_city: string | null;
@@ -314,19 +381,45 @@ export type BirthdayOrderOut = {
   delivery_country: string | null;
   delivery_address_source: string | null;
   supplier_id: number | null;
+  supplier_name: string | null;
   delivery_date: string | null;
   catalogue_item_id: number | null;
   is_manual_override: boolean;
   requires_admin_review: boolean;
-  is_overdue: boolean;
-  has_delivery_issue: boolean;
+  exception_reason: string | null;
+  verify_by: string | null;
   retry_count: number;
   last_failure_reason: string | null;
+  released_at: string | null;
+  released_by: number | null;
+  review_confirmed_at: string | null;
+  review_confirmed_by: number | null;
+  accepted_at: string | null;
+  preparing_at: string | null;
+  out_for_delivery_at: string | null;
+  delivered_at: string | null;
+  completed_at: string | null;
   created_by: number | null;
   created_at: string;
   updated_at: string;
   events: OrderEventOut[];
   special_requirements: SpecialRequirementOut[];
+  issues: OrderIssueOut[];
+};
+
+export type VerifyAddressInput = {
+  corrected?: boolean;
+  note?: string;
+};
+
+export type VerifyAddressResponse = {
+  order: BirthdayOrderOut;
+  auto_released: boolean;
+  flagged_reasons: string[];
+};
+
+export type ConfirmReleaseInput = {
+  note?: string;
 };
 
 export type AddressVerificationUpdateInput = {
@@ -351,6 +444,7 @@ export type BirthdayOrderCreateInput = {
   birthday_date: string;
   office_location: string;
   quantity?: number;
+  delivery_date?: string;
   special_requirements?: SpecialRequirementCreateInput[];
 };
 
@@ -375,10 +469,6 @@ export type ReadinessCheckResponse = {
   missing: string[];
 };
 
-export type RejectRequestInput = {
-  reason: string;
-};
-
 export type SupplierOrderView = {
   id: number;
   order_reference: string;
@@ -395,7 +485,7 @@ export type SupplierOrderView = {
   delivery_state_province: string | null;
   delivery_postal_code: string | null;
   delivery_country: string | null;
-  status: string;
+  status: OrderStatus;
   special_instructions: string[];
 };
 
@@ -406,12 +496,22 @@ export type SupplierOrderListResponse = {
   page_size: number;
 };
 
+export type OrderIssueCreateInput = {
+  type: OrderIssueType;
+  detail: string;
+};
+
 export type BirthdayDashboardSummary = {
   total_orders: number;
   by_status: Record<string, number>;
   by_lead_time_class: Record<string, number>;
   upcoming_count: number;
   exceptions_count: number;
+  pending_verification_count: number;
+  verification_overdue_count: number;
+  requires_review_count: number;
+  supplier_not_accepted_count: number;
+  deliveries_today_at_risk_count: number;
 };
 
 export type BirthdayUpcomingResponse = {
@@ -431,6 +531,7 @@ export type UpcomingBirthdayItem = {
   state_province: string | null;
   cake_order_status: string;
   order_id: number | null;
+  order_reference: string | null;
   hire_date: string | null;
   eligible: boolean;
   eligibility_reason: string;
@@ -488,6 +589,7 @@ export type SupplierOut = {
   working_days: string;
   cutoff_time: string;
   notes: string;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -511,6 +613,7 @@ export type SupplierCreateInput = {
   working_days?: string;
   cutoff_time?: string;
   notes?: string;
+  is_default?: boolean;
 };
 
 export type SupplierUpdateInput = {
@@ -525,6 +628,7 @@ export type SupplierUpdateInput = {
   working_days?: string;
   cutoff_time?: string;
   notes?: string;
+  is_default?: boolean;
 };
 
 export type SupplierLocationOut = {
@@ -545,18 +649,21 @@ export type SupplierCatalogueItemOut = {
   name: string;
   description: string;
   is_active: boolean;
+  is_default: boolean;
 };
 
 export type SupplierCatalogueItemCreateInput = {
   name: string;
   description?: string;
   is_active?: boolean;
+  is_default?: boolean;
 };
 
 export type SupplierCatalogueItemUpdateInput = {
   name?: string;
   description?: string;
   is_active?: boolean;
+  is_default?: boolean;
 };
 
 export type SupplierUserOut = {
@@ -583,6 +690,7 @@ export type SupplierUserUpdateInput = {
   full_name?: string;
   role?: string;
   status?: string;
+  entra_object_id?: string | null;
 };
 
 // --- DijiOne Admin Center (Phase 2) ----------------------------------------

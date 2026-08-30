@@ -3,7 +3,7 @@ change, audit trail, and its effect on supplier-send gating."""
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from tests.conftest import headers_for
 
@@ -24,7 +24,7 @@ def _make_verifiable_order(db):
         birthday_date=date.today() + timedelta(days=10),
         birthday_year=(date.today() + timedelta(days=10)).year,
         office_location="Colombo",
-        status="PLANNED",
+        status="PENDING_VERIFICATION",
         supplier_id=supplier.id,
     )
     db.add(order)
@@ -113,7 +113,7 @@ def test_send_to_supplier_blocked_until_verified_then_permitted(api_client, db):
 
     order = db.get(BirthdayOrder, order_id)
     order.supplier_id = supplier.id
-    order.status = "APPROVED"  # bypass the approval gate directly so this test isolates the address gate
+    order.status = "PENDING_VERIFICATION"
     db.commit()
 
     blocked = api_client.post(f"/api/birthday/orders/{order_id}/send-to-supplier", headers=headers)

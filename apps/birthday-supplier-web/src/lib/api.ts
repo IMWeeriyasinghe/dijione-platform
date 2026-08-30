@@ -1,4 +1,6 @@
 import type {
+  OrderIssueOut,
+  OrderIssueType,
   SupplierOrderListResponse,
   SupplierOrderView,
 } from "@dijione/contracts";
@@ -66,8 +68,9 @@ export const listPortalOrders = (
 export const getPortalOrder = (token: string, id: number) =>
   request<SupplierOrderView>(`/api/birthday/portal/orders/${id}`, token);
 
-export const acknowledgePortalOrder = (token: string, id: number) =>
-  request<SupplierOrderView>(`/api/birthday/portal/orders/${id}/acknowledge`, token, { method: "POST" });
+// Merged acknowledge+confirm (plan §O) — one commitment, one click.
+export const acceptPortalOrder = (token: string, id: number) =>
+  request<SupplierOrderView>(`/api/birthday/portal/orders/${id}/accept`, token, { method: "POST" });
 
 export const updatePortalOrderStatus = (token: string, id: number, status: string) =>
   request<SupplierOrderView>(`/api/birthday/portal/orders/${id}/status`, token, {
@@ -75,8 +78,26 @@ export const updatePortalOrderStatus = (token: string, id: number, status: strin
     body: JSON.stringify({ status }),
   });
 
-export const raisePortalIssue = (token: string, id: number, detail: string) =>
-  request<SupplierOrderView>(`/api/birthday/portal/orders/${id}/issue`, token, {
+// Typed problem report (plan §O/§U) — replaces the old free-text-only
+// /issue endpoint with a structured, resolvable record.
+export const raisePortalIssue = (token: string, id: number, type: OrderIssueType, detail: string) =>
+  request<OrderIssueOut>(`/api/birthday/portal/orders/${id}/issues`, token, {
     method: "POST",
-    body: JSON.stringify({ detail }),
+    body: JSON.stringify({ type, detail }),
   });
+
+export const listPortalOrderIssues = (token: string, id: number) =>
+  request<OrderIssueOut[]>(`/api/birthday/portal/orders/${id}/issues`, token);
+
+export type SupplierDashboardSummary = {
+  new_orders: number;
+  due_today: number;
+  due_tomorrow: number;
+  overdue: number;
+  out_for_delivery: number;
+  open_issues: number;
+  completed_today: number;
+};
+
+export const getPortalDashboard = (token: string) =>
+  request<SupplierDashboardSummary>("/api/birthday/portal/dashboard", token);

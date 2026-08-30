@@ -66,8 +66,14 @@ class BirthdayOrder(TimestampMixin, Base):
 
     quantity: Mapped[int] = mapped_column(Integer, default=1)  # admin-overridable only
 
-    status: Mapped[str] = mapped_column(String(32), default=OrderStatus.PLANNED.value)
+    status: Mapped[str] = mapped_column(String(32), default=OrderStatus.PENDING_VERIFICATION.value)
     hold_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Typed reason this order is flagged (REQUIRES_ATTENTION) or was routed
+    # to REQUIRES_REVIEW instead of auto-releasing — see ExceptionReason.
+    exception_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # SLA anchor computed at creation: birthday - (supplier lead time +
+    # config.verify_buffer_days). Drives the "verification overdue" queue.
+    verify_by: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # P&C-manual address verification workflow (never automated, never
     # triggers employee contact) — gates supplier-actionability alongside
@@ -103,10 +109,25 @@ class BirthdayOrder(TimestampMixin, Base):
         ForeignKey("supplier_catalogue_items.id"), nullable=True
     )
 
+    # Release provenance (replaces the old approved_at/approved_by —
+    # "verification is the approval", plan decision A). released_by is
+    # NULL when the system auto-released a standard order; set to the
+    # actor id when a human confirmed a flagged order out of REQUIRES_REVIEW.
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    released_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_confirmed_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Supplier fulfilment stage timestamps (plan §U) — previously only
+    # inferable from OrderEvent rows.
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    preparing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    out_for_delivery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     is_manual_override: Mapped[bool] = mapped_column(Boolean, default=False)
     requires_admin_review: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_overdue: Mapped[bool] = mapped_column(Boolean, default=False)
-    has_delivery_issue: Mapped[bool] = mapped_column(Boolean, default=False)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     last_failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
@@ -125,3 +146,13 @@ class BirthdayOrder(TimestampMixin, Base):
     special_requirements: Mapped[list[SpecialRequirement]] = relationship(  # noqa: F821
         back_populates="order", cascade="all, delete-orphan"
     )
+    issues: Mapped[list["OrderIssue"]] = relationship(  # noqa: F821
+        back_populates="order", cascade="all, delete-orphan"
+    )
+
+    @property
+    def supplier_name(self) -> str | None:
+        """Convenience read-only property so list/detail views can show the
+        supplier's name instead of a raw numeric id without a manual join
+        at every call site (plan §I fix)."""
+        return self.supplier.name if self.supplier is not None else None

@@ -40,6 +40,34 @@ const STATUS_TONE: Record<string, Tone> = {
   GROUP: "success",
   SYSTEM: "neutral",
   INACTIVE: "neutral",
+  // DijiBirthday order status (semi-automation future-state plan §P) —
+  // previously almost entirely unmapped, so every birthday order rendered
+  // grey regardless of state.
+  PENDING_VERIFICATION: "warning",
+  REQUIRES_REVIEW: "warning",
+  REQUIRES_ATTENTION: "danger",
+  SENT_TO_SUPPLIER: "brand",
+  CHANGE_REQUESTED: "warning",
+  CONFIRMED: "brand",
+  PREPARING: "brand",
+  OUT_FOR_DELIVERY: "brand",
+  DELIVERED: "success",
+  UNABLE_TO_FULFIL: "danger",
+  // DijiBirthday address-verification status
+  NOT_CHECKED: "neutral",
+  VERIFICATION_REQUESTED: "warning",
+  VERIFIED: "success",
+  NEEDS_UPDATE: "danger",
+  NOT_APPLICABLE: "neutral",
+  // DijiBirthday lead-time class
+  NORMAL: "success",
+  SHORT_NOTICE: "warning",
+  URGENT: "danger",
+  // DijiBirthday eligibility groups (Upcoming Birthdays)
+  ELIGIBLE: "success",
+  NEEDS_ATTENTION: "danger",
+  FUTURE_STARTER: "neutral",
+  NOT_ELIGIBLE: "neutral",
 };
 
 const TONE_CLASSES: Record<Tone, string> = {

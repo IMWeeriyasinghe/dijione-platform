@@ -9,6 +9,12 @@ Used both by the auto-promotion step (DRAFT -> READY_FOR_APPROVAL) and by
 the manual ``submit-for-approval``/``approve`` endpoints, which always
 re-validate server-side rather than trusting a client-supplied "looks
 ready" flag.
+
+Mandatory facts (§17/§46): verified delivery address, assigned supplier,
+confirmed delivery date, office location, quantity >= 1, employee name.
+Product/catalogue selection is captured on the order (``catalogue_item_id``)
+but is not a hard gate — a supplier can be assigned a default cake — so it
+is surfaced in the UI rather than blocking approval.
 """
 
 from __future__ import annotations
@@ -32,6 +38,11 @@ def check(order: BirthdayOrder) -> ReadinessResult:
         missing.append("address_not_verified")
     if order.supplier_id is None:
         missing.append("supplier_not_assigned")
+    if order.delivery_date is None:
+        # §17/§46: the delivery date must be confirmed before an order can
+        # move to READY_FOR_APPROVAL — it is what the supplier plans and
+        # the portal sorts/filters on.
+        missing.append("delivery_date_missing")
     if not order.office_location:
         missing.append("office_location_missing")
     if not order.quantity or order.quantity < 1:

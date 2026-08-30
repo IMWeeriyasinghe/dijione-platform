@@ -79,7 +79,11 @@ def create_supplier(
     db: Session = Depends(get_db),
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
 ) -> Supplier:
-    supplier = SupplierRepository(db).create(Supplier(**payload.model_dump()))
+    repo = SupplierRepository(db)
+    supplier = repo.create(Supplier(**payload.model_dump()))
+    db.flush()
+    if supplier.is_default:
+        repo.clear_default_except(supplier.id)
     db.commit()
     db.refresh(supplier)
     _audit(scope, "birthday.supplier.create", supplier.id, new_state={"name": supplier.name})
@@ -104,7 +108,13 @@ def update_supplier(
 ) -> Supplier:
     supplier = _get_supplier_or_404(db, supplier_id)
     updates = payload.model_dump(exclude_unset=True)
-    SupplierRepository(db).update(supplier, updates)
+    repo = SupplierRepository(db)
+    repo.update(supplier, updates)
+    db.flush()
+    if updates.get("is_default"):
+        # Setting this supplier as the island-wide default clears the flag
+        # on every other supplier — at most one default at a time.
+        repo.clear_default_except(supplier.id)
     db.commit()
     db.refresh(supplier)
     _audit(scope, "birthday.supplier.update", supplier.id, new_state=updates)
@@ -163,7 +173,10 @@ def add_catalogue_item(
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
 ) -> SupplierCatalogueItem:
     _get_supplier_or_404(db, supplier_id)
-    item = SupplierRepository(db).add_catalogue_item(
+    repo = SupplierRepository(db)
+    if payload.is_default:
+        _clear_default_catalogue_item(repo, supplier_id)
+    item = repo.add_catalogue_item(
         SupplierCatalogueItem(supplier_id=supplier_id, **payload.model_dump())
     )
     db.commit()
@@ -186,11 +199,21 @@ def update_catalogue_item(
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Catalogue item not found")
     updates = payload.model_dump(exclude_unset=True)
+    if updates.get("is_default") is True:
+        _clear_default_catalogue_item(repo, supplier_id, except_item_id=item.id)
     repo.update_catalogue_item(item, updates)
     db.commit()
     db.refresh(item)
     _audit(scope, "birthday.supplier.catalogue_update", supplier_id, new_state=updates)
     return item
+
+
+def _clear_default_catalogue_item(repo: SupplierRepository, supplier_id: int, *, except_item_id: int | None = None) -> None:
+    """At most one default cake per supplier (plan §31/§L) — mirrors the
+    is_default-at-most-one pattern already used for suppliers themselves."""
+    for existing in repo.list_catalogue_items(supplier_id):
+        if existing.is_default and existing.id != except_item_id:
+            existing.is_default = False
 
 
 # -- Supplier Users ------------------------------------------------------
@@ -272,9 +295,31 @@ def update_supplier_user(
         ).scalars().first()
         if existing is not None:
             raise HTTPException(status.HTTP_409_CONFLICT, f"A supplier user with email {updates['email']!r} already exists")
+    if "entra_object_id" in updates:
+        # Normalise "" -> None so the unique index never sees empty strings.
+        updates["entra_object_id"] = (updates["entra_object_id"] or "").strip() or None
+    entra_link_changed = (
+        "entra_object_id" in updates and updates["entra_object_id"] != user.entra_object_id
+    )
+    if entra_link_changed and updates["entra_object_id"]:
+        clash = db.execute(
+            select(SupplierUser).where(SupplierUser.entra_object_id == updates["entra_object_id"])
+        ).scalars().first()
+        if clash is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "That Entra object id is already linked to another supplier user",
+            )
 
     repo.update_user(user, updates)
     db.commit()
     db.refresh(user)
+    # Audit the identity link separately from routine profile edits — it is
+    # the security-relevant action (§23/§39: "Entra identity linked").
+    if entra_link_changed:
+        _audit(
+            scope, "birthday.supplier.user_entra_linked", supplier_id,
+            new_state={"supplier_user_id": user.id, "linked": bool(user.entra_object_id)},
+        )
     _audit(scope, "birthday.supplier.user_update", supplier_id, new_state=updates)
     return user

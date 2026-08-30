@@ -75,7 +75,7 @@ def test_supplier_cannot_act_on_other_suppliers_order(api_client, db):
     order_b = _make_sendable_order(db, supplier=supplier_b, employee_id="emp-portal-4")
 
     resp = api_client.post(
-        f"/api/birthday/portal/orders/{order_b.id}/acknowledge",
+        f"/api/birthday/portal/orders/{order_b.id}/accept",
         headers=supplier_headers_for(db, supplier_a),
     )
     assert resp.status_code == 404
@@ -128,8 +128,6 @@ def test_supplier_order_view_exposes_delivery_address_only_when_verified(api_cli
 
 
 def test_supplier_order_view_hides_delivery_address_when_not_verified(api_client, db):
-    from app.models.birthday_order import BirthdayOrder
-
     supplier_a, _ = _make_suppliers(db)
     order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-unverified")
     order.address_verification_status = "NEEDS_UPDATE"
@@ -146,20 +144,16 @@ def test_supplier_order_view_hides_delivery_address_when_not_verified(api_client
     assert view.delivery_city is None
 
 
-def test_acknowledge_and_status_progression(api_client, db):
+def test_accept_merges_acknowledge_and_confirm(api_client, db):
+    """Plan §O: the old two-step acknowledge-then-confirm is merged into
+    one Accept action — SENT_TO_SUPPLIER goes straight to CONFIRMED."""
     supplier_a, _ = _make_suppliers(db)
     order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-7")
     headers = supplier_headers_for(db, supplier_a)
 
-    ack = api_client.post(f"/api/birthday/portal/orders/{order.id}/acknowledge", headers=headers)
-    assert ack.status_code == 200
-    assert ack.json()["status"] == "SUPPLIER_REVIEW"
-
-    confirm = api_client.patch(
-        f"/api/birthday/portal/orders/{order.id}/status", json={"status": "CONFIRMED"}, headers=headers,
-    )
-    assert confirm.status_code == 200
-    assert confirm.json()["status"] == "CONFIRMED"
+    accept = api_client.post(f"/api/birthday/portal/orders/{order.id}/accept", headers=headers)
+    assert accept.status_code == 200
+    assert accept.json()["status"] == "CONFIRMED"
 
     # A supplier may not jump straight to COMPLETED.
     blocked = api_client.patch(
@@ -168,28 +162,78 @@ def test_acknowledge_and_status_progression(api_client, db):
     assert blocked.status_code == 409
 
 
+def test_delivered_auto_completes(api_client, db):
+    """Plan §F/§L: DELIVERED -> COMPLETED happens automatically, no
+    internal action required."""
+    supplier_a, _ = _make_suppliers(db)
+    order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-autocomplete")
+    order.status = "OUT_FOR_DELIVERY"
+    db.commit()
+    headers = supplier_headers_for(db, supplier_a)
+
+    resp = api_client.patch(
+        f"/api/birthday/portal/orders/{order.id}/status", json={"status": "DELIVERED"}, headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "COMPLETED"
+
+
 def test_raise_issue_notifies_admin(api_client, db, platform_calls):
     supplier_a, _ = _make_suppliers(db)
     order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-8")
     headers = supplier_headers_for(db, supplier_a)
 
     resp = api_client.post(
-        f"/api/birthday/portal/orders/{order.id}/issue",
-        json={"detail": "Out of stock for this cake size"},
+        f"/api/birthday/portal/orders/{order.id}/issues",
+        json={"type": "DELIVERY_ISSUE", "detail": "Out of stock for this cake size"},
         headers=headers,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     assert len(platform_calls["broadcasts"]) == 1
     assert platform_calls["broadcasts"][0]["role"] == "BIRTHDAY_ADMIN"
 
 
-def test_draft_order_not_visible_to_supplier(api_client, db):
-    """An order still in the internal approval workflow (not yet sent)
-    must never be visible in the supplier portal."""
+def test_cannot_fulfil_issue_flips_status(api_client, db):
+    supplier_a, _ = _make_suppliers(db)
+    order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-cannotfulfil")
+    headers = supplier_headers_for(db, supplier_a)
+
+    resp = api_client.post(
+        f"/api/birthday/portal/orders/{order.id}/issues",
+        json={"type": "CANNOT_FULFIL", "detail": "Oven is down"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+
+    detail = api_client.get(f"/api/birthday/portal/orders/{order.id}", headers=headers).json()
+    assert detail["status"] == "UNABLE_TO_FULFIL"
+
+
+def test_issue_cannot_be_raised_on_terminal_order(api_client, db):
+    """A supplier can only raise an issue while the order is still in
+    progress — not after it is DELIVERED (or cancelled/completed)."""
+    supplier_a, _ = _make_suppliers(db)
+    order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-terminal")
+    order.status = "DELIVERED"
+    db.commit()
+    headers = supplier_headers_for(db, supplier_a)
+
+    resp = api_client.post(
+        f"/api/birthday/portal/orders/{order.id}/issues",
+        json={"type": "OTHER", "detail": "too late now"},
+        headers=headers,
+    )
+    assert resp.status_code == 409
+
+
+def test_pending_verification_order_not_visible_to_supplier(api_client, db):
+    """An order still awaiting the internal address-verification
+    checkpoint (not yet released) must never be visible in the supplier
+    portal."""
     from app.models.birthday_order import BirthdayOrder
     from app.models.supplier import Supplier
 
-    supplier = Supplier(name="Draft Visibility Supplier", primary_contact_email="dv@supplier.example.com")
+    supplier = Supplier(name="Pending Visibility Supplier", primary_contact_email="dv@supplier.example.com")
     db.add(supplier)
     db.commit()
     db.refresh(supplier)
@@ -197,12 +241,12 @@ def test_draft_order_not_visible_to_supplier(api_client, db):
     order = BirthdayOrder(
         order_reference="BDAY-EMPdv-2026-00001",
         employee_id="emp-dv",
-        employee_name="Draft Visibility",
+        employee_name="Pending Visibility",
         employee_email="dv@example.com",
         birthday_date=date.today() + timedelta(days=10),
         birthday_year=(date.today() + timedelta(days=10)).year,
         office_location="Colombo",
-        status="DRAFT",
+        status="PENDING_VERIFICATION",
         supplier_id=supplier.id,
     )
     db.add(order)
@@ -213,6 +257,22 @@ def test_draft_order_not_visible_to_supplier(api_client, db):
         f"/api/birthday/portal/orders/{order.id}", headers=supplier_headers_for(db, supplier),
     )
     assert resp.status_code == 404
+
+
+def test_cancelled_order_shows_as_tombstone_not_404(api_client, db):
+    """Plan §Y: internal->supplier changes must not be silent. A cancelled
+    order stays visible in the portal with its CANCELLED status instead
+    of vanishing."""
+    supplier_a, _ = _make_suppliers(db)
+    order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-cancel-tombstone")
+    order.status = "CANCELLED"
+    db.commit()
+
+    resp = api_client.get(
+        f"/api/birthday/portal/orders/{order.id}", headers=supplier_headers_for(db, supplier_a),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "CANCELLED"
 
 
 def test_internal_user_cannot_use_supplier_portal_routes(api_client, db):

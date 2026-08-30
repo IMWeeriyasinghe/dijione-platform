@@ -1,104 +1,78 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, PackageCheck, TriangleAlert, Truck } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 import {
-  EmptyState,
+  Card,
   ErrorState,
   LoadingState,
-  Pagination,
-  SearchInput,
-  StatusBadge,
-  Table,
-  Td,
-  Th,
-  Thead,
-  Tr,
+  MetricCard,
 } from "@dijione/design-system";
-import { listPortalOrders } from "@/lib/api";
+import { getPortalDashboard } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 
-const PAGE_SIZE = 20;
-
-export default function SupplierOrdersPage() {
+// Fulfilment-only, supplier-scoped dashboard (semi-automation future-state
+// plan §N) — deliberately does not mirror the internal dashboard. This
+// answers what a supplier actually cares about: what needs acknowledging,
+// what's due, what's late, what's open. Nothing here shows another
+// supplier's data — every count is server-scoped to this token's supplier.
+export default function SupplierDashboardPage() {
   const { token } = useSupplierAuth();
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-
-  const params = { search: search || undefined, page, page_size: PAGE_SIZE };
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["portal-orders", params],
-    queryFn: () => listPortalOrders(token!, params),
+    queryKey: ["portal-dashboard"],
+    queryFn: () => getPortalDashboard(token!),
     enabled: !!token,
   });
 
-  const orders = data?.items ?? [];
+  if (isLoading) return <LoadingState label="Loading dashboard…" />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
 
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold text-dt-text-primary">Your Orders</h2>
-        <p className="text-sm text-dt-text-secondary">
-          Cake orders assigned to your business. Only fulfilment details are shown here.
-        </p>
+        <h2 className="text-xl font-semibold text-dt-text-primary">Dashboard</h2>
+        <p className="text-sm text-dt-text-secondary">Today's fulfilment work, at a glance.</p>
       </div>
 
-      <SearchInput
-        value={search}
-        onChange={(v) => {
-          setPage(1);
-          setSearch(v);
-        }}
-        placeholder="Search order reference or recipient…"
-        className="mb-4 max-w-md"
-      />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Link href="/orders" className="block">
+          <MetricCard label="New orders to accept" value={data.new_orders} icon={CheckCircle2} tone="brand" />
+        </Link>
+        <Link href="/orders" className="block">
+          <MetricCard label="Due today" value={data.due_today} icon={CalendarClock} />
+        </Link>
+        <Link href="/orders" className="block">
+          <MetricCard label="Due tomorrow" value={data.due_tomorrow} icon={CalendarDays} />
+        </Link>
+        <Link href="/orders" className="block">
+          <MetricCard label="Overdue" value={data.overdue} icon={AlertTriangle} />
+        </Link>
+        <Link href="/orders" className="block">
+          <MetricCard label="Out for delivery" value={data.out_for_delivery} icon={Truck} />
+        </Link>
+        <Link href="/orders" className="block">
+          <MetricCard label="Open problems" value={data.open_issues} icon={TriangleAlert} />
+        </Link>
+      </div>
 
-      {isLoading ? (
-        <LoadingState label="Loading orders…" />
-      ) : isError || !data ? (
-        <ErrorState onRetry={() => refetch()} />
-      ) : orders.length === 0 ? (
-        <EmptyState title="No orders yet" description="Orders will appear here once approved and sent to you." />
-      ) : (
-        <>
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Reference</Th>
-                <Th>Recipient</Th>
-                <Th>Delivery Date</Th>
-                <Th>Location</Th>
-                <Th>Product</Th>
-                <Th>Qty</Th>
-                <Th>Address Verified</Th>
-                <Th>Status</Th>
-              </Tr>
-            </Thead>
-            <tbody>
-              {orders.map((order) => (
-                <Tr key={order.id}>
-                  <Td>
-                    <Link href={`/orders/${order.id}`} className="font-medium text-dt-text-primary hover:underline">
-                      {order.order_reference}
-                    </Link>
-                  </Td>
-                  <Td>{order.employee_name}</Td>
-                  <Td>{order.delivery_date ?? "—"}</Td>
-                  <Td>{order.office_location}</Td>
-                  <Td>{order.catalogue_item_name ?? "—"}</Td>
-                  <Td>{order.quantity}</Td>
-                  <Td>{order.address_verified ? "Yes" : "No"}</Td>
-                  <Td>
-                    <StatusBadge status={order.status} />
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
-          <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
-        </>
-      )}
+      <div className="mt-6">
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <PackageCheck className="size-5 text-dt-burnt-orange" />
+            <div>
+              <p className="text-sm text-dt-text-secondary">Completed today</p>
+              <p className="text-2xl font-semibold text-dt-text-primary">{data.completed_today}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="mt-6 text-sm">
+        <Link href="/orders" className="font-medium text-dt-burnt-orange underline underline-offset-2">
+          View all orders →
+        </Link>
+      </div>
     </div>
   );
 }

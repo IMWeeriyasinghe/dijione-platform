@@ -39,11 +39,14 @@ import type {
   SupplierUserOut,
 } from "@dijione/contracts";
 
-const EMPTY_USER_FORM: SupplierUserCreateInput = {
+type SupplierUserForm = SupplierUserCreateInput & { entra_object_id?: string };
+
+const EMPTY_USER_FORM: SupplierUserForm = {
   email: "",
   full_name: "",
   role: "SUPPLIER_USER",
   status: "ACTIVE",
+  entra_object_id: "",
 };
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -90,7 +93,7 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
   const [catalogueForm, setCatalogueForm] = useState({ name: "", description: "", is_active: true });
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SupplierUserOut | null>(null);
-  const [userForm, setUserForm] = useState<SupplierUserCreateInput>(EMPTY_USER_FORM);
+  const [userForm, setUserForm] = useState<SupplierUserForm>(EMPTY_USER_FORM);
 
   function openEdit() {
     if (!supplier) return;
@@ -106,6 +109,7 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
       working_days: supplier.working_days,
       cutoff_time: supplier.cutoff_time,
       notes: supplier.notes,
+      is_default: supplier.is_default,
     });
     setEditOpen(true);
   }
@@ -150,10 +154,19 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
   });
 
   const userMutation = useMutation({
-    mutationFn: () =>
-      editingUser
-        ? updateSupplierUser(supplierId, editingUser.id, userForm)
-        : createSupplierUser(supplierId, userForm),
+    mutationFn: () => {
+      const { entra_object_id, ...base } = userForm;
+      return editingUser
+        ? updateSupplierUser(supplierId, editingUser.id, {
+            ...base,
+            // Only send the link when the admin actually changed it, and
+            // send null (not "") to clear it.
+            ...(entra_object_id !== (editingUser.entra_object_id ?? "")
+              ? { entra_object_id: entra_object_id?.trim() ? entra_object_id.trim() : null }
+              : {}),
+          })
+        : createSupplierUser(supplierId, base);
+    },
     onSuccess: () => {
       refetchUsers();
       setUserModalOpen(false);
@@ -176,7 +189,13 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
 
   function openUserEdit(user: SupplierUserOut) {
     setEditingUser(user);
-    setUserForm({ email: user.email, full_name: user.full_name, role: user.role, status: user.status });
+    setUserForm({
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role,
+      status: user.status,
+      entra_object_id: user.entra_object_id ?? "",
+    });
     setUserModalOpen(true);
   }
 
@@ -210,6 +229,7 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-dt-text-primary">{supplier.name}</h1>
             <StatusBadge status={supplier.status} />
+            {supplier.is_default && <StatusBadge status="INFO" label="Island-wide default" />}
           </div>
           <p className="mt-1 text-sm text-dt-text-secondary">
             {supplier.primary_contact_name || "No primary contact"} ·{" "}
@@ -503,6 +523,22 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
               onChange={(e) => setEditForm((f) => f && { ...f, notes: e.target.value })}
             />
           </FormField>
+          <label className="flex items-start gap-2 text-sm text-dt-text-primary">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={editForm.is_default ?? false}
+              onChange={(e) => setEditForm((f) => f && { ...f, is_default: e.target.checked })}
+            />
+            <span>
+              Island-wide (default) supplier
+              <span className="block text-xs text-dt-text-secondary">
+                Used automatically when birthday detection can&apos;t match a supplier to a team
+                member&apos;s office location. Only one supplier can hold this — setting it here
+                clears it on any other.
+              </span>
+            </span>
+          </label>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(false)}>
               Cancel
@@ -638,11 +674,20 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormField>
-          {editingUser && !editingUser.entra_object_id && (
-            <p className="text-xs text-dt-text-secondary">
-              Entra guest identity not yet linked — this user currently signs in via the local dev
-              persona picker only.
-            </p>
+          {editingUser && (
+            <FormField label="Entra Object ID" htmlFor="user-entra-oid">
+              <Input
+                id="user-entra-oid"
+                value={userForm.entra_object_id ?? ""}
+                placeholder="e.g. 00000000-1111-2222-3333-444444444444"
+                onChange={(e) => setUserForm((f) => ({ ...f, entra_object_id: e.target.value }))}
+              />
+              <p className="mt-1 text-xs text-dt-text-secondary">
+                {editingUser.entra_object_id
+                  ? "Durable Microsoft Entra ID B2B guest identity for this user. Changing it re-points sign-in."
+                  : "Not yet linked — until set, this user signs in via the local dev persona picker only. Paste the guest's Entra object id here once provisioned."}
+              </p>
+            </FormField>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setUserModalOpen(false)}>

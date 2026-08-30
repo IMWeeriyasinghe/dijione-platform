@@ -1,5 +1,15 @@
 """Generates human-readable, per-year-sequential order references.
 
+Format: ``BDAY-EMP{team_member_id}-{year}-{seq:05d}``.
+
+``team_member_id`` MUST be BambooHR's ``employeeNumber`` (the business-facing
+Team Member ID, e.g. 396) — never BambooHR's internal record ``id`` (the
+technical join key, e.g. 530). Callers pass ``employee_number or
+employee_id`` so an employee without an ``employeeNumber`` in BambooHR
+still gets a reference (rare — falls back to the internal id, tagged so it
+is visibly distinguishable). Per-year ``seq`` guarantees uniqueness
+regardless of which token precedes it.
+
 Uses the dedicated ``OrderSequence`` counter table (one row per year) rather
 than COUNT(*)+1 against ``birthday_orders``, which would race under
 concurrent/retried scan runs. SQLite has no cross-process row-level locking
@@ -16,9 +26,11 @@ from sqlalchemy.orm import Session
 from app.models.order_sequence import OrderSequence
 
 
-def next_order_reference(db: Session, employee_id: str, year: int) -> str:
+def next_order_reference(db: Session, team_member_id: str, year: int) -> str:
+    """``team_member_id`` is the resolved business Team Member ID
+    (``employee_number or employee_id`` — see module docstring)."""
     seq = _next_seq_for_year(db, year)
-    return f"BDAY-EMP{employee_id}-{year}-{seq:05d}"
+    return f"BDAY-EMP{team_member_id}-{year}-{seq:05d}"
 
 
 def _next_seq_for_year(db: Session, year: int, _retries: int = 3) -> int:
