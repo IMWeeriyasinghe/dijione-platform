@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     health,
-    integrations,
     recruitment,
     talent_applications,
     talent_candidates,
@@ -15,7 +14,6 @@ from app.api.routes import (
     talent_postings,
     talent_requests,
     talent_summary,
-    webhooks,
 )
 from app.core.config import get_settings
 
@@ -25,9 +23,12 @@ app = FastAPI(
     title="DijiTalentFlow API",
     description=(
         "DijiTalentFlow — talent requests, candidates, applications, "
-        "interviews, messages, documents, and the Lever/HubSpot adapters it "
-        "owns. Authorizes purely from JWT claims issued by Platform Core; "
-        "owns its own database. See docs/platform/service-architecture.md."
+        "interviews, messages, documents, and the client-visibility trust "
+        "decision (PostingClientMapping). Consumes the Recruitment Source "
+        "domain (recruitment-api) over HTTP; holds no Lever or HubSpot "
+        "credential itself. Authorizes purely from JWT claims issued by "
+        "Platform Core; owns its own database. See "
+        "docs/platform/service-architecture.md."
     ),
     version="0.1.0",
 )
@@ -51,7 +52,5 @@ app.include_router(talent_messages.router)
 app.include_router(talent_documents.router)
 app.include_router(talent_dashboard.router)
 app.include_router(talent_postings.router)
-app.include_router(integrations.router)
 app.include_router(recruitment.router)
 app.include_router(recruitment.internal_router)
-app.include_router(webhooks.router)

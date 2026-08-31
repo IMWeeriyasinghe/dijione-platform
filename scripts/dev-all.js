@@ -32,6 +32,7 @@ const services = [
   { name: "spark-api", color: "\x1b[34m", cwd: "apps/spark-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8004", "--reload"] },
   { name: "recruitment-api", color: "\x1b[38;5;208m", cwd: "apps/recruitment-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8005", "--reload"] },
   { name: "people-api", color: "\x1b[38;5;51m", cwd: "apps/people-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8006", "--reload"] },
+  { name: "commercial-api", color: "\x1b[38;5;135m", cwd: "apps/commercial-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8007", "--reload"] },
   { name: "shell-web", color: "\x1b[91m", cwd: "apps/shell-web", cmd: "npm", args: ["run", "dev"] },
   { name: "admin-web", color: "\x1b[95m", cwd: "apps/admin-web", cmd: "npm", args: ["run", "dev"] },
   { name: "talent-web", color: "\x1b[93m", cwd: "apps/talent-web", cmd: "npm", args: ["run", "dev"] },

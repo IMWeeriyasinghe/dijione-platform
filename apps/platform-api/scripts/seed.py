@@ -1,20 +1,25 @@
 """Seeds Platform Core's local demo data: the Role/Permission catalog, the
-module registry, dev personas, module-role assignments and client/portfolio
-scope.
+module registry, dev personas, module-role assignments, client/portfolio
+scope, and the canonical Client/Organisation identity.
 
 Run with:  python scripts/seed.py [--reset]
 
-Phase 2.5 note — coordinated seeding across services: DijiTalentFlow's
-Client rows now live in talent-api's own database, so this script can't
-create them or look up their ids. The module-role/client-scope rows below
-reference client ids 1 (ABC Company), 2 (XYZ Company), 3 (Nova Solutions) by
-plain integer convention — ``apps/talent-api/scripts/seed.py`` creates those
-three clients in that exact order so a fresh ``--reset`` reseed of both
-services lines up. Run this script *before* talent-api's, since talent-api's
-seed data (requests, messages, documents) references the user ids created
-here (also by convention: madushanka=1, cs_user=2, ta_manager=3,
+Coordinated seeding across services: platform-api is the permanent owner of
+canonical Client identity (Architecture Completion Plan §6.1) —
+``seed_canonical_clients`` creates the three ``Client`` rows here, with
+stable ``public_id``s (``cli-abc-company`` / ``cli-xyz-company`` /
+``cli-nova-solutions``), and every ``UserModuleClientScope`` /
+``UserModuleRole`` row below carries the real ``client_ref`` alongside the
+legacy bare integer. The legacy integer (``ABC_CLIENT_ID``=1 etc.) is kept
+only so a pre-Wave-A ``talent-api`` reseed (its own clients created in that
+same order) still lines up by convention for backward compatibility — new
+code should never need to rely on that ordering, only on ``client_ref`` /
+``platform_client_id``. Run this script *before* talent-api's, since
+talent-api's seed data (requests, messages, documents) references the user
+ids created here (by convention: madushanka=1, cs_user=2, ta_manager=3,
 platform_admin=4, super_admin=5, abc_client=6, xyz_client=7, nova_client=8,
-ta_portfolio=9). See docs/platform/local-development.md.
+ta_portfolio=9). See docs/platform/local-development.md and
+docs/platform/data-ownership.md §1.
 """
 
 from __future__ import annotations

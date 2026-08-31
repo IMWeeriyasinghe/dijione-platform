@@ -39,7 +39,20 @@ from `user.module_roles` in the resolved auth session, which (since
 granted roles, not only direct assignment. See
 `docs/platform/authorization.md` "Access Groups (Phase 2.6)".
 
-## Adding a new module (Phase 2.5: a new service, not new routes)
+## Source domains are not modules
+
+`recruitment-api`, `people-api`, and `commercial-api` are **not** in
+`ApplicationModule` and never will be — they have no `GET /api/modules`
+row, no Home card, no `required_roles`, and no user-facing UI at all. A
+source domain exists solely to own one external provider integration and
+publish a canonical read model over HTTP to the application services that
+need it (`docs/platform/service-architecture.md` "Source domains vs
+application domains", `docs/platform/data-ownership.md`). Do not register a
+source domain in the module registry, and do not add module-registry
+plumbing (icons, routes, role gates) to one — that machinery is for
+products a user opens, not for an internal integration owner.
+
+## Adding a new module (a new service, not new routes)
 
 Pre-Phase-2.5, a new module meant adding routes to the shared monolith.
 Since the application-level service split, a new *real* module (one with

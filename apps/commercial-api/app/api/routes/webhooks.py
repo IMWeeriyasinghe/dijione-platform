@@ -1,10 +1,7 @@
-"""HubSpot webhook receiver. The Lever webhook moved to recruitment-api
-with the rest of the Recruitment Source domain. HubSpot signature
-verification will be added when the Commercial/CRM domain acquires live
-access (Wave F relocates this route there).
+"""HubSpot webhook receiver — moved here from talent-api (Architecture
+Completion Plan Wave F / §3). No HubSpot event currently drives a
+mutation; idempotency via IntegrationEvent is always enforced.
 """
-
-import logging
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
@@ -12,8 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.sync_service import SyncService
 
-router = APIRouter(prefix="/api/talent/webhooks", tags=["webhooks"])
-logger = logging.getLogger("app.api.routes.webhooks")
+router = APIRouter(prefix="/api/commercial/webhooks", tags=["commercial-webhooks"])
 
 
 @router.post("/hubspot")

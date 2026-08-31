@@ -21,7 +21,6 @@ from app.core.config import get_settings
 from app.integrations.graph_email.client import EmailClient, GraphNotConfiguredError
 from app.integrations.graph_email.schemas import EmailSendResult
 
-GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 _TOKEN_URL_TEMPLATE = "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
 _GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 # Refresh a little before actual expiry to avoid racing a request against it.
@@ -46,6 +45,7 @@ class GraphEmailClient(EmailClient):
         self._client_id = settings.graph_client_id
         self._client_secret = settings.graph_client_secret
         self._sender_mailbox = settings.graph_sender_mailbox
+        self._base_url = settings.graph_base_url
         self._cached_token: str | None = None
         self._token_expires_at: float = 0.0
 
@@ -83,7 +83,7 @@ class GraphEmailClient(EmailClient):
             "toRecipients": [{"emailAddress": {"address": to}}],
         }
         create_resp = httpx.post(
-            f"{GRAPH_BASE_URL}/users/{self._sender_mailbox}/messages",
+            f"{self._base_url}/users/{self._sender_mailbox}/messages",
             headers=headers,
             json=draft_payload,
             timeout=10.0,
@@ -93,7 +93,7 @@ class GraphEmailClient(EmailClient):
 
         # Step 2: send that exact draft.
         send_resp = httpx.post(
-            f"{GRAPH_BASE_URL}/users/{self._sender_mailbox}/messages/{message_id}/send",
+            f"{self._base_url}/users/{self._sender_mailbox}/messages/{message_id}/send",
             headers=headers,
             timeout=10.0,
         )

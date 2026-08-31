@@ -3266,31 +3266,68 @@ Build a strong shared platform foundation, implement DijiTalentFlow thoroughly e
 # DIJIONE PLATFORM DATA OWNERSHIP AND SOURCE SYNCHRONIZATION CONTRACT
 
 > **Authoritative. Added after the Data Ownership Architecture v2 review
-> (approved) and the Recruitment Source extraction.** Companion documents:
-> `DijiOne-Data-Ownership-Architecture-v2.md`,
-> `docs/platform/recruitment-source.md`. This section overrides any earlier
-> text that says "DijiTalentFlow owns Lever", "no live Lever client exists",
-> or that applications integrate with external providers independently.
+> (approved) and completed by the Architecture Completion Plan** (Waves
+> A–F: canonical Client identity, the Recruitment Source and
+> People/Workforce physical extractions, the Commercial/CRM skeleton, and
+> the documentation/contract reconciliation this section is part of).
+> Companion documents: `DijiOne-Data-Ownership-Architecture-v2.md`,
+> `docs/platform/service-architecture.md` (the service map),
+> `docs/platform/data-ownership.md` (the full table-by-table ownership map
+> and the two degraded-mode contracts), `docs/platform/service-contracts.md`
+> (API surface + per-dependency timeout/failure/auth table),
+> `docs/platform/recruitment-source.md`, `docs/platform/people-source.md`.
+> This section overrides any earlier text that says "DijiTalentFlow owns
+> Lever", "no live Lever client exists", "canonical client identity lives
+> in talent-api", or that applications integrate with external providers
+> independently.
 
 ## Ownership
 
-1. **DijiOne is a distributed modular platform.** Independently deployable
-   services behind one gateway/domain. Not a monolith, not microservices.
-   Azure Container Apps is the approved hosting direction. No Kubernetes.
+1. **DijiOne is a Domain-Driven Distributed Modular Platform.**
+   Independently deployable, domain-sized services (not fine-grained
+   microservices) behind one gateway/domain, each owning its own database.
+   Not a monolith. Azure Container Apps is the approved hosting direction.
+   No Kubernetes, no message broker, no service mesh, no CQRS
+   infrastructure, no generic integration framework — unless independently
+   proven necessary.
 2. **"Integrate once, consume many."** Each external provider has exactly
    **one** DijiOne owning source-data domain. Applications MUST NOT each
    build their own integration to a provider the platform already owns.
-3. Provider ownership:
-   - **Lever → Recruitment Source** (bounded module `apps/talent-api/app/recruitment_source/`
-     today; promotion target `apps/recruitment-api`). The single DijiOne
-     owner of direct Lever access.
-   - **BambooHR → People / Workforce** — extract when a second employee-data
-     consumer exists. Today: `birthday-api` only.
-   - **HubSpot → Commercial / CRM** — build the live client there when
+2a. **Canonical Client/Organisation identity is permanently platform-owned
+   master data** (Architecture Completion Plan §6.1 — one migration, no
+   interim registry). `platform-api` owns a `client` table (`id`,
+   `public_id` stable/non-sequential, `name`, `status`) plus a
+   `client_external_id` crosswalk. Every other service references
+   `client_ref` / `client_public_id` / `platform_client_id` — never a bare
+   integer assumed to line up by seed-insertion order.
+   `talent-api.clients` is a TalentFlow-owned **extension** keyed on
+   `platform_client_id` (TA account manager, portfolio groupings), not a
+   second identity table. Commercial/CRM supplies commercial *facts about*
+   clients, keyed by `client.public_id`, and may propose new organisations
+   for a platform-admin to confirm — it **never** owns the identity row,
+   now or later. Full detail: `docs/platform/data-ownership.md` §1.
+3. Provider ownership — **extraction complete**, each a separate service
+   with internal ingress only:
+   - **Lever → Recruitment Source, `apps/recruitment-api`** (port 8005,
+     `recruitment_dev`). The single DijiOne owner of direct Lever access.
+     `talent-api` consumes it via `RecruitmentSourceClient`; a static guard
+     (`tests/test_no_direct_lever_dependency.py`, empty allowlist) forbids
+     a direct Lever import anywhere else.
+   - **BambooHR → People / Workforce, `apps/people-api`** (port 8006,
+     `people_dev`). The single DijiOne owner of direct BambooHR access.
+     `birthday-api` consumes it via `EmployeeDirectoryClient`; a static
+     guard (`tests/test_no_direct_bamboohr_dependency.py`) forbids a direct
+     BambooHR import anywhere else.
+   - **HubSpot → Commercial / CRM, `apps/commercial-api`** (port 8007,
+     skeleton — health/metadata + the relocated stub/webhook only; no live
+     client, no credential requested yet). Build the live client there when
      access arrives; never inside `talent-api`. **NOT required for
-     Lever-posting → client association** (see rule 4a) — HubSpot remains for
-     future commercial/CRM data only.
-   - **Entra / Graph → Identity / Communication** — `platform-api`.
+     Lever-posting → client association** (see rule 4a) — HubSpot remains
+     for future commercial/CRM data only, and never for identity (rule 2a).
+   - **Entra / Graph (identity) → `platform-api`.** **Graph (email) →
+     `birthday-api`**, a deliberately independent app registration behind a
+     factory seam (mock by default) — see `docs/platform/data-ownership.md`
+     §6; a shared platform Communication contract is defined but not built.
 4. **Applications own operational / business / trust state.** DijiTalentFlow
    owns `TalentRequest`, `Application`, workflow state, **`PostingClientMapping`**
    (`UNMAPPED`/`VERIFIED` client-visibility trust — client exposure fails
@@ -3379,28 +3416,76 @@ Every reusable source-data domain MUST provide:
 
 ## Failure isolation
 
-20. Lever unavailable → the source keeps its prior read model; the run is
-    FAILED; freshness goes stale/degraded. recruitment-api / the source
-    module unavailable → TalentFlow core workflow still works; source
-    screens degrade gracefully; no TalentFlow DB corruption. `talent-api`
-    unavailable → the source stays available to other consumers. No
-    distributed transactions.
+20. Lever/BambooHR unavailable → the owning source domain keeps its prior
+    read model; the run is `FAILED`; freshness goes stale/degraded. A
+    source domain (`recruitment-api`, `people-api`) unavailable never takes
+    down its consumer, but the **two consumers degrade differently, by
+    design** — not an inconsistency, a match to what each read is for (full
+    contract: `docs/platform/data-ownership.md` §4):
+    - `talent-api` ← `recruitment-api`: client visibility is an
+      **authorization** decision and must stay available and fail-closed,
+      so `talent-api` keeps a thin local posting projection
+      (`RecruitmentPostingRef`) refreshed opportunistically; the decision
+      itself never leaves `talent_dev`. **Birthday must not query
+      `people_dev` directly, and does not** — the equivalent projection
+      pattern is deliberately **not** used there.
+    - `birthday-api` ← `people-api`: detection is a **workflow trigger**,
+      not an authorization decision, so `birthday-api` holds **no**
+      employee mirror/projection table at all. A `people-api` outage makes
+      the daily scan **defer** (`ScanRun.status =
+      DEFERRED_SOURCE_UNAVAILABLE`, zero orders created) and **self-heal**
+      on the next scan via a forward occurrence window (≥ the maximum
+      tolerable outage, never below the supplier lead time) plus
+      `UniqueConstraint(employee_id, birthday_year)` idempotency — no
+      duplicates. Every in-flight `BirthdayOrder` is unaffected regardless,
+      because CS approval, verification, dispatch, delivery, and email all
+      read the employee facts **snapshotted onto the order at detection
+      time**, never a live lookup.
+    A DB-owning service unavailable never corrupts another service's
+    database — no distributed transactions, no shared connection.
 
 ## Service authentication
 
-21. Use the existing DijiOne service-to-service pattern. **TEMPORARY DEV
-    service auth = the shared `INTERNAL_SERVICE_SECRET` on `X-Internal-Token`.**
-    **DURABLE FUTURE TARGET = workload/managed identity or signed service
-    tokens.** The future improvement does not block DEV.
+21. Use the existing DijiOne service-to-service pattern. **DEV / current
+    trust mechanism = the shared `INTERNAL_SERVICE_SECRET` on
+    `X-Internal-Token`**, centralized in one factory
+    (`packages/auth-client-py`'s `make_verify_internal_request`, imported
+    by every backend as `require_internal_service`) so no service
+    redeclares its own copy; `X-Internal-Caller` is emitted on every
+    internal call for audit/log only, never for trust. **DURABLE FUTURE
+    TARGET = workload/managed identity or signed service tokens** — one
+    change point, that same factory. The future improvement does not block
+    DEV.
 
 ## Analytics
 
 22. Reporting consumes downstream reporting models — it does **not**
     cross-query operational or source databases.
 
+## Deployment topology and the cloud boundary
+
+23. **Target hosting is Azure Container Apps**, one PostgreSQL Flexible
+    Server database per domain (`platform_dev`/`talent_dev`/
+    `recruitment_dev`/`people_dev`/`birthday_dev`/`commercial_dev`), and two
+    scheduled **Container Apps Jobs** driving source sync
+    (`recruitment-sync-job` every 6h, `people-sync-job` daily) — never an
+    in-process per-replica timer. Only `shell-web` and
+    `birthday-supplier-web` take external ingress; every other service is
+    internal-only, reached in production through Azure Front Door / API
+    Management path fan-out. Full reference:
+    `docs/platform/deployment-topology.md`.
+24. **No Azure resource has been created, no Entra tenant/app-registration
+    change has been made, and no cloud spend has occurred** as part of this
+    architecture work — local development and CI run entirely on SQLite/
+    mock providers, with a `postgres` CI job validating every service
+    against real PostgreSQL. Provisioning Azure DEV, configuring Entra SSO,
+    and hosted UAT are the explicit next external steps and require the
+    user's own tenant/subscription actions — they are not something an
+    autonomous run performs on its own authority.
+
 ## Closed
 
-23. `.env`, credentials, provider keys, and customer/candidate PII are never
+25. `.env`, credentials, provider keys, and customer/candidate PII are never
     committed. The architecture is **CLOSED** unless a material business
     requirement, security problem, verified defect, or architectural
     violation genuinely requires a change — not an alternative style or a

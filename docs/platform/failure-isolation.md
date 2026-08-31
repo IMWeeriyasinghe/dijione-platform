@@ -1,8 +1,13 @@
-# DijiOne Failure Isolation (Phase 2.5)
+# DijiOne Failure Isolation
 
 What happens when one DijiOne service is slow, unreachable, or crashed —
-and why, service by service. Verified live (not just by unit test) per
-CR §47 — see "Live smoke test results" at the bottom.
+and why, service by service. The Phase 2.5 baseline below was verified live
+(not just by unit test) per CR §47 — see "Live smoke test results". The
+Architecture Completion Plan's two source-domain extractions
+(`recruitment-api`, `people-api`) added two more failure edges, each
+verified by automated failure-injection tests rather than a repeat manual
+smoke test — see "Recruitment Source down" and "People Source down" below,
+and `docs/platform/data-ownership.md` §4 for the full degraded-mode design.
 
 ## The target
 
@@ -62,18 +67,69 @@ it never awaited the failed query in the first place.
 
 ## DijiTalentFlow (`talent-web` / `talent-api`)
 
-`talent-api`'s only outbound dependency is `platform-api`, for audit
-events and notifications, and those calls are deliberately best-effort:
-`AuditService.log(...)` / `NotificationService.notify_user(...)` /
-`.notify_module_role(...)` call `PlatformClient`, which catches
-`httpx.HTTPError`, logs a warning, and returns — the talent request,
-application, interview, message, or document action the caller was
-actually performing still succeeds and still returns `2xx`. A `platform-api`
-outage means audit trail/notification gaps during the outage, not failed
-talent operations. Verified by
-`apps/talent-api/tests/test_talent_request_workflow.py::test_talent_request_creation_survives_platform_core_outage`,
-which deliberately points at an unroutable address and asserts the create
-still returns `201`.
+`talent-api` has two outbound dependencies: `platform-api` (audit events,
+notifications, canonical client-name lookups) and `recruitment-api`
+(postings, candidacies, sync). Both calls are handled without ever failing
+the caller's actual business operation, but with different failure shapes
+because the two reads have different criticality (`docs/platform/data-ownership.md`
+§4a):
+
+- **`platform-api` down** → audit/notification writes are deliberately
+  best-effort: `AuditService.log(...)` / `NotificationService.notify_user(...)`
+  / `.notify_module_role(...)` call `PlatformClient`, which catches
+  `httpx.HTTPError`, logs a warning, and returns — the talent request,
+  application, interview, message, or document action the caller was
+  actually performing still succeeds and still returns `2xx`. Verified by
+  `apps/talent-api/tests/test_talent_request_workflow.py::test_talent_request_creation_survives_platform_core_outage`,
+  which deliberately points at an unroutable address and asserts the create
+  still returns `201`.
+- **`recruitment-api` down** → `RecruitmentConsumerService` catches
+  `httpx.HTTPError` and returns a safe `{"refreshed": False, "reason":
+  "source_unavailable"}` / degraded freshness payload — it never raises
+  into the request path. The client-visibility authorization decision
+  (`list_verified_for_client`) keeps working from the local
+  `RecruitmentPostingRef` projection, fail-closed: VERIFIED postings still
+  render with a staleness timestamp, no cross-client leakage, no widened
+  access, no 500. Verified by
+  `apps/talent-api/tests/test_recruitment_source_consumer.py`'s
+  failure-injection tests.
+
+## Recruitment Source down (`recruitment-api`)
+
+A `recruitment-api` outage is symmetric to any other single-service outage:
+nothing else in the platform depends on it being up except `talent-api`'s
+posting/candidacy views (degraded per above) and the sync widget. Lever
+itself being unreachable is a *separate* failure mode handled entirely
+inside `recruitment-api` (the sync run is marked `FAILED`, the prior read
+model is kept — `docs/platform/recruitment-source.md` "Failure isolation")
+and never propagates as a `recruitment-api` outage to its consumers.
+
+## People Source down (`people-api`)
+
+`birthday-api`'s daily detection scan defers rather than degrading a live
+read, because it has no local employee data to degrade *to* by design (no
+mirror exists — `docs/platform/data-ownership.md` §4b):
+`ScanRunStatus.DEFERRED_SOURCE_UNAVAILABLE`, zero orders created, the next
+scan's forward occurrence window self-heals with no duplicates
+(`UniqueConstraint(employee_id, birthday_year)`). Every in-flight
+`BirthdayOrder` — CS approval, address verification, supplier dispatch,
+delivery tracking, outbound email — is completely unaffected, because none
+of those steps ever re-reads live employee data; they read the snapshot
+captured on the order at detection time. Only the staff directory view
+(`GET /api/birthday/employees/upcoming-birthdays`) shows a degraded
+"temporarily unavailable" state, and it is informational, never
+workflow-blocking. Verified by
+`apps/birthday-api/tests/test_detection.py::test_run_daily_scan_defers_safely_when_source_is_unavailable`
+and `::test_scan_catches_up_after_source_recovers_with_no_duplicates`, plus
+`apps/birthday-api/tests/test_admin_run_detection.py::test_admin_run_detection_defers_safely_when_people_api_is_unreachable`.
+
+## Commercial / CRM (`commercial-api`) — skeleton, no live dependents yet
+
+`commercial-api` has no live HubSpot client and nothing in the platform yet
+depends on it being up — it exists as a health/metadata + relocated-webhook
+skeleton (`docs/platform/data-ownership.md` §1, §2). Its eventual failure
+posture (a `talent-api`- or `admin-api`-style best-effort enrichment read)
+will be documented here when a live client and a real consumer exist.
 
 ## Auth: signed claims, not a live dependency
 

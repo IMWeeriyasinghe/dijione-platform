@@ -148,24 +148,6 @@ class NotificationType(StrEnum):
     NEW_MESSAGE = "NEW_MESSAGE"
 
 
-class IntegrationProvider(StrEnum):
-    LEVER = "LEVER"
-    HUBSPOT = "HUBSPOT"
-
-
-class SyncStatus(StrEnum):
-    PENDING = "PENDING"
-    SYNCED = "SYNCED"
-    ERROR = "ERROR"
-
-
-class ProcessingStatus(StrEnum):
-    RECEIVED = "RECEIVED"
-    PROCESSED = "PROCESSED"
-    IGNORED_DUPLICATE = "IGNORED_DUPLICATE"
-    FAILED = "FAILED"
-
-
 class PostingClientMappingStatus(StrEnum):
     """Trust state of a Posting -> Client relationship.
 

@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     graph_client_id: str = ""
     graph_client_secret: str = ""
     graph_sender_mailbox: str = ""
+    graph_base_url: str = "https://graph.microsoft.com/v1.0"
 
     @property
     def cors_origins_list(self) -> list[str]:

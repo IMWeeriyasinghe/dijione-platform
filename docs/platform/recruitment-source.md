@@ -1,46 +1,52 @@
 # Recruitment Source (Lever) — DijiOne standard source-sync
 
-**Status:** bounded module inside `talent-api`
-(`apps/talent-api/app/recruitment_source/`). Promotion target: `apps/recruitment-api`
-(Data Ownership Architecture v2 §10 — a lift, not a rewrite). This document
-is the reference for the **DijiOne standard source-synchronization
-lifecycle** every reusable source-data domain (People/Workforce,
-Commercial/CRM, …) must follow — see the authoritative rules in the
-`CLAUDE.md` section **"DIJIONE PLATFORM DATA OWNERSHIP AND SOURCE
-SYNCHRONIZATION CONTRACT"**.
+**Status:** an independently deployable service, `apps/recruitment-api`
+(port 8005, `recruitment_dev`) — physically extracted from `talent-api` in
+Architecture Completion Plan Wave B. `talent-api` consumes it exclusively
+over HTTP via `RecruitmentSourceClient` (Wave C); it holds no Lever
+credential and imports nothing from `app.integrations.lever`
+(`tests/test_no_direct_lever_dependency.py` guards an empty allowlist).
+This document is the reference for the **DijiOne standard
+source-synchronization lifecycle** every reusable source-data domain
+(`recruitment-api`, `people-api`, and `commercial-api` when built) follows
+— see the authoritative rules in the `CLAUDE.md` section **"DIJIONE
+PLATFORM DATA OWNERSHIP AND SOURCE SYNCHRONIZATION CONTRACT"** and the
+People/Workforce equivalent in `docs/platform/data-ownership.md` §4b.
 
 ## What it owns
 
-- The Lever client + adapters (`app/integrations/lever/*`), the two
+- The Lever client + adapters (`app/integrations/lever/*`), the
   reconciliation services (`lever_posting_service`,
-  `lever_contact_application_sync_service`), the stage/archive mappers, and
-  the Lever-sourced read-model tables (`postings`, `posting_applications`,
-  `candidates` where `source=LEVER`).
-- `recruitment_sync_runs` — durable sync-run state (`run_id`, provider,
-  `trigger_type`, requesting app/user, timestamps, status, counts,
-  correlation id, safe error summary). **No secrets, no raw PII.**
+  `lever_candidacy_sync_service`), the stage/archive mappers, and the
+  Lever-sourced read-model tables: `postings`, `recruitment_candidates`,
+  `recruitment_candidacies`, `external_mappings`, `integration_events`.
+- `sync_runs` — durable sync-run state (`run_id`, provider, `trigger_type`,
+  requesting app/user, timestamps, status, counts, correlation id, safe
+  error summary). **No secrets, no raw PII.**
 
-**Not owned here:** `PostingClientMapping` (TalentFlow trust/business
+**Not owned here:** `PostingClientMapping` (TalentFlow's trust/business
 decision — `UNMAPPED`/`VERIFIED`; client exposure fails closed, never
-inferred from Lever tags/title/team/text), `TalentRequest`, `Application`,
-messages, documents, client-safe DTOs.
+inferred from Lever tags/title/team/text — lives in `talent_dev`),
+`RecruitmentPostingRef` (talent-api's thin local projection for the
+fail-closed authorization join — `docs/platform/data-ownership.md` §4a),
+`TalentRequest`, `Application`, messages, documents, client-safe DTOs.
 
-**Lever is GET-only** (CLAUDE.md §60). `test_live_lever_client_safety.py`
-plus `test_no_direct_lever_dependency.py` guard this.
+**Lever is GET-only** (CLAUDE.md §60). `test_lever_client_safety.py` plus
+`test_no_direct_lever_dependency.py` (in `talent-api`) guard this.
 
 ## Sync lifecycle
 
 | Concern | Implementation |
 |---|---|
-| **Scheduled reconciliation** | Every 6 h, via an external replica-safe caller: `POST /api/talent/internal/recruitment/scheduled-sync` (`X-Internal-Token`). Azure = a Container Apps scheduled Job (`deploy/` — prepared, not created). Local = cron / `curl` / a script. **Not** an in-process timer per replica. |
-| **Ad-hoc sync** | `POST /api/talent/integrations/recruitment/sync` (staff, `require_staff_scope`). Browser → `talent-web` → `talent-api` → this module. Never browser → source directly. |
+| **Scheduled reconciliation** | Every 6 h, via an external replica-safe caller: `POST /api/recruitment/internal/scheduled-sync` (`X-Internal-Token`). Azure = the `recruitment-sync-job` Container Apps Job (`deploy/` — prepared, not created). Local = cron / `curl` / a script. **Not** an in-process timer per replica. `talent-reconcile-job` runs 15 min later to refresh `talent-api`'s posting projection + DTC trust reconciliation. |
+| **Ad-hoc sync** | `POST /api/talent/recruitment/sync` (staff, `require_staff_scope`) proxies to `POST /api/recruitment/internal/sync` on this service. Browser → `talent-web` → `talent-api` → `recruitment-api`. Never browser → source directly. |
 | **Async** | Ad-hoc returns **`202 Accepted`** `{run_id, status, started}`; the run executes in a FastAPI background task with its own DB session. The HTTP request is never held open. |
 | **Single-flight** | `request_sync` returns any already-`QUEUED`/`RUNNING` run instead of starting a second full reconciliation (`started: false`). No provider thundering herd. |
 | **Idempotent** | Reconciliation = insert new / update changed / keep stable IDs. Repeated runs over unchanged Lever data are harmless. A failed run leaves the previous read model intact (no wipe). |
-| **Retry / rate limits** | The existing `LiveLeverClient` retry (429 backoff, transient 5xx) is preserved unchanged. |
-| **Freshness** | `GET /api/talent/integrations/recruitment/freshness` → `last_successful_sync_at` + latest-run summary. |
-| **Frontend** | `RecruitmentSyncStatus` on the TA Operations Dashboard — freshness line, authorized "Sync now", indeterminate spinner (no faked %), bounded 3 s polling with unmount cleanup, dashboard refetch on completion. Backend-enforced auth. |
-| **Notifications** | SCHEDULED success → silent freshness update. SCHEDULED failure → `TA_MANAGER` operational warning. AD_HOC success → lightweight confirmation to the requester. AD_HOC failure → clear error to the requester. Uses `NotificationService` (best-effort). |
+| **Retry / rate limits** | `LiveLeverClient` retry (429 backoff, transient 5xx). |
+| **Freshness** | `GET /api/recruitment/freshness` (proxied via `GET /api/talent/recruitment/freshness`) → `last_successful_sync_at` + latest-run summary. |
+| **Frontend** | `RecruitmentSyncStatus` on the TA Operations Dashboard — freshness line, authorized "Sync now", indeterminate spinner (no faked %), bounded polling with unmount cleanup, dashboard refetch on completion. Backend-enforced auth. |
+| **Notifications** | SCHEDULED success → silent freshness update. SCHEDULED failure → `TA_MANAGER` operational warning. AD_HOC success → lightweight confirmation to the requester. AD_HOC failure → clear error to the requester. Best-effort via `PlatformClient`. |
 | **Audit** | One `recruitment.sync_requested` platform audit event per authorized ad-hoc request — not one per synced record. |
 
 ## DTC client-tag resolution (governed Lever posting tag)
@@ -77,10 +83,16 @@ Staff see it on `talent-web` `/postings`. **HubSpot is not required for this.**
 
 ## Failure isolation
 
-- **Lever unavailable** → run `FAILED`, prior read model kept, freshness goes
-  stale.
-- **This module errors** → TalentFlow core workflow unaffected; the sync
-  widget degrades; no TalentFlow DB corruption.
+- **Lever unavailable** → the run is `FAILED`, `recruitment-api` keeps its
+  prior read model, freshness goes stale.
+- **`recruitment-api` itself is down** → `talent-api`'s client-visibility
+  authorization decision keeps working from its local
+  `RecruitmentPostingRef` projection — fail-closed, not fail-unavailable;
+  see `docs/platform/data-ownership.md` §4a for the full contract and
+  `apps/talent-api/tests/test_recruitment_source_consumer.py` for the
+  failure-injection tests. TalentFlow's core workflow (requests,
+  applications, interviews, messages, documents) is entirely unaffected —
+  none of it depends on `recruitment-api`.
 - **`platform-api` unavailable** → sync still succeeds; audit/notification
   writes are best-effort (verified live).
 
@@ -88,11 +100,8 @@ Staff see it on `talent-web` `/postings`. **HubSpot is not required for this.**
 
 `INTEGRATIONS_MODE=mock` (default) drives the whole lifecycle against
 `MockLeverClient` — CI, local dev, and the first shared DEV run end-to-end
-with **no Lever credentials**.
-
-## Remaining (post-demo R-work)
-
-Physical lift to `apps/recruitment-api` + its own Postgres DB; re-key
-`PostingClientMapping` to `(provider=LEVER, external_posting_id)`; the
-Container Apps scheduled Job; a `talent-api → recruitment-api` HTTP client
-replacing the in-process module call.
+with **no Lever credentials**. `INTEGRATIONS_MODE=live` was verified once,
+GET-only, against the real Lever tenant (647 postings synced, zero writes)
+to confirm the two governed DTC test postings resolve correctly — see
+`docs/platform/data-ownership.md` and the Architecture Completion Plan's
+final report for the result.
