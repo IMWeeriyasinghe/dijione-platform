@@ -43,6 +43,38 @@ plus `test_no_direct_lever_dependency.py` guard this.
 | **Notifications** | SCHEDULED success → silent freshness update. SCHEDULED failure → `TA_MANAGER` operational warning. AD_HOC success → lightweight confirmation to the requester. AD_HOC failure → clear error to the requester. Uses `NotificationService` (best-effort). |
 | **Audit** | One `recruitment.sync_requested` platform audit event per authorized ad-hoc request — not one per synced record. |
 
+## DTC client-tag resolution (governed Lever posting tag)
+
+The TA business maintains a dedicated Lever posting tag **`DTC - <Client
+Name>`** naming the DijiTalentFlow client for that posting. This is a
+governed identifier, not arbitrary text inference.
+
+| Layer | Owner | Component |
+|---|---|---|
+| Parse the tag (provider fact) | Recruitment Source | `app/recruitment_source/dtc.py` — pure `parse_dtc(tags) -> NO_TAG / OK(name,raw) / MALFORMED / MULTIPLE`. Case-insensitive `DTC`, 0+ spaces around `-`, internal name text preserved, non-DTC tags ignored, **no fuzzy matching** |
+| Resolve + decide trust | DijiTalentFlow | `app/services/posting_client_mapping_reconciler.py` — exact `Client.name` match → reconcile `PostingClientMapping`; runs inside `SyncService.execute_run` (scheduled + ad-hoc), in the sync transaction |
+
+**Fail-closed policy** (anything but a clean resolution → not client-visible):
+
+| Case | Result | `resolution_status` |
+|---|---|---|
+| 1 tag, 1 exact `Client` match, no MANUAL conflict | `VERIFIED`, `source=LEVER_DTC_TAG` | `RESOLVED` |
+| 1 tag, no `Client` match | stays `UNMAPPED` (tag recorded) — **no `Client` auto-created** | `UNKNOWN_CLIENT_IDENTIFIER` |
+| >1 DTC tag | stays `UNMAPPED` | `AMBIGUOUS_MULTIPLE_TAGS` |
+| malformed (`DTC`, `DTC -`, …) | stays `UNMAPPED` | `MALFORMED_TAG` |
+| no DTC tag | stays `UNMAPPED` | `NO_DTC_TAG` |
+| tag removed / broken on a DTC-`VERIFIED` mapping | **revert → `UNMAPPED`** (visibility lost) | reason recorded |
+| tag changed A→B (both resolve, DTC-`VERIFIED`) | repoint `client_id` | `RESOLVED` |
+| existing `source=MANUAL` `VERIFIED` mapping agrees | untouched | `RESOLVED` |
+| existing `source=MANUAL` `VERIFIED` mapping conflicts | **kept — never overwritten** + `TA_MANAGER` notification | `CONFLICT_MANUAL_OVERRIDE` |
+| existing `REJECTED` | never un-rejected | — |
+
+The fail-closed visibility query (`list_verified_for_client`: `status==VERIFIED
+AND client_id==<own>`) is **unchanged** — the tag is a *source that writes*
+that state, alongside the staff `verify-mapping` (`source=MANUAL`) action.
+Every state transition is audited (one event per transition, never per row).
+Staff see it on `talent-web` `/postings`. **HubSpot is not required for this.**
+
 ## Failure isolation
 
 - **Lever unavailable** → run `FAILED`, prior read model kept, freshness goes

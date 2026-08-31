@@ -14,13 +14,25 @@
   completely unused (`GET /requisitions` → `[]`, `GET /requisition_fields`
   → `[]`, every sampled Posting's `requisitionCodes` was empty). Do not
   build sync logic that depends on Requisitions.
-- **The Posting → Client relationship is intentionally pluggable and
-  fails closed.** No client-role user may ever see a Lever-sourced
-  Posting, or any candidate/application under it, until an explicit,
-  verified `PostingClientMapping` row exists for that exact client. Tag
-  text, posting titles, and "About the Client" description prose may
-  contain human-readable client hints and are shown to staff as
-  diagnostics only — never treated as authorization evidence.
+- **The Posting → Client relationship is pluggable and fails closed.** No
+  client-role user may ever see a Lever-sourced Posting, or any
+  candidate/application under it, until a `PostingClientMapping` row is
+  `VERIFIED` for that exact client. Posting **titles** and "About the
+  Client" description prose remain diagnostics only — never authorization
+  evidence.
+  **Governed exception (2026-08-31):** a single, dedicated Lever posting
+  **tag** in the form **`DTC - <Client Name>`**, maintained by the TA
+  business process, IS an approved source identifier. It is parsed as a
+  provider fact (`app/recruitment_source/dtc.py`) and reconciled into
+  `PostingClientMapping` by
+  `app/services/posting_client_mapping_reconciler.py` on every sync. Exact
+  match only (no fuzzy); a single well-formed tag matching exactly one
+  `Client.name` sets `VERIFIED` (`source=LEVER_DTC_TAG`). Missing /
+  malformed / multiple / ambiguous / unknown → stays `UNMAPPED` with a
+  diagnostic `resolution_status`; never auto-creates a `Client`; never
+  overwrites a `source=MANUAL` `VERIFIED` mapping (conflict → kept +
+  flagged). Arbitrary non-`DTC` tags/team/department/free text are still
+  never used.
 - **`Posting` and `PostingClientMapping` are separate tables.** `Posting`
   is pure Lever-sourced read-model data, freely overwritable by a future
   re-sync. `PostingClientMapping` is the DijiOne-owned trust/provenance
@@ -62,12 +74,23 @@ Webhook receiver (`POST /api/talent/webhooks/lever`) is hardened
 marked `IGNORED_DUPLICATE`) but production Lever webhooks are **not**
 being activated in this phase.
 
-## What was not built this phase
+## Update 2026-08-31 — governed DTC client tag + Postings UI
 
-- No tag/title-text-based auto-resolution of client identity.
-- No HubSpot-backed resolution.
+- **Governed `DTC - <Client Name>` tag resolution** is now built (parser in
+  Recruitment Source, reconciler in TalentFlow, runs in every sync). Client
+  identity is still never inferred from *arbitrary* tags/title/text —
+  only from this one governed, exactly-matched, fail-closed tag. See the
+  "Posting → Client" bullet above and `docs/platform/recruitment-source.md`.
+- **HubSpot-backed resolution is NOT required** for Lever-posting → client
+  association. HubSpot / Commercial-CRM stays deferred, for commercial data.
+- A **staff-only "Recruitment Postings"** page now exists in `talent-web`
+  (`/postings`): posting, Lever client tag, resolved client, mapping status,
+  manual verify.
+
+## Still not built this phase
+
 - No production Lever webhook registration.
-- No frontend UI (no existing Postings page to extend; deferred as
-  separable work).
 - No `TalentRequest` ↔ `Posting` linkage.
 - No dependency on Lever's structured Interview data.
+- No `ClientAlias` (rename-resilient) mapping — a client rename requires the
+  Lever tag to be updated; a stale tag resolves to `UNKNOWN_CLIENT_IDENTIFIER`.

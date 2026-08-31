@@ -3287,16 +3287,36 @@ Build a strong shared platform foundation, implement DijiTalentFlow thoroughly e
    - **BambooHR → People / Workforce** — extract when a second employee-data
      consumer exists. Today: `birthday-api` only.
    - **HubSpot → Commercial / CRM** — build the live client there when
-     access arrives; never inside `talent-api`.
+     access arrives; never inside `talent-api`. **NOT required for
+     Lever-posting → client association** (see rule 4a) — HubSpot remains for
+     future commercial/CRM data only.
    - **Entra / Graph → Identity / Communication** — `platform-api`.
 4. **Applications own operational / business / trust state.** DijiTalentFlow
    owns `TalentRequest`, `Application`, workflow state, **`PostingClientMapping`**
    (`UNMAPPED`/`VERIFIED` client-visibility trust — client exposure fails
-   closed and is NEVER inferred from Lever tags/title/team/free text),
-   messages, documents, its interviews, and its client-safe DTOs.
+   closed), messages, documents, its interviews, and its client-safe DTOs.
    Third-party *reusable read models* (Lever postings, opportunities,
    candidate source facts, stages, archive reasons, provider IDs, sync
    metadata) belong to the source domain.
+4a. **Client identity from Lever — governed tag only.** Arbitrary Lever
+   tags, titles, team/department fields, free text and candidate fields MUST
+   NOT be used to infer client identity. The **one approved** Lever-based
+   client identifier is the governed posting-tag contract **`DTC - <Client
+   Name>`**, deliberately maintained by the TA business process. Only a
+   **single, well-formed, exactly-matching** DTC tag (case-insensitive
+   `DTC`, trimmed, exact `Client.name` match — **no fuzzy matching**) may
+   enter deterministic client resolution and set `PostingClientMapping` to
+   `VERIFIED` (`source=LEVER_DTC_TAG`). Missing / malformed / multiple /
+   ambiguous / unknown identifiers MUST **fail closed** (stay `UNMAPPED`
+   with a diagnostic `resolution_status`) and never grant client visibility.
+   A `Client` row is NEVER auto-created from a tag. A governed DTC tag NEVER
+   overwrites a human `source=MANUAL` `VERIFIED` mapping — a conflict is
+   kept and flagged (`CONFLICT_MANUAL_OVERRIDE` + `TA_MANAGER` notification).
+   A removed/broken DTC tag on a DTC-resolved mapping reverts it to
+   `UNMAPPED` (visibility lost). The parser is a Recruitment Source provider
+   fact (`app/recruitment_source/dtc.py`); the resolver + trust decision are
+   TalentFlow's (`app/services/posting_client_mapping_reconciler.py`), run
+   inside every scheduled + ad-hoc sync. HubSpot is **not** on this path.
 5. **After the Recruitment Source extraction, `talent-api` MUST NOT call
    Lever directly.** Only the Recruitment Source owns the Lever client.
    Future Lever consumers (e.g. DijiSpark) consume Recruitment Source, not
