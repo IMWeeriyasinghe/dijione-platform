@@ -27,6 +27,13 @@ class ModuleRoleClaims:
     client_id: int | None
     client_ids: list[int] | None  # None == unrestricted (ALL_CLIENTS)
     permissions: frozenset[str] = field(default_factory=frozenset)
+    # Durable client scope — a platform-owned ``Client.public_id`` (str),
+    # stable across reseeds. ``client_id``/``client_ids`` above are the
+    # legacy integer form kept for one migration cycle. ``None`` on
+    # ``client_public_ids`` means unrestricted (ALL_CLIENTS); both default
+    # to ``None`` when decoding a token minted before this field existed.
+    client_public_id: str | None = None
+    client_public_ids: list[str] | None = None
 
     def has(self, permission_key: str) -> bool:
         return permission_key in self.permissions
@@ -88,6 +95,8 @@ def decode_claims(
                 client_id=claim.get("client_id"),
                 client_ids=claim.get("client_ids"),
                 permissions=frozenset(claim.get("permissions", [])),
+                client_public_id=claim.get("client_public_id"),
+                client_public_ids=claim.get("client_public_ids"),
             )
             for module_key, claim in payload.get("module_roles", {}).items()
         }

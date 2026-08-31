@@ -18,13 +18,38 @@ from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.client import Client, ClientExternalId  # noqa: E402
 from app.models.role import Permission, Role, RolePermission  # noqa: E402
 from app.models.user import User, UserModuleRole  # noqa: E402
 from app.models.user_module_client_scope import UserModuleClientScope  # noqa: E402
 
+# Legacy talent-api integer ids the Admin Center's client picker still
+# submits — resolved to a canonical Client.public_id via client_external_ids.
 ABC_CLIENT_ID = 1
 XYZ_CLIENT_ID = 2
 NOVA_CLIENT_ID = 3
+
+# (public_id, name, legacy talent-api id) — mirrors scripts/seed.py and the
+# d4e5f6a7b8c9 migration.
+CANONICAL_CLIENTS = [
+    ("cli-abc-company", "ABC Company", ABC_CLIENT_ID),
+    ("cli-xyz-company", "XYZ Company", XYZ_CLIENT_ID),
+    ("cli-nova-solutions", "Nova Solutions", NOVA_CLIENT_ID),
+]
+_LEGACY_TO_PUBLIC = {legacy: public_id for public_id, _name, legacy in CANONICAL_CLIENTS}
+
+
+def _seed_canonical_clients(session) -> None:
+    """Platform-owned canonical client identity + the talent-api legacy
+    crosswalk every client-scope test depends on."""
+    for public_id, name, legacy_id in CANONICAL_CLIENTS:
+        client = Client(public_id=public_id, name=name, status="ACTIVE")
+        session.add(client)
+        session.flush()
+        session.add(
+            ClientExternalId(client_id=client.id, provider="talent-api", external_id=str(legacy_id))
+        )
+    session.commit()
 
 
 def _seed_authorization_catalog(session) -> None:
@@ -52,11 +77,15 @@ def _seed_authorization_catalog(session) -> None:
 
 
 def assign_client_scope(session, module_role: UserModuleRole, *, client_id: int | None) -> None:
-    """Test helper mirroring scripts/seed.py's ``_assign_client_scope``."""
+    """Test helper mirroring scripts/seed.py's ``_assign_client_scope`` —
+    writes both the legacy ``client_id`` and the durable ``client_ref``."""
     if client_id is not None:
         session.add(
             UserModuleClientScope(
-                user_module_role_id=module_role.id, client_id=client_id, all_clients=False
+                user_module_role_id=module_role.id,
+                client_id=client_id,
+                client_ref=_LEGACY_TO_PUBLIC.get(client_id),
+                all_clients=False,
             )
         )
     else:
@@ -71,6 +100,7 @@ def db():
     session = SessionLocal()
     try:
         _seed_authorization_catalog(session)
+        _seed_canonical_clients(session)
         yield session
     finally:
         session.close()
@@ -79,22 +109,6 @@ def db():
 @pytest.fixture()
 def api_client():
     return TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _client_directory_stub(monkeypatch):
-    """The temporary client-scope guard (app/services/client_directory.py)
-    resolves client ids against talent-api over HTTP. No test should pay for
-    a real (failing) network call just because it sets a client scope —
-    default to the three seed-convention ids being valid. Tests that
-    specifically exercise the guard patch this again with their own set."""
-    from app.services import client_directory
-
-    monkeypatch.setattr(
-        client_directory,
-        "known_client_ids",
-        lambda: {ABC_CLIENT_ID, XYZ_CLIENT_ID, NOVA_CLIENT_ID},
-    )
 
 
 @pytest.fixture()
@@ -134,10 +148,12 @@ def two_tenant_world(db):
             UserModuleRole(
                 user_id=abc_user.id, module_key=MODULE_TALENT_FLOW,
                 role="TALENT_CLIENT", client_id=ABC_CLIENT_ID,
+                client_ref=_LEGACY_TO_PUBLIC[ABC_CLIENT_ID],
             ),
             UserModuleRole(
                 user_id=xyz_user.id, module_key=MODULE_TALENT_FLOW,
                 role="TALENT_CLIENT", client_id=XYZ_CLIENT_ID,
+                client_ref=_LEGACY_TO_PUBLIC[XYZ_CLIENT_ID],
             ),
             UserModuleRole(user_id=ta_user.id, module_key=MODULE_TALENT_FLOW, role="TA_MEMBER"),
             UserModuleRole(user_id=cs_user.id, module_key=MODULE_TALENT_FLOW, role="CUSTOMER_SUCCESS"),

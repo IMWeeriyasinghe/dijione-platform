@@ -85,6 +85,20 @@ class AuthorizationService:
             return None
         return [s.client_id for s in scopes if s.client_id is not None]
 
+    def client_ref_scope_for(self, module_role: UserModuleRole) -> list[str] | None:
+        """``client_scope_for`` in terms of the durable ``client_ref``
+        (a platform-owned ``Client.public_id``) instead of the legacy
+        integer. Same ALL_CLIENTS / no-rows semantics."""
+        stmt = select(UserModuleClientScope).where(
+            UserModuleClientScope.user_module_role_id == module_role.id
+        )
+        scopes = list(self.db.execute(stmt).scalars().all())
+        if not scopes:
+            return None
+        if any(s.all_clients for s in scopes):
+            return None
+        return [s.client_ref for s in scopes if s.client_ref is not None]
+
     def role_display(self, module_key: str | None, role_key: str) -> Role | None:
         stmt = select(Role).where(Role.key == role_key)
         stmt = stmt.where(Role.module_key.is_(None)) if module_key is None else stmt.where(
@@ -185,6 +199,49 @@ class AuthorizationService:
         if unrestricted:
             return None, sources
         return sorted(client_ids), sources
+
+    def effective_client_ref_scope(self, user: User, module_key: str) -> list[str] | None:
+        """``effective_client_scope`` expressed as durable ``client_ref``
+        (platform ``Client.public_id``) values — the union across every
+        contributing direct/group assignment, or ``None`` for unrestricted.
+        This is what ``claims_service`` embeds as ``client_public_ids``."""
+        client_refs: set[str] = set()
+        unrestricted = False
+        saw_grant = False
+
+        direct_stmt = select(UserModuleRole).where(
+            UserModuleRole.user_id == user.id,
+            UserModuleRole.module_key == module_key,
+            UserModuleRole.enabled.is_(True),
+        )
+        for mr in self.db.execute(direct_stmt).scalars().all():
+            saw_grant = True
+            scope = self.client_ref_scope_for(mr)
+            if scope is None:
+                unrestricted = True
+            else:
+                client_refs.update(scope)
+
+        for group in self.groups_for_user(user.id):
+            group_stmt = select(GroupModuleRole).where(
+                GroupModuleRole.access_group_id == group.id,
+                GroupModuleRole.module_key == module_key,
+                GroupModuleRole.enabled.is_(True),
+            )
+            for gr in self.db.execute(group_stmt).scalars().all():
+                saw_grant = True
+                scope_stmt = select(GroupModuleClientScope).where(
+                    GroupModuleClientScope.group_module_role_id == gr.id
+                )
+                scope_rows = list(self.db.execute(scope_stmt).scalars().all())
+                if not scope_rows or any(s.all_clients for s in scope_rows):
+                    unrestricted = True
+                else:
+                    client_refs.update(s.client_ref for s in scope_rows if s.client_ref is not None)
+
+        if not saw_grant or unrestricted:
+            return None
+        return sorted(client_refs)
 
     def effective_permissions(self, user: User, module_key: str) -> frozenset[str]:
         """Union of permissions across every distinct role contributing to

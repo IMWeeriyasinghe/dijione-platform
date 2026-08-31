@@ -23,6 +23,8 @@ contract app-web/admin-web sees is unchanged. See
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,7 @@ from app.models.access_group import (
     GroupModuleRole,
     UserGroupMembership,
 )
+from app.models.client import Client, ClientExternalId
 from app.models.module import ApplicationModule
 from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
@@ -51,6 +54,7 @@ from app.schemas.admin import (
     ApplicationAssignedUserOut,
     ApplicationDetailOut,
     AuditLogOut,
+    ClientOut,
     ClientScopeIn,
     ClientScopeOut,
     EffectiveAccessOut,
@@ -59,7 +63,6 @@ from app.schemas.admin import (
     GroupModuleAssignmentOut,
     ModuleAssignmentOut,
 )
-from app.services import client_directory
 from app.services.audit_service import AuditService
 from app.services.authorization_service import AuthorizationService
 
@@ -104,18 +107,83 @@ class AdminService:
         self.authz = AuthorizationService(db)
         self.audit = AuditService(db)
 
-    @staticmethod
-    def _validate_client_scope(client_scope: ClientScopeIn | None) -> None:
-        """Temporary guard (Architecture v2 §9): a concrete client_id in a
-        module/group scope must actually exist in talent-api. Fail-safe —
-        ``ClientDirectoryUnavailableError`` (talent-api unreachable) propagates
-        to the route as a 503; an unknown id becomes an ``AdminError`` (400)."""
+    def _resolve_client_scope_refs(self, client_scope: ClientScopeIn | None) -> dict[int, str]:
+        """Resolve each concrete client id in a module/group scope to its
+        durable ``Client.public_id`` (Architecture Completion Plan §6.1) —
+        a purely local check against the platform-owned ``clients`` table.
+
+        A submitted id is accepted if it matches a platform ``Client.id``
+        directly, or the ``talent-api`` legacy integer id recorded in
+        ``client_external_ids`` (so the Admin Center's existing picker keeps
+        working through the transition). Any id that resolves to neither is
+        an ``AdminError`` (400). Returns ``{submitted_id: public_id}``; empty
+        for an all-clients / empty scope."""
         if client_scope is None or client_scope.all_clients or not client_scope.client_ids:
-            return
-        try:
-            client_directory.validate_client_ids(client_scope.client_ids)
-        except client_directory.UnknownClientIdError as exc:
-            raise AdminError(str(exc)) from exc
+            return {}
+
+        wanted = [int(c) for c in client_scope.client_ids]
+        resolved: dict[int, str] = {}
+
+        by_pk = {
+            row.id: row.public_id
+            for row in self.db.execute(
+                select(Client).where(Client.id.in_(wanted))
+            ).scalars()
+        }
+        legacy_rows = self.db.execute(
+            select(ClientExternalId).where(
+                ClientExternalId.provider == "talent-api",
+                ClientExternalId.external_id.in_([str(c) for c in wanted]),
+            )
+        ).scalars()
+        by_legacy = {int(r.external_id): r.client_id for r in legacy_rows}
+        pk_to_public = {
+            row.id: row.public_id
+            for row in self.db.execute(select(Client)).scalars()
+        }
+
+        unknown: list[int] = []
+        for cid in wanted:
+            if cid in by_pk:
+                resolved[cid] = by_pk[cid]
+            elif cid in by_legacy and by_legacy[cid] in pk_to_public:
+                resolved[cid] = pk_to_public[by_legacy[cid]]
+            else:
+                unknown.append(cid)
+        if unknown:
+            raise AdminError(f"Unknown client id(s): {sorted(unknown)}")
+        return resolved
+
+    # --- Clients (platform-owned canonical identity, §6.1) --------------
+
+    def list_clients(self) -> list[ClientOut]:
+        rows = self.db.execute(select(Client).order_by(Client.name)).scalars().all()
+        return [
+            ClientOut(
+                id=c.id, public_id=c.public_id, name=c.name, status=c.status,
+                created_at=c.created_at,
+            )
+            for c in rows
+        ]
+
+    def create_client(self, *, actor: User, name: str, status: str = "ACTIVE") -> ClientOut:
+        name = name.strip()
+        if not name:
+            raise AdminError("Client name is required")
+        if self.db.execute(select(Client).where(Client.name == name)).scalars().first():
+            raise AdminError(f"A client named '{name}' already exists")
+        client = Client(public_id=f"cli-{uuid.uuid4().hex[:12]}", name=name, status=status)
+        self.db.add(client)
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="client.created", entity_type="Client", entity_id=client.id,
+            new_state={"public_id": client.public_id, "name": name, "status": status},
+        )
+        self.db.commit()
+        return ClientOut(
+            id=client.id, public_id=client.public_id, name=client.name, status=client.status,
+            created_at=client.created_at,
+        )
 
     # --- Users -----------------------------------------------------------
 
@@ -263,7 +331,7 @@ class AdminService:
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
-        self._validate_client_scope(client_scope)
+        ref_map = self._resolve_client_scope_refs(client_scope)
 
         stmt = select(UserModuleRole).where(
             UserModuleRole.user_id == target_user_id, UserModuleRole.module_key == module_key
@@ -279,13 +347,18 @@ class AdminService:
             previous_state = {"role": module_role.role, "enabled": module_role.enabled}
             module_role.role = role
             module_role.enabled = enabled
-            # TALENT_CLIENT keeps its legacy single-tenant client_id in sync
-            # for backward compatibility with code paths that still read it.
-            if client_scope is not None and not client_scope.all_clients and len(client_scope.client_ids) == 1:
-                module_role.client_id = client_scope.client_ids[0]
-            elif client_scope is not None:
-                module_role.client_id = None
             action = "module_assignment.updated"
+
+        # TALENT_CLIENT keeps its legacy single-tenant client_id/client_ref in
+        # sync for code paths that still read it (dropped after the transition).
+        if client_scope is not None:
+            if not client_scope.all_clients and len(client_scope.client_ids) == 1:
+                only = int(client_scope.client_ids[0])
+                module_role.client_id = only
+                module_role.client_ref = ref_map.get(only)
+            else:
+                module_role.client_id = None
+                module_role.client_ref = None
 
         if client_scope is not None:
             self.db.execute(
@@ -299,7 +372,10 @@ class AdminService:
                 for client_id in client_scope.client_ids:
                     self.db.add(
                         UserModuleClientScope(
-                            user_module_role_id=module_role.id, client_id=client_id, all_clients=False
+                            user_module_role_id=module_role.id,
+                            client_id=client_id,
+                            client_ref=ref_map.get(int(client_id)),
+                            all_clients=False,
                         )
                     )
 
@@ -679,7 +755,7 @@ class AdminService:
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
-        self._validate_client_scope(client_scope)
+        ref_map = self._resolve_client_scope_refs(client_scope)
 
         stmt = select(GroupModuleRole).where(
             GroupModuleRole.access_group_id == group_id, GroupModuleRole.module_key == module_key
@@ -707,7 +783,10 @@ class AdminService:
                 for client_id in client_scope.client_ids:
                     self.db.add(
                         GroupModuleClientScope(
-                            group_module_role_id=group_role.id, client_id=client_id, all_clients=False
+                            group_module_role_id=group_role.id,
+                            client_id=client_id,
+                            client_ref=ref_map.get(int(client_id)),
+                            all_clients=False,
                         )
                     )
 

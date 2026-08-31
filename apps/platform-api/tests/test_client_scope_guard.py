@@ -1,26 +1,13 @@
-"""Temporary cross-service guard (Data Ownership Architecture v2 §9):
-a client_id named in a module/group client-scope must actually exist in
-talent-api. Unknown -> 400; talent-api unreachable -> 503 (fail-safe).
-
-``client_directory.known_client_ids`` makes a real HTTP call, so every test
-here patches it.
+"""Client-scope integrity is now a purely local check against the
+platform-owned ``clients`` table (Architecture Completion Plan §6.1) — no
+cross-service HTTP call. A concrete client id in a module/group scope must
+resolve to a canonical ``Client`` (directly by ``Client.id`` or via the
+``talent-api`` legacy crosswalk); an unknown id -> 400.
 """
 
-import httpx
-import pytest
-
-from app.services import client_directory
 from tests.conftest import ABC_CLIENT_ID, auth_headers
 
 MODULE = "talent-flow"
-
-
-@pytest.fixture()
-def known_clients(monkeypatch):
-    def _fake_known() -> set[int]:
-        return {ABC_CLIENT_ID}  # only client 1 exists in talent-api
-
-    monkeypatch.setattr(client_directory, "known_client_ids", _fake_known)
 
 
 def _put_scope(api_client, headers, user_id, client_ids):
@@ -35,25 +22,20 @@ def _put_scope(api_client, headers, user_id, client_ids):
     )
 
 
-def test_known_client_id_is_accepted(api_client, two_tenant_world, known_clients):
+def test_known_client_id_is_accepted(api_client, two_tenant_world):
     headers = auth_headers(api_client, "test-super-admin")
     resp = _put_scope(api_client, headers, two_tenant_world["ta_user"].id, [ABC_CLIENT_ID])
     assert resp.status_code == 200, resp.text
 
 
-def test_unknown_client_id_is_rejected_400(api_client, two_tenant_world, known_clients):
+def test_unknown_client_id_is_rejected_400(api_client, two_tenant_world):
     headers = auth_headers(api_client, "test-super-admin")
     resp = _put_scope(api_client, headers, two_tenant_world["ta_user"].id, [ABC_CLIENT_ID, 999])
     assert resp.status_code == 400
     assert "999" in resp.text
 
 
-def test_all_clients_scope_skips_validation(api_client, two_tenant_world, monkeypatch):
-    # all_clients=True must not trigger an HTTP call at all.
-    def _boom() -> set[int]:
-        raise AssertionError("known_client_ids should not be called for all_clients scope")
-
-    monkeypatch.setattr(client_directory, "known_client_ids", _boom)
+def test_all_clients_scope_skips_client_resolution(api_client, two_tenant_world):
     headers = auth_headers(api_client, "test-super-admin")
     resp = api_client.put(
         f"/api/platform/admin/users/{two_tenant_world['ta_user'].id}/modules/{MODULE}",
@@ -63,11 +45,28 @@ def test_all_clients_scope_skips_validation(api_client, two_tenant_world, monkey
     assert resp.status_code == 200, resp.text
 
 
-def test_talent_api_unreachable_is_503(api_client, two_tenant_world, monkeypatch):
-    def _unreachable() -> set[int]:
-        raise httpx.ConnectError("connection refused")
+def test_scope_row_carries_client_ref(api_client, two_tenant_world):
+    """The persisted scope row stores the durable ``client_ref`` public id,
+    not just the legacy integer."""
+    from sqlalchemy import select
 
-    monkeypatch.setattr(client_directory, "known_client_ids", _unreachable)
+    from app.db.session import SessionLocal
+    from app.models.user import UserModuleRole
+    from app.models.user_module_client_scope import UserModuleClientScope
+
     headers = auth_headers(api_client, "test-super-admin")
-    resp = _put_scope(api_client, headers, two_tenant_world["ta_user"].id, [ABC_CLIENT_ID])
-    assert resp.status_code == 503
+    ta_id = two_tenant_world["ta_user"].id
+    assert _put_scope(api_client, headers, ta_id, [ABC_CLIENT_ID]).status_code == 200
+
+    with SessionLocal() as s:
+        mr = s.execute(
+            select(UserModuleRole).where(
+                UserModuleRole.user_id == ta_id, UserModuleRole.module_key == MODULE
+            )
+        ).scalars().one()
+        scope = s.execute(
+            select(UserModuleClientScope).where(
+                UserModuleClientScope.user_module_role_id == mr.id
+            )
+        ).scalars().one()
+        assert scope.client_ref == "cli-abc-company"

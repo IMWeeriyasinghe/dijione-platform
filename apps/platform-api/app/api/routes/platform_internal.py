@@ -21,11 +21,34 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_internal_service
 from app.db.session import get_db
+from app.models.client import Client
 from app.models.user import UserModuleRole
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/api/platform/internal", tags=["platform-internal"])
+
+
+class ClientDirectoryRow(BaseModel):
+    id: int
+    public_id: str
+    name: str
+    status: str
+
+
+@router.get("/clients", response_model=list[ClientDirectoryRow])
+def list_clients(
+    db: Session = Depends(get_db),
+    _service: None = Depends(require_internal_service),
+) -> list[ClientDirectoryRow]:
+    """Canonical Client / Organisation directory (Architecture Completion
+    Plan §6.1). The contract application services consume to resolve a
+    ``client_public_id`` claim to a name/id — platform-api owns this."""
+    rows = db.execute(select(Client).order_by(Client.name)).scalars().all()
+    return [
+        ClientDirectoryRow(id=c.id, public_id=c.public_id, name=c.name, status=c.status)
+        for c in rows
+    ]
 
 
 class AuditEventIn(BaseModel):
