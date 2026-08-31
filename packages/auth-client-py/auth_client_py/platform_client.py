@@ -31,16 +31,22 @@ class PlatformClient:
         timeout: float = 5.0,
         *,
         client: httpx.Client | None = None,
+        caller: str | None = None,
     ):
         """``client`` lets tests inject an ``httpx.Client`` bound to an
         ``ASGITransport`` (a real in-process FastAPI app, no sockets) instead
         of making real network calls — used by admin-api's contract tests to
         exercise a real platform-api app. Production code should leave it
-        unset."""
+        unset.
+
+        ``caller`` (e.g. ``"talent-api"``) is sent as ``X-Internal-Caller``
+        on every request — advisory only, for the callee's logs/audit, never
+        a trust signal (trust is still ``X-Internal-Token``)."""
         self._base_url = base_url.rstrip("/")
         self._internal_secret = internal_secret
         self._timeout = timeout
         self._client = client
+        self._caller = caller
 
     # --- Best-effort service-to-service writes ---------------------------
 
@@ -143,6 +149,8 @@ class PlatformClient:
         )
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        if self._caller:
+            kwargs["headers"] = {**kwargs.get("headers", {}), "X-Internal-Caller": self._caller}
         if self._client is not None:
             # An injected test client (e.g. starlette's TestClient) doesn't
             # accept a per-call `timeout` override — it's already bound to

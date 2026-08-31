@@ -20,7 +20,11 @@ logger = logging.getLogger("dijione.admin_api.talent_gateway")
 
 def get_talent_client() -> PlatformClient:
     settings = get_settings()
-    return PlatformClient(base_url=settings.talent_api_url, internal_secret=settings.internal_service_secret)
+    return PlatformClient(
+        base_url=settings.talent_api_url,
+        internal_secret=settings.internal_service_secret,
+        caller="admin-api",
+    )
 
 
 def client_names_map(client: PlatformClient) -> dict[int, str]:

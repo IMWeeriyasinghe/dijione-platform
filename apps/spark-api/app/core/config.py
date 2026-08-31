@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     jwt_dev_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
 
+    # Must match every other backend service's INTERNAL_SERVICE_SECRET — the
+    # shared s2s trust anchor. spark-api has no internal endpoint yet, but
+    # carries the setting so the shared ``require_internal_service`` gate can
+    # be wired to the first one without a config change.
+    internal_service_secret: str = "dev-only-internal-secret-change-me"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

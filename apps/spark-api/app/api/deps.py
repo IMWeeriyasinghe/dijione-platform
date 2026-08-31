@@ -1,8 +1,14 @@
-from auth_client_py.fastapi_deps import make_get_claims
+from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
 
 from app.core.config import get_settings
 
 _settings = get_settings()
+
+# Available for the first real spark internal endpoint (there is none yet) —
+# every backend service exposes the same shared s2s gate.
+require_internal_service = make_verify_internal_request(
+    secret=_settings.internal_service_secret
+)
 
 # Platform Core authorization integration seam (CR §10): spark-api
 # authorizes exactly the way talent-api does — decoding Platform Core's

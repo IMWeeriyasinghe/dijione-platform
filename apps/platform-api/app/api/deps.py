@@ -1,4 +1,5 @@
-from fastapi import Depends, Header, HTTPException, status
+from auth_client_py.fastapi_deps import make_verify_internal_request
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -56,15 +57,11 @@ def require_platform_permission(permission_key: str):
     return _dependency
 
 
-def require_internal_service(x_internal_token: str | None = Header(default=None)) -> None:
-    """Gate for service-to-service calls with no human actor behind them
-    (talent-api/birthday-api/spark-api writing audit events or
-    notifications). Never used for anything a browser could trigger.
-
-    Dev-only shared-secret trust boundary — production should replace this
-    with mTLS, a managed identity, or a private network segment (CR §48).
-    See docs/platform/service-contracts.md.
-    """
-    settings = get_settings()
-    if x_internal_token != settings.internal_service_secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing internal service token")
+# Gate for service-to-service calls with no human actor behind them
+# (talent-api/birthday-api writing audit events or notifications). Never used
+# for anything a browser could trigger. Shared definition in
+# ``packages/auth-client-py`` — the single place to swap the dev shared-secret
+# for mTLS / a managed identity later (CLAUDE.md rule 21).
+require_internal_service = make_verify_internal_request(
+    secret=get_settings().internal_service_secret
+)

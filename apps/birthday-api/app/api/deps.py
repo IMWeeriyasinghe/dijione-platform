@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
-from auth_client_py.fastapi_deps import make_get_claims
-from fastapi import Depends, Header, HTTPException, status
+from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -19,14 +19,12 @@ _settings = get_settings()
 # signed JWT claims locally, no database, no synchronous call back.
 get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
 
-
-def require_internal_service(x_internal_token: str | None = Header(default=None)) -> None:
-    """Gate for service-to-service calls with no human actor behind them
-    (the scan-trigger endpoint, invoked by an OS/cloud scheduler, not a
-    browser session). Dev-only shared-secret trust boundary — mirrors the
-    identical dependency in talent-api/platform-api."""
-    if x_internal_token != _settings.internal_service_secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing internal service token")
+# Gate for service-to-service calls with no human actor behind them (the
+# scan-trigger endpoint, invoked by an OS/cloud scheduler, not a browser
+# session). Shared definition in ``packages/auth-client-py``.
+require_internal_service = make_verify_internal_request(
+    secret=_settings.internal_service_secret
+)
 
 
 @dataclass(frozen=True)
