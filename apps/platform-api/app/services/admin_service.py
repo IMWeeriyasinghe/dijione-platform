@@ -156,6 +156,30 @@ class AdminService:
 
     # --- Clients (platform-owned canonical identity, §6.1) --------------
 
+    def _client_scope_out(self, client_ids: list[int] | None) -> ClientScopeOut:
+        """Build a client-scope DTO, resolving display names locally — the
+        canonical Client table is platform-owned now, so admin-api no longer
+        enriches names from talent-api (§6.1). ``client_ids`` are still the
+        legacy talent-api integers the Admin Center picker uses; names come
+        via the ``client_external_ids`` crosswalk."""
+        ids = client_ids or []
+        names: dict[int, str] = {}
+        if ids:
+            rows = self.db.execute(
+                select(ClientExternalId.external_id, Client.name)
+                .join(Client, Client.id == ClientExternalId.client_id)
+                .where(
+                    ClientExternalId.provider == "talent-api",
+                    ClientExternalId.external_id.in_([str(i) for i in ids]),
+                )
+            ).all()
+            names = {int(ext): name for ext, name in rows}
+        return ClientScopeOut(
+            all_clients=client_ids is None,
+            client_ids=ids,
+            client_names=[names.get(cid, str(cid)) for cid in ids],
+        )
+
     def list_clients(self) -> list[ClientOut]:
         rows = self.db.execute(select(Client).order_by(Client.name)).scalars().all()
         return [
@@ -196,20 +220,13 @@ class AdminService:
     ) -> ModuleAssignmentOut:
         role_row = self.authz.role_display(module_role.module_key, module_role.role)
         client_ids = self.authz.client_scope_for(module_role)
-        all_clients = client_ids is None
         return ModuleAssignmentOut(
             module_key=module_role.module_key,
             module_name=module_names.get(module_role.module_key, module_role.module_key),
             role=module_role.role,
             role_name=role_row.name if role_row else module_role.role,
             enabled=module_role.enabled,
-            client_scope=ClientScopeOut(
-                all_clients=all_clients,
-                client_ids=client_ids or [],
-                # Client *names* are resolved by admin-api from talent-api,
-                # not here — Platform Core doesn't own the Client table.
-                client_names=[],
-            ),
+            client_scope=self._client_scope_out(client_ids),
         )
 
     def to_user_out(self, user: User) -> AdminUserOut:
@@ -536,11 +553,7 @@ class AdminService:
                     enabled=enabled,
                     role=primary.role,
                     role_name=role_row.name if role_row else primary.role,
-                    client_scope=ClientScopeOut(
-                        all_clients=client_ids is None,
-                        client_ids=client_ids or [],
-                        client_names=[],
-                    ),
+                    client_scope=self._client_scope_out(client_ids),
                     permissions=permissions,
                     sources=sources,
                 )
@@ -621,9 +634,7 @@ class AdminService:
                     role=gr.role,
                     role_name=role_row.name if role_row else gr.role,
                     enabled=gr.enabled,
-                    client_scope=ClientScopeOut(
-                        all_clients=client_ids is None, client_ids=client_ids or [], client_names=[]
-                    ),
+                    client_scope=self._client_scope_out(client_ids),
                 )
             )
         return AccessGroupDetailOut(
@@ -844,9 +855,7 @@ class AdminService:
                 ApplicationAssignedUserOut(
                     user_id=user.id, email=user.email, full_name=user.full_name,
                     role=mr.role, role_name=role_row.name if role_row else mr.role, enabled=mr.enabled,
-                    client_scope=ClientScopeOut(
-                        all_clients=client_ids is None, client_ids=client_ids or [], client_names=[]
-                    ),
+                    client_scope=self._client_scope_out(client_ids),
                 )
             )
 
@@ -862,9 +871,7 @@ class AdminService:
                 ApplicationAssignedGroupOut(
                     group_id=group.id, group_key=group.key, group_name=group.display_name,
                     role=gr.role, role_name=role_row.name if role_row else gr.role, enabled=gr.enabled,
-                    client_scope=ClientScopeOut(
-                        all_clients=client_ids is None, client_ids=client_ids or [], client_names=[]
-                    ),
+                    client_scope=self._client_scope_out(client_ids),
                 )
             )
 

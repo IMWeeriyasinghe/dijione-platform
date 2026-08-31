@@ -62,12 +62,14 @@ TALENT_PERMISSIONS_BY_ROLE = {
 def issue_token(
     user_id: int, *, full_name: str = "", role: str | None = None,
     client_id: int | None = None, client_ids: list[int] | None = None,
+    client_public_id: str | None = None, client_public_ids: list[str] | None = None,
 ) -> str:
     now = datetime.now(UTC)
     module_roles = {}
     if role is not None:
         module_roles["talent-flow"] = {
             "role": role, "client_id": client_id, "client_ids": client_ids,
+            "client_public_id": client_public_id, "client_public_ids": client_public_ids,
             "permissions": TALENT_PERMISSIONS_BY_ROLE[role],
         }
     payload = {
@@ -148,8 +150,14 @@ def two_tenant_world(db):
     """Two clients, one client-user each, one TA member, one CS user —
     fixed ids chosen simply to be distinct from client ids, mirroring the
     pre-split fixture's shape."""
-    abc = Client(name="ABC Company", industry="Financial Services", status="ACTIVE")
-    xyz = Client(name="XYZ Company", industry="Retail", status="ACTIVE")
+    abc = Client(
+        name="ABC Company", platform_client_id="cli-abc-company",
+        industry="Financial Services", status="ACTIVE",
+    )
+    xyz = Client(
+        name="XYZ Company", platform_client_id="cli-xyz-company",
+        industry="Retail", status="ACTIVE",
+    )
     db.add_all([abc, xyz])
     db.commit()
 

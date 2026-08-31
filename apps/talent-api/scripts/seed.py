@@ -70,9 +70,21 @@ def seed() -> None:
     try:
         # --- Clients — inserted in this exact order so a fresh --reset
         # reseed gets ids 1/2/3, matching platform-api's seed convention. ---
-        abc = Client(name="ABC Company", industry="Financial Services", account_manager="Tharindu Fernando", status="ACTIVE")
-        xyz = Client(name="XYZ Company", industry="Retail", account_manager="Tharindu Fernando", status="ACTIVE")
-        nova = Client(name="Nova Solutions", industry="Technology", account_manager="Sanduni Wickrama", status="ACTIVE")
+        # platform_client_id references platform-api's canonical Client
+        # identity (Architecture Completion Plan §6.1) — must match the slugs
+        # in platform-api migration d4e5f6a7b8c9 / its seed.
+        abc = Client(
+            name="ABC Company", platform_client_id="cli-abc-company",
+            industry="Financial Services", account_manager="Tharindu Fernando", status="ACTIVE",
+        )
+        xyz = Client(
+            name="XYZ Company", platform_client_id="cli-xyz-company",
+            industry="Retail", account_manager="Tharindu Fernando", status="ACTIVE",
+        )
+        nova = Client(
+            name="Nova Solutions", platform_client_id="cli-nova-solutions",
+            industry="Technology", account_manager="Sanduni Wickrama", status="ACTIVE",
+        )
         db.add_all([abc, xyz, nova])
         db.commit()
 

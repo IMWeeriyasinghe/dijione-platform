@@ -10,7 +10,6 @@ from app.api.routes import (
     talent_clients,
     talent_dashboard,
     talent_documents,
-    talent_internal,
     talent_interviews,
     talent_messages,
     talent_postings,
@@ -43,7 +42,6 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(talent_summary.router)
-app.include_router(talent_internal.router)
 app.include_router(talent_clients.router)
 app.include_router(talent_requests.router)
 app.include_router(talent_candidates.router)
