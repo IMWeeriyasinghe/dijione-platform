@@ -145,3 +145,16 @@ export const getHubspotStatus = () =>
   request<Record<string, unknown>>("/api/talent/integrations/hubspot/status");
 export const listIntegrationEvents = () =>
   request<Record<string, unknown>[]>("/api/talent/integrations/events");
+
+// --- Recruitment Source (Lever) sync -------------------------------
+import type { SourceFreshness, SyncRunSummary } from "@dijione/contracts";
+
+export const getRecruitmentFreshness = () =>
+  request<SourceFreshness>("/api/talent/integrations/recruitment/freshness");
+export const getRecruitmentSyncRun = (runId: string) =>
+  request<{ run: SyncRunSummary | null }>(`/api/talent/integrations/recruitment/sync/${runId}`);
+export const requestRecruitmentSync = () =>
+  request<{ run_id: string; status: string; started: boolean; message: string }>(
+    "/api/talent/integrations/recruitment/sync",
+    { method: "POST" },
+  );

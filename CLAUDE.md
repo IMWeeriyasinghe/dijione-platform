@@ -3260,3 +3260,128 @@ Do not over-engineer the MVP.
 Do not under-design the architecture.
 
 Build a strong shared platform foundation, implement DijiTalentFlow thoroughly enough for an end-to-end stakeholder demo, and leave clear seams for the next modules and live integrations.
+
+---
+
+# DIJIONE PLATFORM DATA OWNERSHIP AND SOURCE SYNCHRONIZATION CONTRACT
+
+> **Authoritative. Added after the Data Ownership Architecture v2 review
+> (approved) and the Recruitment Source extraction.** Companion documents:
+> `DijiOne-Data-Ownership-Architecture-v2.md`,
+> `docs/platform/recruitment-source.md`. This section overrides any earlier
+> text that says "DijiTalentFlow owns Lever", "no live Lever client exists",
+> or that applications integrate with external providers independently.
+
+## Ownership
+
+1. **DijiOne is a distributed modular platform.** Independently deployable
+   services behind one gateway/domain. Not a monolith, not microservices.
+   Azure Container Apps is the approved hosting direction. No Kubernetes.
+2. **"Integrate once, consume many."** Each external provider has exactly
+   **one** DijiOne owning source-data domain. Applications MUST NOT each
+   build their own integration to a provider the platform already owns.
+3. Provider ownership:
+   - **Lever → Recruitment Source** (bounded module `apps/talent-api/app/recruitment_source/`
+     today; promotion target `apps/recruitment-api`). The single DijiOne
+     owner of direct Lever access.
+   - **BambooHR → People / Workforce** — extract when a second employee-data
+     consumer exists. Today: `birthday-api` only.
+   - **HubSpot → Commercial / CRM** — build the live client there when
+     access arrives; never inside `talent-api`.
+   - **Entra / Graph → Identity / Communication** — `platform-api`.
+4. **Applications own operational / business / trust state.** DijiTalentFlow
+   owns `TalentRequest`, `Application`, workflow state, **`PostingClientMapping`**
+   (`UNMAPPED`/`VERIFIED` client-visibility trust — client exposure fails
+   closed and is NEVER inferred from Lever tags/title/team/free text),
+   messages, documents, its interviews, and its client-safe DTOs.
+   Third-party *reusable read models* (Lever postings, opportunities,
+   candidate source facts, stages, archive reasons, provider IDs, sync
+   metadata) belong to the source domain.
+5. **After the Recruitment Source extraction, `talent-api` MUST NOT call
+   Lever directly.** Only the Recruitment Source owns the Lever client.
+   Future Lever consumers (e.g. DijiSpark) consume Recruitment Source, not
+   Lever and not TalentFlow. A test/static assertion guards against a
+   re-introduced direct Lever dependency in TalentFlow route/consumer code.
+6. **No cross-service database access. No cross-service SQL joins. No
+   assumption that auto-increment IDs match across databases.** Preserve
+   provider external IDs. `PostingClientMapping` references the source
+   posting by `(provider=LEVER, external_posting_id)`, never a shared
+   integer.
+7. **No `integration-api`, no `integration.db`.** Bounded domains only.
+8. **LEVER IS GET-ONLY.** No POST/PUT/PATCH/DELETE to Lever without an
+   explicit future architectural approval that changes the safety contract
+   (CLAUDE.md §60). Static + runtime safety tests must continue proving the
+   live adapter exposes no write verb.
+9. Source/provider APIs return **minimum-data DTOs** — no raw provider
+   payloads, no unjustified PII (contact details, notes, scores,
+   compensation, offers, free text). Client-facing safe DTOs and
+   authorization stay application-owned.
+
+## Standard source-synchronization lifecycle (all bounded source domains)
+
+Every reusable source-data domain MUST provide:
+
+10. **Automatic reconciliation every 6 hours by default** (00/06/12/18 UTC
+    or equivalent), via a **replica-safe** scheduler — an Azure Container
+    Apps scheduled Job hitting an internal `.../scheduled-sync` endpoint,
+    **not** one in-process timer per API replica. Local dev triggers the
+    same endpoint deterministically (cron / curl / a script).
+11. **Authenticated ad-hoc sync requests from consuming applications.** The
+    browser calls its own application API, which calls the source domain's
+    internal contract — browsers do not call source services directly.
+12. **Asynchronous execution.** Ad-hoc sync returns `202 Accepted`
+    `{run_id, status}`; the run executes in the background. The HTTP request
+    is never held open for a full provider reconciliation.
+13. **Durable sync-run state**: `run_id`, provider, `trigger_type`
+    (SCHEDULED / AD_HOC), requesting application + user, timestamps, status
+    (QUEUED / RUNNING / SUCCEEDED / PARTIAL / FAILED), record counts,
+    correlation id, safe error summary. No secrets, no raw PII in the log.
+14. **Single-flight / concurrency protection.** An already-active run
+    coalesces new requests (return the existing `run_id`) — never a
+    thundering herd of provider calls.
+15. **Idempotent reconciliation** — insert new, update changed, keep stable
+    IDs, honour provider archive semantics; repeated runs over unchanged
+    data have no harmful effect; a failed run preserves the previous valid
+    read model (no blind wipe).
+16. **Rate-limit-aware retry** (429 backoff, retry transient 5xx, do not
+    retry permanent 4xx).
+17. **Freshness metadata** — `last_successful_sync_at` + latest-run summary,
+    exposed to consuming applications.
+18. **Consuming-application frontend visibility** — freshness line +
+    authorized "Sync now" action + indeterminate progress (never a faked
+    percentage) + bounded polling with unmount cleanup. Backend-enforced
+    authorization; frontend hiding is not authorization.
+19. **Notifications**: SCHEDULED success updates freshness **silently**
+    (no user spam); SCHEDULED failure → operational warning (TA_MANAGER /
+    admin); AD_HOC success → lightweight confirmation to the requester;
+    AD_HOC failure → clear error to the requester. Use the existing DijiOne
+    notification infrastructure; do not redesign it.
+
+## Failure isolation
+
+20. Lever unavailable → the source keeps its prior read model; the run is
+    FAILED; freshness goes stale/degraded. recruitment-api / the source
+    module unavailable → TalentFlow core workflow still works; source
+    screens degrade gracefully; no TalentFlow DB corruption. `talent-api`
+    unavailable → the source stays available to other consumers. No
+    distributed transactions.
+
+## Service authentication
+
+21. Use the existing DijiOne service-to-service pattern. **TEMPORARY DEV
+    service auth = the shared `INTERNAL_SERVICE_SECRET` on `X-Internal-Token`.**
+    **DURABLE FUTURE TARGET = workload/managed identity or signed service
+    tokens.** The future improvement does not block DEV.
+
+## Analytics
+
+22. Reporting consumes downstream reporting models — it does **not**
+    cross-query operational or source databases.
+
+## Closed
+
+23. `.env`, credentials, provider keys, and customer/candidate PII are never
+    committed. The architecture is **CLOSED** unless a material business
+    requirement, security problem, verified defect, or architectural
+    violation genuinely requires a change — not an alternative style or a
+    speculative improvement.

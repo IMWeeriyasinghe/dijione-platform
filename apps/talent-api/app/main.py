@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     health,
     integrations,
+    recruitment,
     talent_applications,
     talent_candidates,
     talent_clients,
@@ -53,4 +54,6 @@ app.include_router(talent_documents.router)
 app.include_router(talent_dashboard.router)
 app.include_router(talent_postings.router)
 app.include_router(integrations.router)
+app.include_router(recruitment.router)
+app.include_router(recruitment.internal_router)
 app.include_router(webhooks.router)

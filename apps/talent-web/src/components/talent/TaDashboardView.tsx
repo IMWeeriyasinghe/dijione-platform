@@ -6,6 +6,7 @@ import { getTaDashboard } from "@/lib/api";
 import { MetricCard } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { RequestCard } from "@/components/talent/RequestCard";
+import { RecruitmentSyncStatus } from "@/components/talent/RecruitmentSyncStatus";
 import { PageHeader } from "@dijione/design-system";
 
 export function TaDashboardView() {
@@ -23,6 +24,8 @@ export function TaDashboardView() {
         title="Operations Dashboard"
         description="Cross-client visibility into everything DijiTalentFlow is currently tracking."
       />
+
+      <RecruitmentSyncStatus />
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Clients" value={data.clients} icon={Building2} />

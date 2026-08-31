@@ -11,6 +11,7 @@ from app.models.posting import Posting
 from app.models.posting_application import PostingApplication
 from app.models.posting_client_mapping import PostingClientMapping
 from app.models.talent_request import TalentRequest
+from app.recruitment_source.models import RecruitmentSyncRun
 
 __all__ = [
     "Base",
@@ -25,5 +26,6 @@ __all__ = [
     "Posting",
     "PostingApplication",
     "PostingClientMapping",
+    "RecruitmentSyncRun",
     "TalentRequest",
 ]
