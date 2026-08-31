@@ -71,6 +71,18 @@ def test_health(api_client):
     assert resp.json() == {"service": "admin-api", "status": "healthy"}
 
 
+def test_health_deep_degrades_non_fatally_when_downstreams_are_unreachable(api_client):
+    # No override wired here -> platform_api_url/talent_api_url point at
+    # their localhost defaults, unreachable in the test process. The probe
+    # must still return 200 with a "degraded" status, never 5xx.
+    resp = api_client.get("/health/deep")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["checks"]["platform_api"] == "unreachable"
+    assert body["checks"]["talent_api"] == "unreachable"
+
+
 def test_platform_core_unavailable_returns_503():
     unreachable = PlatformClient(base_url="http://127.0.0.1:1", internal_secret="x", timeout=0.5)
     app.dependency_overrides[platform_gateway.get_platform_client] = lambda: unreachable

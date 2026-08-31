@@ -10,7 +10,9 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_talent.db"
+# Honour a pre-set DATABASE_URL (the `postgres` CI workflow points this
+# at a real Postgres 16); fall back to a local SQLite file otherwise.
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_talent.db")
 os.environ["JWT_DEV_SECRET"] = "test-only-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"

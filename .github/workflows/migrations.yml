@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/platform-api/alembic/**"
       - "apps/talent-api/alembic/**"
+      - "apps/recruitment-api/alembic/**"
       - "apps/birthday-api/alembic/**"
       - "apps/*-api/app/models/**"
       - ".github/workflows/migrations.yml"
@@ -27,6 +28,7 @@ jobs:
         service:
           - platform-api
           - talent-api
+          - recruitment-api
           - birthday-api
     defaults:
       run:

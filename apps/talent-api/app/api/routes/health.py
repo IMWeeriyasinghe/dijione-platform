@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -35,5 +36,15 @@ def health_deep(db: Session = Depends(get_db)) -> dict:
         checks["migration_revision"] = "unknown"
 
     checks["integrations_mode"] = settings.integrations_mode
+
+    # Recruitment Source (recruitment-api) reachability — NON-FATAL. A
+    # source-domain outage degrades the recruitment screens but must never
+    # take talent-api out of rotation (the fail-closed client-visibility
+    # decision runs entirely from local tables).
+    try:
+        resp = httpx.get(f"{settings.recruitment_api_url}/health", timeout=2.0)
+        checks["recruitment_source"] = "ok" if resp.status_code == 200 else f"http {resp.status_code}"
+    except httpx.HTTPError:
+        checks["recruitment_source"] = "degraded"
 
     return {"service": "talent-api", "status": "healthy" if ok else "degraded", "checks": checks}

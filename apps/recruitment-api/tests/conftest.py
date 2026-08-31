@@ -7,7 +7,9 @@ import os
 import sys
 from pathlib import Path
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_recruitment.db"
+# Honour a pre-set DATABASE_URL (the `postgres` CI workflow points this
+# at a real Postgres 16); fall back to a local SQLite file otherwise.
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_recruitment.db")
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"
 os.environ["INTEGRATIONS_MODE"] = "mock"

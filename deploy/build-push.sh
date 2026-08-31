@@ -10,12 +10,16 @@ set -euo pipefail
 REGISTRY="${REGISTRY:?set REGISTRY, e.g. ghcr.io/<you> or <acr>.azurecr.io}"
 TAG="${TAG:-latest}"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-false}"
+DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 
-API_SERVICES=(platform-api admin-api talent-api)
+API_SERVICES=(platform-api admin-api talent-api recruitment-api)
 WEB_APPS=(shell-web admin-web talent-web)
 if [ "$DEPLOY_BIRTHDAY" = "true" ]; then
-  API_SERVICES+=(birthday-api)
-  WEB_APPS+=(birthday-web)
+  API_SERVICES+=(people-api birthday-api)
+  WEB_APPS+=(birthday-web birthday-supplier-web)
+fi
+if [ "$DEPLOY_COMMERCIAL" = "true" ]; then
+  API_SERVICES+=(commercial-api)
 fi
 
 for svc in "${API_SERVICES[@]}"; do

@@ -1,14 +1,17 @@
 # syntax=docker/dockerfile:1
 #
 # One image for every FastAPI service. Build context = repo root.
-#   docker build -f deploy/Dockerfile.api --build-arg SERVICE=platform-api -t dijione/platform-api .
-#   docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api    -t dijione/talent-api .
-#   (also: admin-api, birthday-api, spark-api)
+#   docker build -f deploy/Dockerfile.api --build-arg SERVICE=platform-api  -t dijione/platform-api .
+#   docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api     -t dijione/talent-api .
+#   (also: admin-api, recruitment-api, people-api, commercial-api,
+#    birthday-api, spark-api)
 #
-# admin-api / talent-api / birthday-api / spark-api install
-# `packages/auth-client-py` editable via `-e ../../packages/auth-client-py`
-# in their requirements.txt, so that path must exist relative to the
-# requirements file inside the image — hence the repo-relative layout below.
+# Every *-api requirements.txt installs `packages/auth-client-py` editable
+# via `-e ../../packages/auth-client-py`, so that path must exist relative
+# to the requirements file inside the image — hence the repo-relative
+# layout below. The same image also backs the scheduled Container Apps Jobs
+# (deploy/provision.sh), whose command is a `curl` to an internal endpoint —
+# hence curl is installed.
 
 ARG PYTHON_VERSION=3.12
 FROM python:${PYTHON_VERSION}-slim AS run
@@ -17,6 +20,9 @@ ARG SERVICE
 ENV SERVICE=${SERVICE} \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

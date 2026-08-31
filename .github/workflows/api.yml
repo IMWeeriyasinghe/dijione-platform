@@ -27,6 +27,7 @@ jobs:
           - platform-api
           - admin-api
           - talent-api
+          - recruitment-api
           - birthday-api
           - spark-api
     defaults:

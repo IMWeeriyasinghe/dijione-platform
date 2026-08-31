@@ -34,7 +34,8 @@ the Azure subscription + Entra tenant.
 # from the repo root
 docker build -f deploy/Dockerfile.api --build-arg SERVICE=platform-api -t dijione/platform-api .
 docker build -f deploy/Dockerfile.api --build-arg SERVICE=admin-api     -t dijione/admin-api .
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api    -t dijione/talent-api .
+docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api      -t dijione/talent-api .
+docker build -f deploy/Dockerfile.api --build-arg SERVICE=recruitment-api -t dijione/recruitment-api .
 docker build -f deploy/Dockerfile.api --build-arg SERVICE=birthday-api  -t dijione/birthday-api .   # optional
 docker build -f deploy/Dockerfile.web --build-arg APP=shell-web    -t dijione/shell-web .
 docker build -f deploy/Dockerfile.web --build-arg APP=admin-web    -t dijione/admin-web .
@@ -60,7 +61,7 @@ then `GET /health/deep` on each service.
 ```
 
 Creates: resource group, Log Analytics workspace, Container Apps environment,
-PostgreSQL Flexible Server (B1ms) + `platform_dev` and `talent_dev` databases +
+PostgreSQL Flexible Server (B1ms) + one database per domain (`platform_dev`, `talent_dev`, `recruitment_dev`; `people_dev` / `birthday_dev` with `DEPLOY_BIRTHDAY=true`; `commercial_dev` with `DEPLOY_COMMERCIAL=true`) + the scheduled source-sync Jobs (`recruitment-sync-job`, `talent-reconcile-job`, and the People/Birthday jobs when enabled) +
 a firewall rule for Azure services, and the Container Apps (internal ingress for
 the APIs + `admin-web`/`talent-web`, external ingress for `shell-web`).
 
@@ -89,7 +90,8 @@ Required env per service (localhost defaults are in each `.env.example`):
 |---|---|
 | `platform-api` | `DATABASE_URL`, `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `API_CORS_ORIGINS=https://<shell-host>`, `DEV_IDENTITY_MODE=true`, `TALENT_API_URL=http://talent-api` |
 | `admin-api` | `PLATFORM_API_URL=http://platform-api`, `TALENT_API_URL=http://talent-api`, `INTERNAL_SERVICE_SECRET`, `API_CORS_ORIGINS=https://<shell-host>` |
-| `talent-api` | `DATABASE_URL`, `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock`, `API_CORS_ORIGINS=https://<shell-host>` |
+| `talent-api` | `DATABASE_URL` (talent_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `RECRUITMENT_API_URL=http://recruitment-api`, `INTEGRATIONS_MODE=mock`, `API_CORS_ORIGINS=https://<shell-host>` |
+| `recruitment-api` | `DATABASE_URL` (recruitment_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock` (set `live` + `LEVER_API_KEY` only when doing live discovery), `OPPORTUNITY_SYNC_LIMIT=200` |
 | `birthday-api` (opt) | `DATABASE_URL`, `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock`, `EMAIL_SENDING_MODE=mock` |
 | `shell-web` | `ADMIN_WEB_URL=http://admin-web`, `TALENT_WEB_URL=http://talent-web`, `BIRTHDAY_WEB_URL=http://birthday-web`, `PLATFORM_API_URL=http://platform-api`, `ADMIN_API_URL=http://admin-api`, `TALENT_API_URL=http://talent-api`, `BIRTHDAY_API_URL=http://birthday-api`, `SPARK_API_URL=http://spark-api` |
 | `admin-web` | `PLATFORM_API_URL=http://platform-api`, `ADMIN_API_URL=http://admin-api` |
@@ -135,7 +137,7 @@ for the meeting DEV. A custom domain (`dev.dijione.<domain>`) is a later add.
 ## 7. Smoke test
 
 ```bash
-for s in platform-api admin-api talent-api; do
+for s in platform-api admin-api talent-api recruitment-api; do
   az containerapp exec -g rg-dijione-dev -n $s --command "curl -s localhost:8000/health/deep"; done
 ```
 
