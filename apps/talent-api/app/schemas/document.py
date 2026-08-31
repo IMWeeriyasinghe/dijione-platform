@@ -1,13 +1,13 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DocumentCreate(BaseModel):
     talent_request_id: int
-    file_name: str
+    file_name: str = Field(min_length=1, max_length=255)
     category: str = "OTHER"
-    storage_reference: str = ""
+    storage_reference: str = Field(default="", max_length=1000)
 
 
 class DocumentOut(BaseModel):

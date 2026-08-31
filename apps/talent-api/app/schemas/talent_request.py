@@ -10,14 +10,14 @@ class StageProgressOut(BaseModel):
 
 
 class TalentRequestBase(BaseModel):
-    designation: str
-    description: str
+    designation: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=8000)
     required_skills: list[str] = Field(default_factory=list)
-    seniority: str = ""
-    location: str = ""
+    seniority: str = Field(default="", max_length=100)
+    location: str = Field(default="", max_length=200)
     engagement_type: str = "FULL_TIME"
     target_start_date: date | None = None
-    notes: str = ""
+    notes: str = Field(default="", max_length=4000)
 
 
 class TalentRequestCreate(TalentRequestBase):

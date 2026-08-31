@@ -133,7 +133,10 @@ existing consumer of those columns needed to change.
 
 `apps/platform-api/app/core/permissions.py` defines every Role/Permission/
 RolePermission row the platform ships with. Both the Alembic migration
-(`2e7f7d7dc3fa_phase2_authorization.py`, one-time backfill) and
+(`f6a7b8c9d0e1_seed_authorization_catalog.py`, idempotent get-or-create —
+added in Architecture Completion Plan Wave G to close a real gap: no
+migration seeded this catalog before, so a freshly-migrated database had an
+unusable Admin Center until someone ran `scripts/seed.py` by hand) and
 `scripts/seed.py` (repeatable local reseed) import it, so a migrated
 database and a fresh `--reset` reseed always end up identical.
 

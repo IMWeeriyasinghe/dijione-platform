@@ -71,10 +71,21 @@ Flow:
    "Claims-based authorization for business services" in
    `docs/platform/authorization.md`.
 
-All authentication (token issuance, dev personas, the Entra seam) lives
-exclusively in `platform-api` — the only service that owns `User` records.
-Every other backend service trusts a token `platform-api` issued rather
-than authenticating anyone itself.
+All authentication for **DijiOne's own internal users** (token issuance,
+dev personas, the Entra seam) lives exclusively in `platform-api` — the
+only service that owns `User` records. Every other backend service trusts
+a token `platform-api` issued rather than authenticating anyone itself.
+
+**One deliberate exception**: `birthday-api` mints its own tokens for the
+**external supplier portal** (`app/api/routes/dev_auth.py`,
+`SupplierUser` — a caller picks *which persona* to become, never *which
+`supplier_id` to claim*; see `docs/platform/data-ownership.md`). This is
+correct, not a contradiction — suppliers are not DijiOne users, have no
+`platform-api` identity, and are a distinct actor population scoped
+entirely to `birthday-api`'s own `SupplierScope`/`supplier_id`
+authorization, deliberately isolated from the platform-wide identity model
+above so a future real Entra B2B guest auth swap for suppliers is a
+token-issuance change only.
 
 ## Microsoft Entra ID SSO (`AUTH_MODE=entra`)
 

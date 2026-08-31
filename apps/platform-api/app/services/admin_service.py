@@ -11,14 +11,18 @@ token (never a service-to-service secret), so the exact same
 module always used still gate every mutation (CR §48: never trust a role/
 user id supplied by another service).
 
-What changed from the pre-split ``AdminService``: this service can no
-longer resolve DijiTalentFlow client *names* (``Client`` lives in
-talent-api's own database now) or the live pending-talent-request count —
-those fields are always returned empty/zero here. admin-api enriches both
-by separately calling talent-api's summary/clients-lite endpoints and
-merging before responding to the browser, so the public `/api/admin/*`
-contract app-web/admin-web sees is unchanged. See
-``docs/platform/service-contracts.md``.
+Client names: `platform-api` has owned the canonical `Client`/
+`ClientExternalId` tables since Architecture Completion Plan Wave A
+(§6.1) — this service resolves client names directly from its own
+database, no cross-service call needed (the pre-Wave-A `talent-api`
+`/clients-lite` dependency this docstring used to describe was deleted).
+The live **pending-talent-request count** is still not this service's to
+know — `talent_requests` remains talent-api-owned operational data — so
+that field is always returned as `0` here; `admin-api` enriches it
+separately by calling talent-api's `/api/talent/summary` and merging
+before responding to the browser, so the public `/api/admin/*` contract
+app-web/admin-web sees is unchanged. See
+``docs/platform/service-contracts.md``, ``docs/platform/data-ownership.md``.
 """
 
 from __future__ import annotations
