@@ -19,6 +19,7 @@ Running all eight DijiOne services locally. See
   ./.venv/Scripts/pip install -r apps/talent-api/requirements.txt
   ./.venv/Scripts/pip install -r apps/birthday-api/requirements.txt
   ./.venv/Scripts/pip install -r apps/spark-api/requirements.txt
+  ./.venv/Scripts/pip install -r apps/recruitment-api/requirements.txt
   ```
 
   (`requirements.txt` for `admin-api`, `talent-api`, `birthday-api`,
@@ -44,6 +45,7 @@ Running all eight DijiOne services locally. See
 | `talent-api` | 8002 | `GET http://localhost:8002/health` |
 | `birthday-api` | 8003 | `GET http://localhost:8003/health` |
 | `spark-api` | 8004 | `GET http://localhost:8004/health` |
+| `recruitment-api` | 8005 | `GET http://localhost:8005/health` |
 
 Always develop against `http://localhost:3000` — that's the gateway.
 `admin-web`/`talent-web` are independently runnable on their own ports for
