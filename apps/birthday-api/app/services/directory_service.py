@@ -1,4 +1,4 @@
-"""Live-BambooHR-driven "upcoming birthdays" directory view.
+"""Live People-source-driven "upcoming birthdays" directory view.
 
 Distinct from ``detection_service.run_daily_scan``: this never creates a
 ``BirthdayOrder`` and never mutates the database. It exists to answer "who
@@ -8,9 +8,9 @@ configurable and can be narrower than the ``days`` window a caller asks
 for here).
 
 Active-employee filtering happens exclusively through
-``BambooHRClient.list_active_employees()`` (CR: never trust a frontend
+``EmployeeSourceClient.list_active_employees()`` (CR: never trust a frontend
 filter) — the mock/live implementation is the single source of truth for
-"active" (BambooHR's ``employment_status`` field, ``"Active"`` vs
+"active" (the provider's ``employment_status`` field, ``"Active"`` vs
 anything else, e.g. ``"Terminated"``).
 """
 
@@ -20,8 +20,8 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
-from app.integrations.bamboohr.client import BambooHRClient, BambooHRFetchError
-from app.integrations.bamboohr.mapper import map_employee
+from app.integrations.people_source.client import EmployeeSourceClient, EmployeeSourceFetchError
+from app.integrations.people_source.mapper import map_employee
 from app.repositories.birthday_order_repository import BirthdayOrderRepository
 from app.schemas.birthday_directory import UpcomingBirthdayItem
 from app.services.audit_service import AuditService
@@ -62,7 +62,7 @@ _SORT_KEYS = {
 
 def list_upcoming_birthdays(
     db: Session,
-    bamboohr_client: BambooHRClient,
+    employee_client: EmployeeSourceClient,
     *,
     days: int,
     today: date | None = None,
@@ -89,16 +89,16 @@ def list_upcoming_birthdays(
     repo = BirthdayOrderRepository(db)
 
     try:
-        raw_employees = bamboohr_client.list_active_employees()
+        raw_employees = employee_client.list_active_employees()
     except Exception as exc:  # noqa: BLE001 - provider failure must not crash the request
         audit_service.log(
             actor_id=None,
-            action="birthday.bamboohr_fetch_failed",
+            action="birthday.employee_source_fetch_failed",
             entity_type="birthday_integration",
             entity_id=0,
             metadata={"error_type": type(exc).__name__},  # no PII: no employee data included
         )
-        raise BambooHRFetchError("Failed to fetch employee directory from BambooHR") from exc
+        raise EmployeeSourceFetchError("Failed to fetch employee directory") from exc
 
     items: list[UpcomingBirthdayItem] = []
     for raw_employee in raw_employees:
@@ -151,7 +151,7 @@ def list_upcoming_birthdays(
         except Exception as exc:  # noqa: BLE001 - one malformed record must not break the list
             audit_service.log(
                 actor_id=None,
-                action="birthday.bamboohr_record_skipped",
+                action="birthday.employee_source_record_skipped",
                 entity_type="birthday_integration",
                 entity_id=0,
                 metadata={"error_type": type(exc).__name__},  # no PII

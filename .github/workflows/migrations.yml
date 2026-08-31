@@ -8,6 +8,7 @@ on:
       - "apps/platform-api/alembic/**"
       - "apps/talent-api/alembic/**"
       - "apps/recruitment-api/alembic/**"
+      - "apps/people-api/alembic/**"
       - "apps/birthday-api/alembic/**"
       - "apps/*-api/app/models/**"
       - ".github/workflows/migrations.yml"
@@ -29,6 +30,7 @@ jobs:
           - platform-api
           - talent-api
           - recruitment-api
+          - people-api
           - birthday-api
     defaults:
       run:

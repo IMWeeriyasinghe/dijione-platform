@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_internal_service
 from app.api.routes.config import get_or_create_config
 from app.db.session import get_db
-from app.integrations.factory import get_bamboohr_client
+from app.integrations.factory import get_employee_source
 from app.models.scan_run import ScanRun
 from app.services.detection_service import run_daily_scan
 
@@ -24,8 +24,12 @@ router = APIRouter(prefix="/api/birthday/internal", tags=["birthday-internal"])
 def run_daily_scan_endpoint(
     db: Session = Depends(get_db), _service: None = Depends(require_internal_service)
 ) -> dict:
+    """people-api unreachable -> run_daily_scan itself defers safely (see
+    ScanRunStatus.DEFERRED_SOURCE_UNAVAILABLE) and returns 200 with that
+    status rather than a 5xx — this is an expected, self-healing outcome,
+    not a failure of the endpoint."""
     config = get_or_create_config(db)
-    client = get_bamboohr_client()
+    client = get_employee_source()
     return run_daily_scan(db, client, config, trigger="SCHEDULED")
 
 
@@ -35,6 +39,7 @@ def _scan_run_to_dict(run: ScanRun) -> dict:
     return {
         "run_id": run.run_id,
         "trigger": run.trigger,
+        "status": run.status,
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         "employees_scanned": run.employees_scanned,

@@ -10,41 +10,41 @@ from datetime import date
 
 import pytest
 
-from app.integrations.bamboohr.client import BambooHRClient, BambooHRFetchError
-from app.integrations.bamboohr.mock_client import MockBambooHRClient
-from app.integrations.bamboohr.schemas import BambooHREmployee
+from app.integrations.people_source.client import EmployeeSourceClient, EmployeeSourceFetchError
+from app.integrations.people_source.mock_adapter import MockEmployeeSource
+from app.integrations.people_source.schemas import EmployeeRecord
 from app.services.directory_service import NOT_CREATED_STATUS, list_upcoming_birthdays
 from tests.conftest import headers_for
 
 
-class _FixedClient(BambooHRClient):
+class _FixedClient(EmployeeSourceClient):
     """Test double returning a caller-supplied roster, so each test can
     control exactly which employees/statuses/birthdays are in play without
-    depending on MockBambooHRClient's relative-to-today fixture."""
+    depending on MockEmployeeSource's relative-to-today fixture."""
 
-    def __init__(self, employees: list[BambooHREmployee]):
+    def __init__(self, employees: list[EmployeeRecord]):
         self._employees = employees
 
-    def list_active_employees(self) -> list[BambooHREmployee]:
+    def list_active_employees(self) -> list[EmployeeRecord]:
         # Mirrors the real contract: this method itself only returns
         # already-active employees (mock/live implementations filter
         # server-side) — tests exercising exclusion call it with a
-        # pre-filtered list, exactly like MockBambooHRClient does.
+        # pre-filtered list, exactly like MockEmployeeSource does.
         return [e for e in self._employees if e.employment_status == "Active"]
 
-    def get_employee(self, employee_id: str) -> BambooHREmployee | None:
+    def get_employee(self, employee_id: str) -> EmployeeRecord | None:
         return next((e for e in self._employees if e.id == employee_id), None)
 
 
-class _FailingClient(BambooHRClient):
-    def list_active_employees(self) -> list[BambooHREmployee]:
+class _FailingClient(EmployeeSourceClient):
+    def list_active_employees(self) -> list[EmployeeRecord]:
         raise ConnectionError("simulated BambooHR outage")
 
-    def get_employee(self, employee_id: str) -> BambooHREmployee | None:
+    def get_employee(self, employee_id: str) -> EmployeeRecord | None:
         raise ConnectionError("simulated BambooHR outage")
 
 
-def _employee(**overrides) -> BambooHREmployee:
+def _employee(**overrides) -> EmployeeRecord:
     defaults = dict(
         id="bhr-1",
         first_name="Amara",
@@ -60,7 +60,7 @@ def _employee(**overrides) -> BambooHREmployee:
         termination_date=None,
     )
     defaults.update(overrides)
-    return BambooHREmployee(**defaults)
+    return EmployeeRecord(**defaults)
 
 
 def test_active_employee_included(db):
@@ -123,9 +123,9 @@ def test_no_birthdays_in_window_returns_empty_list(db):
 
 
 def test_bamboohr_api_failure_raises_fetch_error_and_is_audited(db, platform_calls):
-    with pytest.raises(BambooHRFetchError):
+    with pytest.raises(EmployeeSourceFetchError):
         list_upcoming_birthdays(db, _FailingClient(), days=30, today=date(2026, 1, 1))
-    events = [c for c in platform_calls["audit_events"] if c.get("action") == "birthday.bamboohr_fetch_failed"]
+    events = [c for c in platform_calls["audit_events"] if c.get("action") == "birthday.employee_source_fetch_failed"]
     assert len(events) == 1
     # No PII (employee names/emails) leaked into the audit metadata.
     assert "amara" not in str(events[0]).lower()
@@ -143,7 +143,7 @@ def test_malformed_birthday_field_is_skipped_not_fatal(db, platform_calls):
     results = list_upcoming_birthdays(db, client, days=30, today=today)
 
     assert [r.employee_id for r in results] == ["bhr-good"]
-    skipped = [c for c in platform_calls["audit_events"] if c.get("action") == "birthday.bamboohr_record_skipped"]
+    skipped = [c for c in platform_calls["audit_events"] if c.get("action") == "birthday.employee_source_record_skipped"]
     assert len(skipped) == 1
 
 
@@ -230,9 +230,9 @@ def test_missing_hire_date_is_ineligible(db):
 
 
 def test_mock_client_excludes_terminated_employee():
-    """MockBambooHRClient itself is the active-employee filtering point —
+    """MockEmployeeSource itself is the active-employee filtering point —
     verifies its fixture roster's one Terminated employee never comes back
     from list_active_employees()."""
-    employees = MockBambooHRClient().list_active_employees()
+    employees = MockEmployeeSource().list_active_employees()
     assert all(e.employment_status == "Active" for e in employees)
     assert "bhr-1011" not in {e.id for e in employees}  # Yasodha Rajapaksha — Terminated

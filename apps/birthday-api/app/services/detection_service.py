@@ -12,9 +12,9 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.constants import EligibilityReason, ExceptionReason, LeadTimeClass, OrderStatus
-from app.integrations.bamboohr.client import BambooHRClient
-from app.integrations.bamboohr.mapper import map_employee
+from app.core.constants import EligibilityReason, ExceptionReason, LeadTimeClass, OrderStatus, ScanRunStatus
+from app.integrations.people_source.client import EmployeeSourceClient, EmployeeSourceUnavailableError
+from app.integrations.people_source.mapper import map_employee
 from app.models.detection_config import BirthdayDetectionConfig
 from app.models.scan_run import ScanRun
 from app.models.supplier import Supplier
@@ -132,7 +132,7 @@ def determine_initial_status(
 
 def run_daily_scan(
     db: Session,
-    bamboohr_client: BambooHRClient,
+    employee_client: EmployeeSourceClient,
     config: BirthdayDetectionConfig,
     *,
     today: date | None = None,
@@ -146,6 +146,31 @@ def run_daily_scan(
     db.add(scan_run)
     db.commit()
 
+    try:
+        active_employees = employee_client.list_active_employees()
+    except EmployeeSourceUnavailableError:
+        # people-api is unreachable: defer, touch NOTHING. No invalid/
+        # incomplete orders are created; in-flight BirthdayOrders keep
+        # working from their stored detection-time snapshots (this
+        # function never reads them); the next scan recomputes each
+        # employee's *next* occurrence from "today" and — as long as
+        # recovery happens within the configured scan-window lookahead —
+        # naturally catches up with no duplicates (idempotent on
+        # (employee_id, birthday_year)).
+        scan_run.status = ScanRunStatus.DEFERRED_SOURCE_UNAVAILABLE.value
+        scan_run.finished_at = datetime.now(UTC)
+        db.commit()
+        return {
+            "run_id": run_id,
+            "status": ScanRunStatus.DEFERRED_SOURCE_UNAVAILABLE.value,
+            "employees_scanned": 0,
+            "orders_created": 0,
+            "orders_existing": 0,
+            "exceptions": 0,
+            "ineligible_skipped": 0,
+            "errors": [],
+        }
+
     employees_scanned = 0
     orders_created = 0
     orders_existing = 0
@@ -153,7 +178,7 @@ def run_daily_scan(
     ineligible_skipped = 0
     errors: list[dict] = []
 
-    for raw_employee in bamboohr_client.list_active_employees():
+    for raw_employee in active_employees:
         employees_scanned += 1
         try:
             employee = map_employee(raw_employee)
@@ -274,6 +299,7 @@ def run_daily_scan(
             errors.append({"employee_id": getattr(raw_employee, "id", None), "error": str(exc)})
 
     scan_run.finished_at = datetime.now(UTC)
+    scan_run.status = ScanRunStatus.COMPLETED.value
     scan_run.employees_scanned = employees_scanned
     scan_run.orders_created = orders_created
     scan_run.orders_existing = orders_existing
@@ -284,6 +310,7 @@ def run_daily_scan(
 
     return {
         "run_id": run_id,
+        "status": ScanRunStatus.COMPLETED.value,
         "employees_scanned": employees_scanned,
         "orders_created": orders_created,
         "orders_existing": orders_existing,

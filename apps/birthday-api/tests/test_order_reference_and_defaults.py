@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.integrations.bamboohr.mock_client import MockBambooHRClient
-from app.integrations.bamboohr.schemas import BambooHREmployee
+from app.integrations.people_source.mock_adapter import MockEmployeeSource
+from app.integrations.people_source.schemas import EmployeeRecord
 from app.models.birthday_order import BirthdayOrder
 from app.models.detection_config import BirthdayDetectionConfig
 from app.models.supplier import Supplier
@@ -33,10 +33,10 @@ def _config() -> BirthdayDetectionConfig:
 def _one_employee_client(*, internal_id: str, employee_number: str, days_ahead: int = 9):
     occurrence = date.today() + timedelta(days=days_ahead)
 
-    class _Client(MockBambooHRClient):
+    class _Client(MockEmployeeSource):
         def list_active_employees(self):
             return [
-                BambooHREmployee(
+                EmployeeRecord(
                     id=internal_id, employee_number=employee_number,
                     first_name="Ref", last_name="Test", display_name="Ref Test",
                     work_email="ref.test@example.com",

@@ -18,6 +18,8 @@ class ScanRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     trigger: Mapped[str] = mapped_column(String(16), default="MANUAL")  # SCHEDULED | MANUAL
+    # COMPLETED | DEFERRED_SOURCE_UNAVAILABLE (Wave E — see ScanRunStatus).
+    status: Mapped[str] = mapped_column(String(32), default="COMPLETED")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     employees_scanned: Mapped[int] = mapped_column(Integer, default=0)

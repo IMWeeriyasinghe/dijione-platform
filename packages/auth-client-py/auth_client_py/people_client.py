@@ -35,7 +35,15 @@ class EmployeeDirectoryClient:
         return self._get("/api/people/employees", params={"active_only": active_only}).json()
 
     def get_employee(self, bamboohr_id: str) -> dict | None:
-        resp = self._request("GET", f"/api/people/employees/{bamboohr_id}")
+        """Single-employee lookup — used by historical tooling (e.g. a
+        terminated employee referenced by an old order), not the daily
+        scan. Requests the ``include_inactive_live_lookup`` escape hatch so
+        an employee no longer in the active-only read model still resolves
+        via a single live, read-only BambooHR GET on people-api's side."""
+        resp = self._request(
+            "GET", f"/api/people/employees/{bamboohr_id}",
+            params={"include_inactive_live_lookup": True},
+        )
         if resp.status_code == 404:
             return None
         resp.raise_for_status()

@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -36,5 +37,15 @@ def health_deep(db: Session = Depends(get_db)) -> dict:
 
     checks["integrations_mode"] = settings.integrations_mode
     checks["email_sending_mode"] = settings.email_sending_mode
+
+    # People / Workforce source (people-api) reachability — NON-FATAL. An
+    # outage defers detection (ScanRunStatus.DEFERRED_SOURCE_UNAVAILABLE)
+    # and degrades the staff directory view; it must never take birthday-api
+    # out of rotation — in-flight BirthdayOrders are unaffected either way.
+    try:
+        resp = httpx.get(f"{settings.people_api_url}/health", timeout=2.0)
+        checks["people_source"] = "ok" if resp.status_code == 200 else f"http {resp.status_code}"
+    except httpx.HTTPError:
+        checks["people_source"] = "degraded"
 
     return {"service": "birthday-api", "status": "healthy" if ok else "degraded", "checks": checks}

@@ -12,10 +12,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from app.core.config import get_settings
-from app.integrations.bamboohr.mock_client import MockBambooHRClient
-from app.integrations.bamboohr.schemas import BambooHREmployee
 from app.integrations.factory import get_email_client
 from app.integrations.graph_email.mock_client import MockGraphEmailClient
+from app.integrations.people_source.mock_adapter import MockEmployeeSource
+from app.integrations.people_source.schemas import EmployeeRecord
 from app.models.detection_config import BirthdayDetectionConfig
 from app.models.supplier import Supplier
 from app.models.supplier_location import SupplierLocation
@@ -59,11 +59,11 @@ def test_full_automatic_workflow_bamboohr_to_completion(api_client, db):
     submit/approve/send click exists on this path any more."""
     supplier = _seed_supplier(db)
 
-    class _OneEmployeeClient(MockBambooHRClient):
+    class _OneEmployeeClient(MockEmployeeSource):
         def list_active_employees(self):
             occurrence = date.today() + timedelta(days=9)
             return [
-                BambooHREmployee(
+                EmployeeRecord(
                     id="dryrun-emp-1", employee_number="501", first_name="Dry", last_name="Run",
                     display_name="Dry Run Employee", work_email="dryrun@example.com",
                     birth_month=occurrence.month, birth_day=occurrence.day,
@@ -163,11 +163,11 @@ def test_exception_future_starter_never_gets_an_order(db):
     supplier = _seed_supplier(db)
     _ = supplier
 
-    class _FutureStarterClient(MockBambooHRClient):
+    class _FutureStarterClient(MockEmployeeSource):
         def list_active_employees(self):
             occurrence = date.today() + timedelta(days=5)
             return [
-                BambooHREmployee(
+                EmployeeRecord(
                     id="exc-future-starter", employee_number="701", first_name="Future", last_name="Starter",
                     display_name="Future Starter", work_email="future@example.com",
                     birth_month=occurrence.month, birth_day=occurrence.day,
@@ -183,9 +183,9 @@ def test_exception_future_starter_never_gets_an_order(db):
 def test_exception_inactive_and_terminated_never_get_orders(db):
     _seed_supplier(db)
 
-    class _InactiveClient(MockBambooHRClient):
+    class _InactiveClient(MockEmployeeSource):
         def list_active_employees(self):
-            return []  # BambooHRClient contract: inactive/terminated employees are never returned here
+            return []  # EmployeeSourceClient contract: inactive/terminated employees are never returned here
 
     summary = run_daily_scan(db, _InactiveClient(), _config())
     assert summary["orders_created"] == 0
@@ -194,11 +194,11 @@ def test_exception_inactive_and_terminated_never_get_orders(db):
 def test_exception_duplicate_order_is_idempotent(db):
     _seed_supplier(db)
 
-    class _RepeatClient(MockBambooHRClient):
+    class _RepeatClient(MockEmployeeSource):
         def list_active_employees(self):
             occurrence = date.today() + timedelta(days=9)
             return [
-                BambooHREmployee(
+                EmployeeRecord(
                     id="exc-dup", employee_number="702", first_name="Dup", last_name="Licate",
                     display_name="Dup Licate", work_email="dup@example.com",
                     birth_month=occurrence.month, birth_day=occurrence.day,
@@ -234,11 +234,11 @@ def test_detection_falls_back_to_island_wide_default_supplier(db):
     db.commit()
     db.refresh(default_supplier)
 
-    class _NoLocationClient(MockBambooHRClient):
+    class _NoLocationClient(MockEmployeeSource):
         def list_active_employees(self):
             occurrence = date.today() + timedelta(days=9)
             return [
-                BambooHREmployee(
+                EmployeeRecord(
                     id="island-emp", employee_number="790", first_name="Is", last_name="Land",
                     display_name="Is Land", work_email="island@example.com",
                     birth_month=occurrence.month, birth_day=occurrence.day,
@@ -260,11 +260,11 @@ def test_detection_falls_back_to_island_wide_default_supplier(db):
 
 
 def test_exception_missing_supplier_requires_attention(db):
-    class _NoSupplierRouteClient(MockBambooHRClient):
+    class _NoSupplierRouteClient(MockEmployeeSource):
         def list_active_employees(self):
             occurrence = date.today() + timedelta(days=9)
             return [
-                BambooHREmployee(
+                EmployeeRecord(
                     id="exc-no-supplier", employee_number="703", first_name="No", last_name="Supplier",
                     display_name="No Supplier", work_email="nosupplier@example.com",
                     birth_month=occurrence.month, birth_day=occurrence.day,
@@ -336,11 +336,11 @@ def test_detection_time_exception_recovers_via_verify_once_fixed(api_client, db)
     step exists any more."""
     admin = headers_for(250, role="BIRTHDAY_ADMIN")
 
-    class _NoSupplierRouteClient(MockBambooHRClient):
+    class _NoSupplierRouteClient(MockEmployeeSource):
         def list_active_employees(self):
             occurrence = date.today() + timedelta(days=9)
             return [
-                BambooHREmployee(
+                EmployeeRecord(
                     id="ra-bypass", employee_number="750", first_name="RA", last_name="Bypass",
                     display_name="RA Bypass", work_email="rabypass@example.com",
                     birth_month=occurrence.month, birth_day=occurrence.day,

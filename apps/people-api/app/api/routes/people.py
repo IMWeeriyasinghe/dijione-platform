@@ -51,11 +51,40 @@ def list_employees(active_only: bool = True, db: Session = Depends(get_db)) -> l
 
 
 @router.get("/employees/{bamboohr_id}", response_model=EmployeeOut)
-def get_employee(bamboohr_id: str, db: Session = Depends(get_db)) -> EmployeeOut:
+def get_employee(
+    bamboohr_id: str, include_inactive_live_lookup: bool = False, db: Session = Depends(get_db)
+) -> EmployeeOut:
+    """The read model only ever holds *active* employees (it is populated
+    from ``list_active_employees()``). ``include_inactive_live_lookup=true``
+    is a narrow escape hatch for one-off historical tooling (e.g. a
+    terminated employee referenced by an old order) — a single live,
+    read-only BambooHR GET by id, never persisted. Not used by any hot
+    path; do not call this on a loop."""
     row = EmployeeRepository(db).get_by_bamboohr_id(bamboohr_id)
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown employee")
-    return _employee_out(row)
+    if row is not None:
+        return _employee_out(row)
+
+    if include_inactive_live_lookup:
+        from app.integrations.bamboohr.mapper import map_employee
+        from app.integrations.factory import get_bamboohr_client
+
+        raw = get_bamboohr_client().get_employee(bamboohr_id)
+        if raw is not None:
+            m = map_employee(raw)
+            return EmployeeOut(
+                bamboohr_id=m["employee_id"], employee_number=m.get("employee_number"),
+                full_name=m["full_name"], work_email=m["work_email"],
+                birth_month=m["birth_month"], birth_day=m["birth_day"],
+                department=m.get("department") or "", office_location=m["office_location"],
+                employment_status=m["employment_status"],
+                hire_date=m["hire_date"].isoformat() if m.get("hire_date") else None,
+                termination_date=m["termination_date"].isoformat() if m.get("termination_date") else None,
+                address_line1=m.get("address_line1"), address_line2=m.get("address_line2"),
+                city=m.get("city"), state_province=m.get("state_province"),
+                postal_code=m.get("postal_code"), country=m.get("country"), synced_at=None,
+            )
+
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown employee")
 
 
 @router.get("/freshness", response_model=FreshnessOut)

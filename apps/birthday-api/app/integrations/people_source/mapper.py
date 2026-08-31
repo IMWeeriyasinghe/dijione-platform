@@ -1,17 +1,10 @@
-"""Maps BambooHREmployee (provider vocabulary) into the plain dict shape
-``app/services/detection_service.py`` consumes. Kept as a separate mapping
-layer so a future live BambooHRClient's raw payloads never leak into the
-detection service directly (CLAUDE.md §27's DTO-conversion rule mirrored
-here for BambooHR)."""
+"""Maps EmployeeRecord (people-api's already-mapped shape) into the plain
+dict ``app/services/detection_service.py`` / ``directory_service.py``
+consume. Kept as a thin layer so those services never depend on the DTO
+class directly (mirrors the pre-Wave-E bamboohr mapper's role)."""
 
 from datetime import date
 
-from app.integrations.bamboohr.schemas import BambooHREmployee
-
-# BambooHR's sentinel for "no termination date" — confirmed live (never
-# returns null for this field for this tenant, returns this string
-# instead). Normalized to None here so callers only ever reason about
-# "termination_date is None" vs. a real date.
 _NO_TERMINATION_SENTINEL = "0000-00-00"
 
 
@@ -24,7 +17,7 @@ def _parse_iso_date(raw: str | None) -> date | None:
         return None
 
 
-def map_employee(employee: BambooHREmployee) -> dict:
+def map_employee(employee) -> dict:
     return {
         "employee_id": employee.id,
         "employee_number": employee.employee_number or None,

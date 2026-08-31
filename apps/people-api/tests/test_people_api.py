@@ -32,6 +32,21 @@ def test_get_employee_by_bamboohr_id(api_client, db):
     assert api_client.get("/api/people/employees/nope", headers=internal_headers()).status_code == 404
 
 
+def test_inactive_live_lookup_escape_hatch(api_client, db):
+    # bhr-1011 is Terminated in the mock roster -> never in the read model,
+    # but the escape hatch does a live (mock) lookup for historical tooling.
+    resp = api_client.get(
+        "/api/people/employees/bhr-1011",
+        params={"include_inactive_live_lookup": True}, headers=internal_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["full_name"] == "Yasodha Rajapaksha"
+    assert resp.json()["employment_status"] == "Terminated"
+
+    # without the flag it's a plain 404 (not in the read model)
+    assert api_client.get("/api/people/employees/bhr-1011", headers=internal_headers()).status_code == 404
+
+
 def test_ad_hoc_sync_is_202_and_single_flight(api_client, db):
     first = api_client.post(
         "/api/people/internal/sync", json={"requested_by_user_id": 3}, headers=internal_headers()

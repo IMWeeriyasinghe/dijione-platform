@@ -92,7 +92,8 @@ Required env per service (localhost defaults are in each `.env.example`):
 | `admin-api` | `PLATFORM_API_URL=http://platform-api`, `TALENT_API_URL=http://talent-api`, `INTERNAL_SERVICE_SECRET`, `API_CORS_ORIGINS=https://<shell-host>` |
 | `talent-api` | `DATABASE_URL` (talent_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `RECRUITMENT_API_URL=http://recruitment-api`, `INTEGRATIONS_MODE=mock`, `API_CORS_ORIGINS=https://<shell-host>` |
 | `recruitment-api` | `DATABASE_URL` (recruitment_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock` (set `live` + `LEVER_API_KEY` only when doing live discovery), `OPPORTUNITY_SYNC_LIMIT=200` |
-| `birthday-api` (opt) | `DATABASE_URL`, `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock`, `EMAIL_SENDING_MODE=mock` |
+| `people-api` (opt) | `DATABASE_URL` (people_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock` (set `live` + `BAMBOOHR_API_KEY`/`BAMBOOHR_SUBDOMAIN` only when configured) |
+| `birthday-api` (opt) | `DATABASE_URL` (birthday_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `PEOPLE_API_URL=http://people-api`, `INTEGRATIONS_MODE=mock`, `EMAIL_SENDING_MODE=mock` |
 | `shell-web` | `ADMIN_WEB_URL=http://admin-web`, `TALENT_WEB_URL=http://talent-web`, `BIRTHDAY_WEB_URL=http://birthday-web`, `PLATFORM_API_URL=http://platform-api`, `ADMIN_API_URL=http://admin-api`, `TALENT_API_URL=http://talent-api`, `BIRTHDAY_API_URL=http://birthday-api`, `SPARK_API_URL=http://spark-api` |
 | `admin-web` | `PLATFORM_API_URL=http://platform-api`, `ADMIN_API_URL=http://admin-api` |
 | `talent-web` | `PLATFORM_API_URL=http://platform-api`, `TALENT_API_URL=http://talent-api` |

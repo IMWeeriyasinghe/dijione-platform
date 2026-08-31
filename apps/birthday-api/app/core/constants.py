@@ -16,6 +16,18 @@ class BirthdayRole(StrEnum):
     BIRTHDAY_SUPPLIER = "BIRTHDAY_SUPPLIER"
 
 
+class ScanRunStatus(StrEnum):
+    """Outcome of one run_daily_scan execution (Architecture Completion
+    Plan Wave E). DEFERRED_SOURCE_UNAVAILABLE means people-api could not be
+    reached at all — no employees were scanned, no orders were created or
+    touched, and the next scan (which recomputes each employee's *next*
+    occurrence from today) naturally catches up once the source recovers,
+    as long as it happens within the configured scan lookahead window."""
+
+    COMPLETED = "COMPLETED"
+    DEFERRED_SOURCE_UNAVAILABLE = "DEFERRED_SOURCE_UNAVAILABLE"
+
+
 class LeadTimeClass(StrEnum):
     NORMAL = "NORMAL"
     SHORT_NOTICE = "SHORT_NOTICE"
