@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.constants import PostingClientMappingStatus
+from app.core.constants import DtcResolutionStatus, PostingClientMappingStatus
 from app.db.base import Base, TimestampMixin
 
 
@@ -43,5 +43,16 @@ class PostingClientMapping(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(32), default="")
     verified_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # DTC-tag reconciliation provenance/diagnostics (audit only — never an
+    # authorization signal on its own; the fail-closed query still keys on
+    # status==VERIFIED AND client_id).
+    dtc_source_tag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resolution_status: Mapped[str] = mapped_column(
+        String(32), default=DtcResolutionStatus.NO_DTC_TAG.value
+    )
+    last_reconciled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     posting: Mapped[Posting] = relationship(back_populates="client_mapping")  # noqa: F821

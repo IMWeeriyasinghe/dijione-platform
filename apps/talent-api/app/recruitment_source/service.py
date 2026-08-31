@@ -133,6 +133,13 @@ class SyncService:
                 o = LeverContactApplicationSyncService(db).sync_opportunities(
                     limit=_OPPORTUNITY_LIMIT
                 )
+                # Governed DTC posting-tag -> PostingClientMapping reconciliation
+                # (TalentFlow trust decision, runs on every scheduled + ad-hoc sync).
+                from app.services.posting_client_mapping_reconciler import (
+                    PostingClientMappingReconciler,
+                )
+
+                dtc = PostingClientMappingReconciler(db).reconcile_all()
                 db.commit()
                 # postings: {created, updated, total}
                 read += int(p.get("total", 0))
@@ -149,6 +156,9 @@ class SyncService:
                 unchanged += int(o.get("candidates_matched", 0)) + int(
                     o.get("skipped_no_local_posting", 0)
                 )
+                # DTC reconciliation counts
+                updated += dtc.resolved + dtc.reassigned + dtc.reverted + dtc.conflicts
+                unchanged += dtc.unchanged + dtc.no_tag + dtc.unknown + dtc.ambiguous + dtc.malformed
             except Exception as exc:  # noqa: BLE001 - record, never crash the worker
                 db.rollback()
                 error = _safe_error(exc)

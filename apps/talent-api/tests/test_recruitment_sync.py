@@ -80,6 +80,18 @@ def test_client_persona_cannot_request_sync(api_client, db, two_tenant_world):
     assert resp.status_code == 403
 
 
+def test_sync_run_includes_dtc_reconciliation(api_client, db, two_tenant_world, platform_calls):
+    from app.models.posting_client_mapping import PostingClientMapping
+
+    api_client.post("/api/talent/integrations/recruitment/sync", headers=_staff(two_tenant_world))
+
+    mappings = db.query(PostingClientMapping).all()
+    assert mappings, "sync should have created posting mappings"
+    # every mapping was passed through the reconciler in the sync pipeline
+    assert all(m.last_reconciled_at is not None for m in mappings)
+    assert all(m.resolution_status == "NO_DTC_TAG" for m in mappings)  # mock postings carry no DTC tag
+
+
 def test_scheduled_sync_needs_internal_token(api_client, db, two_tenant_world):
     assert api_client.post("/api/talent/internal/recruitment/scheduled-sync").status_code == 401
     ok = api_client.post(
