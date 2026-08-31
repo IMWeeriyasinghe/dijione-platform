@@ -2,67 +2,120 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.constants import PostingClientMappingStatus
-from app.models.posting import Posting
 from app.models.posting_client_mapping import PostingClientMapping
+from app.models.recruitment_posting_ref import RecruitmentPostingRef
+
+_VERIFIED = PostingClientMappingStatus.VERIFIED.value
+_UNMAPPED = PostingClientMappingStatus.UNMAPPED.value
 
 
 class PostingRepository:
-    """All read access to Posting visibility goes through here so the
-    fail-closed Posting -> Client rule is enforced in exactly one place.
+    """All client-visibility access to postings goes through here so the
+    fail-closed posting -> client rule is enforced in exactly one place.
 
-    A client-scoped caller only ever reaches a Posting via
-    ``list_verified_for_client``, which inner-joins ``PostingClientMapping``
-    filtered to ``status == VERIFIED AND client_id == <their own>`` — an
-    unmapped or rejected Posting has no matching row and is structurally
-    unreachable through this path, not merely status-flagged as hidden.
+    A client-scoped caller only ever reaches a posting via
+    ``list_verified_for_client`` / ``get_verified_for_client``, which
+    inner-join ``PostingClientMapping`` on ``(provider, posting_external_id)``
+    filtered to ``status == VERIFIED AND client_id == <their own>``. Both
+    sides are local tables (the posting projection + the trust record), so
+    this decision never depends on recruitment-api being reachable.
     """
 
     def __init__(self, db: Session):
         self.db = db
 
-    def get_by_lever_id(self, lever_posting_id: str) -> Posting | None:
-        stmt = select(Posting).where(Posting.lever_posting_id == lever_posting_id)
-        return self.db.execute(stmt).scalars().first()
+    # --- staff (diagnostic) view -------------------------------------
 
-    def get_by_id_for_staff(self, posting_id: int) -> Posting | None:
-        stmt = select(Posting).where(Posting.id == posting_id)
-        return self.db.execute(stmt).scalars().first()
+    def get_ref_by_id(self, ref_id: int) -> RecruitmentPostingRef | None:
+        return self.db.get(RecruitmentPostingRef, ref_id)
 
-    def list_for_staff(self, *, mapping_status: str | None = None) -> list[Posting]:
-        stmt = select(Posting).join(Posting.client_mapping)
-        if mapping_status is not None:
-            stmt = stmt.where(PostingClientMapping.status == mapping_status)
-        stmt = stmt.order_by(Posting.lever_updated_at.desc().nullslast())
-        return list(self.db.execute(stmt).scalars().all())
+    def get_ref_by_external_id(self, external_id: str) -> RecruitmentPostingRef | None:
+        return self.db.execute(
+            select(RecruitmentPostingRef).where(RecruitmentPostingRef.external_id == external_id)
+        ).scalars().first()
 
-    def list_unresolved(self) -> list[Posting]:
-        return self.list_for_staff(mapping_status=PostingClientMappingStatus.UNMAPPED.value)
+    def list_for_staff(
+        self, *, unresolved_only: bool = False
+    ) -> list[tuple[RecruitmentPostingRef, PostingClientMapping | None]]:
+        stmt = select(RecruitmentPostingRef, PostingClientMapping).outerjoin(
+            PostingClientMapping,
+            (PostingClientMapping.posting_external_id == RecruitmentPostingRef.external_id)
+            & (PostingClientMapping.provider == RecruitmentPostingRef.provider),
+        )
+        if unresolved_only:
+            stmt = stmt.where(
+                (PostingClientMapping.id.is_(None))
+                | (PostingClientMapping.status == _UNMAPPED)
+            )
+        stmt = stmt.order_by(RecruitmentPostingRef.last_seen_at.desc().nullslast())
+        return [(row[0], row[1]) for row in self.db.execute(stmt).all()]
 
-    def list_verified_for_client(self, *, client_id: int) -> list[Posting]:
+    # --- client-scoped, fail-closed --------------------------------
+
+    def list_verified_for_client(self, *, client_id: int) -> list[RecruitmentPostingRef]:
         stmt = (
-            select(Posting)
-            .join(Posting.client_mapping)
+            select(RecruitmentPostingRef)
+            .join(
+                PostingClientMapping,
+                (PostingClientMapping.posting_external_id == RecruitmentPostingRef.external_id)
+                & (PostingClientMapping.provider == RecruitmentPostingRef.provider),
+            )
             .where(
-                PostingClientMapping.status == PostingClientMappingStatus.VERIFIED.value,
+                PostingClientMapping.status == _VERIFIED,
                 PostingClientMapping.client_id == client_id,
             )
-            .order_by(Posting.lever_updated_at.desc().nullslast())
+            .order_by(RecruitmentPostingRef.last_seen_at.desc().nullslast())
         )
         return list(self.db.execute(stmt).scalars().all())
 
-    def get_verified_for_client(self, posting_id: int, *, client_id: int) -> Posting | None:
+    def get_verified_for_client(
+        self, ref_id: int, *, client_id: int
+    ) -> RecruitmentPostingRef | None:
         stmt = (
-            select(Posting)
-            .join(Posting.client_mapping)
+            select(RecruitmentPostingRef)
+            .join(
+                PostingClientMapping,
+                (PostingClientMapping.posting_external_id == RecruitmentPostingRef.external_id)
+                & (PostingClientMapping.provider == RecruitmentPostingRef.provider),
+            )
             .where(
-                Posting.id == posting_id,
-                PostingClientMapping.status == PostingClientMappingStatus.VERIFIED.value,
+                RecruitmentPostingRef.id == ref_id,
+                PostingClientMapping.status == _VERIFIED,
                 PostingClientMapping.client_id == client_id,
             )
         )
         return self.db.execute(stmt).scalars().first()
 
-    def add(self, posting: Posting) -> Posting:
-        self.db.add(posting)
+    # --- projection maintenance (from recruitment-api DTOs) --------
+
+    def upsert_ref(self, dto: dict) -> RecruitmentPostingRef:
+        from datetime import UTC, datetime
+
+        ext = dto["external_id"]
+        ref = self.get_ref_by_external_id(ext)
+        dtc = dto.get("dtc_tag") or {}
+        if ref is None:
+            ref = RecruitmentPostingRef(provider=dto.get("provider", "LEVER"), external_id=ext)
+            self.db.add(ref)
+        ref.title = dto.get("title", "")
+        ref.state = dto.get("state", "")
+        ref.location = dto.get("location", "")
+        ref.archived = bool(dto.get("archived", False))
+        ref.dtc_status = dtc.get("status", "NO_TAG")
+        ref.dtc_client_name = dtc.get("client_name")
+        ref.dtc_raw_tag = dtc.get("raw_tag")
+        ref.source_synced_at = _parse_iso(dto.get("synced_at"))
+        ref.last_seen_at = datetime.now(UTC)
         self.db.flush()
-        return posting
+        return ref
+
+
+def _parse_iso(value):
+    if not value:
+        return None
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None

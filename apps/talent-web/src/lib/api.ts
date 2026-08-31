@@ -152,19 +152,23 @@ import type { SourceFreshness, SyncRunSummary } from "@dijione/contracts";
 export const getRecruitmentFreshness = () =>
   request<SourceFreshness>("/api/talent/integrations/recruitment/freshness");
 
-// --- Recruitment postings (staff — Lever posting -> client mapping) ---
+// --- Recruitment postings (staff — Recruitment Source posting -> client mapping) ---
+// Posting facts are a thin local projection of recruitment-api's canonical
+// DTO; the mapping fields are the DijiTalentFlow-owned trust decision.
 export type PostingRow = {
   id: number;
-  lever_posting_id: string;
+  external_id: string;
+  provider: string;
   title: string;
   state: string;
   location: string;
-  tags: string[];
+  archived: boolean;
   mapping_status: "UNMAPPED" | "VERIFIED" | "REJECTED";
   mapping_client_id: number | null;
   mapping_client_name: string | null;
   mapping_source: string;
   dtc_source_tag: string | null;
+  dtc_client_name: string | null;
   resolution_status: string;
 };
 

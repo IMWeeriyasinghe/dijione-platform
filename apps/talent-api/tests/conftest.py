@@ -91,6 +91,55 @@ def headers_for(user_id: int, **kwargs) -> dict:
     return {"Authorization": f"Bearer {issue_token(user_id, **kwargs)}"}
 
 
+def recruitment_posting_dto(
+    external_id: str, *, title: str = "Role", dtc_status: str = "NO_TAG",
+    dtc_client_name: str | None = None, dtc_raw_tag: str | None = None,
+    dtc_raw_tags: list[str] | None = None,
+    state: str = "published", location: str = "Sri Lanka", archived: bool = False,
+) -> dict:
+    """Shape of one item from RecruitmentSourceClient.list_postings()."""
+    raw_tags = dtc_raw_tags if dtc_raw_tags is not None else ([dtc_raw_tag] if dtc_raw_tag else [])
+    return {
+        "provider": "LEVER", "external_id": external_id, "title": title, "state": state,
+        "team": "", "department": "", "location": location, "confidentiality": "",
+        "tags": list(raw_tags), "archived": archived,
+        "dtc_tag": {
+            "status": dtc_status, "client_name": dtc_client_name,
+            "raw_tag": dtc_raw_tag, "raw_tags": list(raw_tags),
+        },
+        "lever_created_at": None, "lever_updated_at": None, "synced_at": None,
+    }
+
+
+class FakeRecruitmentClient:
+    """Stand-in for auth_client_py.RecruitmentSourceClient. ``down=True``
+    makes every method raise httpx.HTTPError (source-outage simulation)."""
+
+    def __init__(self, postings: list[dict] | None = None, *, down: bool = False):
+        self._postings = postings or []
+        self.down = down
+        self.sync_calls: list[dict] = []
+
+    def _guard(self):
+        if self.down:
+            import httpx
+
+            raise httpx.ConnectError("recruitment-api unreachable")
+
+    def list_postings(self, *, include_archived: bool = True) -> list[dict]:
+        self._guard()
+        return list(self._postings)
+
+    def get_freshness(self) -> dict:
+        self._guard()
+        return {"provider": "LEVER", "last_successful_sync_at": "2026-09-01T00:00:00+00:00", "latest_run": None}
+
+    def request_sync(self, *, requested_by_user_id=None, requested_by_application="talent-flow") -> dict:
+        self._guard()
+        self.sync_calls.append({"user": requested_by_user_id})
+        return {"run_id": "run-fake", "status": "QUEUED", "started": True, "message": "Sync started"}
+
+
 @pytest.fixture()
 def db():
     Base.metadata.drop_all(bind=engine)

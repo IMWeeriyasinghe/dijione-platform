@@ -9,14 +9,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./talent.db"
 
+    # Lever is owned by the Recruitment Source domain (recruitment-api) —
+    # talent-api holds NO Lever key. It consumes postings/candidacies over
+    # the recruitment-api HTTP contract.
     integrations_mode: str = "mock"
-    lever_api_key: str = ""
-    lever_base_url: str = "https://api.lever.co/v1"
-    # Optional. When unset, inbound Lever webhooks are accepted without
-    # signature verification (logged as a warning) — this dev environment
-    # has no production webhook configured yet (CLAUDE.md §60/§63). When
-    # set, an invalid/missing signature is rejected with 401.
-    lever_webhook_signing_secret: str = ""
+    recruitment_api_url: str = "http://localhost:8005"
     hubspot_access_token: str = ""
     hubspot_base_url: str = "https://api.hubapi.com"
 

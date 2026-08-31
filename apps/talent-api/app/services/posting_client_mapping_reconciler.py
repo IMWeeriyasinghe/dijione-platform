@@ -1,14 +1,15 @@
-"""PostingClientMappingReconciler — TalentFlow trust decision.
+"""PostingClientMappingReconciler — the DijiTalentFlow trust decision.
 
-Consumes the governed DTC posting tag (a Recruitment Source provider fact,
-parsed by app/recruitment_source/dtc.py) and reconciles the DijiOne-owned
-``PostingClientMapping`` trust record. Runs inside the Recruitment Source
-sync (scheduled + ad-hoc). Idempotent.
+Recruitment Source (recruitment-api) parses the governed ``DTC - <Client
+Name>`` posting tag and exposes it on its canonical posting DTO as a
+*fact*. This reconciler consumes that DTO — it does not parse tags itself —
+refreshes the local ``RecruitmentPostingRef`` projection, and reconciles
+the DijiTalentFlow-owned ``PostingClientMapping`` trust record. Idempotent.
 
 Fail closed, always:
   * only a single well-formed DTC tag that exactly matches exactly one
     Client sets VERIFIED (source=LEVER_DTC_TAG);
-  * unknown / malformed / multiple / ambiguous  -> never client-visible;
+  * unknown / malformed / multiple / ambiguous -> never client-visible;
   * a human MANUAL VERIFIED mapping is NEVER overwritten by a tag change —
     a conflict is flagged for review;
   * a removed/broken DTC tag on a previously DTC-resolved mapping reverts it
@@ -18,7 +19,6 @@ Fail closed, always:
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -34,9 +34,9 @@ from app.core.constants import (
     TalentFlowRole,
 )
 from app.models.posting_client_mapping import PostingClientMapping
-from app.recruitment_source.dtc import DtcParseStatus, parse_dtc
 from app.repositories.client_repo import ClientRepository
 from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
+from app.repositories.posting_repo import PostingRepository
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 
@@ -47,6 +47,9 @@ _UNMAPPED = PostingClientMappingStatus.UNMAPPED.value
 _REJECTED = PostingClientMappingStatus.REJECTED.value
 _MANUAL = PostingClientMappingSource.MANUAL.value
 _DTC = PostingClientMappingSource.LEVER_DTC_TAG.value
+
+# DTC-tag fact statuses on the recruitment-api posting DTO.
+_NO_TAG, _OK, _MALFORMED, _MULTIPLE = "NO_TAG", "OK", "MALFORMED", "MULTIPLE"
 
 
 @dataclass
@@ -60,6 +63,7 @@ class ReconcileSummary:
     no_tag: int = 0
     conflicts: int = 0
     unchanged: int = 0
+    refs_upserted: int = 0
     transitions: list[str] = field(default_factory=list)
 
     @property
@@ -70,50 +74,45 @@ class ReconcileSummary:
 class PostingClientMappingReconciler:
     def __init__(self, db: Session):
         self.db = db
+        self.postings = PostingRepository(db)
         self.repo = PostingClientMappingRepository(db)
         self.clients = ClientRepository(db)
         self.audit = AuditService()
         self.notifications = NotificationService()
 
-    def reconcile_all(self) -> ReconcileSummary:
+    def reconcile_postings(self, postings: list[dict]) -> ReconcileSummary:
+        """``postings`` is the list from
+        ``RecruitmentSourceClient.list_postings()`` — each dict carries
+        ``external_id`` and a parsed ``dtc_tag`` fact."""
         summary = ReconcileSummary()
-        for mapping in self.repo.list_all_with_posting():
-            posting = mapping.posting
-            if posting is None:
-                continue
-            self._reconcile_one(mapping, self._tags(posting), summary)
+        for dto in postings:
+            self.postings.upsert_ref(dto)
+            summary.refs_upserted += 1
+            mapping = self.repo.get_or_create(dto["external_id"])
+            self._reconcile_one(mapping, dto.get("dtc_tag") or {}, summary)
         self.db.flush()
         return summary
 
-    # -- internals ----------------------------------------------------------
+    # -- internals ------------------------------------------------------
 
-    @staticmethod
-    def _tags(posting) -> list[str]:
-        if not posting.tags:
-            return []
-        try:
-            v = json.loads(posting.tags)
-            return [t for t in v if isinstance(t, str)] if isinstance(v, list) else []
-        except (ValueError, TypeError):
-            return []
-
-    def _reconcile_one(
-        self, m: PostingClientMapping, tags: list[str], s: ReconcileSummary
-    ) -> None:
+    def _reconcile_one(self, m: PostingClientMapping, dtc: dict, s: ReconcileSummary) -> None:
         now = datetime.now(UTC)
         m.last_reconciled_at = now
-        parsed = parse_dtc(tags)
+        status = dtc.get("status", _NO_TAG)
+        raw_tag = dtc.get("raw_tag")
+        raw_tags = dtc.get("raw_tags") or []
+        client_name = dtc.get("client_name")
 
         # A human REJECTED decision is absolute — DTC never un-rejects it.
         if m.status == _REJECTED:
-            m.dtc_source_tag = parsed.raw_tag if parsed.status is DtcParseStatus.OK else None
+            m.dtc_source_tag = raw_tag if status == _OK else None
             s.unchanged += 1
             return
 
         manual_verified = m.status == _VERIFIED and m.source == _MANUAL
         dtc_verified = m.status == _VERIFIED and m.source == _DTC
 
-        if parsed.status is DtcParseStatus.NO_TAG:
+        if status == _NO_TAG:
             m.dtc_source_tag = None
             if dtc_verified:
                 self._revert(m, DtcResolutionStatus.NO_DTC_TAG, "revoked_dtc_removed", s)
@@ -125,8 +124,8 @@ class PostingClientMappingReconciler:
                 s.no_tag += 1
             return
 
-        if parsed.status is DtcParseStatus.MALFORMED:
-            m.dtc_source_tag = parsed.raw_tag
+        if status == _MALFORMED:
+            m.dtc_source_tag = raw_tag
             if dtc_verified:
                 self._revert(m, DtcResolutionStatus.MALFORMED_TAG, "revoked_dtc_malformed", s)
             else:
@@ -134,22 +133,26 @@ class PostingClientMappingReconciler:
                 s.malformed += 1
             return
 
-        if parsed.status is DtcParseStatus.MULTIPLE:
-            m.dtc_source_tag = " | ".join(parsed.raw_tags)[:255]
+        if status == _MULTIPLE:
+            m.dtc_source_tag = " | ".join(raw_tags)[:255]
             if dtc_verified:
-                self._revert(m, DtcResolutionStatus.AMBIGUOUS_MULTIPLE_TAGS, "revoked_dtc_ambiguous", s)
+                self._revert(
+                    m, DtcResolutionStatus.AMBIGUOUS_MULTIPLE_TAGS, "revoked_dtc_ambiguous", s
+                )
             else:
                 m.resolution_status = DtcResolutionStatus.AMBIGUOUS_MULTIPLE_TAGS.value
                 s.ambiguous += 1
             return
 
-        # parsed.status is OK
-        m.dtc_source_tag = parsed.raw_tag
-        matches = self.clients.find_by_name(parsed.client_name or "")
+        # status == OK
+        m.dtc_source_tag = raw_tag
+        matches = self.clients.find_by_name(client_name or "")
 
         if len(matches) == 0:
             if dtc_verified:
-                self._revert(m, DtcResolutionStatus.UNKNOWN_CLIENT_IDENTIFIER, "revoked_dtc_unknown", s)
+                self._revert(
+                    m, DtcResolutionStatus.UNKNOWN_CLIENT_IDENTIFIER, "revoked_dtc_unknown", s
+                )
             else:
                 if not manual_verified:
                     m.status = _UNMAPPED
@@ -160,7 +163,9 @@ class PostingClientMappingReconciler:
 
         if len(matches) > 1:
             if dtc_verified:
-                self._revert(m, DtcResolutionStatus.AMBIGUOUS_CLIENT_NAME, "revoked_dtc_ambiguous", s)
+                self._revert(
+                    m, DtcResolutionStatus.AMBIGUOUS_CLIENT_NAME, "revoked_dtc_ambiguous", s
+                )
             else:
                 m.resolution_status = DtcResolutionStatus.AMBIGUOUS_CLIENT_NAME.value
                 s.ambiguous += 1
@@ -176,13 +181,12 @@ class PostingClientMappingReconciler:
                 m.resolution_status = DtcResolutionStatus.CONFLICT_MANUAL_OVERRIDE.value
                 s.conflicts += 1
                 self._audit(m, "dtc_conflict_manual_override", {
-                    "manual_client_id": m.client_id, "dtc_tag": parsed.raw_tag,
+                    "manual_client_id": m.client_id, "dtc_tag": raw_tag,
                     "dtc_client_id": target.id,
                 })
                 self._notify_conflict(m, target.name)
             return
 
-        # No conflicting human decision — set/repoint VERIFIED via DTC.
         if m.status == _VERIFIED and m.source == _DTC and m.client_id == target.id:
             m.resolution_status = DtcResolutionStatus.RESOLVED.value
             s.unchanged += 1
@@ -198,14 +202,16 @@ class PostingClientMappingReconciler:
         m.resolution_status = DtcResolutionStatus.RESOLVED.value
         if was_reassign:
             s.reassigned += 1
-            s.transitions.append(f"{m.posting_id}:reassigned_dtc_changed")
-            self._audit(m, "dtc_reassigned", {"previous": prev, "dtc_tag": parsed.raw_tag,
-                                              "client_id": target.id})
+            s.transitions.append(f"{m.posting_external_id}:reassigned_dtc_changed")
+            self._audit(m, "dtc_reassigned", {
+                "previous": prev, "dtc_tag": raw_tag, "client_id": target.id,
+            })
         else:
             s.resolved += 1
-            s.transitions.append(f"{m.posting_id}:resolved_from_dtc")
-            self._audit(m, "dtc_resolved", {"previous": prev, "dtc_tag": parsed.raw_tag,
-                                            "client_id": target.id})
+            s.transitions.append(f"{m.posting_external_id}:resolved_from_dtc")
+            self._audit(m, "dtc_resolved", {
+                "previous": prev, "dtc_tag": raw_tag, "client_id": target.id,
+            })
 
     def _revert(
         self, m: PostingClientMapping, reason: DtcResolutionStatus, tag: str, s: ReconcileSummary
@@ -218,7 +224,7 @@ class PostingClientMappingReconciler:
         m.verified_at = None
         m.resolution_status = reason.value
         s.reverted += 1
-        s.transitions.append(f"{m.posting_id}:{tag}")
+        s.transitions.append(f"{m.posting_external_id}:{tag}")
         self._audit(m, tag, {"previous": prev, "reason": reason.value})
 
     def _audit(self, m: PostingClientMapping, action: str, meta: dict) -> None:
@@ -242,7 +248,7 @@ class PostingClientMappingReconciler:
                 title="Recruitment posting mapping needs review",
                 body=(
                     f"A posting is manually mapped to a different client than its Lever "
-                    f"tag ('{m.dtc_source_tag}' → {dtc_client_name}). The manual mapping "
+                    f"tag ('{m.dtc_source_tag}' -> {dtc_client_name}). The manual mapping "
                     f"was kept — re-verify it or correct the Lever tag."
                 ),
                 related_entity_type="PostingClientMapping",

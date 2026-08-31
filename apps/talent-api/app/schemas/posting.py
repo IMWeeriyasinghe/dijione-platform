@@ -1,42 +1,39 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class PostingOut(BaseModel):
-    """Full Posting record with mapping diagnostics — internal/staff view
-    only. Diagnostic fields (tags/team/department) are shown here for
-    human review but must never be treated as authorization evidence."""
+    """Full posting-review record — internal/staff view only. The posting
+    facts are a cached projection of recruitment-api's canonical DTO; the
+    mapping fields are the DijiTalentFlow-owned trust decision. Diagnostic
+    fields must never be treated as authorization evidence."""
 
-    id: int
-    lever_posting_id: str
+    id: int                       # local RecruitmentPostingRef id
+    external_id: str              # stable provider (Lever) posting id
+    provider: str = "LEVER"
     title: str
     state: str
-    team: str
-    department: str
     location: str
-    confidentiality: str
-    tags: list[str] = Field(default_factory=list)
     archived: bool
-    lever_created_at: datetime | None
-    lever_updated_at: datetime | None
-    last_synced_at: datetime | None
+    source_synced_at: datetime | None = None
 
     mapping_status: str
     mapping_client_id: int | None
     mapping_client_name: str | None = None
     mapping_source: str
-    mapping_verified_at: datetime | None
+    mapping_verified_at: datetime | None = None
 
     # Governed DTC posting-tag reconciliation (diagnostic / staff review).
     dtc_source_tag: str | None = None
+    dtc_client_name: str | None = None
     resolution_status: str = "NO_DTC_TAG"
 
 
 class ClientSafePostingOut(BaseModel):
     """Posting DTO for a client caller — only ever reachable once the
-    Posting's PostingClientMapping is VERIFIED for that exact client_id.
-    No raw tags, team, department, or mapping-internal fields."""
+    posting's PostingClientMapping is VERIFIED for that exact client_id.
+    No raw tags, mapping-internal fields, or source diagnostics."""
 
     id: int
     title: str
