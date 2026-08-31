@@ -121,8 +121,8 @@ GET/POST   /api/talent/requests/{id}/documents
 GET  /api/talent/dashboard/client, /api/talent/ta/dashboard
 GET  /api/talent/postings, /api/talent/postings/{ref_id}, /api/talent/postings/client-visible
 POST /api/talent/postings/{ref_id}/verify-mapping        (staff — MANUAL trust override)
-GET  /api/talent/recruitment/freshness, /sync/latest, /sync/history, /sync/{run_id}
-POST /api/talent/recruitment/sync                        (202 — proxies to recruitment-api, single-flight)
+GET  /api/talent/integrations/recruitment/freshness, /sync/latest, /sync/history, /sync/{run_id}
+POST /api/talent/integrations/recruitment/sync            (202 — proxies to recruitment-api, single-flight)
 ```
 
 `talent-api` holds **no** Lever or HubSpot credential and makes **no**

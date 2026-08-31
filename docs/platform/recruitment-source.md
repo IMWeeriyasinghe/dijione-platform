@@ -39,12 +39,12 @@ fail-closed authorization join — `docs/platform/data-ownership.md` §4a),
 | Concern | Implementation |
 |---|---|
 | **Scheduled reconciliation** | Every 6 h, via an external replica-safe caller: `POST /api/recruitment/internal/scheduled-sync` (`X-Internal-Token`). Azure = the `recruitment-sync-job` Container Apps Job (`deploy/` — prepared, not created). Local = cron / `curl` / a script. **Not** an in-process timer per replica. `talent-reconcile-job` runs 15 min later to refresh `talent-api`'s posting projection + DTC trust reconciliation. |
-| **Ad-hoc sync** | `POST /api/talent/recruitment/sync` (staff, `require_staff_scope`) proxies to `POST /api/recruitment/internal/sync` on this service. Browser → `talent-web` → `talent-api` → `recruitment-api`. Never browser → source directly. |
+| **Ad-hoc sync** | `POST /api/talent/integrations/recruitment/sync` (staff, `require_staff_scope`) proxies to `POST /api/recruitment/internal/sync` on this service. Browser → `talent-web` → `talent-api` → `recruitment-api`. Never browser → source directly. |
 | **Async** | Ad-hoc returns **`202 Accepted`** `{run_id, status, started}`; the run executes in a FastAPI background task with its own DB session. The HTTP request is never held open. |
 | **Single-flight** | `request_sync` returns any already-`QUEUED`/`RUNNING` run instead of starting a second full reconciliation (`started: false`). No provider thundering herd. |
 | **Idempotent** | Reconciliation = insert new / update changed / keep stable IDs. Repeated runs over unchanged Lever data are harmless. A failed run leaves the previous read model intact (no wipe). |
 | **Retry / rate limits** | `LiveLeverClient` retry (429 backoff, transient 5xx). |
-| **Freshness** | `GET /api/recruitment/freshness` (proxied via `GET /api/talent/recruitment/freshness`) → `last_successful_sync_at` + latest-run summary. |
+| **Freshness** | `GET /api/recruitment/freshness` (proxied via `GET /api/talent/integrations/recruitment/freshness`) → `last_successful_sync_at` + latest-run summary. |
 | **Frontend** | `RecruitmentSyncStatus` on the TA Operations Dashboard — freshness line, authorized "Sync now", indeterminate spinner (no faked %), bounded polling with unmount cleanup, dashboard refetch on completion. Backend-enforced auth. |
 | **Notifications** | SCHEDULED success → silent freshness update. SCHEDULED failure → `TA_MANAGER` operational warning. AD_HOC success → lightweight confirmation to the requester. AD_HOC failure → clear error to the requester. Best-effort via `PlatformClient`. |
 | **Audit** | One `recruitment.sync_requested` platform audit event per authorized ad-hoc request — not one per synced record. |
