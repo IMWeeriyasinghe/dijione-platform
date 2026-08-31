@@ -36,11 +36,14 @@ docker build -f deploy/Dockerfile.api --build-arg SERVICE=platform-api -t dijion
 docker build -f deploy/Dockerfile.api --build-arg SERVICE=admin-api     -t dijione/admin-api .
 docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api      -t dijione/talent-api .
 docker build -f deploy/Dockerfile.api --build-arg SERVICE=recruitment-api -t dijione/recruitment-api .
+docker build -f deploy/Dockerfile.api --build-arg SERVICE=people-api     -t dijione/people-api .    # optional
+docker build -f deploy/Dockerfile.api --build-arg SERVICE=commercial-api -t dijione/commercial-api . # optional
 docker build -f deploy/Dockerfile.api --build-arg SERVICE=birthday-api  -t dijione/birthday-api .   # optional
 docker build -f deploy/Dockerfile.web --build-arg APP=shell-web    -t dijione/shell-web .
 docker build -f deploy/Dockerfile.web --build-arg APP=admin-web    -t dijione/admin-web .
 docker build -f deploy/Dockerfile.web --build-arg APP=talent-web   -t dijione/talent-web .
 docker build -f deploy/Dockerfile.web --build-arg APP=birthday-web -t dijione/birthday-web .        # optional
+docker build -f deploy/Dockerfile.web --build-arg APP=birthday-supplier-web -t dijione/birthday-supplier-web . # optional
 ```
 
 Then run the stack locally against a throwaway Postgres to catch SQLite-isms and
@@ -138,12 +141,14 @@ for the meeting DEV. A custom domain (`dev.dijione.<domain>`) is a later add.
 ## 7. Smoke test
 
 ```bash
-for s in platform-api admin-api talent-api recruitment-api; do
+for s in platform-api admin-api talent-api recruitment-api people-api commercial-api birthday-api; do
   az containerapp exec -g rg-dijione-dev -n $s --command "curl -s localhost:8000/health/deep"; done
 ```
 
-Then run the Playwright smoke suite (`e2e/`) against `https://<fqdn>` — see the
-Pre-DEV Execution Plan §19.
+Then walk the local E2E acceptance checklist against `https://<fqdn>` instead of
+`localhost:3000` (see `docs/platform/local-development.md` and the most recent
+completion report for the checklist) — **no automated Playwright/e2e suite
+exists yet** (a real, tracked gap; do not assume an `e2e/` directory exists).
 
 ## Teardown
 

@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # Deterministic first-boot for a fresh DijiOne environment.
 #
-#   1. apply migrations        (platform-api, then talent-api, then birthday-api)
-#   2. seed the platform catalog + demo data   (roles / permissions / modules / personas)
-#   3. seed talent-api demo data               (3 clients + requests / candidates / ...)
+#   1. apply migrations for every DB-owning service
+#   2. seed platform-api's demo data (dev personas + module-role/client-scope
+#      assignments) — the role/permission/module_registry catalog itself is
+#      now seeded by platform-api's own f6a7b8c9d0e1 migration (Architecture
+#      Completion Plan Wave G), so step 1 alone already makes the Admin
+#      Center usable; this step adds the *demo* dev personas on top
+#   3. seed talent-api demo data (3 clients + requests / candidates / ...)
 #
-# A migrated-but-unseeded database is NOT a usable DijiOne environment — the
-# role/permission/module catalog is populated by scripts/seed.py, not by any
-# migration. Run this once per fresh database.
+# Only migrate/seed the source-domain services (recruitment-api, people-api,
+# commercial-api) if this environment deploys them — they have no demo-data
+# seed script of their own (source domains hold synced provider data, not
+# hand-authored fixtures); their migrations alone leave them correctly empty
+# until a sync run populates them.
 #
 # Usage (from the repo root, with each service's env already set —
 #   DATABASE_URL, JWT_DEV_SECRET, INTERNAL_SERVICE_SECRET, INTEGRATIONS_MODE=mock, ...):
@@ -24,8 +30,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 migrate() {
   local svc="$1"
-  echo "==> [$svc] alembic upgrade head"
-  ( cd "$REPO_ROOT/apps/$svc" && "$PYTHON" -m alembic upgrade head )
+  if [ -d "$REPO_ROOT/apps/$svc" ]; then
+    echo "==> [$svc] alembic upgrade head"
+    ( cd "$REPO_ROOT/apps/$svc" && "$PYTHON" -m alembic upgrade head )
+  fi
 }
 
 seed() {
@@ -36,10 +44,15 @@ seed() {
 
 migrate platform-api
 migrate talent-api
+migrate recruitment-api
+migrate people-api
+migrate commercial-api
 migrate birthday-api
 
-# Order matters: talent-api's seed references platform personas / client ids
-# by the fixed 1..9 / 1..3 integer convention (docs/platform/local-development.md).
+# Order matters: talent-api's seed references platform-api's dev-persona user
+# ids by a fixed 1..9 convention (docs/platform/local-development.md) — run
+# platform-api's seed first. Client identity itself no longer depends on
+# insertion order (platform-owned canonical Client since Wave A).
 seed platform-api
 seed talent-api
 
