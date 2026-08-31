@@ -50,6 +50,8 @@ def _to_posting_out(posting, client_name: str | None) -> PostingOut:
         mapping_client_name=client_name,
         mapping_source=mapping.source if mapping else "",
         mapping_verified_at=mapping.verified_at if mapping else None,
+        dtc_source_tag=mapping.dtc_source_tag if mapping else None,
+        resolution_status=mapping.resolution_status if mapping else "NO_DTC_TAG",
     )
 
 

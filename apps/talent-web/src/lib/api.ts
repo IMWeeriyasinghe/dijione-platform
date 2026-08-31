@@ -151,6 +151,31 @@ import type { SourceFreshness, SyncRunSummary } from "@dijione/contracts";
 
 export const getRecruitmentFreshness = () =>
   request<SourceFreshness>("/api/talent/integrations/recruitment/freshness");
+
+// --- Recruitment postings (staff — Lever posting -> client mapping) ---
+export type PostingRow = {
+  id: number;
+  lever_posting_id: string;
+  title: string;
+  state: string;
+  location: string;
+  tags: string[];
+  mapping_status: "UNMAPPED" | "VERIFIED" | "REJECTED";
+  mapping_client_id: number | null;
+  mapping_client_name: string | null;
+  mapping_source: string;
+  dtc_source_tag: string | null;
+  resolution_status: string;
+};
+
+export const listRecruitmentPostings = (unresolvedOnly = false) =>
+  request<PostingRow[]>(`/api/talent/postings${qs({ unresolved_only: unresolvedOnly || undefined })}`);
+
+export const verifyPostingMapping = (postingId: number, client_id: number) =>
+  request<PostingRow>(`/api/talent/postings/${postingId}/verify-mapping`, {
+    method: "POST",
+    body: JSON.stringify({ client_id }),
+  });
 export const getRecruitmentSyncRun = (runId: string) =>
   request<{ run: SyncRunSummary | null }>(`/api/talent/integrations/recruitment/sync/${runId}`);
 export const requestRecruitmentSync = () =>

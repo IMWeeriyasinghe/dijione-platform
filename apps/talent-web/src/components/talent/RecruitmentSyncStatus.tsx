@@ -5,11 +5,21 @@ import { Button, Card } from "@dijione/design-system";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   getRecruitmentFreshness,
   getRecruitmentSyncRun,
+  listRecruitmentPostings,
   requestRecruitmentSync,
 } from "@/lib/api";
+
+const NEEDS_REVIEW = new Set([
+  "UNKNOWN_CLIENT_IDENTIFIER",
+  "AMBIGUOUS_MULTIPLE_TAGS",
+  "AMBIGUOUS_CLIENT_NAME",
+  "MALFORMED_TAG",
+  "CONFLICT_MANUAL_OVERRIDE",
+]);
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -85,6 +95,15 @@ export function RecruitmentSyncStatus() {
     },
   });
 
+  const postings = useQuery({
+    queryKey: ["recruitment-postings"],
+    queryFn: () => listRecruitmentPostings(),
+    refetchInterval: activeRunId ? false : 120_000,
+  });
+  const needsReview = (postings.data ?? []).filter(
+    (p) => p.mapping_status !== "VERIFIED" && NEEDS_REVIEW.has(p.resolution_status),
+  ).length;
+
   const syncing = Boolean(activeRunId) || syncNow.isPending;
   const latest = freshness.data?.latest_run;
   const lastOk = freshness.data?.last_successful_sync_at ?? null;
@@ -102,6 +121,14 @@ export function RecruitmentSyncStatus() {
         <p className="text-xs text-dt-text-secondary">
           Last synced: {relativeTime(lastOk)} · {statusLine}
         </p>
+        {needsReview > 0 && (
+          <Link
+            href="/postings"
+            className="mt-1 block text-xs font-medium text-dt-warning underline underline-offset-2"
+          >
+            {needsReview} posting{needsReview === 1 ? "" : "s"} need client mapping review →
+          </Link>
+        )}
         {flash && <p className="mt-1 text-xs text-dt-success">{flash}</p>}
       </div>
       <Button

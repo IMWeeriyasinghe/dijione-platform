@@ -28,6 +28,10 @@ class PostingOut(BaseModel):
     mapping_source: str
     mapping_verified_at: datetime | None
 
+    # Governed DTC posting-tag reconciliation (diagnostic / staff review).
+    dtc_source_tag: str | None = None
+    resolution_status: str = "NO_DTC_TAG"
+
 
 class ClientSafePostingOut(BaseModel):
     """Posting DTO for a client caller — only ever reachable once the
