@@ -37,6 +37,8 @@ jobs:
             db: recruitment_dev
           - service: people-api
             db: people_dev
+          - service: commercial-api
+            db: commercial_dev
           - service: birthday-api
             db: birthday_dev
     services:
