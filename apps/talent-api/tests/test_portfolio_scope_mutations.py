@@ -172,3 +172,84 @@ def test_unrestricted_staff_unaffected(api_client, db, two_tenant_world):
         json={"stage": "INTERVIEWS"},
     )
     assert resp.status_code == 200
+
+
+def test_scoped_staff_candidate_list_excludes_out_of_portfolio_only_candidates(
+    api_client, db, two_tenant_world
+):
+    """A candidate whose only application belongs to a client outside the
+    caller's portfolio must not appear in the Candidate Pool list at all —
+    with real (non-fictional) data this is a live cross-portfolio leak, not
+    just an empty-applications field."""
+    seeded = _seed(db, two_tenant_world)
+    headers = _portfolio_headers(two_tenant_world)
+
+    resp = api_client.get("/api/talent/candidates", headers=headers)
+    assert resp.status_code == 200
+    ids = {c["id"] for c in resp.json()}
+    assert seeded["abc"]["candidate_id"] in ids
+    assert seeded["xyz"]["candidate_id"] not in ids
+
+
+def test_scoped_staff_candidate_detail_404_for_out_of_portfolio_only_candidate(
+    api_client, db, two_tenant_world
+):
+    seeded = _seed(db, two_tenant_world)
+    headers = _portfolio_headers(two_tenant_world)
+
+    blocked = api_client.get(f"/api/talent/candidates/{seeded['xyz']['candidate_id']}", headers=headers)
+    assert blocked.status_code == 404, "no existence leak for an out-of-portfolio-only candidate"
+
+    ok = api_client.get(f"/api/talent/candidates/{seeded['abc']['candidate_id']}", headers=headers)
+    assert ok.status_code == 200
+    assert len(ok.json()["applications"]) == 1
+
+
+def test_scoped_staff_shared_candidate_sees_only_in_portfolio_application(
+    api_client, db, two_tenant_world
+):
+    """A candidate shared across both clients (Candidate Ownership Rule) is
+    visible to a portfolio-restricted TA — but their view of it must only
+    ever contain the in-portfolio application, never the other client's."""
+    from app.schemas.application import ApplicationCreate
+    from app.schemas.candidate import CandidateCreate
+    from app.services.application_service import ApplicationService
+    from app.services.candidate_service import CandidateService
+
+    seeded = _seed(db, two_tenant_world)
+    shared = CandidateService(db).create_candidate(
+        CandidateCreate(full_name="Shared Portfolio Candidate", email="shared-portfolio@example.com")
+    )
+    ApplicationService(db).create_application(
+        actor_id=two_tenant_world["ta_user_id"],
+        payload=ApplicationCreate(candidate_id=shared.id, talent_request_id=seeded["abc"]["request_id"]),
+    )
+    ApplicationService(db).create_application(
+        actor_id=two_tenant_world["ta_user_id"],
+        payload=ApplicationCreate(candidate_id=shared.id, talent_request_id=seeded["xyz"]["request_id"]),
+    )
+    db.commit()
+
+    headers = _portfolio_headers(two_tenant_world)
+    resp = api_client.get(f"/api/talent/candidates/{shared.id}", headers=headers)
+    assert resp.status_code == 200
+    applications = resp.json()["applications"]
+    assert len(applications) == 1
+    assert applications[0]["client_name"] == "ABC Company"
+
+
+def test_unrestricted_staff_candidate_list_and_detail_unaffected(api_client, db, two_tenant_world):
+    """The Candidate Ownership Rule (CLAUDE.md §19) must hold exactly as
+    before for an unrestricted staff caller — every candidate, every
+    application, across every client."""
+    seeded = _seed(db, two_tenant_world)
+
+    resp = api_client.get("/api/talent/candidates", headers=two_tenant_world["ta_headers"])
+    ids = {c["id"] for c in resp.json()}
+    assert seeded["abc"]["candidate_id"] in ids
+    assert seeded["xyz"]["candidate_id"] in ids
+
+    detail = api_client.get(
+        f"/api/talent/candidates/{seeded['xyz']['candidate_id']}", headers=two_tenant_world["ta_headers"]
+    )
+    assert detail.status_code == 200
