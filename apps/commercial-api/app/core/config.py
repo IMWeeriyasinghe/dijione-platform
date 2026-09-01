@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     integrations_mode: str = "mock"
     hubspot_access_token: str = ""
     hubspot_base_url: str = "https://api.hubapi.com"
+    # Pre-shared-secret placeholder, NOT HubSpot's official v3 signature
+    # scheme (HMAC over method+URI+body+timestamp with the app client
+    # secret) — there is no live HubSpot app/credential yet to validate a
+    # real implementation against, and getting a vendor signature scheme
+    # subtly wrong is worse than an honest placeholder. Swap this for the
+    # real v3 verification when HubSpot access lands (CLAUDE.md §59 Phase
+    # D/E). Enforced only outside app_env=development, same as Lever's
+    # LEVER_WEBHOOK_SIGNING_SECRET pattern in recruitment-api.
+    hubspot_webhook_secret: str = ""
 
     api_cors_origins: str = (
         "http://localhost:3000,http://localhost:3001,http://localhost:3002,"

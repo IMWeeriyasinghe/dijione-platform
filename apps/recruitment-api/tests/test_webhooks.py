@@ -18,9 +18,24 @@ def _sign(secret: str, triggered_at: int) -> str:
     return hmac.new(secret.encode(), f"{secret}{triggered_at}".encode(), hashlib.sha256).hexdigest()
 
 
-def test_accepted_without_signature_when_secret_unconfigured(api_client, db):
+def test_accepted_without_signature_when_secret_unconfigured_in_dev(api_client, db):
     payload = {"id": "evt-1", "event": "candidateStageChange", "opportunityId": "opp-x", "stage": "Offer"}
     assert api_client.post("/api/recruitment/webhooks/lever", json=payload).status_code == 200
+
+
+def test_rejected_without_signature_when_secret_unconfigured_outside_dev(api_client, db, monkeypatch):
+    from app.api.routes import webhooks as mod
+
+    monkeypatch.setattr(
+        mod, "get_settings",
+        lambda: type("S", (), {"lever_webhook_signing_secret": "", "app_env": "production"})(),
+    )
+    payload = {"id": "evt-unconfigured", "event": "x"}
+    resp = api_client.post("/api/recruitment/webhooks/lever", json=payload)
+    assert resp.status_code == 503
+    assert not db.execute(
+        select(IntegrationEvent).where(IntegrationEvent.external_event_id == "evt-unconfigured")
+    ).scalars().all()
 
 
 def test_invalid_signature_rejected_when_secret_configured(api_client, db, monkeypatch):
@@ -28,7 +43,7 @@ def test_invalid_signature_rejected_when_secret_configured(api_client, db, monke
 
     monkeypatch.setattr(
         mod, "get_settings",
-        lambda: type("S", (), {"lever_webhook_signing_secret": "sekret"})(),
+        lambda: type("S", (), {"lever_webhook_signing_secret": "sekret", "app_env": "development"})(),
     )
     payload = {
         "id": "evt-bad", "event": "x", "triggeredAt": 1700000000000, "signature": "wrong",
@@ -45,7 +60,8 @@ def test_valid_signature_accepted(api_client, db, monkeypatch):
 
     secret, ts = "sekret", 1700000000000
     monkeypatch.setattr(
-        mod, "get_settings", lambda: type("S", (), {"lever_webhook_signing_secret": secret})()
+        mod, "get_settings",
+        lambda: type("S", (), {"lever_webhook_signing_secret": secret, "app_env": "development"})(),
     )
     payload = {"id": "evt-ok", "event": "x", "triggeredAt": ts, "signature": _sign(secret, ts)}
     assert api_client.post("/api/recruitment/webhooks/lever", json=payload).status_code == 200
