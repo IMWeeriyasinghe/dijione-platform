@@ -109,14 +109,21 @@ def upgrade() -> None:
         permission_ids[perm.key] = row[0]
 
     # --- roles + role_permissions --------------------------------------
+    # `:m` (module_key) is legitimately NULL for platform-wide roles
+    # (SUPER_ADMIN etc.) — reusing the same bind param both against `IS
+    # NULL` and in an equality comparison leaves Postgres's extended-query
+    # protocol unable to infer its type ("could not determine data type of
+    # parameter"), even though SQLite never minded. Explicit `bindparam`
+    # typing fixes it on both dialects — verified against a real
+    # postgres:16 CI run, not just SQLite.
+    role_lookup = sa.text(
+        "SELECT id FROM roles WHERE key = :k AND "
+        "((module_key IS NULL AND :m IS NULL) OR module_key = :m)"
+    ).bindparams(sa.bindparam("k", type_=sa.String), sa.bindparam("m", type_=sa.String))
+
     for role_def in ALL_ROLES:
-        row = bind.execute(
-            sa.text(
-                "SELECT id FROM roles WHERE key = :k AND "
-                "((module_key IS NULL AND :m IS NULL) OR module_key = :m)"
-            ),
-            {"k": role_def.key, "m": role_def.module_key},
-        ).first()
+        params = {"k": role_def.key, "m": role_def.module_key}
+        row = bind.execute(role_lookup, params).first()
         if row is None:
             op.bulk_insert(
                 roles_t,
@@ -126,13 +133,7 @@ def upgrade() -> None:
                     "is_system": True, "created_at": now, "updated_at": now,
                 }],
             )
-            row = bind.execute(
-                sa.text(
-                    "SELECT id FROM roles WHERE key = :k AND "
-                    "((module_key IS NULL AND :m IS NULL) OR module_key = :m)"
-                ),
-                {"k": role_def.key, "m": role_def.module_key},
-            ).first()
+            row = bind.execute(role_lookup, params).first()
         role_id = row[0]
 
         existing_perm_ids = {
