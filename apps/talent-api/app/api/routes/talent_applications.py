@@ -16,6 +16,7 @@ from app.services.application_service import (
     ApplicationService,
     DuplicateApplicationError,
     InvalidApplicationValueError,
+    TalentRequestNotFoundError,
 )
 
 router = APIRouter(prefix="/api/talent/applications", tags=["talent-applications"])
@@ -46,9 +47,13 @@ def create_application(
 ) -> ApplicationOut:
     service = ApplicationService(db)
     try:
-        application = service.create_application(actor_id=scope.user.id, payload=payload)
+        application = service.create_application(
+            actor_id=scope.user.id, payload=payload, allowed_client_ids=scope.client_ids
+        )
     except DuplicateApplicationError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except TalentRequestNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found") from exc
     db.commit()
     db.refresh(application)
     return service.to_out(application)

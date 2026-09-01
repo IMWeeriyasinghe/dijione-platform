@@ -24,6 +24,10 @@ class ApplicationNotFoundError(Exception):
     pass
 
 
+class TalentRequestNotFoundError(Exception):
+    pass
+
+
 class InvalidApplicationValueError(Exception):
     """A client-supplied stage/status value is not a recognised enum member."""
 
@@ -43,7 +47,24 @@ class ApplicationService:
         self.audit = AuditService()
         self.notifications = NotificationService()
 
-    def create_application(self, *, actor_id: int, payload: ApplicationCreate) -> Application:
+    def create_application(
+        self,
+        *,
+        actor_id: int,
+        payload: ApplicationCreate,
+        allowed_client_ids: list[int] | None = None,
+    ) -> Application:
+        # A portfolio-restricted staff user must not be able to link a
+        # candidate to a talent_request_id outside their portfolio just by
+        # supplying its id in the request body (unlike the other Application
+        # mutation endpoints, this one is not nested under
+        # /requests/{request_id}/..., so there is no URL-path id for the
+        # route layer to pre-scope — the check has to happen here).
+        request = self.request_repo.get_by_id(
+            payload.talent_request_id, client_id=None, allowed_client_ids=allowed_client_ids
+        )
+        if request is None:
+            raise TalentRequestNotFoundError(payload.talent_request_id)
         if self.repo.exists_for_pair(payload.candidate_id, payload.talent_request_id):
             raise DuplicateApplicationError(
                 f"Candidate {payload.candidate_id} already has an application for "
