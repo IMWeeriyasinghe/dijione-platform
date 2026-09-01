@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from jose import jwt
@@ -31,6 +32,7 @@ from app.core.config import get_settings
 from app.core.constants import (
     EXTERNAL_SESSION_PERMISSIONS,
     MODULE_TALENT_FLOW,
+    MagicLinkScopeType,
     TalentFlowRole,
 )
 from app.models.client import Client
@@ -93,6 +95,93 @@ class MagicLinkService:
             },
         )
         return grant
+
+    # --- TA grant management (staff-authenticated, plan B.11) ------------
+
+    def build_access_url(self, raw_token: str) -> str:
+        """The one-time URL a TA copies. Token in the fragment only — never
+        the path or query, so it is never sent in a Referer header or
+        written to a server/access log."""
+        base = get_settings().external_portal_base_url.rstrip("/")
+        return f"{base}/access#{raw_token}"
+
+    def create_grant(
+        self,
+        *,
+        client_id: int,
+        issued_by_user_id: int,
+        contact_name: str = "",
+        contact_email: str = "",
+        expires_in_days: int | None = None,
+    ) -> tuple[MagicLinkGrant, str]:
+        """Mint a new grant for a client. Returns ``(grant, raw_token)`` —
+        the raw token is surfaced to the TA exactly once and never stored.
+        Caller commits."""
+        settings = get_settings()
+        days = expires_in_days or settings.external_grant_default_expiry_days
+        raw, token_hash, token_prefix = generate_raw_token()
+        now = datetime.now(UTC)
+        grant = MagicLinkGrant(
+            public_id=f"mlg-{uuid.uuid4().hex[:12]}",
+            client_id=client_id,
+            scope_type=MagicLinkScopeType.CLIENT_WORKSPACE.value,
+            contact_name=contact_name.strip(),
+            contact_email=contact_email.strip(),
+            token_hash=token_hash,
+            token_prefix=token_prefix,
+            issued_by_user_id=issued_by_user_id,
+            issued_at=now,
+            expires_at=now + timedelta(days=days),
+        )
+        self.db.add(grant)
+        self.db.flush()
+        self.audit.log(
+            actor_id=issued_by_user_id,
+            action="talent.external.link_generated",
+            entity_type="magic_link_grant",
+            entity_id=grant.id,
+            metadata={
+                "grant_public_id": grant.public_id,
+                "client_id": client_id,
+                "contact_email": grant.contact_email,
+                "expires_at": grant.expires_at.isoformat(),
+            },
+        )
+        return grant, raw
+
+    def revoke_grant(
+        self, grant: MagicLinkGrant, *, revoked_by_user_id: int, audit_action: str = "link_revoked"
+    ) -> MagicLinkGrant:
+        """Immediate revocation — the next ``get_talent_external_scope``
+        re-check fails. Idempotent: revoking an already-revoked grant emits
+        nothing and changes nothing. Caller commits."""
+        if grant.revoked_at is None:
+            grant.revoked_at = datetime.now(UTC)
+            grant.revoked_by_user_id = revoked_by_user_id
+            self.audit.log(
+                actor_id=revoked_by_user_id,
+                action=f"talent.external.{audit_action}",
+                entity_type="magic_link_grant",
+                entity_id=grant.id,
+                metadata={"grant_public_id": grant.public_id, "client_id": grant.client_id},
+            )
+        return grant
+
+    def regenerate_grant(
+        self, old_grant: MagicLinkGrant, *, actor_user_id: int
+    ) -> tuple[MagicLinkGrant, str]:
+        """Revoke the old grant (audited as ``link_regenerated``) and issue
+        a fresh one for the same client + contact. Returns
+        ``(new_grant, raw_token)``. Caller commits."""
+        self.revoke_grant(
+            old_grant, revoked_by_user_id=actor_user_id, audit_action="link_regenerated"
+        )
+        return self.create_grant(
+            client_id=old_grant.client_id,
+            issued_by_user_id=actor_user_id,
+            contact_name=old_grant.contact_name,
+            contact_email=old_grant.contact_email,
+        )
 
     def mint_session_jwt(self, grant: MagicLinkGrant) -> tuple[str, int]:
         """Build the short-lived external session JWT for a (validated)

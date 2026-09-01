@@ -10,6 +10,7 @@ from app.api.routes import (
     talent_dashboard,
     talent_documents,
     talent_external,
+    talent_external_admin,
     talent_interviews,
     talent_messages,
     talent_postings,
@@ -53,6 +54,7 @@ app.include_router(talent_messages.router)
 app.include_router(talent_documents.router)
 app.include_router(talent_dashboard.router)
 app.include_router(talent_external.router)
+app.include_router(talent_external_admin.router)
 app.include_router(talent_postings.router)
 app.include_router(recruitment.router)
 app.include_router(recruitment.internal_router)

@@ -47,6 +47,10 @@ const STATUS_TONE: Record<string, Tone> = {
   // Misc
   ACTIVE_CLIENT: "success",
   COMING_SOON: "neutral",
+  // Magic-link external client access grant (MagicLinkGrant.status) —
+  // ACTIVE reuses the existing "brand" mapping.
+  EXPIRED: "neutral",
+  REVOKED: "danger",
   // Access source / group status
   DIRECT: "brand",
   GROUP: "success",

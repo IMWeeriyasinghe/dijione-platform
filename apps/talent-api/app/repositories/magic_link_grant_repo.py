@@ -31,13 +31,19 @@ class MagicLinkGrantRepository:
             .first()
         )
 
-    def list_for_client(self, client_id: int) -> list[MagicLinkGrant]:
-        return list(
-            self.db.execute(
-                select(MagicLinkGrant)
-                .where(MagicLinkGrant.client_id == client_id)
-                .order_by(MagicLinkGrant.issued_at.desc())
-            )
-            .scalars()
-            .all()
-        )
+    def list_for_scope(
+        self,
+        *,
+        client_id: int | None = None,
+        allowed_client_ids: list[int] | None = None,
+    ) -> list[MagicLinkGrant]:
+        """Grant history for the TA management screen, newest first.
+        ``client_id`` filters to one client; ``allowed_client_ids`` is the
+        portfolio restriction of a non-unrestricted staff member (``None``
+        = ALL clients)."""
+        stmt = select(MagicLinkGrant).order_by(MagicLinkGrant.issued_at.desc())
+        if client_id is not None:
+            stmt = stmt.where(MagicLinkGrant.client_id == client_id)
+        elif allowed_client_ids is not None:
+            stmt = stmt.where(MagicLinkGrant.client_id.in_(allowed_client_ids))
+        return list(self.db.execute(stmt).scalars().all())

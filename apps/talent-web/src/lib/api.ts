@@ -182,3 +182,31 @@ export const requestRecruitmentSync = () =>
     "/api/talent/integrations/recruitment/sync",
     { method: "POST" },
   );
+
+// --- Magic-link external client access (staff — TA grant management) ---
+// The Client Talent Review Workspace is reached by a magic link, not a
+// provisioned identity. A TA generates one link per client; the raw URL is
+// shown exactly once (create/regenerate response) and never returned again.
+import type { MagicLinkGrantCreatedOut, MagicLinkGrantOut } from "@dijione/contracts";
+
+export const listMagicLinkGrants = (clientId?: number) =>
+  request<MagicLinkGrantOut[]>(`/api/talent/external/grants${qs({ client_id: clientId })}`);
+
+export const createMagicLinkGrant = (body: {
+  client_id: number;
+  contact_name?: string;
+  contact_email?: string;
+  expires_in_days?: number;
+}) =>
+  request<MagicLinkGrantCreatedOut>("/api/talent/external/grants", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const revokeMagicLinkGrant = (publicId: string) =>
+  request<MagicLinkGrantOut>(`/api/talent/external/grants/${publicId}/revoke`, { method: "POST" });
+
+export const regenerateMagicLinkGrant = (publicId: string) =>
+  request<MagicLinkGrantCreatedOut>(`/api/talent/external/grants/${publicId}/regenerate`, {
+    method: "POST",
+  });
