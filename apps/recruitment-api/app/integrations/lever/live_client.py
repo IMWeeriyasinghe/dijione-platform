@@ -192,13 +192,23 @@ class LiveLeverClient(LeverClient):
 
     @staticmethod
     def _to_posting(r: dict[str, Any]) -> LeverPosting:
+        # `.get(key, "")` only substitutes the default when `key` is
+        # *absent* — Lever's real API has been observed to return several
+        # of these fields as explicit JSON `null` (present key, null
+        # value), which `.get(key, "")` passes straight through, later
+        # failing postings.<column> (all NOT NULL). `.get(key) or ""`
+        # (already the pattern `department`/`hiring_manager_user_id` used
+        # correctly below) normalizes both "absent" and "present but
+        # null" to "". Found via a real second-sync idempotency check
+        # against live data — mock fixtures never exercised a null value
+        # here, so this shipped undetected until real data hit it.
         categories = r.get("categories") or {}
         return LeverPosting(
-            id=r["id"], text=r.get("text", ""), state=r.get("state", ""),
-            team=categories.get("team", ""), department=categories.get("department") or "",
-            location=categories.get("location", ""), owner_user_id=r.get("owner", ""),
+            id=r["id"], text=r.get("text") or "", state=r.get("state") or "",
+            team=categories.get("team") or "", department=categories.get("department") or "",
+            location=categories.get("location") or "", owner_user_id=r.get("owner") or "",
             hiring_manager_user_id=r.get("hiringManager") or "",
-            confidentiality=r.get("confidentiality", ""), tags=list(r.get("tags", [])),
+            confidentiality=r.get("confidentiality") or "", tags=list(r.get("tags", [])),
             archived=bool(r.get("archived")), created_at=_parse_dt(r.get("createdAt")),
             updated_at=_parse_dt(r.get("updatedAt")),
         )
