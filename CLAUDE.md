@@ -27,7 +27,154 @@
 > truth for *what* DijiOne and DijiTalentFlow must do.
 
 ---
+# ENGINEERING DELIVERY AND GATEKEEPER CONTRACT
 
+DijiOne uses two separate engineering responsibilities:
+
+1. **Development Agent** — implementation.
+2. **Engineering Gatekeeper** — independent verification and delivery control.
+
+## Development Agent
+
+The Development Agent owns:
+
+- implementation;
+- bug fixes;
+- refactoring;
+- tests;
+- migrations;
+- implementation-related documentation;
+- local verification;
+- branch/commit preparation;
+- pull-request preparation;
+- correcting defects returned by the Engineering Gatekeeper.
+
+The Development Agent MUST NOT treat its own successful local verification
+as final approval for merge.
+
+When development work is complete, the expected lifecycle is:
+
+Development Agent
+→ commit/push
+→ Pull Request
+→ GitHub CI
+→ Engineering Gatekeeper
+
+## Engineering Gatekeeper
+
+The Engineering Gatekeeper independently owns:
+
+- pull-request verification;
+- GitHub CI/check inspection;
+- failed-check diagnosis and classification;
+- architecture compliance;
+- security verification;
+- migration verification;
+- repository/secret hygiene;
+- precise defect handoff to the Development Agent;
+- independent re-verification after fixes;
+- merge eligibility;
+- authorized automatic merge of normal development pull requests;
+- post-merge verification;
+- safe source-branch deletion where applicable.
+
+The authoritative detailed Gatekeeper policy is:
+
+`docs/platform/engineering-gatekeeper.md`
+
+Any agent acting as the Engineering Gatekeeper MUST read and follow that
+document before making a Gatekeeper decision.
+
+## Normal autonomous delivery loop
+
+Routine development should operate as:
+
+User requirement
+→ Development Agent
+→ implementation
+→ local verification
+→ commit/push
+→ Pull Request
+→ GitHub CI
+→ Engineering Gatekeeper
+→ PASS or FIX_REQUIRED
+
+If FIX_REQUIRED:
+
+Engineering Gatekeeper
+→ precise finding
+→ Development Agent
+→ fix
+→ push
+→ GitHub CI
+→ Engineering Gatekeeper
+
+When all applicable gates pass:
+
+Engineering Gatekeeper
+→ merge
+→ post-merge verification
+→ COMPLETE
+
+Routine CI failures and normal development corrections SHOULD NOT require
+the user to manually shuttle information between GitHub and the Development
+Agent.
+
+## GitHub enforcement
+
+GitHub remains the hard enforcement layer.
+
+The Engineering Gatekeeper MUST NOT bypass:
+
+- required CI checks;
+- branch protection/rulesets;
+- unresolved required review conditions;
+- security gates;
+- migration safeguards;
+- provider safety contracts;
+- repository protections.
+
+The Gatekeeper MAY merge normal development pull requests only after all
+applicable GitHub, CI, architecture, security, migration and repository
+hygiene gates have passed.
+
+## Human escalation
+
+The Engineering Gatekeeper MUST stop and require explicit human approval for:
+
+- destructive or difficult-to-reverse database changes;
+- production deployment;
+- Azure resource creation/deletion;
+- material cloud-cost changes;
+- Entra tenant/app-registration changes;
+- DNS changes;
+- credential/secret rotation;
+- security-boundary redesign;
+- material architecture changes;
+- enabling write access to a currently read-only provider;
+- bypassing GitHub protections or required checks;
+- other genuinely high-risk or unclassified decisions.
+
+These conditions are `HUMAN_REQUIRED`.
+
+## Authority hierarchy
+
+For repository engineering work, apply instructions in this order:
+
+1. explicit current user instruction;
+2. root `CLAUDE.md`;
+3. applicable specialist DijiOne policy/document;
+4. component-specific instructions;
+5. implementation conventions inferred from the repository.
+
+A specialist document MUST NOT weaken a stricter security, architecture,
+provider-safety, or repository-boundary rule in root `CLAUDE.md`.
+
+For PR/CI/merge operations, the applicable specialist policy is:
+
+`docs/platform/engineering-gatekeeper.md`
+
+---
 
 # CRITICAL AUTONOMOUS EXECUTION AND SAFETY RULES
 

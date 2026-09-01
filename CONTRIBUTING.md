@@ -56,11 +56,27 @@ messages, test fixtures, or docs.
 
 ## Branch & PR workflow
 
-- `main` is protected: no direct pushes, PR + green CI required to merge.
+- `main` is intended to be protected via GitHub branch protection (required
+  status checks for every CI job/matrix leg, `enforce_admins`, no
+  force-push, no direct pushes) — but this repo is currently on GitHub
+  Free as a private repo, which does not support branch protection or
+  rulesets (`gh api .../branches/main/protection` returns 403 "Upgrade to
+  GitHub Pro or make this repository public"). Until that's resolved,
+  there is **no GitHub-side enforcement on `main`** — the Engineering
+  Gatekeeper's own verification is the only safety layer. See
+  `docs/platform/engineering-gatekeeper.md` §4 for the target
+  configuration and current status.
 - Branch names: `feat/<slug>`, `fix/<slug>`, `chore/<slug>`, `docs/<slug>`.
 - Commit messages follow **Conventional Commits**, scoped by area:
   `feat(talent): …`, `fix(birthday-api): …`, `chore(repo): …`, `docs(platform): …`.
 - Keep commits small enough to review.
+- PRs are verified and merged by the **Engineering Gatekeeper**, not by the
+  PR author. The Gatekeeper independently re-checks CI, architecture,
+  security, and migration safety before merging — a green check alone is
+  not sufficient. See `docs/platform/engineering-gatekeeper.md` for the
+  full contract, including the current rollout mode (shadow vs. full
+  auto-merge) and the human-escalation triggers that pause it for your
+  review instead of merging automatically.
 
 ## Quality gates (run before pushing — CI runs the same)
 
