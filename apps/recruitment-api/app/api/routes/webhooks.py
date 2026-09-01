@@ -15,15 +15,29 @@ logger = logging.getLogger("recruitment-api.webhooks")
 
 def _verify_lever_signature(payload: dict) -> None:
     """HMAC-SHA256 per Lever's scheme: HMAC(key=secret, msg=secret+triggeredAt).
-    Enforced only when LEVER_WEBHOOK_SIGNING_SECRET is set — an unset secret
-    is a warning, not a reject (no production webhook is wired up yet).
+
+    An unset LEVER_WEBHOOK_SIGNING_SECRET is tolerated (warn, accept
+    unsigned) only in ``app_env=development`` — local/dev convenience,
+    since no production webhook is wired up yet and every dev/CI run needs
+    this endpoint reachable with zero external config. Outside development,
+    an unset secret is a deployment misconfiguration, not a soft warning:
+    silently accepting unsigned webhooks in a real environment is the
+    actual security gap this function exists to close, so it now fails
+    closed (503) instead of only logging.
     Idempotency via IntegrationEvent is always enforced regardless.
     """
-    secret = get_settings().lever_webhook_signing_secret
+    settings = get_settings()
+    secret = settings.lever_webhook_signing_secret
     if not secret:
+        if settings.app_env != "development":
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Lever webhook signing secret is not configured for this environment",
+            )
         logger.warning(
             "Lever webhook received with no LEVER_WEBHOOK_SIGNING_SECRET — signature "
-            "not verified. Do not enable production Lever webhooks until it is set."
+            "not verified (app_env=development only). Do not enable production Lever "
+            "webhooks until it is set."
         )
         return
     triggered_at = payload.get("triggeredAt")
