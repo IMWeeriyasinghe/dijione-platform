@@ -64,7 +64,7 @@ jobs:
       # psycopg 3 dialect — the same URL shape deploy/README.md documents.
       DATABASE_URL: postgresql+psycopg://dijione:dijione@localhost:5432/${{ matrix.db }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
