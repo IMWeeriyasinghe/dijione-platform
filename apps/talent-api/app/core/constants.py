@@ -195,6 +195,28 @@ class MagicLinkScopeType(StrEnum):
     REVIEW_SET = "REVIEW_SET"
 
 
+# The complete permission set an external magic-link session carries in
+# its ``module_roles["talent-flow"].permissions`` claim (plan B.6). Strictly
+# read-only, strictly client-safe surfaces. Nothing here permits any
+# create/update/admin action; the external session can never hold
+# ``talent.workspace.staff``.
+#
+# messages/documents are deliberately NOT here in V1 (plan B.6 fail-closed
+# default). The B2 client-safety review of their read DTOs found them not
+# clearly safe for a magic-link prospect: ``MessageOut`` exposes raw
+# internal ``sender_id`` + the internal ``sender_role`` vocabulary and an
+# unfiltered staff-authored ``body``; ``DocumentOut`` exposes raw
+# ``uploaded_by`` + a raw ``storage_reference`` infra path, and
+# ``list_for_request`` applies no client-visibility filter at all. They are
+# left out of V1 rather than partially exposed.
+EXTERNAL_SESSION_PERMISSIONS: tuple[str, ...] = (
+    "talent.dashboard.read_own",
+    "talent.requests.read_own",
+    "talent.candidates.read_client_safe",
+    "talent.interviews.read_own",
+)
+
+
 class MagicLinkGrantStatus(StrEnum):
     """Derived (never stored) status of a MagicLinkGrant — computed from
     ``revoked_at``/``expires_at`` on every read, see

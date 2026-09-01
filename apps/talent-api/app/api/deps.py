@@ -20,12 +20,26 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.constants import MODULE_TALENT_FLOW
+from app.core.constants import EXTERNAL_SESSION_PERMISSIONS, MODULE_TALENT_FLOW
 from app.db.session import get_db
+from app.models.magic_link_grant import MagicLinkGrant
 from app.repositories.client_repo import ClientRepository
 
 _settings = get_settings()
 get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
+
+# The external magic-link session decoder — a DELIBERATELY separate trust
+# boundary (approved security amendment). Bound to its own secret AND its
+# own issuer, so an internally-signed staff token fails here on both
+# signature and issuer before any grant lookup, and an externally-signed
+# session fails identically on the internal ``get_claims`` path. Never
+# reuse ``get_claims`` for an external route, or ``_external_claims`` for
+# an internal one.
+_external_claims = make_get_claims(
+    secret=_settings.external_session_jwt_secret,
+    algorithm=_settings.jwt_algorithm,
+    issuer=_settings.external_session_jwt_issuer,
+)
 
 # Gate for service-to-service calls with no human actor behind them
 # (admin-api reading client display names/counts; the recruitment
@@ -143,6 +157,75 @@ def require_talent_permission(permission_key: str):
     """Reusable factory for DijiTalentFlow route-level permission gates."""
 
     def _dependency(scope: TalentScope = Depends(get_talent_scope)) -> TalentScope:
+        if not scope.has(permission_key):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, f"Missing required permission: {permission_key}"
+            )
+        return scope
+
+    return _dependency
+
+
+# --- External magic-link client access ------------------------------------
+
+# One generic message for every external-auth failure — an invalid, an
+# expired, and a revoked session are indistinguishable to the caller (no
+# client name, no existence signal). Mirrors the redeem endpoint's body.
+_EXTERNAL_AUTH_FAILED = "This access session is invalid or has expired"
+
+
+@dataclass(frozen=True)
+class ExternalClientScope:
+    """Resolved authorization scope for a magic-link external client/prospect
+    session (plan B.5/B.7). Isolation invariant: ``client_id`` comes
+    exclusively from the backing ``MagicLinkGrant`` row, re-loaded and
+    re-validated on every request — never from the token claim, the URL, a
+    query parameter, or a request body. Every repository call an external
+    route makes is tenant-scoped by this ``client_id``, so a manipulated
+    resource id belonging to another client 404s and leaks nothing.
+
+    ``permissions`` is the fixed read-only subset from
+    ``EXTERNAL_SESSION_PERMISSIONS`` — an external session can never hold
+    ``talent.workspace.staff`` or any create/update/admin permission.
+    """
+
+    grant_id: int
+    client_id: int
+    permissions: frozenset[str] = field(default_factory=frozenset)
+
+    def has(self, permission_key: str) -> bool:
+        return permission_key in self.permissions
+
+
+def get_talent_external_scope(
+    claims: AuthClaims = Depends(_external_claims), db: Session = Depends(get_db)
+) -> ExternalClientScope:
+    module_claim = claims.module(MODULE_TALENT_FLOW)
+    if module_claim is None or claims.external is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, _EXTERNAL_AUTH_FAILED)
+
+    # Re-checked every request, not just at redeem time: a grant revoked or
+    # expired mid-session must lose access immediately, bounded only by the
+    # 45-minute session TTL for anything already in flight. The client id
+    # is taken from this row, never the claim.
+    grant = db.get(MagicLinkGrant, claims.external.grant_id)
+    if grant is None or not grant.is_valid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, _EXTERNAL_AUTH_FAILED)
+
+    return ExternalClientScope(
+        grant_id=grant.id,
+        client_id=grant.client_id,
+        permissions=frozenset(EXTERNAL_SESSION_PERMISSIONS),
+    )
+
+
+def require_external_permission(permission_key: str):
+    """Route-level permission gate for the external portal surface —
+    resolves the isolated ``ExternalClientScope``, never a staff scope."""
+
+    def _dependency(
+        scope: ExternalClientScope = Depends(get_talent_external_scope),
+    ) -> ExternalClientScope:
         if not scope.has(permission_key):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, f"Missing required permission: {permission_key}"
