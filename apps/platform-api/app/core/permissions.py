@@ -160,7 +160,11 @@ TALENT_PERMISSIONS: list[PermissionDef] = [
         MODULE_TALENT_FLOW, "Candidates",
     ),
     PermissionDef(
-        "talent.candidates.manage", "Manage Candidates", "Create/update candidate master records.",
+        "talent.candidates.manage", "Manage Candidates (retired)",
+        "Not granted to any role — the Candidate master now originates from the "
+        "Recruitment Source (Lever), not manual entry (DijiTalentFlow real-data "
+        "completion, 2026-09-02). Kept in the catalog rather than deleted so "
+        "historical RolePermission/audit rows referencing it remain valid.",
         MODULE_TALENT_FLOW, "Candidates",
     ),
     PermissionDef(
@@ -220,7 +224,6 @@ _TA_MEMBER_PERMISSIONS = (
     "talent.requests.read",
     "talent.requests.update",
     "talent.candidates.read",
-    "talent.candidates.manage",
     "talent.applications.read",
     "talent.applications.create",
     "talent.applications.update",

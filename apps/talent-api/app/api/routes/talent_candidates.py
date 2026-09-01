@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.repositories.application_repo import ApplicationRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.candidate import CandidateCreate, CandidateOut, ClientSafeCandidateOut
-from app.services.candidate_service import CandidateService, DuplicateCandidateError
+from app.services.candidate_service import CandidateService
 
 router = APIRouter(prefix="/api/talent", tags=["talent-candidates"])
 
@@ -28,14 +28,19 @@ def create_candidate(
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> CandidateOut:
-    service = CandidateService(db)
-    try:
-        candidate = service.create_candidate(payload)
-    except DuplicateCandidateError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Candidate with this email already exists") from exc
-    db.commit()
-    db.refresh(candidate)
-    return service.to_out(candidate)
+    """Retired (DijiTalentFlow real-data completion, 2026-09-02): the
+    Candidate master now originates from the Recruitment Source (Lever) —
+    see VerifiedPostingPromotionReconciler — not manual entry, so this
+    always 403s. The endpoint, CandidateCreate schema, and
+    CandidateService.create_candidate are kept, not deleted:
+    CandidateService.create_candidate is still exercised directly by
+    service-level tests, and a future legitimate non-Lever candidate
+    workflow, if one is ever designed, would reuse the same service call.
+    """
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        "Candidate records originate from the Recruitment Source; they are not created manually.",
+    )
 
 
 @router.get("/candidates/{candidate_id}", response_model=CandidateOut)

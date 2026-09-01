@@ -145,7 +145,7 @@ def test_effective_permissions_direct_only(db, two_tenant_world):
     authz = AuthorizationService(db)
     ta_user = two_tenant_world["ta_user"]
     perms = authz.effective_permissions(ta_user, MODULE_TALENT_FLOW)
-    assert "talent.candidates.manage" in perms
+    assert "talent.candidates.read" in perms
 
 
 def test_effective_permissions_group_only(db, two_tenant_world):
@@ -162,7 +162,7 @@ def test_effective_permissions_group_only(db, two_tenant_world):
 
     authz = AuthorizationService(db)
     perms = authz.effective_permissions(fresh, MODULE_TALENT_FLOW)
-    assert "talent.candidates.manage" in perms
+    assert "talent.candidates.read" in perms
 
 
 def test_effective_permissions_direct_and_group_union(db, two_tenant_world):
@@ -175,7 +175,7 @@ def test_effective_permissions_direct_and_group_union(db, two_tenant_world):
     perms = authz.effective_permissions(ta_user, MODULE_TALENT_FLOW)
     # union includes CUSTOMER_SUCCESS-only permission
     assert "talent.requests.review" in perms
-    assert "talent.candidates.manage" in perms  # still has TA_MEMBER perms too
+    assert "talent.candidates.read" in perms  # still has TA_MEMBER perms too
 
 
 def test_effective_access_api_always_includes_sources(api_client, db, two_tenant_world):
@@ -354,4 +354,4 @@ def test_jwt_claims_include_group_derived_module_roles(api_client, db, two_tenan
     assert resp.status_code == 200
     claims = get_auth_provider().decode_token(resp.json()["access_token"])
     assert claims["module_roles"][MODULE_TALENT_FLOW]["role"] == "TA_MEMBER"
-    assert "talent.candidates.manage" in claims["module_roles"][MODULE_TALENT_FLOW]["permissions"]
+    assert "talent.candidates.read" in claims["module_roles"][MODULE_TALENT_FLOW]["permissions"]
