@@ -6,20 +6,20 @@ Run with:  python scripts/seed.py [--reset]
 
 Coordinated seeding across services: platform-api is the permanent owner of
 canonical Client identity (Architecture Completion Plan §6.1) —
-``seed_canonical_clients`` creates the three ``Client`` rows here, with
-stable ``public_id``s (``cli-abc-company`` / ``cli-xyz-company`` /
-``cli-nova-solutions``), and every ``UserModuleClientScope`` /
-``UserModuleRole`` row below carries the real ``client_ref`` alongside the
-legacy bare integer. The legacy integer (``ABC_CLIENT_ID``=1 etc.) is kept
-only so a pre-Wave-A ``talent-api`` reseed (its own clients created in that
-same order) still lines up by convention for backward compatibility — new
-code should never need to rely on that ordering, only on ``client_ref`` /
-``platform_client_id``. Run this script *before* talent-api's, since
-talent-api's seed data (requests, messages, documents) references the user
-ids created here (by convention: madushanka=1, cs_user=2, ta_manager=3,
-platform_admin=4, super_admin=5, abc_client=6, xyz_client=7, nova_client=8,
-ta_portfolio=9). See docs/platform/local-development.md and
-docs/platform/data-ownership.md §1.
+``seed_canonical_clients`` creates the real, DTC-verified ``Client`` rows
+here (``app.core.real_dev_clients.REAL_DEV_CLIENTS`` — see that module's
+docstring for the discovery record; imported by both this script and the
+``h8i9j0k1l2m3`` migration so the two never drift), replacing the old
+ABC/XYZ/Nova demo set (DijiTalentFlow real-data local validation,
+2026-09-01). Every ``UserModuleClientScope`` / ``UserModuleRole`` row below
+keys on the real ``client_ref`` (a ``Client.public_id``) directly — there is
+no legacy bare-integer convention to preserve now that
+``apps/talent-api``'s own seed script also creates its ``Client`` extension
+rows from this same real list rather than a fixed creation order. Run this
+script *before* talent-api's, since talent-api's seed fetches the real
+client directory from platform-api's running API
+(``GET /api/platform/internal/clients``). See docs/platform/
+local-development.md and docs/platform/data-ownership.md §1.
 """
 
 from __future__ import annotations
@@ -31,52 +31,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole  # noqa: E402
 from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
+from app.core.real_dev_clients import PERSONA_CLIENTS, REAL_DEV_CLIENTS  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models.client import Client, ClientExternalId  # noqa: E402
+from app.models.client import Client  # noqa: E402
 from app.models.module import ApplicationModule  # noqa: E402
 from app.models.role import Permission, Role, RolePermission  # noqa: E402
 from app.models.user import User, UserModuleRole  # noqa: E402
 from app.models.user_module_client_scope import UserModuleClientScope  # noqa: E402
 
-# Legacy talent-api integer-id convention shared with
-# apps/talent-api/scripts/seed.py — see module docstring. These are now
-# resolved to a canonical platform Client.public_id via client_external_ids.
-ABC_CLIENT_ID = 1
-XYZ_CLIENT_ID = 2
-NOVA_CLIENT_ID = 3
-
-# (public_id, name, legacy talent-api id). platform-api owns canonical
-# Client / Organisation identity (Architecture Completion Plan §6.1); the
-# d4e5f6a7b8c9 migration seeds the same three rows.
-_CANONICAL_CLIENTS = [
-    ("cli-abc-company", "ABC Company", ABC_CLIENT_ID),
-    ("cli-xyz-company", "XYZ Company", XYZ_CLIENT_ID),
-    ("cli-nova-solutions", "Nova Solutions", NOVA_CLIENT_ID),
-]
-_LEGACY_TO_PUBLIC = {legacy: public_id for public_id, _n, legacy in _CANONICAL_CLIENTS}
-
 
 def seed_canonical_clients(db) -> None:
-    """Get-or-create the platform-owned canonical Client rows + the
-    talent-api legacy-id crosswalk. Idempotent."""
-    for public_id, name, legacy_id in _CANONICAL_CLIENTS:
-        client = db.query(Client).filter_by(public_id=public_id).one_or_none()
+    """Get-or-create the platform-owned canonical Client rows for the real,
+    DTC-verified client set. Idempotent."""
+    for real_client in REAL_DEV_CLIENTS:
+        client = db.query(Client).filter_by(public_id=real_client.public_id).one_or_none()
         if client is None:
-            client = Client(public_id=public_id, name=name, status="ACTIVE")
-            db.add(client)
-            db.flush()
-        xref = (
-            db.query(ClientExternalId)
-            .filter_by(provider="talent-api", external_id=str(legacy_id))
-            .one_or_none()
-        )
-        if xref is None:
-            db.add(
-                ClientExternalId(
-                    client_id=client.id, provider="talent-api", external_id=str(legacy_id)
-                )
-            )
+            db.add(Client(public_id=real_client.public_id, name=real_client.name, status="ACTIVE"))
     db.commit()
 
 
@@ -177,14 +148,11 @@ def seed_module_registry(db) -> None:
     db.commit()
 
 
-def _assign_client_scope(db, module_role: UserModuleRole, *, client_id: int | None) -> None:
-    if client_id is not None:
+def _assign_client_scope(db, module_role: UserModuleRole, *, client_ref: str | None) -> None:
+    if client_ref is not None:
         db.add(
             UserModuleClientScope(
-                user_module_role_id=module_role.id,
-                client_id=client_id,
-                client_ref=_LEGACY_TO_PUBLIC.get(client_id),
-                all_clients=False,
+                user_module_role_id=module_role.id, client_ref=client_ref, all_clients=False,
             )
         )
     else:
@@ -233,24 +201,31 @@ def seed() -> None:
                 title="DijiOne Super Admin", platform_role=PlatformRole.SUPER_ADMIN.value,
                 persona_key="super-admin", avatar_color="#5c1a15",
             ),
+            # Real, DTC-verified persona clients (PERSONA_CLIENTS — the
+            # subset of REAL_DEV_CLIENTS with the most real posting volume
+            # in the live discovery run; see real_dev_clients.py docstring).
+            # These local dev logins represent the real client
+            # organisation for demo purposes only — no specific real
+            # employee is asserted, so the persona's full_name is a
+            # generic role label, not an invented person's name.
             dict(
-                email="amal.perera@abc-company.example", full_name="Amal Perera",
-                title="Head of Talent, ABC Company", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="abc-client", avatar_color="#f26a1b",
+                email="client@cms-group.example", full_name="CMS group Client Contact",
+                title="Client Contact, CMS group", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="cms-group-client", avatar_color="#f26a1b",
             ),
             dict(
-                email="nadeesha.silva@xyz-company.example", full_name="Nadeesha Silva",
-                title="VP Engineering, XYZ Company", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="xyz-client", avatar_color="#f59e0b",
+                email="client@databl-io.example", full_name="Databl.io Client Contact",
+                title="Client Contact, Databl.io", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="databl-io-client", avatar_color="#f59e0b",
             ),
             dict(
-                email="kasun.jayasuriya@nova-solutions.example", full_name="Kasun Jayasuriya",
-                title="COO, Nova Solutions", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="nova-client", avatar_color="#fbc34a",
+                email="client@portal-technology.example", full_name="Portal Technology Client Contact",
+                title="Client Contact, Portal Technology", platform_role=PlatformRole.PLATFORM_USER.value,
+                persona_key="portal-technology-client", avatar_color="#fbc34a",
             ),
             dict(
                 email="ruwan.gunasekara@dijitalteam.com", full_name="Ruwan Gunasekara",
-                title="Talent Acquisition Specialist (ABC + XYZ Portfolio)",
+                title="Talent Acquisition Specialist (Portfolio)",
                 platform_role=PlatformRole.PLATFORM_USER.value,
                 persona_key="ta-portfolio", avatar_color="#f26a1b",
             ),
@@ -270,23 +245,30 @@ def seed() -> None:
         ta_manager = users_by_persona["ta-manager"]
         platform_admin = users_by_persona["platform-admin"]
         super_admin = users_by_persona["super-admin"]
-        abc_client_user = users_by_persona["abc-client"]
-        xyz_client_user = users_by_persona["xyz-client"]
-        nova_client_user = users_by_persona["nova-client"]
+        cms_group_client_user = users_by_persona["cms-group-client"]
+        databl_io_client_user = users_by_persona["databl-io-client"]
+        portal_technology_client_user = users_by_persona["portal-technology-client"]
         ta_portfolio_user = users_by_persona["ta-portfolio"]
+
+        persona_client_refs = {c.name: c.public_id for c in PERSONA_CLIENTS}
+        cms_group_ref = persona_client_refs["CMS group"]
+        databl_io_ref = persona_client_refs["Databl.io"]
+        portal_technology_ref = persona_client_refs["Portal Technology"]
 
         # Demonstrates DijiOne Phase 2 client/portfolio scope (CR §22): every
         # staff assignment defaults to ALL_CLIENTS except ta_portfolio_user,
-        # who is explicitly restricted to ABC + XYZ (Nova excluded).
+        # who is explicitly restricted to a 2-client portfolio (CMS group +
+        # Databl.io — Portal Technology excluded, same 2-of-3 shape as the
+        # old ABC+XYZ/Nova-excluded portfolio it replaces).
         module_roles = [
             (madushanka, MODULE_TALENT_FLOW, "TA_MEMBER", None, None),
             (cs_user, MODULE_TALENT_FLOW, "CUSTOMER_SUCCESS", None, None),
             (ta_manager, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
             (platform_admin, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
-            (abc_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", ABC_CLIENT_ID, None),
-            (xyz_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", XYZ_CLIENT_ID, None),
-            (nova_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", NOVA_CLIENT_ID, None),
-            (ta_portfolio_user, MODULE_TALENT_FLOW, "TA_MEMBER", None, [ABC_CLIENT_ID, XYZ_CLIENT_ID]),
+            (cms_group_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", cms_group_ref, None),
+            (databl_io_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", databl_io_ref, None),
+            (portal_technology_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", portal_technology_ref, None),
+            (ta_portfolio_user, MODULE_TALENT_FLOW, "TA_MEMBER", None, [cms_group_ref, databl_io_ref]),
             # DijiBirthday (Phase A-D): grant the Super Admin dev persona
             # BIRTHDAY_ADMIN so the "Super Admin can't see DijiBirthday"
             # local-env bug has a persona to actually demo the fix with —
@@ -297,7 +279,7 @@ def seed() -> None:
             # every other persona/module pairing in this table.
             (super_admin, MODULE_BIRTHDAY, "BIRTHDAY_ADMIN", None, None),
         ]
-        for user, module_key, role, client_id, portfolio in module_roles:
+        for user, module_key, role, client_ref, portfolio in module_roles:
             existing_role = (
                 db.query(UserModuleRole)
                 .filter_by(user_id=user.id, module_key=module_key, role=role)
@@ -306,23 +288,22 @@ def seed() -> None:
             if existing_role is not None:
                 continue
             module_role = UserModuleRole(
-                user_id=user.id, module_key=module_key, role=role, client_id=client_id,
-                client_ref=_LEGACY_TO_PUBLIC.get(client_id) if client_id is not None else None,
+                user_id=user.id, module_key=module_key, role=role, client_ref=client_ref,
             )
             db.add(module_role)
             db.flush()
             if portfolio is not None:
-                for portfolio_client_id in portfolio:
-                    _assign_client_scope(db, module_role, client_id=portfolio_client_id)
+                for portfolio_client_ref in portfolio:
+                    _assign_client_scope(db, module_role, client_ref=portfolio_client_ref)
             else:
-                _assign_client_scope(db, module_role, client_id=client_id)
+                _assign_client_scope(db, module_role, client_ref=client_ref)
         db.commit()
 
         print("Platform Core seed complete.")
         print(
             "  Dev personas: madushanka-ta, customer-success, ta-manager, "
-            "platform-admin, super-admin, abc-client, xyz-client, nova-client, "
-            "ta-portfolio (ABC+XYZ only)"
+            "platform-admin, super-admin, cms-group-client, databl-io-client, "
+            "portal-technology-client, ta-portfolio (CMS group + Databl.io only)"
         )
         print("  Now run: (cd ../talent-api && python scripts/seed.py [--reset])")
     finally:
