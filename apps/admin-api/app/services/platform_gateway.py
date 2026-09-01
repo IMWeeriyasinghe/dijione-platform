@@ -19,7 +19,11 @@ from app.core.config import get_settings
 
 def get_platform_client() -> PlatformClient:
     settings = get_settings()
-    return PlatformClient(base_url=settings.platform_api_url, internal_secret=settings.internal_service_secret)
+    return PlatformClient(
+        base_url=settings.platform_api_url,
+        internal_secret=settings.internal_service_secret,
+        caller="admin-api",
+    )
 
 
 def raise_for_platform_error(resp: httpx.Response) -> None:

@@ -1,5 +1,17 @@
 # DijiOne MVP Status
 
+> **Historical snapshot — Phase 1/2, pre-application-split.** Everything
+> below (the `apps/api`/`apps/web` single-service layout, "18 tests",
+> "single migration", migration `2e7f7d7dc3fa`) describes the codebase as it
+> stood at the end of Phase 2, before Phase 2.5 split it into the
+> independently-runnable services this repo now has, and before the
+> Architecture Completion Plan's domain extractions (recruitment-api,
+> people-api, commercial-api) and canonical Client identity. Kept for
+> history, not maintained since. For current state, see
+> `docs/platform/service-architecture.md`, `docs/platform/data-ownership.md`,
+> and the most recent audit
+> (`DijiOne-DijiTalentFlow-Audit-2026-08-31.md` at the repo root).
+
 Last updated: end of the Phase 2 autonomous run (see `PLAN.md`). Phase 1
 status is preserved below; see "Phase 2 — Authorization & Admin Center"
 for what changed.

@@ -9,12 +9,41 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from auth_client_py.claims import AuthClaims, InvalidTokenError, decode_claims
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def make_verify_internal_request(*, secret: str) -> Callable[..., str | None]:
+    """Build a FastAPI dependency that gates a service-to-service endpoint
+    on the shared ``X-Internal-Token`` secret — the single definition every
+    backend service now imports instead of re-declaring its own
+    ``require_internal_service`` in ``app/api/deps.py``.
+
+    Dev-only shared-secret trust boundary. This function is the one place to
+    swap for workload/managed identity or signed service tokens later
+    (CLAUDE.md rule 21); nothing else changes when that happens.
+
+    The dependency returns the advisory ``X-Internal-Caller`` header value
+    (which service made the call — for logs/audit only, never a trust
+    signal) or ``None``. Endpoints that only need the gate can ignore it:
+    ``_svc: str | None = Depends(require_internal_service)``.
+    """
+
+    def _verify(
+        x_internal_token: str | None = Header(default=None),
+        x_internal_caller: str | None = Header(default=None),
+    ) -> str | None:
+        if x_internal_token != secret:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "Invalid or missing internal service token"
+            )
+        return x_internal_caller
+
+    return _verify
 
 
 def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dijione-dev-identity") -> Callable[..., AuthClaims]:

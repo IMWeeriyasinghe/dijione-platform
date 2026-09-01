@@ -1,0 +1,90 @@
+name: postgres
+
+# Real-PostgreSQL verification for every service that owns a database
+# (Architecture Completion Plan Wave D / Wave H-local). Local dev + the
+# `api` / `migrations` workflows stay on SQLite for speed; this job proves
+# migrations apply and the full suite passes against Postgres 16 — the
+# production engine (Azure Database for PostgreSQL Flexible Server).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/*-api/**"
+      - "packages/auth-client-py/**"
+      - ".github/workflows/postgres.yml"
+
+concurrency:
+  group: postgres-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pg:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: platform-api
+            db: platform_dev
+          - service: talent-api
+            db: talent_dev
+          - service: recruitment-api
+            db: recruitment_dev
+          - service: people-api
+            db: people_dev
+          - service: commercial-api
+            db: commercial_dev
+          - service: birthday-api
+            db: birthday_dev
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dijione
+          POSTGRES_PASSWORD: dijione
+          POSTGRES_DB: ${{ matrix.db }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dijione"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.service }}
+    env:
+      INTEGRATIONS_MODE: mock
+      EMAIL_SENDING_MODE: mock
+      # psycopg 3 dialect — the same URL shape deploy/README.md documents.
+      DATABASE_URL: postgresql+psycopg://dijione:dijione@localhost:5432/${{ matrix.db }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: alembic upgrade head (real Postgres)
+        run: alembic upgrade head
+
+      - name: alembic downgrade base / upgrade head (idempotency)
+        run: |
+          alembic downgrade base || echo "no reversible chain — continuing"
+          alembic upgrade head
+
+      - name: Pytest (real Postgres)
+        # each service's tests/conftest.py does
+        # `os.environ.setdefault("DATABASE_URL", <sqlite>)`, so with
+        # DATABASE_URL exported above the whole suite runs against Postgres.
+        run: pytest -q

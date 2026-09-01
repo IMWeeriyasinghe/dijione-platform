@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Integer
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -17,8 +17,11 @@ class UserModuleClientScope(TimestampMixin, Base):
     paths). Staff assignments may carry a specific portfolio (several rows)
     or a single ``all_clients`` row.
 
-    ``client_id`` has no foreign key to talent-api's ``clients`` table — see
-    the note on ``UserModuleRole.client_id`` in ``app/models/user.py``.
+    ``client_ref`` is the durable identifier: the ``public_id`` of a
+    platform-owned ``Client`` (Architecture Completion Plan §6.1). The legacy
+    bare ``client_id`` integer — historically *assumed* to equal talent-api's
+    ``clients.id`` by seed-insertion order — is kept alongside it for one
+    migration cycle and then dropped; new code reads ``client_ref``.
     """
 
     __tablename__ = "user_module_client_scopes"
@@ -28,6 +31,7 @@ class UserModuleClientScope(TimestampMixin, Base):
         ForeignKey("user_module_roles.id", ondelete="CASCADE"), index=True
     )
     client_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_ref: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     all_clients: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user_module_role: Mapped[UserModuleRole] = relationship(  # noqa: F821

@@ -1,20 +1,25 @@
 """Seeds Platform Core's local demo data: the Role/Permission catalog, the
-module registry, dev personas, module-role assignments and client/portfolio
-scope.
+module registry, dev personas, module-role assignments, client/portfolio
+scope, and the canonical Client/Organisation identity.
 
 Run with:  python scripts/seed.py [--reset]
 
-Phase 2.5 note — coordinated seeding across services: DijiTalentFlow's
-Client rows now live in talent-api's own database, so this script can't
-create them or look up their ids. The module-role/client-scope rows below
-reference client ids 1 (ABC Company), 2 (XYZ Company), 3 (Nova Solutions) by
-plain integer convention — ``apps/talent-api/scripts/seed.py`` creates those
-three clients in that exact order so a fresh ``--reset`` reseed of both
-services lines up. Run this script *before* talent-api's, since talent-api's
-seed data (requests, messages, documents) references the user ids created
-here (also by convention: madushanka=1, cs_user=2, ta_manager=3,
+Coordinated seeding across services: platform-api is the permanent owner of
+canonical Client identity (Architecture Completion Plan §6.1) —
+``seed_canonical_clients`` creates the three ``Client`` rows here, with
+stable ``public_id``s (``cli-abc-company`` / ``cli-xyz-company`` /
+``cli-nova-solutions``), and every ``UserModuleClientScope`` /
+``UserModuleRole`` row below carries the real ``client_ref`` alongside the
+legacy bare integer. The legacy integer (``ABC_CLIENT_ID``=1 etc.) is kept
+only so a pre-Wave-A ``talent-api`` reseed (its own clients created in that
+same order) still lines up by convention for backward compatibility — new
+code should never need to rely on that ordering, only on ``client_ref`` /
+``platform_client_id``. Run this script *before* talent-api's, since
+talent-api's seed data (requests, messages, documents) references the user
+ids created here (by convention: madushanka=1, cs_user=2, ta_manager=3,
 platform_admin=4, super_admin=5, abc_client=6, xyz_client=7, nova_client=8,
-ta_portfolio=9). See docs/platform/local-development.md.
+ta_portfolio=9). See docs/platform/local-development.md and
+docs/platform/data-ownership.md §1.
 """
 
 from __future__ import annotations
@@ -28,16 +33,51 @@ from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW
 from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
+from app.models.client import Client, ClientExternalId  # noqa: E402
 from app.models.module import ApplicationModule  # noqa: E402
 from app.models.role import Permission, Role, RolePermission  # noqa: E402
 from app.models.user import User, UserModuleRole  # noqa: E402
 from app.models.user_module_client_scope import UserModuleClientScope  # noqa: E402
 
-# Client id convention shared with apps/talent-api/scripts/seed.py — see
-# module docstring.
+# Legacy talent-api integer-id convention shared with
+# apps/talent-api/scripts/seed.py — see module docstring. These are now
+# resolved to a canonical platform Client.public_id via client_external_ids.
 ABC_CLIENT_ID = 1
 XYZ_CLIENT_ID = 2
 NOVA_CLIENT_ID = 3
+
+# (public_id, name, legacy talent-api id). platform-api owns canonical
+# Client / Organisation identity (Architecture Completion Plan §6.1); the
+# d4e5f6a7b8c9 migration seeds the same three rows.
+_CANONICAL_CLIENTS = [
+    ("cli-abc-company", "ABC Company", ABC_CLIENT_ID),
+    ("cli-xyz-company", "XYZ Company", XYZ_CLIENT_ID),
+    ("cli-nova-solutions", "Nova Solutions", NOVA_CLIENT_ID),
+]
+_LEGACY_TO_PUBLIC = {legacy: public_id for public_id, _n, legacy in _CANONICAL_CLIENTS}
+
+
+def seed_canonical_clients(db) -> None:
+    """Get-or-create the platform-owned canonical Client rows + the
+    talent-api legacy-id crosswalk. Idempotent."""
+    for public_id, name, legacy_id in _CANONICAL_CLIENTS:
+        client = db.query(Client).filter_by(public_id=public_id).one_or_none()
+        if client is None:
+            client = Client(public_id=public_id, name=name, status="ACTIVE")
+            db.add(client)
+            db.flush()
+        xref = (
+            db.query(ClientExternalId)
+            .filter_by(provider="talent-api", external_id=str(legacy_id))
+            .one_or_none()
+        )
+        if xref is None:
+            db.add(
+                ClientExternalId(
+                    client_id=client.id, provider="talent-api", external_id=str(legacy_id)
+                )
+            )
+    db.commit()
 
 
 def reset_schema() -> None:
@@ -139,7 +179,14 @@ def seed_module_registry(db) -> None:
 
 def _assign_client_scope(db, module_role: UserModuleRole, *, client_id: int | None) -> None:
     if client_id is not None:
-        db.add(UserModuleClientScope(user_module_role_id=module_role.id, client_id=client_id, all_clients=False))
+        db.add(
+            UserModuleClientScope(
+                user_module_role_id=module_role.id,
+                client_id=client_id,
+                client_ref=_LEGACY_TO_PUBLIC.get(client_id),
+                all_clients=False,
+            )
+        )
     else:
         db.add(UserModuleClientScope(user_module_role_id=module_role.id, all_clients=True))
 
@@ -148,6 +195,9 @@ def seed() -> None:
     db = SessionLocal()
     try:
         seed_authorization_catalog(db)
+
+        # --- Canonical client identity (platform-owned, §6.1) ----------
+        seed_canonical_clients(db)
 
         # --- Module registry --------------------------------------------
         seed_module_registry(db)
@@ -257,6 +307,7 @@ def seed() -> None:
                 continue
             module_role = UserModuleRole(
                 user_id=user.id, module_key=module_key, role=role, client_id=client_id,
+                client_ref=_LEGACY_TO_PUBLIC.get(client_id) if client_id is not None else None,
             )
             db.add(module_role)
             db.flush()

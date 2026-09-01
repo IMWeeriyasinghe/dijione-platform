@@ -14,6 +14,19 @@ class ClientScopeIn(BaseModel):
     client_ids: list[int] = []
 
 
+class ClientOut(BaseModel):
+    id: int
+    public_id: str
+    name: str
+    status: str
+    created_at: datetime
+
+
+class ClientCreateIn(BaseModel):
+    name: str
+    status: str = "ACTIVE"
+
+
 class ModuleAssignmentOut(BaseModel):
     module_key: str
     module_name: str

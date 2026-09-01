@@ -46,13 +46,12 @@ class UserModuleRole(TimestampMixin, Base):
     *portfolio* scope for staff is resolved from ``client_scopes`` via
     ``AuthorizationService``, not from this column.
 
-    Phase 2.5: ``client_id`` intentionally has **no** foreign key to
-    talent-api's ``clients`` table — that table lives in a different
-    database now that DijiTalentFlow owns its own data (CR §11/§23).
-    Referential integrity for "does this client id exist" is enforced at the
-    application layer (the Admin Center's client-scope picker only offers
-    ids talent-api itself returned) rather than at the database layer. See
-    docs/platform/service-architecture.md "Data ownership across services".
+    Architecture Completion Plan §6.1: canonical Client / Organisation
+    identity is now platform-owned master data (``app/models/client.py``).
+    ``client_ref`` is the durable reference — a ``Client.public_id``. The
+    legacy bare ``client_id`` integer (historically *assumed* to equal
+    talent-api's ``clients.id`` by seed order) is kept alongside for one
+    migration cycle, then dropped.
     """
 
     __tablename__ = "user_module_roles"
@@ -62,6 +61,7 @@ class UserModuleRole(TimestampMixin, Base):
     module_key: Mapped[str] = mapped_column(String(64), index=True)
     role: Mapped[str] = mapped_column(String(64))
     client_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    client_ref: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user: Mapped[User] = relationship(back_populates="module_roles")

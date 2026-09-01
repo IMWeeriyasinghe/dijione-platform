@@ -7,6 +7,12 @@ def test_health(api_client):
     assert resp.json() == {"service": "spark-api", "status": "healthy"}
 
 
+def test_health_deep(api_client):
+    resp = api_client.get("/health/deep")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "healthy"
+
+
 def test_metadata(api_client):
     resp = api_client.get("/api/spark/metadata")
     assert resp.status_code == 200

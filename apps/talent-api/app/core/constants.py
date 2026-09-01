@@ -148,24 +148,6 @@ class NotificationType(StrEnum):
     NEW_MESSAGE = "NEW_MESSAGE"
 
 
-class IntegrationProvider(StrEnum):
-    LEVER = "LEVER"
-    HUBSPOT = "HUBSPOT"
-
-
-class SyncStatus(StrEnum):
-    PENDING = "PENDING"
-    SYNCED = "SYNCED"
-    ERROR = "ERROR"
-
-
-class ProcessingStatus(StrEnum):
-    RECEIVED = "RECEIVED"
-    PROCESSED = "PROCESSED"
-    IGNORED_DUPLICATE = "IGNORED_DUPLICATE"
-    FAILED = "FAILED"
-
-
 class PostingClientMappingStatus(StrEnum):
     """Trust state of a Posting -> Client relationship.
 
@@ -189,5 +171,20 @@ class PostingClientMappingSource(StrEnum):
 
     MANUAL = "MANUAL"
     LEVER_STRUCTURED_FIELD = "LEVER_STRUCTURED_FIELD"
+    LEVER_DTC_TAG = "LEVER_DTC_TAG"  # governed "DTC - <Client Name>" posting tag
     HUBSPOT = "HUBSPOT"
     OTHER_VERIFIED_SOURCE = "OTHER_VERIFIED_SOURCE"
+
+
+class DtcResolutionStatus(StrEnum):
+    """Internal diagnostic reason for a posting's current client-mapping
+    state after DTC-tag reconciliation. Anything other than RESOLVED means
+    the posting is NOT client-visible (fail closed)."""
+
+    NO_DTC_TAG = "NO_DTC_TAG"
+    RESOLVED = "RESOLVED"
+    UNKNOWN_CLIENT_IDENTIFIER = "UNKNOWN_CLIENT_IDENTIFIER"
+    AMBIGUOUS_MULTIPLE_TAGS = "AMBIGUOUS_MULTIPLE_TAGS"
+    AMBIGUOUS_CLIENT_NAME = "AMBIGUOUS_CLIENT_NAME"
+    MALFORMED_TAG = "MALFORMED_TAG"
+    CONFLICT_MANUAL_OVERRIDE = "CONFLICT_MANUAL_OVERRIDE"

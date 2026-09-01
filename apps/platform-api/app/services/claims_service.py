@@ -43,11 +43,22 @@ def build_claims(user: User, db: Session) -> dict:
     for module_key, grants in authz.effective_module_roles(user).items():
         primary = next((g for g in grants if g.source_type == "DIRECT"), grants[0])
         client_ids, _sources = authz.effective_client_scope(user, module_key)
+        client_public_ids = authz.effective_client_ref_scope(user, module_key)
         legacy_client_id = client_ids[0] if client_ids and len(client_ids) == 1 else None
+        single_public_id = (
+            client_public_ids[0]
+            if client_public_ids and len(client_public_ids) == 1
+            else None
+        )
         module_roles[module_key] = {
             "role": primary.role,
+            # Legacy integer client scope — kept for one migration cycle so a
+            # token minted before talent-api switched to client_public_id
+            # still authorizes. New consumers read client_public_id(s).
             "client_id": legacy_client_id,
             "client_ids": client_ids,  # None == unrestricted (ALL_CLIENTS)
+            "client_public_id": single_public_id,
+            "client_public_ids": client_public_ids,  # None == unrestricted
             "permissions": sorted(authz.effective_permissions(user, module_key)),
         }
 

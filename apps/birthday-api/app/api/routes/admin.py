@@ -13,7 +13,7 @@ from app.api.deps import BirthdayScope, require_birthday_permission
 from app.api.routes.config import get_or_create_config
 from app.api.routes.internal import _scan_run_to_dict
 from app.db.session import get_db
-from app.integrations.factory import get_bamboohr_client
+from app.integrations.factory import get_employee_source
 from app.models.scan_run import ScanRun
 from app.services.detection_service import run_daily_scan
 
@@ -26,7 +26,7 @@ def run_detection(
     _scope: BirthdayScope = Depends(require_birthday_permission("birthday.config.manage")),
 ) -> dict:
     config = get_or_create_config(db)
-    client = get_bamboohr_client()
+    client = get_employee_source()
     return run_daily_scan(db, client, config, trigger="MANUAL")
 
 

@@ -36,8 +36,27 @@ def test_dev_login_embeds_client_scope_claims(api_client, db, two_tenant_world):
     assign_client_scope(db, ta_role, client_id=XYZ_CLIENT_ID)
 
     resp = api_client.post("/api/auth/dev-login", json={"persona_key": "test-ta"})
-    claims = _decode(resp.json()["access_token"])
-    assert set(claims["module_roles"]["talent-flow"]["client_ids"]) == {ABC_CLIENT_ID, XYZ_CLIENT_ID}
+    talent_claim = _decode(resp.json()["access_token"])["module_roles"]["talent-flow"]
+    assert set(talent_claim["client_ids"]) == {ABC_CLIENT_ID, XYZ_CLIENT_ID}
+    # Durable client scope: platform Client.public_id, stable across reseeds.
+    assert set(talent_claim["client_public_ids"]) == {"cli-abc-company", "cli-xyz-company"}
+    assert talent_claim["client_public_id"] is None  # >1 client -> no single id
+
+
+def test_single_client_scope_emits_single_public_id(api_client, db, two_tenant_world):
+    from sqlalchemy import select
+
+    from app.models.user import UserModuleRole
+
+    ta_role = db.execute(
+        select(UserModuleRole).where(UserModuleRole.user_id == two_tenant_world["ta_user"].id)
+    ).scalars().first()
+    assign_client_scope(db, ta_role, client_id=ABC_CLIENT_ID)
+
+    resp = api_client.post("/api/auth/dev-login", json={"persona_key": "test-ta"})
+    talent_claim = _decode(resp.json()["access_token"])["module_roles"]["talent-flow"]
+    assert talent_claim["client_public_id"] == "cli-abc-company"
+    assert talent_claim["client_public_ids"] == ["cli-abc-company"]
 
 
 def test_disabled_module_assignment_excluded_from_claims(api_client, db, two_tenant_world):

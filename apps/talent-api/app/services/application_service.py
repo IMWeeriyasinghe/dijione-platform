@@ -1,6 +1,12 @@
 from sqlalchemy.orm import Session
 
-from app.core.constants import MODULE_TALENT_FLOW, NotificationType, TalentFlowRole
+from app.core.constants import (
+    MODULE_TALENT_FLOW,
+    ApplicationStatus,
+    CanonicalStage,
+    NotificationType,
+    TalentFlowRole,
+)
 from app.models.application import Application
 from app.repositories.application_repo import ApplicationRepository
 from app.repositories.candidate_repo import CandidateRepository
@@ -16,6 +22,16 @@ class DuplicateApplicationError(Exception):
 
 class ApplicationNotFoundError(Exception):
     pass
+
+
+class InvalidApplicationValueError(Exception):
+    """A client-supplied stage/status value is not a recognised enum member."""
+
+    pass
+
+
+_VALID_STAGES = {s.value for s in CanonicalStage}
+_VALID_STATUSES = {s.value for s in ApplicationStatus}
 
 
 class ApplicationService:
@@ -51,8 +67,17 @@ class ApplicationService:
         )
         return application
 
-    def update_stage(self, *, application_id: int, actor_id: int, stage: str) -> Application:
-        application = self._get_or_raise(application_id)
+    def update_stage(
+        self,
+        *,
+        application_id: int,
+        actor_id: int,
+        stage: str,
+        allowed_client_ids: list[int] | None = None,
+    ) -> Application:
+        if stage not in _VALID_STAGES:
+            raise InvalidApplicationValueError(f"Unknown stage '{stage}'")
+        application = self._get_or_raise(application_id, allowed_client_ids=allowed_client_ids)
         previous = application.current_stage
         application.current_stage = stage
         self.audit.log(
@@ -70,9 +95,17 @@ class ApplicationService:
         return application
 
     def update_status(
-        self, *, application_id: int, actor_id: int, status: str, rejection_reason: str
+        self,
+        *,
+        application_id: int,
+        actor_id: int,
+        status: str,
+        rejection_reason: str,
+        allowed_client_ids: list[int] | None = None,
     ) -> Application:
-        application = self._get_or_raise(application_id)
+        if status not in _VALID_STATUSES:
+            raise InvalidApplicationValueError(f"Unknown status '{status}'")
+        application = self._get_or_raise(application_id, allowed_client_ids=allowed_client_ids)
         previous = application.status
         application.status = status
         application.rejection_reason = rejection_reason
@@ -87,9 +120,15 @@ class ApplicationService:
         return application
 
     def update_score(
-        self, *, application_id: int, actor_id: int, score: float, recruiter_notes: str
+        self,
+        *,
+        application_id: int,
+        actor_id: int,
+        score: float,
+        recruiter_notes: str,
+        allowed_client_ids: list[int] | None = None,
     ) -> Application:
-        application = self._get_or_raise(application_id)
+        application = self._get_or_raise(application_id, allowed_client_ids=allowed_client_ids)
         application.score = score
         if recruiter_notes:
             application.recruiter_notes = recruiter_notes
@@ -109,8 +148,9 @@ class ApplicationService:
         actor_id: int,
         is_client_visible: bool,
         client_visible_notes: str,
+        allowed_client_ids: list[int] | None = None,
     ) -> Application:
-        application = self._get_or_raise(application_id)
+        application = self._get_or_raise(application_id, allowed_client_ids=allowed_client_ids)
         application.is_client_visible = is_client_visible
         if client_visible_notes:
             application.client_visible_notes = client_visible_notes
@@ -142,8 +182,13 @@ class ApplicationService:
             related_entity_id=application.id,
         )
 
-    def _get_or_raise(self, application_id: int) -> Application:
-        application = self.repo.get_by_id(application_id)
+    def _get_or_raise(
+        self, application_id: int, *, allowed_client_ids: list[int] | None = None
+    ) -> Application:
+        # allowed_client_ids restricts a portfolio-scoped staff user to their
+        # assigned clients; an out-of-portfolio id resolves to None -> 404
+        # (existence is not leaked), identical to the read-path behaviour.
+        application = self.repo.get_by_id(application_id, allowed_client_ids=allowed_client_ids)
         if application is None:
             raise ApplicationNotFoundError(application_id)
         return application

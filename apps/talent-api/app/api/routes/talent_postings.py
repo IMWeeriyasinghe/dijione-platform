@@ -1,12 +1,12 @@
-"""Lever Posting read routes.
+"""Recruitment posting review + client-visibility routes.
 
 Fail-closed by construction: the client-scoped route
-(``GET /api/talent/postings``) only ever reaches a Posting through
-``PostingRepository.list_verified_for_client``, which inner-joins
+(``GET /api/talent/postings/client-visible``) only ever reaches a posting
+through ``PostingRepository.list_verified_for_client``, which inner-joins
 ``PostingClientMapping`` filtered to ``status == VERIFIED AND
-client_id == scope.client_id`` — an unmapped or rejected Posting has no
-matching row and is structurally unreachable, not merely hidden by a flag
-check. Diagnostic tag/team/department text is never exposed on this path.
+client_id == scope.client_id``. Both the posting projection and the trust
+record are local tables — this decision never depends on recruitment-api
+being reachable. Source diagnostics are never exposed on the client path.
 """
 
 from datetime import UTC, datetime
@@ -17,39 +17,34 @@ from sqlalchemy.orm import Session
 from app.api.deps import TalentScope, get_talent_scope, require_staff_scope
 from app.core.constants import PostingClientMappingSource, PostingClientMappingStatus
 from app.db.session import get_db
-from app.models.posting_client_mapping import PostingClientMapping
 from app.repositories.client_repo import ClientRepository
 from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
 from app.repositories.posting_repo import PostingRepository
 from app.schemas.posting import ClientSafePostingOut, PostingClientMappingVerify, PostingOut
-from app.services.lever_posting_service import LeverPostingSyncService
 
 router = APIRouter(prefix="/api/talent/postings", tags=["postings"])
 
+_UNMAPPED = PostingClientMappingStatus.UNMAPPED.value
 
-def _to_posting_out(posting, client_name: str | None) -> PostingOut:
-    import json
 
-    mapping: PostingClientMapping | None = posting.client_mapping
+def _to_posting_out(ref, mapping, client_name: str | None) -> PostingOut:
     return PostingOut(
-        id=posting.id,
-        lever_posting_id=posting.lever_posting_id,
-        title=posting.title,
-        state=posting.state,
-        team=posting.team,
-        department=posting.department,
-        location=posting.location,
-        confidentiality=posting.confidentiality,
-        tags=json.loads(posting.tags) if posting.tags else [],
-        archived=posting.archived,
-        lever_created_at=posting.lever_created_at,
-        lever_updated_at=posting.lever_updated_at,
-        last_synced_at=posting.last_synced_at,
-        mapping_status=mapping.status if mapping else PostingClientMappingStatus.UNMAPPED.value,
+        id=ref.id,
+        external_id=ref.external_id,
+        provider=ref.provider,
+        title=ref.title,
+        state=ref.state,
+        location=ref.location,
+        archived=ref.archived,
+        source_synced_at=ref.source_synced_at,
+        mapping_status=mapping.status if mapping else _UNMAPPED,
         mapping_client_id=mapping.client_id if mapping else None,
         mapping_client_name=client_name,
         mapping_source=mapping.source if mapping else "",
         mapping_verified_at=mapping.verified_at if mapping else None,
+        dtc_source_tag=mapping.dtc_source_tag if mapping else ref.dtc_raw_tag,
+        dtc_client_name=ref.dtc_client_name,
+        resolution_status=mapping.resolution_status if mapping else "NO_DTC_TAG",
     )
 
 
@@ -61,65 +56,50 @@ def list_postings_staff(
 ) -> list[PostingOut]:
     repo = PostingRepository(db)
     client_repo = ClientRepository(db)
-    postings = repo.list_unresolved() if unresolved_only else repo.list_for_staff()
+    rows = repo.list_for_staff(unresolved_only=unresolved_only)
 
-    out = []
-    for posting in postings:
+    out: list[PostingOut] = []
+    for ref, mapping in rows:
         client_name = None
-        if posting.client_mapping and posting.client_mapping.client_id:
-            client = client_repo.get_by_id(posting.client_mapping.client_id)
+        if mapping and mapping.client_id:
+            client = client_repo.get_by_id(mapping.client_id)
             client_name = client.name if client else None
-        out.append(_to_posting_out(posting, client_name))
+        out.append(_to_posting_out(ref, mapping, client_name))
     return out
 
 
-@router.post("/sync")
-def sync_postings(
-    scope: TalentScope = Depends(require_staff_scope), db: Session = Depends(get_db)
-) -> dict:
-    """Triggers a read-only reconciliation pull from Lever (GET only — see
-    LiveLeverClient's module docstring). Never assigns a client."""
-    result = LeverPostingSyncService(db).sync_postings()
-    db.commit()
-    return result
-
-
-@router.post("/{posting_id}/verify-mapping", response_model=PostingOut)
+@router.post("/{ref_id}/verify-mapping", response_model=PostingOut)
 def verify_posting_mapping(
-    posting_id: int,
+    ref_id: int,
     payload: PostingClientMappingVerify,
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> PostingOut:
-    """The only mechanism this phase provides for setting a Posting's
-    client mapping — explicit, staff-only, source=MANUAL. No automatic
-    resolution from tag/title text is implemented (CLAUDE.md §60)."""
+    """Staff-only, explicit, ``source=MANUAL`` client mapping — the only
+    human path to set VERIFIED. A MANUAL VERIFIED mapping is never
+    overwritten by later DTC reconciliation (a conflict is flagged)."""
     posting_repo = PostingRepository(db)
     mapping_repo = PostingClientMappingRepository(db)
     client_repo = ClientRepository(db)
 
-    posting = posting_repo.get_by_id_for_staff(posting_id)
-    if posting is None:
+    ref = posting_repo.get_ref_by_id(ref_id)
+    if ref is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
 
     client = client_repo.get_by_id(payload.client_id)
     if client is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
 
-    mapping = mapping_repo.get_for_posting(posting.id)
-    if mapping is None:
-        mapping = PostingClientMapping(posting_id=posting.id)
-        mapping_repo.add(mapping)
-
+    mapping = mapping_repo.get_or_create(ref.external_id, provider=ref.provider)
     mapping.client_id = client.id
     mapping.status = PostingClientMappingStatus.VERIFIED.value
     mapping.source = PostingClientMappingSource.MANUAL.value
     mapping.verified_by_user_id = scope.user.id
     mapping.verified_at = datetime.now(UTC)
     db.commit()
-    db.refresh(posting)
+    db.refresh(mapping)
 
-    return _to_posting_out(posting, client.name)
+    return _to_posting_out(ref, mapping, client.name)
 
 
 @router.get("/client-visible", response_model=list[ClientSafePostingOut])
@@ -127,30 +107,31 @@ def list_postings_client_scope(
     scope: TalentScope = Depends(get_talent_scope), db: Session = Depends(get_db)
 ) -> list[ClientSafePostingOut]:
     if scope.client_id is None:
-        # Staff calling the client-facing route sees nothing here by
-        # design — staff use the full diagnostic list above instead.
         return []
     repo = PostingRepository(db)
-    postings = repo.list_verified_for_client(client_id=scope.client_id)
+    refs = repo.list_verified_for_client(client_id=scope.client_id)
     return [
-        ClientSafePostingOut(id=p.id, title=p.title, location=p.location, state=p.state)
-        for p in postings
+        ClientSafePostingOut(id=r.id, title=r.title, location=r.location, state=r.state)
+        for r in refs
     ]
 
 
-@router.get("/{posting_id}", response_model=PostingOut)
+@router.get("/{ref_id}", response_model=PostingOut)
 def get_posting_staff(
-    posting_id: int,
+    ref_id: int,
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> PostingOut:
     posting_repo = PostingRepository(db)
     client_repo = ClientRepository(db)
-    posting = posting_repo.get_by_id_for_staff(posting_id)
-    if posting is None:
+    mapping_repo = PostingClientMappingRepository(db)
+
+    ref = posting_repo.get_ref_by_id(ref_id)
+    if ref is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
+    mapping = mapping_repo.get_for_posting(ref.external_id, provider=ref.provider)
     client_name = None
-    if posting.client_mapping and posting.client_mapping.client_id:
-        client = client_repo.get_by_id(posting.client_mapping.client_id)
+    if mapping and mapping.client_id:
+        client = client_repo.get_by_id(mapping.client_id)
         client_name = client.name if client else None
-    return _to_posting_out(posting, client_name)
+    return _to_posting_out(ref, mapping, client_name)

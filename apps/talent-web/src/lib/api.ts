@@ -145,3 +145,45 @@ export const getHubspotStatus = () =>
   request<Record<string, unknown>>("/api/talent/integrations/hubspot/status");
 export const listIntegrationEvents = () =>
   request<Record<string, unknown>[]>("/api/talent/integrations/events");
+
+// --- Recruitment Source (Lever) sync -------------------------------
+import type { SourceFreshness, SyncRunSummary } from "@dijione/contracts";
+
+export const getRecruitmentFreshness = () =>
+  request<SourceFreshness>("/api/talent/integrations/recruitment/freshness");
+
+// --- Recruitment postings (staff — Recruitment Source posting -> client mapping) ---
+// Posting facts are a thin local projection of recruitment-api's canonical
+// DTO; the mapping fields are the DijiTalentFlow-owned trust decision.
+export type PostingRow = {
+  id: number;
+  external_id: string;
+  provider: string;
+  title: string;
+  state: string;
+  location: string;
+  archived: boolean;
+  mapping_status: "UNMAPPED" | "VERIFIED" | "REJECTED";
+  mapping_client_id: number | null;
+  mapping_client_name: string | null;
+  mapping_source: string;
+  dtc_source_tag: string | null;
+  dtc_client_name: string | null;
+  resolution_status: string;
+};
+
+export const listRecruitmentPostings = (unresolvedOnly = false) =>
+  request<PostingRow[]>(`/api/talent/postings${qs({ unresolved_only: unresolvedOnly || undefined })}`);
+
+export const verifyPostingMapping = (postingId: number, client_id: number) =>
+  request<PostingRow>(`/api/talent/postings/${postingId}/verify-mapping`, {
+    method: "POST",
+    body: JSON.stringify({ client_id }),
+  });
+export const getRecruitmentSyncRun = (runId: string) =>
+  request<{ run: SyncRunSummary | null }>(`/api/talent/integrations/recruitment/sync/${runId}`);
+export const requestRecruitmentSync = () =>
+  request<{ run_id: string; status: string; started: boolean; message: string }>(
+    "/api/talent/integrations/recruitment/sync",
+    { method: "POST" },
+  );

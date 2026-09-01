@@ -19,6 +19,9 @@ Running all eight DijiOne services locally. See
   ./.venv/Scripts/pip install -r apps/talent-api/requirements.txt
   ./.venv/Scripts/pip install -r apps/birthday-api/requirements.txt
   ./.venv/Scripts/pip install -r apps/spark-api/requirements.txt
+  ./.venv/Scripts/pip install -r apps/recruitment-api/requirements.txt
+  ./.venv/Scripts/pip install -r apps/people-api/requirements.txt
+  ./.venv/Scripts/pip install -r apps/commercial-api/requirements.txt
   ```
 
   (`requirements.txt` for `admin-api`, `talent-api`, `birthday-api`,
@@ -39,11 +42,15 @@ Running all eight DijiOne services locally. See
 | `admin-web` | 3001 | `GET http://localhost:3001/admin` (its `basePath`) |
 | `talent-web` | 3002 | `GET http://localhost:3002/talent-flow` (its `basePath`) |
 | `birthday-web` | 3003 | `GET http://localhost:3003/birthday` (its `basePath`) |
+| `birthday-supplier-web` | 3006 | `GET http://localhost:3006/` (own hostname in prod; not proxied through shell-web) |
 | `platform-api` | 8000 | `GET http://localhost:8000/health` |
 | `admin-api` | 8001 | `GET http://localhost:8001/health` |
 | `talent-api` | 8002 | `GET http://localhost:8002/health` |
 | `birthday-api` | 8003 | `GET http://localhost:8003/health` |
 | `spark-api` | 8004 | `GET http://localhost:8004/health` |
+| `recruitment-api` | 8005 | `GET http://localhost:8005/health` (internal ingress only — no gateway route) |
+| `people-api` | 8006 | `GET http://localhost:8006/health` (internal ingress only — no gateway route) |
+| `commercial-api` | 8007 | `GET http://localhost:8007/health` (internal ingress only — skeleton) |
 
 Always develop against `http://localhost:3000` — that's the gateway.
 `admin-web`/`talent-web` are independently runnable on their own ports for
@@ -56,9 +63,9 @@ common nav/auth chrome and cross-zone links back to Home.
 npm run dev:all
 ```
 
-Runs `scripts/dev-all.js`, which spawns all nine processes (Python
-services via the repo-root `.venv`, Next.js apps via their own workspace
-`dev` script), tags every log line with a colored `[service-name]` prefix,
+Runs `scripts/dev-all.js`, which spawns all thirteen processes (eight
+Python services via the repo-root `.venv`, five Next.js apps via their own
+workspace `dev` script), tags every log line with a colored `[service-name]` prefix,
 and shuts everything down together on Ctrl-C. No Docker required — this is
 plain `child_process.spawn`, chosen as the lowest-complexity option that
 actually works (CR §31).
@@ -72,23 +79,26 @@ after modifying `scripts/dev-all.js`, this is almost certainly why.
 
 ## Seeding demo data
 
-Seed **platform-api first, then talent-api** — talent-api's seed data
-references user ids and client-scope rows platform-api's seed created, by
-plain integer convention (there's no foreign key across the database
-boundary to enforce order, so the order itself matters):
+Seed **platform-api first, then talent-api**:
 
 ```bash
 cd apps/platform-api && ../../.venv/Scripts/python scripts/seed.py --reset
 cd ../talent-api      && ../../.venv/Scripts/python scripts/seed.py --reset
 ```
 
-The convention both scripts rely on: platform-api's dev personas get ids
-1–9 in a fixed order (`madushanka`=1, `cs_user`=2, `ta_manager`=3,
+`platform-api`'s seed script is the **permanent** owner of canonical Client
+identity (Architecture Completion Plan §6.1): it creates the three `Client`
+rows with stable `public_id`s (`cli-abc-company`, `cli-xyz-company`,
+`cli-nova-solutions`) and writes every `UserModuleClientScope` /
+`UserModuleRole` row with the real `client_ref`, not just a bare integer —
+client isolation no longer depends on seed-insertion order lining up across
+services. Run platform-api's seed first only because talent-api's seed data
+(requests, messages, documents) references the **user** ids platform-api's
+seed created (fixed order: `madushanka`=1, `cs_user`=2, `ta_manager`=3,
 `platform_admin`=4, `super_admin`=5, `abc_client`=6, `xyz_client`=7,
-`nova_client`=8, `ta_portfolio`=9); talent-api's clients get ids 1–3 in
-order (ABC Company, XYZ Company, Nova Solutions). Both scripts' docstrings
-spell this out — if you add a new persona or client, keep the insertion
-order stable or update both scripts together.
+`nova_client`=8, `ta_portfolio`=9) and its own `clients` rows carry
+`platform_client_id`, backfilled by exact-name match against the three
+canonical clients platform-api just created.
 
 Talent-api's seed script drives real service calls (creating requests,
 applications, interviews, etc.), which means it also attempts real

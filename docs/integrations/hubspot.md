@@ -1,5 +1,12 @@
 # HubSpot Integration
 
+> **2026-08-31:** HubSpot is **not on the critical path** for associating a
+> Lever job posting with a DijiTalentFlow client. That is now done by the
+> governed Lever posting tag `DTC - <Client Name>` — see
+> `docs/platform/recruitment-source.md` "DTC client-tag resolution" and
+> `CLAUDE.md` rule 4a. HubSpot / the Commercial-CRM bounded domain remains
+> **deferred**, for future commercial/company data — not this mapping.
+
 ## Ownership
 
 HubSpot is Dijital Team's CRM/commercial system of record (CLAUDE.md §25):

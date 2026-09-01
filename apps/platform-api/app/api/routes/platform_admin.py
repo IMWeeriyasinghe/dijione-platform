@@ -32,6 +32,8 @@ from app.schemas.admin import (
     AdminUserOut,
     ApplicationDetailOut,
     AuditLogOut,
+    ClientCreateIn,
+    ClientOut,
     EffectiveAccessOut,
     GroupModuleAssignmentIn,
     ModuleAssignmentIn,
@@ -59,6 +61,26 @@ def get_dashboard(
     _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
 ) -> AdminDashboardOut:
     return AdminService(db).dashboard()
+
+
+@router.get("/clients", response_model=list[ClientOut])
+def list_clients(
+    _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
+) -> list[ClientOut]:
+    return AdminService(db).list_clients()
+
+
+@router.post("/clients", response_model=ClientOut, status_code=status.HTTP_201_CREATED)
+def create_client(
+    payload: ClientCreateIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+) -> ClientOut:
+    return _handle(
+        lambda: AdminService(db).create_client(
+            actor=admin, name=payload.name, status=payload.status
+        )
+    )
 
 
 @router.get("/users", response_model=list[AdminUserOut])

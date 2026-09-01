@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     platform_api_url: str = "http://localhost:8000"
+    people_api_url: str = "http://localhost:8006"
     # Must match platform-api's INTERNAL_SERVICE_SECRET.
     internal_service_secret: str = "dev-only-internal-secret-change-me"
 
@@ -40,14 +41,7 @@ class Settings(BaseSettings):
     graph_client_id: str = ""
     graph_client_secret: str = ""
     graph_sender_mailbox: str = ""
-
-    # BambooHR employee-directory adapter — REST API key auth (basic auth,
-    # username=API key, password="x", per BambooHR's documented convention).
-    # Unset until real BambooHR credentials are supplied; BambooHRHttpClient
-    # raises BambooHRNotConfiguredError until both are set. Never fabricated
-    # (CLAUDE.md §58) — mock remains the default via INTEGRATIONS_MODE=mock.
-    bamboohr_api_key: str = ""
-    bamboohr_subdomain: str = ""
+    graph_base_url: str = "https://graph.microsoft.com/v1.0"
 
     @property
     def cors_origins_list(self) -> list[str]:

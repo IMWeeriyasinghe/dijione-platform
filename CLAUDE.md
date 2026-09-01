@@ -3260,3 +3260,233 @@ Do not over-engineer the MVP.
 Do not under-design the architecture.
 
 Build a strong shared platform foundation, implement DijiTalentFlow thoroughly enough for an end-to-end stakeholder demo, and leave clear seams for the next modules and live integrations.
+
+---
+
+# DIJIONE PLATFORM DATA OWNERSHIP AND SOURCE SYNCHRONIZATION CONTRACT
+
+> **Authoritative. Added after the Data Ownership Architecture v2 review
+> (approved) and completed by the Architecture Completion Plan** (Waves
+> A–F: canonical Client identity, the Recruitment Source and
+> People/Workforce physical extractions, the Commercial/CRM skeleton, and
+> the documentation/contract reconciliation this section is part of).
+> Companion documents: `DijiOne-Data-Ownership-Architecture-v2.md`,
+> `docs/platform/service-architecture.md` (the service map),
+> `docs/platform/data-ownership.md` (the full table-by-table ownership map
+> and the two degraded-mode contracts), `docs/platform/service-contracts.md`
+> (API surface + per-dependency timeout/failure/auth table),
+> `docs/platform/recruitment-source.md`, `docs/platform/people-source.md`.
+> This section overrides any earlier text that says "DijiTalentFlow owns
+> Lever", "no live Lever client exists", "canonical client identity lives
+> in talent-api", or that applications integrate with external providers
+> independently.
+
+## Ownership
+
+1. **DijiOne is a Domain-Driven Distributed Modular Platform.**
+   Independently deployable, domain-sized services (not fine-grained
+   microservices) behind one gateway/domain, each owning its own database.
+   Not a monolith. Azure Container Apps is the approved hosting direction.
+   No Kubernetes, no message broker, no service mesh, no CQRS
+   infrastructure, no generic integration framework — unless independently
+   proven necessary.
+2. **"Integrate once, consume many."** Each external provider has exactly
+   **one** DijiOne owning source-data domain. Applications MUST NOT each
+   build their own integration to a provider the platform already owns.
+2a. **Canonical Client/Organisation identity is permanently platform-owned
+   master data** (Architecture Completion Plan §6.1 — one migration, no
+   interim registry). `platform-api` owns a `client` table (`id`,
+   `public_id` stable/non-sequential, `name`, `status`) plus a
+   `client_external_id` crosswalk. Every other service references
+   `client_ref` / `client_public_id` / `platform_client_id` — never a bare
+   integer assumed to line up by seed-insertion order.
+   `talent-api.clients` is a TalentFlow-owned **extension** keyed on
+   `platform_client_id` (TA account manager, portfolio groupings), not a
+   second identity table. Commercial/CRM supplies commercial *facts about*
+   clients, keyed by `client.public_id`, and may propose new organisations
+   for a platform-admin to confirm — it **never** owns the identity row,
+   now or later. Full detail: `docs/platform/data-ownership.md` §1.
+3. Provider ownership — **extraction complete**, each a separate service
+   with internal ingress only:
+   - **Lever → Recruitment Source, `apps/recruitment-api`** (port 8005,
+     `recruitment_dev`). The single DijiOne owner of direct Lever access.
+     `talent-api` consumes it via `RecruitmentSourceClient`; a static guard
+     (`tests/test_no_direct_lever_dependency.py`, empty allowlist) forbids
+     a direct Lever import anywhere else.
+   - **BambooHR → People / Workforce, `apps/people-api`** (port 8006,
+     `people_dev`). The single DijiOne owner of direct BambooHR access.
+     `birthday-api` consumes it via `EmployeeDirectoryClient`; a static
+     guard (`tests/test_no_direct_bamboohr_dependency.py`) forbids a direct
+     BambooHR import anywhere else.
+   - **HubSpot → Commercial / CRM, `apps/commercial-api`** (port 8007,
+     skeleton — health/metadata + the relocated stub/webhook only; no live
+     client, no credential requested yet). Build the live client there when
+     access arrives; never inside `talent-api`. **NOT required for
+     Lever-posting → client association** (see rule 4a) — HubSpot remains
+     for future commercial/CRM data only, and never for identity (rule 2a).
+   - **Entra / Graph (identity) → `platform-api`.** **Graph (email) →
+     `birthday-api`**, a deliberately independent app registration behind a
+     factory seam (mock by default) — see `docs/platform/data-ownership.md`
+     §6; a shared platform Communication contract is defined but not built.
+4. **Applications own operational / business / trust state.** DijiTalentFlow
+   owns `TalentRequest`, `Application`, workflow state, **`PostingClientMapping`**
+   (`UNMAPPED`/`VERIFIED` client-visibility trust — client exposure fails
+   closed), messages, documents, its interviews, and its client-safe DTOs.
+   Third-party *reusable read models* (Lever postings, opportunities,
+   candidate source facts, stages, archive reasons, provider IDs, sync
+   metadata) belong to the source domain.
+4a. **Client identity from Lever — governed tag only.** Arbitrary Lever
+   tags, titles, team/department fields, free text and candidate fields MUST
+   NOT be used to infer client identity. The **one approved** Lever-based
+   client identifier is the governed posting-tag contract **`DTC - <Client
+   Name>`**, deliberately maintained by the TA business process. Only a
+   **single, well-formed, exactly-matching** DTC tag (case-insensitive
+   `DTC`, trimmed, exact `Client.name` match — **no fuzzy matching**) may
+   enter deterministic client resolution and set `PostingClientMapping` to
+   `VERIFIED` (`source=LEVER_DTC_TAG`). Missing / malformed / multiple /
+   ambiguous / unknown identifiers MUST **fail closed** (stay `UNMAPPED`
+   with a diagnostic `resolution_status`) and never grant client visibility.
+   A `Client` row is NEVER auto-created from a tag. A governed DTC tag NEVER
+   overwrites a human `source=MANUAL` `VERIFIED` mapping — a conflict is
+   kept and flagged (`CONFLICT_MANUAL_OVERRIDE` + `TA_MANAGER` notification).
+   A removed/broken DTC tag on a DTC-resolved mapping reverts it to
+   `UNMAPPED` (visibility lost). The parser is a Recruitment Source provider
+   fact (`app/recruitment_source/dtc.py`); the resolver + trust decision are
+   TalentFlow's (`app/services/posting_client_mapping_reconciler.py`), run
+   inside every scheduled + ad-hoc sync. HubSpot is **not** on this path.
+5. **After the Recruitment Source extraction, `talent-api` MUST NOT call
+   Lever directly.** Only the Recruitment Source owns the Lever client.
+   Future Lever consumers (e.g. DijiSpark) consume Recruitment Source, not
+   Lever and not TalentFlow. A test/static assertion guards against a
+   re-introduced direct Lever dependency in TalentFlow route/consumer code.
+6. **No cross-service database access. No cross-service SQL joins. No
+   assumption that auto-increment IDs match across databases.** Preserve
+   provider external IDs. `PostingClientMapping` references the source
+   posting by `(provider=LEVER, external_posting_id)`, never a shared
+   integer.
+7. **No `integration-api`, no `integration.db`.** Bounded domains only.
+8. **LEVER IS GET-ONLY.** No POST/PUT/PATCH/DELETE to Lever without an
+   explicit future architectural approval that changes the safety contract
+   (CLAUDE.md §60). Static + runtime safety tests must continue proving the
+   live adapter exposes no write verb.
+9. Source/provider APIs return **minimum-data DTOs** — no raw provider
+   payloads, no unjustified PII (contact details, notes, scores,
+   compensation, offers, free text). Client-facing safe DTOs and
+   authorization stay application-owned.
+
+## Standard source-synchronization lifecycle (all bounded source domains)
+
+Every reusable source-data domain MUST provide:
+
+10. **Automatic reconciliation every 6 hours by default** (00/06/12/18 UTC
+    or equivalent), via a **replica-safe** scheduler — an Azure Container
+    Apps scheduled Job hitting an internal `.../scheduled-sync` endpoint,
+    **not** one in-process timer per API replica. Local dev triggers the
+    same endpoint deterministically (cron / curl / a script).
+11. **Authenticated ad-hoc sync requests from consuming applications.** The
+    browser calls its own application API, which calls the source domain's
+    internal contract — browsers do not call source services directly.
+12. **Asynchronous execution.** Ad-hoc sync returns `202 Accepted`
+    `{run_id, status}`; the run executes in the background. The HTTP request
+    is never held open for a full provider reconciliation.
+13. **Durable sync-run state**: `run_id`, provider, `trigger_type`
+    (SCHEDULED / AD_HOC), requesting application + user, timestamps, status
+    (QUEUED / RUNNING / SUCCEEDED / PARTIAL / FAILED), record counts,
+    correlation id, safe error summary. No secrets, no raw PII in the log.
+14. **Single-flight / concurrency protection.** An already-active run
+    coalesces new requests (return the existing `run_id`) — never a
+    thundering herd of provider calls.
+15. **Idempotent reconciliation** — insert new, update changed, keep stable
+    IDs, honour provider archive semantics; repeated runs over unchanged
+    data have no harmful effect; a failed run preserves the previous valid
+    read model (no blind wipe).
+16. **Rate-limit-aware retry** (429 backoff, retry transient 5xx, do not
+    retry permanent 4xx).
+17. **Freshness metadata** — `last_successful_sync_at` + latest-run summary,
+    exposed to consuming applications.
+18. **Consuming-application frontend visibility** — freshness line +
+    authorized "Sync now" action + indeterminate progress (never a faked
+    percentage) + bounded polling with unmount cleanup. Backend-enforced
+    authorization; frontend hiding is not authorization.
+19. **Notifications**: SCHEDULED success updates freshness **silently**
+    (no user spam); SCHEDULED failure → operational warning (TA_MANAGER /
+    admin); AD_HOC success → lightweight confirmation to the requester;
+    AD_HOC failure → clear error to the requester. Use the existing DijiOne
+    notification infrastructure; do not redesign it.
+
+## Failure isolation
+
+20. Lever/BambooHR unavailable → the owning source domain keeps its prior
+    read model; the run is `FAILED`; freshness goes stale/degraded. A
+    source domain (`recruitment-api`, `people-api`) unavailable never takes
+    down its consumer, but the **two consumers degrade differently, by
+    design** — not an inconsistency, a match to what each read is for (full
+    contract: `docs/platform/data-ownership.md` §4):
+    - `talent-api` ← `recruitment-api`: client visibility is an
+      **authorization** decision and must stay available and fail-closed,
+      so `talent-api` keeps a thin local posting projection
+      (`RecruitmentPostingRef`) refreshed opportunistically; the decision
+      itself never leaves `talent_dev`. **Birthday must not query
+      `people_dev` directly, and does not** — the equivalent projection
+      pattern is deliberately **not** used there.
+    - `birthday-api` ← `people-api`: detection is a **workflow trigger**,
+      not an authorization decision, so `birthday-api` holds **no**
+      employee mirror/projection table at all. A `people-api` outage makes
+      the daily scan **defer** (`ScanRun.status =
+      DEFERRED_SOURCE_UNAVAILABLE`, zero orders created) and **self-heal**
+      on the next scan via a forward occurrence window (≥ the maximum
+      tolerable outage, never below the supplier lead time) plus
+      `UniqueConstraint(employee_id, birthday_year)` idempotency — no
+      duplicates. Every in-flight `BirthdayOrder` is unaffected regardless,
+      because CS approval, verification, dispatch, delivery, and email all
+      read the employee facts **snapshotted onto the order at detection
+      time**, never a live lookup.
+    A DB-owning service unavailable never corrupts another service's
+    database — no distributed transactions, no shared connection.
+
+## Service authentication
+
+21. Use the existing DijiOne service-to-service pattern. **DEV / current
+    trust mechanism = the shared `INTERNAL_SERVICE_SECRET` on
+    `X-Internal-Token`**, centralized in one factory
+    (`packages/auth-client-py`'s `make_verify_internal_request`, imported
+    by every backend as `require_internal_service`) so no service
+    redeclares its own copy; `X-Internal-Caller` is emitted on every
+    internal call for audit/log only, never for trust. **DURABLE FUTURE
+    TARGET = workload/managed identity or signed service tokens** — one
+    change point, that same factory. The future improvement does not block
+    DEV.
+
+## Analytics
+
+22. Reporting consumes downstream reporting models — it does **not**
+    cross-query operational or source databases.
+
+## Deployment topology and the cloud boundary
+
+23. **Target hosting is Azure Container Apps**, one PostgreSQL Flexible
+    Server database per domain (`platform_dev`/`talent_dev`/
+    `recruitment_dev`/`people_dev`/`birthday_dev`/`commercial_dev`), and two
+    scheduled **Container Apps Jobs** driving source sync
+    (`recruitment-sync-job` every 6h, `people-sync-job` daily) — never an
+    in-process per-replica timer. Only `shell-web` and
+    `birthday-supplier-web` take external ingress; every other service is
+    internal-only, reached in production through Azure Front Door / API
+    Management path fan-out. Full reference:
+    `docs/platform/deployment-topology.md`.
+24. **No Azure resource has been created, no Entra tenant/app-registration
+    change has been made, and no cloud spend has occurred** as part of this
+    architecture work — local development and CI run entirely on SQLite/
+    mock providers, with a `postgres` CI job validating every service
+    against real PostgreSQL. Provisioning Azure DEV, configuring Entra SSO,
+    and hosted UAT are the explicit next external steps and require the
+    user's own tenant/subscription actions — they are not something an
+    autonomous run performs on its own authority.
+
+## Closed
+
+25. `.env`, credentials, provider keys, and customer/candidate PII are never
+    committed. The architecture is **CLOSED** unless a material business
+    requirement, security problem, verified defect, or architectural
+    violation genuinely requires a change — not an alternative style or a
+    speculative improvement.

@@ -14,6 +14,7 @@ from app.models.application import Application
 from app.models.candidate import Candidate
 from app.models.client import Client
 from app.models.interview import Interview
+from app.models.talent_request import TalentRequest
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.dashboard import ClientDashboardOut, TaDashboardOut
 from app.services.talent_request_service import ACTIVE_APPLICATION_STATUSES, TalentRequestService
@@ -100,26 +101,42 @@ class DashboardService:
             for r in requests
             if r.customer_success_status == CustomerSuccessStatus.PENDING_REVIEW.value
         ]
-        active_applications = self.db.execute(
+        # Portfolio-scoped staff see counts for their assigned clients only.
+        # `available_candidates` is intentionally NOT scoped — the candidate
+        # pool is a global master pool with no client ownership (Architecture
+        # v2 §3 / CLAUDE.md §19).
+        def _scoped_app_count(stmt):
+            if allowed_client_ids is not None:
+                stmt = stmt.join(TalentRequest).where(
+                    TalentRequest.client_id.in_(allowed_client_ids)
+                )
+            return self.db.execute(stmt).scalar_one()
+
+        active_applications = _scoped_app_count(
             select(func.count(Application.id)).where(
                 Application.status.in_(list(ACTIVE_APPLICATION_STATUSES))
             )
-        ).scalar_one()
+        )
         available_candidates = self.db.execute(
             select(func.count(Candidate.id)).where(
                 Candidate.availability_status == CandidateAvailability.AVAILABLE.value
             )
         ).scalar_one()
-        interviews_scheduled = self.db.execute(
-            select(func.count(Interview.id)).where(
-                Interview.status == InterviewStatus.SCHEDULED.value
-            )
-        ).scalar_one()
-        offers_in_progress = self.db.execute(
+        interviews_stmt = (
+            select(func.count(Interview.id))
+            .join(Application, Interview.application_id == Application.id)
+            .where(Interview.status == InterviewStatus.SCHEDULED.value)
+        )
+        if allowed_client_ids is not None:
+            interviews_stmt = interviews_stmt.join(
+                TalentRequest, Application.talent_request_id == TalentRequest.id
+            ).where(TalentRequest.client_id.in_(allowed_client_ids))
+        interviews_scheduled = self.db.execute(interviews_stmt).scalar_one()
+        offers_in_progress = _scoped_app_count(
             select(func.count(Application.id)).where(
                 Application.status == ApplicationStatus.OFFER.value
             )
-        ).scalar_one()
+        )
 
         attention = sorted(
             pending_review, key=lambda r: r.created_at

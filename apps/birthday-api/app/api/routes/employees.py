@@ -1,5 +1,5 @@
-"""Live-BambooHR "upcoming birthdays" directory endpoint — read-only, never
-creates orders. See ``app/services/directory_service.py`` for the
+"""Live-People-source "upcoming birthdays" directory endpoint — read-only,
+never creates orders. See ``app/services/directory_service.py`` for the
 active-employee-filtering and year-boundary-safe date logic."""
 
 from __future__ import annotations
@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import BirthdayScope, require_birthday_permission
 from app.db.session import get_db
-from app.integrations.bamboohr.client import BambooHRFetchError
-from app.integrations.factory import get_bamboohr_client
+from app.integrations.factory import get_employee_source
+from app.integrations.people_source.client import EmployeeSourceFetchError
 from app.schemas.birthday_directory import UpcomingBirthdaysResponse
 from app.services.directory_service import list_upcoming_birthdays
 
@@ -37,15 +37,18 @@ def get_upcoming_birthdays(
     page = max(page, 1)
     page_size = max(1, min(page_size, 500))
 
-    client = get_bamboohr_client()
+    client = get_employee_source()
     try:
         birthdays = list_upcoming_birthdays(
             db, client, days=days, search=search, group_filter=filter, province=province,
             sort_by=sort_by, sort_direction=sort_direction,
         )
-    except BambooHRFetchError as exc:
+    except EmployeeSourceFetchError as exc:
+        # Degraded state (Architecture Completion Plan Wave E): people-api
+        # unreachable — the staff directory view shows unavailable rather
+        # than a stale/misleading list.
         raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY, "Unable to reach the employee directory (BambooHR)"
+            status.HTTP_502_BAD_GATEWAY, "Employee directory temporarily unavailable"
         ) from exc
 
     total = len(birthdays)

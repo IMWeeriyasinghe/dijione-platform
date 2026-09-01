@@ -14,23 +14,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
-from auth_client_py.fastapi_deps import make_get_claims
-from fastapi import Depends, Header, HTTPException, status
+from auth_client_py.claims import ModuleRoleClaims
+from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import MODULE_TALENT_FLOW
+from app.db.session import get_db
+from app.repositories.client_repo import ClientRepository
 
 _settings = get_settings()
 get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
 
-
-def require_internal_service(x_internal_token: str | None = Header(default=None)) -> None:
-    """Gate for service-to-service calls with no human actor behind them
-    (admin-api reading client display names/counts). Dev-only shared-secret
-    trust boundary — see the identical dependency in platform-api and
-    docs/platform/service-contracts.md."""
-    if x_internal_token != _settings.internal_service_secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing internal service token")
+# Gate for service-to-service calls with no human actor behind them
+# (admin-api reading client display names/counts; the recruitment
+# scheduled-sync trigger). Shared definition in ``packages/auth-client-py``.
+require_internal_service = make_verify_internal_request(
+    secret=_settings.internal_service_secret
+)
 
 
 @dataclass(frozen=True)
@@ -76,17 +78,47 @@ class TalentScope:
         return permission_key in self.permissions
 
 
-def get_talent_scope(claims: AuthClaims = Depends(get_claims)) -> TalentScope:
+def _resolve_local_client_scope(
+    db: Session, mc: ModuleRoleClaims
+) -> tuple[int | None, list[int] | None]:
+    """Map a client-scope claim to DijiTalentFlow's own integer client ids
+    (Architecture Completion Plan §6.1).
+
+    A token minted before this field existed carries only the legacy local
+    integers — pass them straight through. Otherwise resolve the durable
+    platform ``Client.public_id`` values to the local extension rows; a
+    public id with no local ``clients`` row is silently dropped (narrower =
+    fail-safe — this never widens scope). ``client_ids is None`` on the way
+    out still means unrestricted (staff ALL_CLIENTS).
+    """
+    if mc.client_public_id is None and mc.client_public_ids is None:
+        return mc.client_id, mc.client_ids
+
+    repo = ClientRepository(db)
+    client_ids: list[int] | None = None
+    if mc.client_public_ids is not None:
+        client_ids = sorted(c.id for c in repo.list_by_platform_ids(mc.client_public_ids))
+    client_id: int | None = None
+    if mc.client_public_id is not None:
+        row = repo.get_by_platform_id(mc.client_public_id)
+        client_id = row.id if row else None
+    return client_id, client_ids
+
+
+def get_talent_scope(
+    claims: AuthClaims = Depends(get_claims), db: Session = Depends(get_db)
+) -> TalentScope:
     module_claim = claims.module(MODULE_TALENT_FLOW)
     if module_claim is None:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "User has no active DijiTalentFlow module access"
         )
+    client_id, client_ids = _resolve_local_client_scope(db, module_claim)
     return TalentScope(
         user=ScopeUser(id=claims.user_id, full_name=claims.full_name),
         role=module_claim.role,
-        client_id=module_claim.client_id,
-        client_ids=module_claim.client_ids,
+        client_id=client_id,
+        client_ids=client_ids,
         permissions=module_claim.permissions,
     )
 

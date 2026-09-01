@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Plus,
+  Tags,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -63,6 +64,7 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
         { label: "Candidate Pool", href: "/candidates", icon: Users },
         { label: "Applications", href: "/applications", icon: FileText },
         { label: "Interview Manager", href: "/interviews", icon: CalendarClock },
+        { label: "Recruitment Postings", href: "/postings", icon: Tags },
       ],
     },
   ];

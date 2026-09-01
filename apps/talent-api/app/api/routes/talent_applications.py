@@ -15,6 +15,7 @@ from app.services.application_service import (
     ApplicationNotFoundError,
     ApplicationService,
     DuplicateApplicationError,
+    InvalidApplicationValueError,
 )
 
 router = APIRouter(prefix="/api/talent/applications", tags=["talent-applications"])
@@ -63,7 +64,8 @@ def update_stage(
     service = ApplicationService(db)
     application = _apply_or_404(
         service, lambda: service.update_stage(
-            application_id=application_id, actor_id=scope.user.id, stage=payload.stage
+            application_id=application_id, actor_id=scope.user.id, stage=payload.stage,
+            allowed_client_ids=scope.client_ids,
         )
     )
     db.commit()
@@ -86,6 +88,7 @@ def update_status(
             actor_id=scope.user.id,
             status=payload.status,
             rejection_reason=payload.rejection_reason,
+            allowed_client_ids=scope.client_ids,
         ),
     )
     db.commit()
@@ -108,6 +111,7 @@ def update_score(
             actor_id=scope.user.id,
             score=payload.score,
             recruiter_notes=payload.recruiter_notes,
+            allowed_client_ids=scope.client_ids,
         ),
     )
     db.commit()
@@ -130,6 +134,7 @@ def update_visibility(
             actor_id=scope.user.id,
             is_client_visible=payload.is_client_visible,
             client_visible_notes=payload.client_visible_notes,
+            allowed_client_ids=scope.client_ids,
         ),
     )
     db.commit()
@@ -142,3 +147,5 @@ def _apply_or_404(service: ApplicationService, action):
         return action()
     except ApplicationNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Application not found") from exc
+    except InvalidApplicationValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

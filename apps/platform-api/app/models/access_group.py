@@ -71,8 +71,9 @@ class GroupModuleRole(TimestampMixin, Base):
 
 class GroupModuleClientScope(TimestampMixin, Base):
     """Client/portfolio scope for a group module assignment. Mirrors
-    ``UserModuleClientScope`` (app/models/user_module_client_scope.py) — no
-    FK to talent-api's ``clients`` table, same opaque-id convention."""
+    ``UserModuleClientScope`` (app/models/user_module_client_scope.py),
+    including its ``client_ref`` -> platform-owned ``Client.public_id`` and
+    the legacy ``client_id`` integer kept for one migration cycle."""
 
     __tablename__ = "group_module_client_scopes"
 
@@ -81,6 +82,7 @@ class GroupModuleClientScope(TimestampMixin, Base):
         ForeignKey("group_module_roles.id", ondelete="CASCADE"), index=True
     )
     client_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_ref: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     all_clients: Mapped[bool] = mapped_column(Boolean, default=False)
 
     group_module_role: Mapped[GroupModuleRole] = relationship(back_populates="client_scopes")

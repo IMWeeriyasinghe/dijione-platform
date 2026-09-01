@@ -17,7 +17,7 @@ class AuditService:
         settings = get_settings()
         self.client = client or PlatformClient(
             base_url=settings.platform_api_url, internal_secret=settings.internal_service_secret,
-            timeout=2.0,
+            timeout=2.0, caller="birthday-api",
         )
 
     def log(

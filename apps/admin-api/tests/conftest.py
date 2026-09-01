@@ -38,7 +38,8 @@ STUB_USERS = {
             {
                 "module_key": "talent-flow", "module_name": "DijiTalentFlow", "role": "TALENT_CLIENT",
                 "role_name": "Talent Client", "enabled": True,
-                "client_scope": {"all_clients": False, "client_ids": [1], "client_names": []},
+                # Platform Core resolves names itself now (§6.1).
+                "client_scope": {"all_clients": False, "client_ids": [1], "client_names": ["ABC Company"]},
             }
         ],
     },
@@ -85,6 +86,20 @@ def _build_stub_platform_app() -> FastAPI:
             }
         ]
 
+    @stub.get("/api/platform/admin/clients")
+    def list_clients(authorization: str | None = Header(default=None)) -> list[dict]:
+        _require_admin_token(authorization)
+        return [
+            {
+                "id": 1, "public_id": "cli-abc-company", "name": "ABC Company",
+                "status": "ACTIVE", "created_at": "2026-01-01T00:00:00Z",
+            },
+            {
+                "id": 2, "public_id": "cli-xyz-company", "name": "XYZ Company",
+                "status": "ACTIVE", "created_at": "2026-01-01T00:00:00Z",
+            },
+        ]
+
     @stub.get("/api/platform/admin/applications/{module_key}")
     def application_detail(module_key: str, authorization: str | None = Header(default=None)) -> dict:
         _require_admin_token(authorization)
@@ -95,7 +110,7 @@ def _build_stub_platform_app() -> FastAPI:
                 {
                     "user_id": 1, "email": "abc-user@example.com", "full_name": "ABC User",
                     "role": "TALENT_CLIENT", "role_name": "Talent Client", "enabled": True,
-                    "client_scope": {"all_clients": False, "client_ids": [1], "client_names": []},
+                    "client_scope": {"all_clients": False, "client_ids": [1], "client_names": ["ABC Company"]},
                 }
             ],
             "assigned_groups": [],
@@ -107,12 +122,6 @@ def _build_stub_platform_app() -> FastAPI:
 
 def _build_stub_talent_app() -> FastAPI:
     stub = FastAPI()
-
-    @stub.get("/api/talent/internal/clients-lite")
-    def clients_lite(x_internal_token: str | None = Header(default=None)) -> list[dict]:
-        if x_internal_token != os.environ["INTERNAL_SERVICE_SECRET"]:
-            raise HTTPException(401, "Invalid internal token")
-        return [{"id": 1, "name": "ABC Company"}, {"id": 2, "name": "XYZ Company"}]
 
     @stub.get("/api/talent/summary")
     def summary() -> dict:

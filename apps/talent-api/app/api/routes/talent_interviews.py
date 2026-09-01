@@ -8,6 +8,7 @@ from app.services.interview_service import (
     ApplicationNotFoundError,
     InterviewNotFoundError,
     InterviewService,
+    InvalidInterviewValueError,
 )
 
 router = APIRouter(prefix="/api/talent/interviews", tags=["talent-interviews"])
@@ -36,9 +37,13 @@ def create_interview(
 ) -> InterviewOut:
     service = InterviewService(db)
     try:
-        interview = service.create_interview(actor_id=scope.user.id, payload=payload)
+        interview = service.create_interview(
+            actor_id=scope.user.id, payload=payload, allowed_client_ids=scope.client_ids
+        )
     except ApplicationNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Application not found") from exc
+    except InvalidInterviewValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     db.commit()
     db.refresh(interview)
     return service.to_out(interview)
@@ -54,10 +59,13 @@ def update_status(
     service = InterviewService(db)
     try:
         interview = service.update_status(
-            interview_id=interview_id, actor_id=scope.user.id, status=payload.status, notes=payload.notes
+            interview_id=interview_id, actor_id=scope.user.id, status=payload.status,
+            notes=payload.notes, allowed_client_ids=scope.client_ids,
         )
     except InterviewNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Interview not found") from exc
+    except InvalidInterviewValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     db.commit()
     db.refresh(interview)
     return service.to_out(interview)

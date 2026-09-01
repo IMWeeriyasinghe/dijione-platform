@@ -1,6 +1,7 @@
 """Seeds DijiTalentFlow's local demo data: clients, talent requests,
-candidates, applications, interviews, messages, documents and external
-(Lever/HubSpot) mappings.
+candidates, applications, interviews, messages, and documents. talent-api
+owns no external-provider mapping tables any more — Lever's live via
+recruitment-api, HubSpot's (currently unused) via commercial-api.
 
 Run with:  python scripts/seed.py [--reset]
 
@@ -31,7 +32,6 @@ from app.core.constants import CanonicalStage, CustomerSuccessStatus, TalentFlow
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.models.client import Client  # noqa: E402
-from app.models.external_mapping import ExternalMapping  # noqa: E402
 from app.schemas.application import ApplicationCreate  # noqa: E402
 from app.schemas.candidate import CandidateCreate  # noqa: E402
 from app.schemas.document import DocumentCreate  # noqa: E402
@@ -70,9 +70,21 @@ def seed() -> None:
     try:
         # --- Clients — inserted in this exact order so a fresh --reset
         # reseed gets ids 1/2/3, matching platform-api's seed convention. ---
-        abc = Client(name="ABC Company", industry="Financial Services", account_manager="Tharindu Fernando", status="ACTIVE")
-        xyz = Client(name="XYZ Company", industry="Retail", account_manager="Tharindu Fernando", status="ACTIVE")
-        nova = Client(name="Nova Solutions", industry="Technology", account_manager="Sanduni Wickrama", status="ACTIVE")
+        # platform_client_id references platform-api's canonical Client
+        # identity (Architecture Completion Plan §6.1) — must match the slugs
+        # in platform-api migration d4e5f6a7b8c9 / its seed.
+        abc = Client(
+            name="ABC Company", platform_client_id="cli-abc-company",
+            industry="Financial Services", account_manager="Tharindu Fernando", status="ACTIVE",
+        )
+        xyz = Client(
+            name="XYZ Company", platform_client_id="cli-xyz-company",
+            industry="Retail", account_manager="Tharindu Fernando", status="ACTIVE",
+        )
+        nova = Client(
+            name="Nova Solutions", platform_client_id="cli-nova-solutions",
+            industry="Technology", account_manager="Sanduni Wickrama", status="ACTIVE",
+        )
         db.add_all([abc, xyz, nova])
         db.commit()
 
@@ -317,37 +329,13 @@ def seed() -> None:
         )
         db.commit()
 
-        # --- External mappings (Lever/HubSpot, read-only demo linkage) ------
-        db.add_all(
-            [
-                ExternalMapping(
-                    provider="LEVER", external_object_type="opportunity", external_id="opp-ron-axel-ppd",
-                    internal_object_type="Application", internal_id=ron_ppd_app.id,
-                    last_synced_at=datetime.now(UTC), sync_status="SYNCED",
-                ),
-                ExternalMapping(
-                    provider="LEVER", external_object_type="opportunity", external_id="opp-ron-axel-py",
-                    internal_object_type="Application", internal_id=ron_py_app.id,
-                    last_synced_at=datetime.now(UTC), sync_status="SYNCED",
-                ),
-                ExternalMapping(
-                    provider="HUBSPOT", external_object_type="company", external_id="hs-abc",
-                    internal_object_type="Client", internal_id=abc.id,
-                    last_synced_at=datetime.now(UTC), sync_status="SYNCED",
-                ),
-                ExternalMapping(
-                    provider="HUBSPOT", external_object_type="company", external_id="hs-xyz",
-                    internal_object_type="Client", internal_id=xyz.id,
-                    last_synced_at=datetime.now(UTC), sync_status="SYNCED",
-                ),
-                ExternalMapping(
-                    provider="HUBSPOT", external_object_type="company", external_id="hs-nova",
-                    internal_object_type="Client", internal_id=nova.id,
-                    last_synced_at=datetime.now(UTC), sync_status="SYNCED",
-                ),
-            ]
-        )
-        db.commit()
+        # Note: this seed script used to also insert demo `ExternalMapping`
+        # rows here (LEVER opportunity->Application, HUBSPOT company->Client)
+        # to illustrate cross-provider linkage. talent-api owns no
+        # ExternalMapping concept any more — Lever provenance lives in
+        # recruitment-api's own external_mappings table, and HubSpot's
+        # (currently empty) equivalent lives in commercial-api. Nothing here
+        # replaces that demo data; it wasn't read by any code path.
 
         # --- Messages -----------------------------------------------------
         message_service = MessageService(db)
