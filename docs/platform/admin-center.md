@@ -85,11 +85,13 @@ reorganized rather than rebuilt:
     than typing `TA_MEMBER` (CR §49 — no raw permission strings required).
   - **Client Scope** — "All Clients" checkbox, or a checkbox list of
     specific clients (CR §22/§30 portfolio scope), backed by
-    `PUT /api/admin/users/{id}/modules/{module_key}`. The client id→name
-    mapping is resolved by `admin-api` calling `talent-api`'s
-    `/api/talent/internal/clients-lite` — if `talent-api` is down, the
-    picker still functions with ids shown instead of names rather than
-    failing outright (`docs/platform/failure-isolation.md`).
+    `PUT /api/admin/users/{id}/modules/{module_key}`. `platform-api` has
+    owned canonical Client/Organisation identity since Architecture
+    Completion Plan Wave A — `AdminService` resolves client id→name
+    directly from its own `Client`/`ClientExternalId` tables, no
+    cross-service call to `talent-api` involved (the pre-Wave-A
+    `/api/talent/internal/clients-lite` dependency this doc used to
+    describe was deleted). See `docs/platform/data-ownership.md` §1.
   - Modules with no roles defined yet (DijiBirthday, DijiSpark) render as a
     read-only card explaining that no functional roles exist yet — their
     assignment editor is intentionally inert rather than fake (CR §4.2/4.3).
