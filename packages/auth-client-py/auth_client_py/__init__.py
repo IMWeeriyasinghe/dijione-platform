@@ -1,4 +1,11 @@
-from auth_client_py.claims import AuthClaims, InvalidTokenError, ModuleRoleClaims, SupplierClaims, decode_claims
+from auth_client_py.claims import (
+    AuthClaims,
+    ExternalClaims,
+    InvalidTokenError,
+    ModuleRoleClaims,
+    SupplierClaims,
+    decode_claims,
+)
 from auth_client_py.people_client import EmployeeDirectoryClient
 from auth_client_py.platform_client import PlatformClient
 from auth_client_py.recruitment_client import RecruitmentSourceClient
@@ -11,6 +18,7 @@ __all__ = [
     "AuthClaims",
     "ModuleRoleClaims",
     "SupplierClaims",
+    "ExternalClaims",
     "InvalidTokenError",
     "decode_claims",
     "PlatformClient",

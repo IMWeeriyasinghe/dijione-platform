@@ -182,6 +182,29 @@ class PostingClientMappingSource(StrEnum):
     OTHER_VERIFIED_SOURCE = "OTHER_VERIFIED_SOURCE"
 
 
+class MagicLinkScopeType(StrEnum):
+    """Discriminator for what a magic-link grant scopes access to.
+
+    Only CLIENT_WORKSPACE is implemented (Phase B decision 1 — Model A).
+    TALENT_REQUEST/REVIEW_SET are reserved so a narrower scope is an
+    additive change later, not a migration — do not build them now.
+    """
+
+    CLIENT_WORKSPACE = "CLIENT_WORKSPACE"
+    TALENT_REQUEST = "TALENT_REQUEST"
+    REVIEW_SET = "REVIEW_SET"
+
+
+class MagicLinkGrantStatus(StrEnum):
+    """Derived (never stored) status of a MagicLinkGrant — computed from
+    ``revoked_at``/``expires_at`` on every read, see
+    ``MagicLinkGrant.status``."""
+
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
+
+
 class DtcResolutionStatus(StrEnum):
     """Internal diagnostic reason for a posting's current client-mapping
     state after DTC-tag reconciliation. Anything other than RESOLVED means

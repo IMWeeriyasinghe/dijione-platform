@@ -46,6 +46,37 @@ def test_decode_claims_round_trip():
     assert claims.module("birthday") is None
 
 
+def test_decode_claims_parses_external_claim_when_present():
+    token = _issue(
+        is_active=True,
+        platform_role="PLATFORM_USER",
+        platform_permissions=[],
+        module_roles={
+            "talent-flow": {
+                "role": "TALENT_CLIENT",
+                "client_id": None,
+                "client_ids": None,
+                "client_public_id": "cli-cms-group",
+                "client_public_ids": ["cli-cms-group"],
+                "permissions": ["talent.dashboard.read_own", "talent.requests.read_own"],
+            }
+        },
+        external={"grant_id": 7},
+    )
+    claims = decode_claims(token, secret=SECRET)
+    assert claims.supplier is None
+    assert claims.external is not None
+    assert claims.external.grant_id == 7
+
+
+def test_decode_claims_external_defaults_to_none_when_absent():
+    token = _issue(
+        is_active=True, platform_role="PLATFORM_USER", platform_permissions=[], module_roles={}
+    )
+    claims = decode_claims(token, secret=SECRET)
+    assert claims.external is None
+
+
 def test_decode_claims_rejects_bad_signature():
     token = jwt.encode(
         {"sub": "1", "iss": "dijione-dev-identity"}, "wrong-secret", algorithm="HS256"

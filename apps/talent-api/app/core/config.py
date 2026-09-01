@@ -34,6 +34,17 @@ class Settings(BaseSettings):
     # Must match platform-api's INTERNAL_SERVICE_SECRET.
     internal_service_secret: str = "dev-only-internal-secret-change-me"
 
+    # DijiTalentFlow magic-link external client sessions — a DELIBERATELY
+    # SEPARATE signing secret + issuer from jwt_dev_secret/
+    # "dijione-dev-identity" (approved security amendment). An
+    # internally-signed staff token must never verify against this secret,
+    # and an externally-signed session must never verify against
+    # jwt_dev_secret — see get_talent_external_scope in app/api/deps.py.
+    # Local-dev-only default; production provisioning is a future,
+    # separate cloud task, not something this value needs to anticipate.
+    external_session_jwt_secret: str = "dev-only-external-session-secret-change-me"
+    external_session_jwt_issuer: str = "dijitalent-external"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]
