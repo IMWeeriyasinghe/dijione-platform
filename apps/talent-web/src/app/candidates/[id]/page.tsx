@@ -35,7 +35,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-semibold text-dt-text-primary">{candidate.full_name}</h1>
-              <p className="text-sm text-dt-text-secondary">{candidate.professional_title}</p>
+              <p className="text-sm text-dt-text-secondary">{candidate.professional_title || "—"}</p>
             </div>
             <StatusBadge status={candidate.availability_status} />
           </div>
@@ -43,7 +43,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-dt-text-secondary">Email</dt>
-              <dd className="font-medium text-dt-text-primary">{candidate.email}</dd>
+              <dd className="font-medium text-dt-text-primary">{candidate.email || "—"}</dd>
             </div>
             <div>
               <dt className="text-dt-text-secondary">Phone</dt>
