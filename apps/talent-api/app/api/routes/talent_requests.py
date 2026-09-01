@@ -56,15 +56,19 @@ def create_request(
     scope: TalentScope = Depends(get_talent_scope),
     db: Session = Depends(get_db),
 ) -> TalentRequestOut:
-    if not scope.has("talent.requests.create") or scope.client_id is None:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "Only a client persona can submit a talent request"
-        )
-    service = TalentRequestService(db)
-    request = service.create_request(client_id=scope.client_id, created_by=scope.user.id, payload=payload)
-    db.commit()
-    db.refresh(request)
-    return service.to_out(request)
+    """Retired (DijiTalentFlow real-data local validation, 2026-09-01):
+    DijiTalentFlow is not a client intake portal, so no role is granted
+    ``talent.requests.create`` any more (see permissions.py) — this always
+    403s. The endpoint, ``TalentRequestCreate`` schema, and
+    ``TalentRequestService.create_request`` are kept, not deleted:
+    TalentRequest remains a real operational entity, and a future
+    internal (TA/CS) creation path would reuse this same service call.
+    """
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        "DijiTalentFlow does not accept client-submitted talent requests. "
+        "Talent requests are created through an internal process.",
+    )
 
 
 @router.get("/{request_id}", response_model=TalentRequestOut)

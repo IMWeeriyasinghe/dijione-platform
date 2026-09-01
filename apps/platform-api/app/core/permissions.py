@@ -133,7 +133,12 @@ TALENT_PERMISSIONS: list[PermissionDef] = [
         MODULE_TALENT_FLOW, "Requests",
     ),
     PermissionDef(
-        "talent.requests.create", "Create Talent Request", "Submit a new talent request as a client.",
+        "talent.requests.create", "Create Talent Request (retired)",
+        "Not granted to any role — DijiTalentFlow is not a client intake portal "
+        "(DijiTalentFlow real-data local validation, 2026-09-01). Kept in the "
+        "catalog rather than deleted so historical RolePermission/audit rows "
+        "referencing it remain valid; TalentRequest creation is not currently "
+        "reachable through any role.",
         MODULE_TALENT_FLOW, "Requests",
     ),
     PermissionDef(
@@ -234,7 +239,6 @@ TALENT_ROLES: list[RoleDef] = [
         (
             "talent.dashboard.read_own",
             "talent.requests.read_own",
-            "talent.requests.create",
             "talent.candidates.read_client_safe",
             "talent.interviews.read_own",
             "talent.messages.read_own",

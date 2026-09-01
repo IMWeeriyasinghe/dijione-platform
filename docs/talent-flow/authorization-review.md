@@ -16,7 +16,7 @@ detail/mutation resolves to **404**, never 403 (existence is not leaked).
 | Route | Dependency | Client scope applied | Cross-client via path id? |
 |---|---|---|---|
 | `GET /api/talent/requests` | `get_talent_scope` | ✅ `list_for_scope(client_id, allowed_client_ids)`; `?client_id=` honoured only for staff | no |
-| `POST /api/talent/requests` | `get_talent_scope` + inline `talent.requests.create` + `client_id is not None` | ✅ writes under caller's own `client_id` | no |
+| `POST /api/talent/requests` | `get_talent_scope`; unconditional `403` | retired — DijiTalentFlow is not a client intake portal (2026-09-01); no role holds `talent.requests.create` | no |
 | `GET /api/talent/requests/{id}` | `get_talent_scope` | ✅ scoped `get_by_id` → 404 | no (404) |
 | `POST /api/talent/requests/{id}/review` | `require_customer_success_scope` | ✅ scoped lookup | no (404) |
 | `POST /api/talent/requests/{id}/stage` | `require_staff_scope` | ✅ `allowed_client_ids` → 404 + transition-validated | no (404) |

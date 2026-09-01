@@ -83,8 +83,6 @@ describe("TalentShell", () => {
     expect(screen.getByText("Applications")).toBeInTheDocument();
     expect(screen.getByText("Interview Manager")).toBeInTheDocument();
     expect(screen.getByText("Recruitment Postings")).toBeInTheDocument();
-    // Client-only footer action must not leak into the staff workspace.
-    expect(screen.queryByText("New Talent Request")).not.toBeInTheDocument();
   });
 
   it("renders the client workspace with only client navigation for a TALENT_CLIENT persona", () => {
@@ -104,6 +102,8 @@ describe("TalentShell", () => {
     expect(screen.queryByText("Applications")).not.toBeInTheDocument();
     expect(screen.queryByText("Recruitment Postings")).not.toBeInTheDocument();
     expect(screen.getByText("My Requests")).toBeInTheDocument();
-    expect(screen.getByText("New Talent Request")).toBeInTheDocument();
+    // DijiTalentFlow is not a client intake portal (retired 2026-09-01) —
+    // no persona sees a "New Talent Request" action anywhere.
+    expect(screen.queryByText("New Talent Request")).not.toBeInTheDocument();
   });
 });
