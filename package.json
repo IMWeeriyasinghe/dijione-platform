@@ -6,6 +6,7 @@
     "apps/shell-web",
     "apps/admin-web",
     "apps/talent-web",
+    "apps/talentflow-portal-web",
     "apps/birthday-web",
     "apps/birthday-supplier-web",
     "packages/design-system",
