@@ -57,16 +57,10 @@ export const updateTalentRequestTaStatus = (id: number, ta_status: string) =>
 export const listCandidates = (search?: string) =>
   request<CandidateOut[]>(`/api/talent/candidates${qs({ search })}`);
 export const getCandidate = (id: number) => request<CandidateOut>(`/api/talent/candidates/${id}`);
-export const createCandidate = (payload: {
-  full_name: string;
-  email: string;
-  phone?: string;
-  professional_title?: string;
-  summary?: string;
-  location?: string;
-  skills?: string[];
-  source?: string;
-}) => request<CandidateOut>("/api/talent/candidates", { method: "POST", body: JSON.stringify(payload) });
+// NOTE: no createCandidate — the Candidate master originates from the
+// Recruitment Source (Lever) now, not manual entry (retired 2026-09-02).
+// The backend route still exists (POST /api/talent/candidates) but always
+// 403s; see apps/talent-api/app/api/routes/talent_candidates.py.
 export const listRequestCandidates = (requestId: number) =>
   request<ClientSafeCandidateOut[]>(`/api/talent/requests/${requestId}/candidates`);
 

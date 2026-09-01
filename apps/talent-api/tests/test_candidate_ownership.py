@@ -13,6 +13,22 @@ from app.services.candidate_service import CandidateService
 from app.services.talent_request_service import TalentRequestService
 
 
+def test_client_cannot_create_candidate_via_api_manual_creation_is_retired(
+    api_client, two_tenant_world
+):
+    """DijiTalentFlow real-data completion: the Candidate master now
+    originates from the Recruitment Source (Lever), not manual entry.
+    POST /api/talent/candidates always 403s, for every persona — not just
+    clients, since the capability is retired entirely, matching how
+    POST /api/talent/requests was retired."""
+    payload = {"full_name": "Should Be Rejected", "email": "reject@example.com"}
+    for headers in (
+        two_tenant_world["abc_headers"], two_tenant_world["ta_headers"], two_tenant_world["cs_headers"],
+    ):
+        resp = api_client.post("/api/talent/candidates", headers=headers, json=payload)
+        assert resp.status_code == 403
+
+
 def test_candidate_can_apply_to_two_clients_as_one_master_record(db, two_tenant_world):
     request_service = TalentRequestService(db)
     abc_request = request_service.create_request(

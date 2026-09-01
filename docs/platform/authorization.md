@@ -283,7 +283,7 @@ see "Claims-based authorization for business services" below:
 ```python
 require_staff_scope                          # DijiTalentFlow cross-client staff
 require_customer_success_scope               # talent.requests.review
-require_talent_permission("talent.candidates.manage")
+require_talent_permission("talent.applications.create")
 ```
 
 Route handlers never hardcode `if role == "TA_MEMBER"` — they depend on one

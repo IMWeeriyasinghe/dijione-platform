@@ -163,7 +163,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         <P>Permissions are the smallest fine-grained capabilities in the system — the atoms roles are built from. Examples:</P>
         <Ul>
           <li><Code>talent.requests.read</Code> — View All Requests</li>
-          <li><Code>talent.candidates.manage</Code> — Manage Candidates</li>
+          <li><Code>talent.candidates.read</Code> — View Candidate Pool</li>
           <li><Code>talent.interviews.manage</Code> — Manage Interviews</li>
           <li><Code>platform.admin.manage_users</Code> — Manage Users</li>
         </Ul>

@@ -1,20 +1,17 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, UserRound } from "lucide-react";
+import { Search, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { listCandidates } from "@/lib/api";
 import { PageHeader } from "@dijione/design-system";
-import { Button } from "@dijione/design-system";
 import { Card } from "@dijione/design-system";
 import { StatusBadge } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
-import { CreateCandidateModal } from "./CreateCandidateModal";
 
 export function CandidatePoolView() {
   const [search, setSearch] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["candidates", search],
     queryFn: () => listCandidates(search || undefined),
@@ -24,13 +21,7 @@ export function CandidatePoolView() {
     <div>
       <PageHeader
         title="Candidate Pool"
-        description="One master profile per candidate, reusable across every client (CLAUDE.md §19)."
-        action={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4" />
-            Add Candidate
-          </Button>
-        }
+        description="One master profile per candidate, sourced from Lever and reusable across every client (CLAUDE.md §19)."
       />
 
       <div className="relative mb-6 max-w-md">
@@ -46,7 +37,7 @@ export function CandidatePoolView() {
       {isLoading && <LoadingState label="Loading candidates…" />}
       {isError && <ErrorState onRetry={() => refetch()} />}
       {data && data.length === 0 && (
-        <EmptyState icon={UserRound} title="No candidates found" description="Try a different search, or add a new candidate." />
+        <EmptyState icon={UserRound} title="No candidates found" description="Try a different search — candidates appear here once they're sourced from Lever." />
       )}
       {data && data.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -73,8 +64,6 @@ export function CandidatePoolView() {
           ))}
         </div>
       )}
-
-      <CreateCandidateModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }
