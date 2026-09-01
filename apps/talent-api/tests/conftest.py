@@ -97,6 +97,53 @@ def headers_for(user_id: int, **kwargs) -> dict:
     return {"Authorization": f"Bearer {issue_token(user_id, **kwargs)}"}
 
 
+def make_magic_link_grant(
+    db,
+    client,
+    *,
+    issued_by_user_id: int = 103,
+    expires_delta: timedelta | None = None,
+    revoked: bool = False,
+    contact_name: str = "External Reviewer",
+    contact_email: str = "reviewer@client.example",
+):
+    """Create a real MagicLinkGrant row (the same architecture the redeem
+    path and get_talent_external_scope re-validate) and return
+    ``(grant, raw_token)``. Never fabricates client business data — only
+    the grant/session plumbing."""
+    from app.models.magic_link_grant import MagicLinkGrant
+    from app.services.magic_link_service import generate_raw_token
+
+    raw, token_hash, token_prefix = generate_raw_token()
+    now = datetime.now(UTC)
+    grant = MagicLinkGrant(
+        public_id=f"mlg-test-{token_prefix}",
+        client_id=client.id,
+        contact_name=contact_name,
+        contact_email=contact_email,
+        token_hash=token_hash,
+        token_prefix=token_prefix,
+        issued_by_user_id=issued_by_user_id,
+        issued_at=now,
+        expires_at=now + (expires_delta if expires_delta is not None else timedelta(days=14)),
+        revoked_at=now if revoked else None,
+        revoked_by_user_id=issued_by_user_id if revoked else None,
+    )
+    db.add(grant)
+    db.commit()
+    return grant, raw
+
+
+def external_headers_for(db, client, **kwargs) -> dict:
+    """Bearer header for a magic-link external session scoped to ``client``.
+    Mints the session JWT exactly the way the redeem endpoint does."""
+    from app.services.magic_link_service import MagicLinkService
+
+    grant, _ = make_magic_link_grant(db, client, **kwargs)
+    token, _ = MagicLinkService(db).mint_session_jwt(grant)
+    return {"Authorization": f"Bearer {token}"}
+
+
 def recruitment_posting_dto(
     external_id: str, *, title: str = "Role", dtc_status: str = "NO_TAG",
     dtc_client_name: str | None = None, dtc_raw_tag: str | None = None,

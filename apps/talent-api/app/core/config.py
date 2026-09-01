@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # separate cloud task, not something this value needs to anticipate.
     external_session_jwt_secret: str = "dev-only-external-session-secret-change-me"
     external_session_jwt_issuer: str = "dijitalent-external"
+    # Short-lived by design: an external session cannot be refreshed — the
+    # SPA silently re-redeems the stored raw token for a fresh session
+    # while the grant is still valid (revoke/expiry then stops it within
+    # this window). Kept inside the plan's 30–60 min band.
+    external_session_jwt_ttl_minutes: int = 45
 
     @property
     def cors_origins_list(self) -> list[str]:
