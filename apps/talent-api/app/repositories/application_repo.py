@@ -39,12 +39,20 @@ class ApplicationRepository:
             stmt = stmt.where(Application.is_client_visible.is_(True))
         return list(self.db.execute(stmt).scalars().all())
 
-    def list_for_candidate(self, candidate_id: int) -> list[Application]:
+    def list_for_candidate(
+        self, candidate_id: int, *, allowed_client_ids: list[int] | None = None
+    ) -> list[Application]:
+        """``allowed_client_ids`` restricts the result to applications whose
+        request belongs to a portfolio-scoped staff member's assigned
+        clients. ``None`` (unrestricted staff — the Candidate Ownership Rule,
+        CLAUDE.md §19) returns every application across every client."""
         stmt = (
             select(Application)
             .options(joinedload(Application.talent_request).joinedload(TalentRequest.client))
             .where(Application.candidate_id == candidate_id)
         )
+        if allowed_client_ids is not None:
+            stmt = stmt.join(TalentRequest).where(TalentRequest.client_id.in_(allowed_client_ids))
         return list(self.db.execute(stmt).scalars().all())
 
     def list_for_scope(

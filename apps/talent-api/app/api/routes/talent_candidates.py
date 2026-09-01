@@ -18,7 +18,8 @@ def list_candidates(
     db: Session = Depends(get_db),
 ) -> list[CandidateOut]:
     service = CandidateService(db)
-    return [service.to_out(c) for c in service.repo.list_all(search=search)]
+    candidates = service.repo.list_all(search=search, allowed_client_ids=scope.client_ids)
+    return [service.to_out(c, allowed_client_ids=scope.client_ids) for c in candidates]
 
 
 @router.post("/candidates", response_model=CandidateOut, status_code=status.HTTP_201_CREATED)
@@ -47,7 +48,12 @@ def get_candidate(
     candidate = service.repo.get_by_id(candidate_id)
     if candidate is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found")
-    return service.to_out(candidate)
+    out = service.to_out(candidate, allowed_client_ids=scope.client_ids)
+    if scope.client_ids is not None and not out.applications:
+        # A portfolio-restricted TA with zero in-portfolio applications for
+        # this candidate must not learn the candidate exists at all.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found")
+    return out
 
 
 @router.get(

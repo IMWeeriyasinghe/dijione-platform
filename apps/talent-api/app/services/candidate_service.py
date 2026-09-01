@@ -39,8 +39,12 @@ class CandidateService:
         )
         return self.repo.add(candidate)
 
-    def to_out(self, candidate: Candidate) -> CandidateOut:
-        applications = self.application_repo.list_for_candidate(candidate.id)
+    def to_out(
+        self, candidate: Candidate, *, allowed_client_ids: list[int] | None = None
+    ) -> CandidateOut:
+        applications = self.application_repo.list_for_candidate(
+            candidate.id, allowed_client_ids=allowed_client_ids
+        )
         summaries = [
             CandidateApplicationSummary(
                 application_id=app.id,
