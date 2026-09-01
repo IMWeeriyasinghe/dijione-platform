@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import (
@@ -18,10 +18,28 @@ from app.db.base import Base, TimestampMixin
 
 class TalentRequest(TimestampMixin, Base):
     __tablename__ = "talent_requests"
+    __table_args__ = (
+        Index(
+            "uq_talent_requests_posting_ref",
+            "provider",
+            "posting_external_id",
+            unique=True,
+            sqlite_where=text("posting_external_id IS NOT NULL"),
+            postgresql_where=text("posting_external_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     request_code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+
+    # Source-relationship key (system-generated requests only — see
+    # VerifiedPostingPromotionReconciler). NULL for pre-existing/non-Lever
+    # rows. Mirrors PostingClientMapping's (provider, posting_external_id)
+    # key rather than a local FK, since the posting read model lives in
+    # recruitment-api's own database.
+    provider: Mapped[str] = mapped_column(String(32), default="LEVER")
+    posting_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     designation: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)

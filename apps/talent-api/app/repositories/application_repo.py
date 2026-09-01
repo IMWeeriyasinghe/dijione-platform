@@ -83,6 +83,15 @@ class ApplicationRepository:
         stmt = stmt.order_by(Application.updated_at.desc())
         return list(self.db.execute(stmt).scalars().all())
 
+    def get_for_pair(
+        self, candidate_id: int, talent_request_id: int
+    ) -> Application | None:
+        stmt = select(Application).where(
+            Application.candidate_id == candidate_id,
+            Application.talent_request_id == talent_request_id,
+        )
+        return self.db.execute(stmt).scalars().first()
+
     def exists_for_pair(self, candidate_id: int, talent_request_id: int) -> bool:
         stmt = select(Application.id).where(
             Application.candidate_id == candidate_id,

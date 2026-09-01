@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.services.posting_client_mapping_reconciler import PostingClientMappingReconciler
+from app.services.verified_posting_promotion_reconciler import VerifiedPostingPromotionReconciler
 
 logger = logging.getLogger("talent-api.recruitment_consumer")
 
@@ -68,6 +69,17 @@ class RecruitmentConsumerService:
             return {"refreshed": False, "reason": "source_unavailable"}
 
         summary = PostingClientMappingReconciler(self.db).reconcile_postings(postings)
+
+        try:
+            candidacies = self.client.list_candidacies(limit=500)
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "recruitment-api candidacies unavailable — promoting postings only (%s)",
+                type(exc).__name__,
+            )
+            candidacies = None
+        promotion = VerifiedPostingPromotionReconciler(self.db).reconcile(candidacies=candidacies)
+
         self.db.commit()
         return {
             "refreshed": True,
@@ -80,4 +92,20 @@ class RecruitmentConsumerService:
             "ambiguous": summary.ambiguous,
             "malformed": summary.malformed,
             "no_tag": summary.no_tag,
+            "promotion": {
+                "verified_postings": promotion.verified_postings,
+                "talent_requests_created": promotion.talent_requests_created,
+                "talent_requests_updated": promotion.talent_requests_updated,
+                "candidates_created": promotion.candidates_created,
+                "candidates_updated": promotion.candidates_updated,
+                "applications_created": promotion.applications_created,
+                "applications_updated": promotion.applications_updated,
+                "candidacies_seen": promotion.candidacies_seen,
+                "candidacies_skipped_no_verified_request": (
+                    promotion.candidacies_skipped_no_verified_request
+                ),
+                "collapsed_duplicate_candidacies": promotion.collapsed_duplicate_candidacies,
+                "candidacies_available": promotion.candidacies_available,
+                "unchanged": promotion.unchanged,
+            },
         }

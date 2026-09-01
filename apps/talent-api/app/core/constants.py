@@ -24,6 +24,12 @@ STAFF_ROLES = {
 
 MODULE_TALENT_FLOW = "talent-flow"
 
+# Sentinel `created_by` for a TalentRequest the VerifiedPostingPromotionReconciler
+# generates from a VERIFIED Lever posting rather than a human submission.
+# `created_by` has no FK (User is platform-api's), so this is inert outside
+# audit/display — audit calls for a system action pass actor_id=None instead.
+SYSTEM_ACTOR_ID = 0
+
 
 class CanonicalStage(StrEnum):
     """Client-facing canonical recruitment stages.

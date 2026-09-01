@@ -2,7 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import ApplicationStatus, CanonicalStage
@@ -21,6 +32,13 @@ class Application(TimestampMixin, Base):
     __tablename__ = "applications"
     __table_args__ = (
         UniqueConstraint("candidate_id", "talent_request_id", name="uq_candidate_request"),
+        Index(
+            "uq_applications_lever_opportunity_id",
+            "lever_opportunity_id",
+            unique=True,
+            sqlite_where=text("lever_opportunity_id IS NOT NULL"),
+            postgresql_where=text("lever_opportunity_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

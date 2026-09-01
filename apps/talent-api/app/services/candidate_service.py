@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.core.constants import CandidateAvailability
 from app.models.application import Application
 from app.models.candidate import Candidate
 from app.repositories.application_repo import ApplicationRepository
@@ -39,6 +40,51 @@ class CandidateService:
         )
         return self.repo.add(candidate)
 
+    def upsert_from_source(
+        self, *, lever_external_id: str, full_name: str, email: str, headline: str
+    ) -> tuple[Candidate, str]:
+        """Get-or-create a Candidate master from a real Lever person fact
+        (VerifiedPostingPromotionReconciler). Dedup is on
+        ``lever_external_id`` (the stable Lever contact id) — never email,
+        since a real contact can carry an explicit blank one.
+
+        ``headline`` maps only to ``professional_title``, never
+        ``summary`` — summary reaches clients via
+        ``ClientSafeCandidateOut.relevant_experience_summary`` and there is
+        no legitimate "experience summary" fact in the source data; leaving
+        it "" is honest, not a bug. On a re-run only source-owned fields
+        (full_name/professional_title/email) are refreshed —
+        availability_status/summary/skills/cv_reference/phone/location are
+        TalentFlow-owned once set and are never touched here.
+        """
+        norm_email = email or None
+        existing = self.repo.get_by_lever_external_id(lever_external_id)
+        if existing is None:
+            candidate = Candidate(
+                full_name=full_name or "Unknown",
+                email=norm_email,
+                professional_title=headline or "",
+                summary="",
+                skills="",
+                source="LEVER",
+                lever_external_id=lever_external_id,
+                availability_status=CandidateAvailability.IN_PROCESS.value,
+            )
+            self.repo.add(candidate)
+            return candidate, "created"
+
+        changed = False
+        if full_name and existing.full_name != full_name:
+            existing.full_name = full_name
+            changed = True
+        if headline and existing.professional_title != headline:
+            existing.professional_title = headline
+            changed = True
+        if norm_email is not None and existing.email != norm_email:
+            existing.email = norm_email
+            changed = True
+        return existing, "updated" if changed else "unchanged"
+
     def to_out(
         self, candidate: Candidate, *, allowed_client_ids: list[int] | None = None
     ) -> CandidateOut:
@@ -58,7 +104,7 @@ class CandidateService:
         return CandidateOut(
             id=candidate.id,
             full_name=candidate.full_name,
-            email=candidate.email,
+            email=candidate.email or "",
             phone=candidate.phone,
             professional_title=candidate.professional_title,
             summary=candidate.summary,

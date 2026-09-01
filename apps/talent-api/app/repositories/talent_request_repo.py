@@ -69,6 +69,17 @@ class TalentRequestRepository:
         stmt = stmt.order_by(TalentRequest.created_at.desc())
         return list(self.db.execute(stmt).scalars().all())
 
+    def get_by_posting_external_id(
+        self, posting_external_id: str, *, provider: str = "LEVER"
+    ) -> TalentRequest | None:
+        """Lookup for the VerifiedPostingPromotionReconciler's get-or-create
+        — mirrors PostingClientMappingRepository.get_for_posting's key."""
+        stmt = select(TalentRequest).where(
+            TalentRequest.provider == provider,
+            TalentRequest.posting_external_id == posting_external_id,
+        )
+        return self.db.execute(stmt).scalars().first()
+
     def next_request_code(self) -> str:
         count = self.db.execute(select(func.count()).select_from(TalentRequest)).scalar_one()
         return f"TA-{count + 1:04d}"
