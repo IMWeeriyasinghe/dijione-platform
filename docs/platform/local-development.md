@@ -87,26 +87,31 @@ cd ../talent-api      && ../../.venv/Scripts/python scripts/seed.py --reset
 ```
 
 `platform-api`'s seed script is the **permanent** owner of canonical Client
-identity (Architecture Completion Plan §6.1): it creates the three `Client`
-rows with stable `public_id`s (`cli-abc-company`, `cli-xyz-company`,
-`cli-nova-solutions`) and writes every `UserModuleClientScope` /
-`UserModuleRole` row with the real `client_ref`, not just a bare integer —
-client isolation no longer depends on seed-insertion order lining up across
-services. Run platform-api's seed first only because talent-api's seed data
-(requests, messages, documents) references the **user** ids platform-api's
-seed created (fixed order: `madushanka`=1, `cs_user`=2, `ta_manager`=3,
-`platform_admin`=4, `super_admin`=5, `abc_client`=6, `xyz_client`=7,
-`nova_client`=8, `ta_portfolio`=9) and its own `clients` rows carry
-`platform_client_id`, backfilled by exact-name match against the three
-canonical clients platform-api just created.
+identity (Architecture Completion Plan §6.1): it creates the real,
+DTC-verified client set (28 clients as of the DijiTalentFlow real-data
+local validation, 2026-09-01 — see `apps/platform-api/app/core/
+real_dev_clients.py`) with stable `public_id`s, and writes every
+`UserModuleClientScope` / `UserModuleRole` row against the real
+`client_ref` string, not a bare integer — client isolation does not depend
+on seed-insertion order lining up across services. It also creates 3
+client-persona dev logins (`cms-group-client`, `databl-io-client`,
+`portal-technology-client` — the subset of real clients with the most
+posting volume in the live discovery run) plus the staff personas
+(`madushanka-ta`, `customer-success`, `ta-manager`, `platform-admin`,
+`super-admin`, `ta-portfolio`).
 
-Talent-api's seed script drives real service calls (creating requests,
-applications, interviews, etc.), which means it also attempts real
-audit-event/notification writes to `platform-api`. If `platform-api` isn't
-running yet when you seed `talent-api`, seeding still completes (those
-writes are best-effort — see `docs/platform/failure-isolation.md`) but
-prints a series of "non-fatal" timeout warnings and takes noticeably
-longer. Start `platform-api` first to avoid this.
+**`platform-api` must be running** (not just seeded) when you run
+`talent-api`'s seed script — unlike its old demo-data version, the current
+script has a **hard** dependency on platform-api: it fetches the real
+client directory live via `GET /api/platform/internal/clients` and creates
+only the matching local `Client` extension rows (`platform_client_id` +
+`name`). It creates **no** demo TalentRequest/Candidate/Application/
+Interview/Message/Document data — that was retired in the real-data
+validation; real TalentFlow business data is populated by the recruitment
+source-sync flow instead (`POST /api/recruitment/internal/sync`, see
+`docs/platform/recruitment-source.md`). If platform-api isn't reachable,
+the script raises immediately with a clear error rather than seeding a
+partial/inconsistent local state.
 
 ## Running one service in isolation
 
