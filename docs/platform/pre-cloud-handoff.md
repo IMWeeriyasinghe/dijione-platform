@@ -104,9 +104,10 @@ every backend + non-shell web app (gateway rewrites).
 | `DATABASE_URL` (per service) | every DB-owning service | Contains the PostgreSQL password — a secret in its own right |
 | `ENTRA_CLIENT_SECRET` | `platform-api` (Wave 4b) / Entra app registration (Easy AUTH first cut) | From the Entra app registration |
 | `LEVER_API_KEY` | `recruitment-api` | **Only if** this environment is deliberately configured for live discovery — `INTEGRATIONS_MODE=mock` otherwise. GET-only, never write-capable |
-| `LEVER_WEBHOOK_SIGNING_SECRET` | `recruitment-api` | Only if a Lever webhook is registered against a reachable URL |
+| `LEVER_WEBHOOK_SIGNING_SECRET` | `recruitment-api` | **Required outside `APP_ENV=development`** — the webhook fails closed (503) if unset anywhere else, it no longer silently accepts unsigned payloads. Set before deploying, even if no Lever webhook is registered yet |
 | `BAMBOOHR_API_KEY` / `BAMBOOHR_SUBDOMAIN` | `people-api` | Only if live BambooHR sync is configured |
 | `HUBSPOT_ACCESS_TOKEN` | `commercial-api` | Not requested yet — remains blank; commercial-api has no live client to use it |
+| `HUBSPOT_WEBHOOK_SECRET` | `commercial-api` | **Required outside `APP_ENV=development`**, same fail-closed rule as Lever's above. Pre-shared-secret placeholder, not HubSpot's real v3 scheme — see `docs/integrations/hubspot.md` |
 | `GRAPH_CLIENT_SECRET` (+ `GRAPH_TENANT_ID`/`GRAPH_CLIENT_ID`) | `birthday-api` | Only if `EMAIL_SENDING_MODE=live` |
 | `AZURE_STORAGE_CONNECTION_STRING` | `talent-api` | Reserved for future real document upload (P2) — documents remain metadata-only until then |
 
