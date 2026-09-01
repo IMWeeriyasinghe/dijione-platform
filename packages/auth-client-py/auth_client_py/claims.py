@@ -54,6 +54,23 @@ class SupplierClaims:
 
 
 @dataclass(frozen=True)
+class ExternalClaims:
+    """DijiTalentFlow magic-link external client/prospect sessions —
+    carried alongside module_roles, parallel to ``SupplierClaims``.
+    ``grant_id`` is the only thing this claim carries; every other fact
+    about the session (which client, whether the grant is still valid) is
+    resolved server-side from the ``MagicLinkGrant`` row it points at, on
+    every request — never trusted from the claim or any request
+    parameter. This claim exists only on tokens signed with talent-api's
+    separate external-session signing secret (see
+    ``get_talent_external_scope`` in ``apps/talent-api/app/api/deps.py``);
+    it is never present on, and must never be honoured from, a token
+    verified against the internal staff signing secret."""
+
+    grant_id: int
+
+
+@dataclass(frozen=True)
 class AuthClaims:
     user_id: int
     is_active: bool
@@ -63,6 +80,7 @@ class AuthClaims:
     platform_permissions: frozenset[str]
     module_roles: dict[str, ModuleRoleClaims]
     supplier: SupplierClaims | None = None
+    external: ExternalClaims | None = None
 
     def module(self, module_key: str) -> ModuleRoleClaims | None:
         return self.module_roles.get(module_key)
@@ -109,6 +127,12 @@ def decode_claims(
             if supplier_claim_raw
             else None
         )
+        external_claim_raw = payload.get("external")
+        external_claim = (
+            ExternalClaims(grant_id=int(external_claim_raw["grant_id"]))
+            if external_claim_raw
+            else None
+        )
 
         return AuthClaims(
             user_id=user_id,
@@ -119,6 +143,7 @@ def decode_claims(
             platform_permissions=frozenset(payload.get("platform_permissions", [])),
             module_roles=module_roles,
             supplier=supplier_claim,
+            external=external_claim,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise InvalidTokenError(f"Token is missing expected Phase 2.5 claims: {exc}") from exc
