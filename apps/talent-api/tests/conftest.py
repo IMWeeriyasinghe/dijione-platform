@@ -36,8 +36,11 @@ from app.main import app  # noqa: E402
 from app.models.client import Client  # noqa: E402
 
 TALENT_PERMISSIONS_BY_ROLE = {
+    # talent.requests.create is retired — no role is granted it (DijiTalentFlow
+    # real-data local validation, 2026-09-01; see app/core/permissions.py in
+    # platform-api, the authoritative copy this list mirrors).
     "TALENT_CLIENT": [
-        "talent.dashboard.read_own", "talent.requests.read_own", "talent.requests.create",
+        "talent.dashboard.read_own", "talent.requests.read_own",
         "talent.candidates.read_client_safe", "talent.interviews.read_own",
         "talent.messages.read_own", "talent.messages.create",
         "talent.documents.read_own", "talent.documents.create",

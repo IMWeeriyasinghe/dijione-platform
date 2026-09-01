@@ -10,11 +10,9 @@ import {
   FileText,
   LayoutDashboard,
   MessageSquare,
-  Plus,
   Tags,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 
 function TalentFlowContent({ children }: { children: React.ReactNode }) {
   const scope = useTalentScope();
@@ -75,19 +73,7 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
       title="DijiTalentFlow"
       topNavTitle={scope.isStaff ? "Talent Acquisition Workspace" : "Client Workspace"}
       sections={scope.isStaff ? staffSections : clientSections}
-      footer={
-        !scope.isStaff ? (
-          <Link
-            href="/requests/new"
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-sm font-medium text-white hover:bg-white/25"
-          >
-            <Plus className="size-4" />
-            New Talent Request
-          </Link>
-        ) : (
-          <p className="text-xs text-white/60">DijiTalentFlow · by Dijital Team</p>
-        )
-      }
+      footer={<p className="text-xs text-white/60">DijiTalentFlow · by Dijital Team</p>}
     >
       {children}
     </AppShell>

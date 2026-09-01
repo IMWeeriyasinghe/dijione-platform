@@ -1,14 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Briefcase, Calendar, FileCheck2, Plus, Users } from "lucide-react";
-import Link from "next/link";
+import { Briefcase, Calendar, FileCheck2, Users } from "lucide-react";
 import { getClientDashboard } from "@/lib/api";
 import { MetricCard } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { RequestCard } from "@/components/talent/RequestCard";
 import { PageHeader } from "@dijione/design-system";
-import { Button } from "@dijione/design-system";
 
 export function ClientDashboardView() {
   const { data, isLoading, isError, refetch } = useQuery({
@@ -23,15 +21,7 @@ export function ClientDashboardView() {
     <div>
       <PageHeader
         title="Dashboard"
-        description="Track visibility into every talent request you've submitted to Dijital Team."
-        action={
-          <Link href="/requests/new">
-            <Button>
-              <Plus className="size-4" />
-              New Talent Request
-            </Button>
-          </Link>
-        }
+        description="Track visibility into every talent request Dijital Team is working on for you."
       />
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -47,12 +37,7 @@ export function ClientDashboardView() {
       {data.requests.length === 0 ? (
         <EmptyState
           title="No talent requests yet"
-          description="Submit your first request and Dijital Team's Customer Success team will review it shortly."
-          action={
-            <Link href="/requests/new">
-              <Button size="sm">New Talent Request</Button>
-            </Link>
-          }
+          description="Dijital Team's Talent Acquisition team will get in touch when there's a request to track here."
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

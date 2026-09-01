@@ -1,13 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
-import Link from "next/link";
+import { Search } from "lucide-react";
 import { useState } from "react";
 import { listTalentRequests } from "@/lib/api";
 import { useTalentScope } from "@dijione/auth-client";
 import { PageHeader } from "@dijione/design-system";
-import { Button } from "@dijione/design-system";
 import { Select } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { RequestCard } from "@/components/talent/RequestCard";
@@ -39,17 +37,7 @@ export default function RequestsPage() {
         description={
           scope.isStaff
             ? "Cross-client queue of every talent request in DijiTalentFlow."
-            : "Every talent request your organization has submitted."
-        }
-        action={
-          !scope.isStaff && (
-            <Link href="/requests/new">
-              <Button>
-                <Plus className="size-4" />
-                New Talent Request
-              </Button>
-            </Link>
-          )
+            : "Every talent request Dijital Team is tracking for your organization."
         }
       />
 

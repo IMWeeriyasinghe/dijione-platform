@@ -10,7 +10,6 @@ import type {
   InterviewOut,
   MessageOut,
   TaDashboardOut,
-  TalentRequestCreateInput,
   TalentRequestOut,
 } from "@dijione/contracts";
 import { qs, request } from "@dijione/auth-client";
@@ -30,8 +29,10 @@ export const listTalentRequests = (params: {
 } = {}) => request<TalentRequestOut[]>(`/api/talent/requests${qs(params)}`);
 export const getTalentRequest = (id: number) =>
   request<TalentRequestOut>(`/api/talent/requests/${id}`);
-export const createTalentRequest = (payload: TalentRequestCreateInput) =>
-  request<TalentRequestOut>("/api/talent/requests", { method: "POST", body: JSON.stringify(payload) });
+// NOTE: no createTalentRequest — DijiTalentFlow is not a client intake
+// portal (retired 2026-09-01). The backend route still exists
+// (POST /api/talent/requests) but always 403s; see
+// apps/talent-api/app/api/routes/talent_requests.py.
 export const reviewTalentRequest = (id: number, decision: string, reason: string) =>
   request<TalentRequestOut>(`/api/talent/requests/${id}/review`, {
     method: "POST",
