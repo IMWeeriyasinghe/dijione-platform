@@ -11,9 +11,9 @@
     "tailwind-merge": "^3.6.0"
   },
   "peerDependencies": {
-    "@tanstack/react-query": "^5",
-    "lucide-react": "^1",
-    "next": "^16",
+    "@tanstack/react-query": "^5.102.8",
+    "lucide-react": "^1.37.0",
+    "next": "^16.3.3",
     "react": "^19",
     "react-dom": "^19"
   }
