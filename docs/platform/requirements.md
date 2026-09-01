@@ -1,5 +1,19 @@
 # DijiOne Platform Requirements
 
+> **Historical snapshot — pre-split (Phase 1/2), before Phase 2.5's service
+> split and the Architecture Completion Plan's domain extractions.** The
+> webhook paths below (`/api/webhooks/lever`, `/api/webhooks/hubspot` —
+> no service prefix at all) predate the split; the cited
+> `test_webhook_idempotency.py` was deleted in Wave F when HubSpot moved to
+> `commercial-api`; "Platform administration — no dedicated admin UI" is now
+> false (`admin-web`/`admin-api` is a fully built app); "PostgreSQL... not
+> in this local environment" is now outdated — a `postgres` CI job runs
+> every service against real `postgres:16`. Kept for history, not
+> maintained since. For current requirements/status, see
+> `docs/platform/service-architecture.md`, `docs/platform/data-ownership.md`,
+> and the most recent audit (`DijiOne-DijiTalentFlow-Audit-2026-08-31.md`
+> at the repo root).
+
 Source of truth: `CLAUDE.md` (repository root). This file summarizes the
 platform-level (non-DijiTalentFlow) requirements and their implementation
 status. See `docs/talent-flow/requirements.md` for the module-level list.

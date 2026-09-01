@@ -38,17 +38,25 @@ detail/mutation resolves to **404**, never 403 (existence is not leaked).
 | `GET/POST /api/talent/requests/{id}/documents` | `get_talent_scope` | ✅ `_ensure_request_in_scope(client_id, allowed_client_ids)` | no (404) |
 | `GET /api/talent/dashboard/client` | `get_talent_scope` + `talent.dashboard.read_own` + `client_id is not None` | ✅ own client only | no |
 | `GET /api/talent/ta/dashboard` | `require_staff_scope` | ✅ **now** portfolio-scoped incl. `active_applications` / `interviews_scheduled` / `offers_in_progress` (Wave 1); `available_candidates` stays global (note 2) | n/a |
-| `GET /api/talent/postings` | `require_staff_scope` | staff-wide read of the Lever read-model | staff-only |
-| `POST /api/talent/postings/sync` | `require_staff_scope` | staff-only; read-only Lever pull | staff-only |
-| `POST /api/talent/postings/{id}/verify-mapping` | `require_staff_scope` | staff-only; `source=MANUAL` only | staff-only |
-| `GET /api/talent/postings/client-visible` | `get_talent_scope` | ✅ **fail-closed** — inner join on `PostingClientMapping.status == VERIFIED AND client_id == scope.client_id` | no |
-| `GET /api/talent/postings/{id}` | `require_staff_scope` | staff-only | staff-only |
-| `GET /api/talent/integrations/*`, `POST .../lever/sync-opportunities` | `require_staff_scope` | staff-only | staff-only |
-| `POST /api/talent/webhooks/lever` | **none** (HMAC-SHA256 only if `LEVER_WEBHOOK_SIGNING_SECRET` set) | n/a; idempotent via `IntegrationEvent` | note 3 |
-| `POST /api/talent/webhooks/hubspot` | **none, no signature check** | n/a; idempotent; drives no domain mutation | note 3 |
+| `GET /api/talent/postings` | `require_staff_scope` | staff-wide read of talent-api's local `RecruitmentPostingRef` projection (sourced from recruitment-api) | staff-only |
+| `POST /api/talent/postings/{ref_id}/verify-mapping` | `require_staff_scope` | staff-only; `source=MANUAL` only | staff-only |
+| `GET /api/talent/postings/client-visible` | `get_talent_scope` | ✅ **fail-closed** — inner join on `RecruitmentPostingRef` ↔ `PostingClientMapping.status == VERIFIED AND client_id == scope.client_id`, entirely local to talent-api (see `docs/platform/data-ownership.md` §4a) | no |
+| `GET /api/talent/postings/{ref_id}` | `require_staff_scope` | staff-only | staff-only |
+| `GET /api/talent/integrations/recruitment/freshness`, `/sync/latest`, `/sync/history`, `/sync/{run_id}` | `require_staff_scope` | staff-only | staff-only |
+| `POST /api/talent/integrations/recruitment/sync` | `require_staff_scope` | staff-only; proxies to recruitment-api's `POST /api/recruitment/internal/sync`, 202 single-flight | staff-only |
+| `POST /api/talent/internal/recruitment/reconcile` | `require_internal_service` (`X-Internal-Token`) | n/a — service-to-service (Container Apps Job target) | n/a |
 | `GET /api/talent/summary` | **none, by design** | aggregate counts only (`open_requests`, `pending_requests`, `interviews_upcoming`) — no per-client data | n/a |
-| `GET /api/talent/internal/clients-lite` | `require_internal_service` (`X-Internal-Token`) | n/a — service-to-service | n/a |
-| `GET /health` | none | n/a | n/a |
+| `GET /health`, `/health/deep` | none | n/a | n/a |
+
+**talent-api has no Lever/HubSpot webhook, no `/postings/sync`, and no
+`/internal/clients-lite` route** — all three were removed by the
+Architecture Completion Plan. Lever's webhook is
+`POST /api/recruitment/webhooks/lever` on `recruitment-api`; HubSpot's is
+`POST /api/commercial/webhooks/hubspot` on `commercial-api` (see note 3);
+canonical client identity — and therefore client-name resolution — is
+`platform-api`'s own `Client`/`ClientExternalId` tables, reached via
+`GET /api/platform/internal/clients`, not a talent-api lookup. See
+`docs/platform/data-ownership.md` for the full current ownership map.
 
 ## Notes
 
@@ -75,10 +83,15 @@ detail/mutation resolves to **404**, never 403 (existence is not leaked).
    a portfolio-restricted one, sees the whole pool and each candidate's
    cross-client application list. `available_candidates` on the TA dashboard is
    therefore intentionally not portfolio-scoped.
-3. **Webhooks are unauthenticated by design** for the MVP. Lever verifies an HMAC
-   only when a signing secret is configured (it is not, in dev); HubSpot does no
-   verification. **Tracked as P1** — require the Lever HMAC and add a HubSpot
-   signature check before registering production webhooks.
+3. **Webhooks live on `recruitment-api`/`commercial-api`, not talent-api**
+   (moved in Waves B/F), and both now fail closed outside
+   `app_env=development`: an unconfigured signing secret is a soft warning
+   only in dev; anywhere else it's a `503`, not a silently-accepted
+   unsigned payload. Lever's is real HMAC-SHA256 per Lever's own scheme;
+   HubSpot's is a documented pre-shared-secret placeholder (not HubSpot's
+   real v3 scheme — no live HubSpot credential exists yet to validate a
+   real implementation against). See `docs/integrations/lever.md` and the
+   webhook handlers in each service for the current state.
 
 ## Wave 1 changes summary
 
