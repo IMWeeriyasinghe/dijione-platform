@@ -116,13 +116,43 @@ def recruitment_posting_dto(
     }
 
 
+def recruitment_candidacy_dto(
+    external_id: str, *, posting_external_id: str, candidate_external_id: str,
+    candidate_name: str = "Jane Candidate", candidate_email: str = "",
+    candidate_headline: str = "", current_stage: str = "SOURCING", status: str = "ACTIVE",
+    lever_archive_reason: str | None = None, synced_at: str | None = None,
+) -> dict:
+    """Shape of one item from RecruitmentSourceClient.list_candidacies()."""
+    return {
+        "provider": "LEVER", "external_id": external_id,
+        "posting_external_id": posting_external_id,
+        "candidate_external_id": candidate_external_id,
+        "candidate_name": candidate_name, "candidate_email": candidate_email,
+        "candidate_headline": candidate_headline, "current_stage": current_stage,
+        "status": status, "lever_archive_reason": lever_archive_reason,
+        "synced_at": synced_at,
+    }
+
+
 class FakeRecruitmentClient:
     """Stand-in for auth_client_py.RecruitmentSourceClient. ``down=True``
-    makes every method raise httpx.HTTPError (source-outage simulation)."""
+    makes every method raise httpx.HTTPError (source-outage simulation);
+    ``candidacies_down=True`` fails only ``list_candidacies`` — used to
+    prove the promotion reconciler degrades to "postings only" rather than
+    aborting when candidacies specifically are unavailable."""
 
-    def __init__(self, postings: list[dict] | None = None, *, down: bool = False):
+    def __init__(
+        self,
+        postings: list[dict] | None = None,
+        *,
+        candidacies: list[dict] | None = None,
+        down: bool = False,
+        candidacies_down: bool = False,
+    ):
         self._postings = postings or []
+        self._candidacies = candidacies or []
         self.down = down
+        self.candidacies_down = candidacies_down
         self.sync_calls: list[dict] = []
 
     def _guard(self):
@@ -134,6 +164,19 @@ class FakeRecruitmentClient:
     def list_postings(self, *, include_archived: bool = True) -> list[dict]:
         self._guard()
         return list(self._postings)
+
+    def list_candidacies(
+        self, *, posting_external_id: str | None = None, limit: int = 200
+    ) -> list[dict]:
+        self._guard()
+        if self.candidacies_down:
+            import httpx
+
+            raise httpx.ConnectError("recruitment-api candidacies unreachable")
+        rows = self._candidacies
+        if posting_external_id is not None:
+            rows = [r for r in rows if r.get("posting_external_id") == posting_external_id]
+        return list(rows[:limit])
 
     def get_freshness(self) -> dict:
         self._guard()

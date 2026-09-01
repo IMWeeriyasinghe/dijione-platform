@@ -3,10 +3,13 @@ from sqlalchemy.orm import Session
 from app.core.constants import (
     CANONICAL_STAGE_ORDER,
     MODULE_TALENT_FLOW,
+    SYSTEM_ACTOR_ID,
     ApplicationStatus,
     CanonicalStage,
     CustomerSuccessStatus,
+    EngagementType,
     NotificationType,
+    Priority,
     TalentFlowRole,
     TalentRequestLifecycleStatus,
     TaStatus,
@@ -98,6 +101,87 @@ class TalentRequestService:
             related_entity_id=request.id,
         )
         return request
+
+    def create_from_posting(
+        self, *, client_id: int, posting_external_id: str, designation: str, location: str
+    ) -> TalentRequest:
+        """System-generated TalentRequest for a VERIFIED Lever posting
+        (VerifiedPostingPromotionReconciler) — one posting, one request,
+        never a client intake submission. Deliberately does not call
+        ``create_request``: that method fires a Customer-Success-review
+        notification, which is wrong here (there is no client submission to
+        review; the posting is already a real, active requisition).
+
+        Fields with no honest source value stay empty rather than
+        fabricated (description/required_skills/seniority/notes=""); the
+        initial workflow state reflects "already sourcing, no intake
+        review needed" — ta_status=ATS_LINKED marks it as linked to an
+        external ATS posting rather than a client-submitted request.
+        """
+        request = TalentRequest(
+            request_code=self.repo.next_request_code(),
+            client_id=client_id,
+            provider="LEVER",
+            posting_external_id=posting_external_id,
+            designation=designation or "Untitled posting",
+            description="",
+            required_skills="",
+            seniority="",
+            location=location or "",
+            engagement_type=EngagementType.FULL_TIME.value,
+            target_start_date=None,
+            notes="",
+            current_stage=CanonicalStage.SOURCING.value,
+            lifecycle_status=TalentRequestLifecycleStatus.IN_PROGRESS.value,
+            customer_success_status=CustomerSuccessStatus.APPROVED.value,
+            ta_status=TaStatus.ATS_LINKED.value,
+            client_safe_status_text=_STAGE_STATUS_TEXT[CanonicalStage.SOURCING],
+            priority=Priority.MEDIUM.value,
+            created_by=SYSTEM_ACTOR_ID,
+        )
+        self.repo.add(request)
+        # Post-flush id-based code keeps this off the count()-based
+        # next_request_code() collision surface and self-documents
+        # provenance at a glance (see the reconciler's risk notes).
+        request.request_code = f"SR-{request.id:05d}"
+
+        self.audit.log(
+            actor_id=None,
+            action="talent_request.system_promoted",
+            entity_type="TalentRequest",
+            entity_id=request.id,
+            new_state={
+                "designation": request.designation, "client_id": client_id,
+                "posting_external_id": posting_external_id,
+            },
+        )
+        return request
+
+    def reconcile_posting_facts(
+        self, request: TalentRequest, *, designation: str, location: str
+    ) -> bool:
+        """Refresh only the source-owned fields (designation, location) on
+        a re-run. Never touches current_stage/lifecycle_status/
+        customer_success_status/ta_status/client_safe_status_text/
+        priority/description/notes — those are TalentFlow-owned workflow
+        state once a system-promoted request exists, exactly like the DTC
+        reconciler never overwrites a MANUAL VERIFIED mapping."""
+        changed = False
+        if designation and request.designation != designation:
+            request.designation = designation
+            changed = True
+        if location and request.location != location:
+            request.location = location
+            changed = True
+        if changed:
+            self.audit.log(
+                actor_id=None,
+                action="talent_request.source_facts_refreshed",
+                entity_type="TalentRequest",
+                entity_id=request.id,
+                new_state={"designation": request.designation, "location": request.location},
+            )
+        return changed
 
     def review_request(
         self,

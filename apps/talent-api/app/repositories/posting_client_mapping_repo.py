@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.constants import PostingClientMappingStatus
 from app.models.posting_client_mapping import PostingClientMapping
 
 _LEVER = "LEVER"
@@ -35,6 +36,20 @@ class PostingClientMappingRepository:
 
     def list_all(self) -> list[PostingClientMapping]:
         return list(self.db.execute(select(PostingClientMapping)).scalars().all())
+
+    def list_verified(self) -> list[PostingClientMapping]:
+        """VERIFIED postings eligible for promotion into a TalentRequest.
+        ``client_id IS NOT NULL`` is a defence-in-depth belt: a VERIFIED row
+        whose Client was since deleted (client_id -> SET NULL) must never
+        promote — fail closed, same as every other client-visibility path."""
+        return list(
+            self.db.execute(
+                select(PostingClientMapping).where(
+                    PostingClientMapping.status == PostingClientMappingStatus.VERIFIED.value,
+                    PostingClientMapping.client_id.is_not(None),
+                )
+            ).scalars().all()
+        )
 
     def by_source(self, source: str) -> list[PostingClientMapping]:
         return list(
