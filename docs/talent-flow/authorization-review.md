@@ -19,14 +19,14 @@ detail/mutation resolves to **404**, never 403 (existence is not leaked).
 | `POST /api/talent/requests` | `get_talent_scope` + inline `talent.requests.create` + `client_id is not None` | ✅ writes under caller's own `client_id` | no |
 | `GET /api/talent/requests/{id}` | `get_talent_scope` | ✅ scoped `get_by_id` → 404 | no (404) |
 | `POST /api/talent/requests/{id}/review` | `require_customer_success_scope` | ✅ scoped lookup | no (404) |
-| `POST /api/talent/requests/{id}/stage` | `require_staff_scope` | ⚠️ staff-wide (see note 1) | staff-only |
-| `POST /api/talent/requests/{id}/ta-status` | `require_staff_scope` | ⚠️ staff-wide (note 1) | staff-only |
+| `POST /api/talent/requests/{id}/stage` | `require_staff_scope` | ✅ `allowed_client_ids` → 404 + transition-validated | no (404) |
+| `POST /api/talent/requests/{id}/ta-status` | `require_staff_scope` | ✅ `allowed_client_ids` → 404 | no (404) |
 | `GET /api/talent/candidates` | `require_staff_scope` | global pool by design (note 2) | staff-only |
 | `POST /api/talent/candidates` | `require_staff_scope` | global pool by design | staff-only |
 | `GET /api/talent/candidates/{id}` | `require_staff_scope` | global pool by design | staff-only |
 | `GET /api/talent/requests/{id}/candidates` | `get_talent_scope` | ✅ scoped request lookup; `ClientSafeCandidateOut` structurally omits score/notes/other-client rows | no (404) |
 | `GET /api/talent/applications` | `require_staff_scope` | ✅ `list_for_scope(allowed_client_ids)` | no |
-| `POST /api/talent/applications` | `require_staff_scope` | ⚠️ staff-wide (note 1) | staff-only |
+| `POST /api/talent/applications` | `require_staff_scope` | ✅ **now** `allowed_client_ids` → 404 (Shadow Validation 1) | no (404) |
 | `PATCH /api/talent/applications/{id}/stage` | `require_staff_scope` | ✅ **now** `allowed_client_ids` → 404 (Wave 1) + stage enum-validated | no (404) |
 | `PATCH /api/talent/applications/{id}/status` | `require_staff_scope` | ✅ **now** `allowed_client_ids` → 404 (Wave 1) + status enum-validated | no (404) |
 | `PATCH /api/talent/applications/{id}/score` | `require_staff_scope` | ✅ **now** `allowed_client_ids` → 404 (Wave 1) | no (404) |
@@ -52,14 +52,24 @@ detail/mutation resolves to **404**, never 403 (existence is not leaked).
 
 ## Notes
 
-1. **`require_staff_scope` staff-wide endpoints.** `/requests/{id}/stage`,
-   `/requests/{id}/ta-status`, and `POST /applications` still resolve the target
-   without `allowed_client_ids`, so a *portfolio-restricted* staff user can act
-   on any client's request. Impact is lower than the application/interview
-   mutation gap fixed in Wave 1 (those are the day-to-day grid actions), and
-   `POST /applications` requires knowing a valid `candidate_id` + `talent_request_id`
-   pair. **Tracked as P1** — same `allowed_client_ids` threading pattern; deferred
-   only to keep Wave 1 tight. The primary `TALENT_CLIENT` boundary is unaffected.
+1. **`require_staff_scope` staff-wide endpoints — now all scoped.** This note
+   previously flagged `/requests/{id}/stage`, `/requests/{id}/ta-status`, and
+   `POST /applications` as resolving their target without `allowed_client_ids`,
+   letting a *portfolio-restricted* staff user act on any client's request.
+   `/stage` and `/ta-status` were already fixed by the time of this correction
+   (both thread `allowed_client_ids` through `TalentRequestService`/
+   `TalentRequestRepository._scoped`) — this doc had simply not been updated to
+   match. `POST /applications` was still genuinely open — unlike the other
+   Application mutation endpoints, it is not nested under
+   `/requests/{request_id}/...`, so `talent_request_id` arrived straight from
+   the JSON body with no URL-path id for the route layer to pre-scope; a
+   portfolio-restricted staff user who knew a valid `candidate_id` +
+   out-of-portfolio `talent_request_id` pair could create the link directly.
+   Fixed (Shadow Validation 1) by validating `payload.talent_request_id`
+   against `allowed_client_ids` in `ApplicationService.create_application`
+   before creating the row, mirroring the existing `_get_or_raise` pattern
+   used by the sibling mutation endpoints. The primary `TALENT_CLIENT`
+   boundary was never affected by any of these three.
 2. **Candidate pool is global by design** (CLAUDE.md §19 / Architecture v2 §3) —
    one master profile per person, reused across clients. Any staff user, including
    a portfolio-restricted one, sees the whole pool and each candidate's

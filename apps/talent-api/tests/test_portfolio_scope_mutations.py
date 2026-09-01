@@ -45,7 +45,12 @@ def _seed(db, world):
         )
         db.add(iv)
         db.flush()
-        out[key] = {"application_id": app_row.id, "interview_id": iv.id}
+        out[key] = {
+            "application_id": app_row.id,
+            "interview_id": iv.id,
+            "request_id": req.id,
+            "candidate_id": cand.id,
+        }
     db.commit()
     return out
 
@@ -88,6 +93,40 @@ def test_scoped_staff_cannot_mutate_out_of_portfolio_application(api_client, db,
         json={"stage": "SCREENING"},
     )
     assert ok.status_code == 200
+
+
+def test_scoped_staff_cannot_create_application_for_out_of_portfolio_request(
+    api_client, db, two_tenant_world
+):
+    """POST /api/talent/applications takes talent_request_id from the JSON
+    body, not a scoped URL path segment like the sibling endpoints — a
+    portfolio-restricted staff user must not be able to link a candidate to
+    an out-of-portfolio request just by supplying its id."""
+    seeded = _seed(db, two_tenant_world)
+    headers = _portfolio_headers(two_tenant_world)
+
+    blocked = api_client.post(
+        "/api/talent/applications",
+        headers=headers,
+        json={
+            "candidate_id": seeded["abc"]["candidate_id"],
+            "talent_request_id": seeded["xyz"]["request_id"],
+        },
+    )
+    assert blocked.status_code == 404
+
+    # In-portfolio creation still works, including linking a candidate who
+    # already has an application with a different (out-of-portfolio)
+    # client — candidates are shared master records, not client-owned.
+    ok = api_client.post(
+        "/api/talent/applications",
+        headers=headers,
+        json={
+            "candidate_id": seeded["xyz"]["candidate_id"],
+            "talent_request_id": seeded["abc"]["request_id"],
+        },
+    )
+    assert ok.status_code == 201
 
 
 def test_scoped_staff_cannot_mutate_out_of_portfolio_interview(api_client, db, two_tenant_world, platform_calls):
