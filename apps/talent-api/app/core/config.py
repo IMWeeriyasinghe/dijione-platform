@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # while the grant is still valid (revoke/expiry then stops it within
     # this window). Kept inside the plan's 30–60 min band.
     external_session_jwt_ttl_minutes: int = 45
+    # Origin of the Client Talent Review Workspace (talentflow-portal).
+    # Used only to build the one-time access URL a TA copies —
+    # ``<base>/access#<token>`` (token in the fragment, never the path or
+    # query). Local dev default; the real hostname is future cloud config.
+    external_portal_base_url: str = "http://localhost:3100"
+    # Default grant lifetime when a TA does not specify one (plan B.5).
+    external_grant_default_expiry_days: int = 14
 
     @property
     def cors_origins_list(self) -> list[str]:

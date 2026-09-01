@@ -179,6 +179,34 @@ export type TaDashboardOut = {
   attention_requests: TalentRequestOut[];
 };
 
+// Magic-link external client access — TA grant management screen
+// (apps/talent-api/app/schemas/external.py). The raw token / access URL
+// exist ONLY on MagicLinkGrantCreatedOut, returned once from
+// create/regenerate; the list view never carries them.
+export type MagicLinkGrantOut = {
+  public_id: string;
+  client_id: number;
+  client_name: string;
+  scope_type: string;
+  contact_name: string;
+  contact_email: string;
+  token_prefix: string;
+  status: "ACTIVE" | "EXPIRED" | "REVOKED";
+  issued_by_user_id: number;
+  issued_at: string;
+  expires_at: string;
+  redeemed_at: string | null;
+  last_used_at: string | null;
+  use_count: number;
+  revoked_at: string | null;
+  revoked_by_user_id: number | null;
+};
+
+export type MagicLinkGrantCreatedOut = MagicLinkGrantOut & {
+  raw_token: string;
+  access_url: string;
+};
+
 export const TALENT_CLIENT = "TALENT_CLIENT";
 export const TA_MEMBER = "TA_MEMBER";
 export const CUSTOMER_SUCCESS = "CUSTOMER_SUCCESS";

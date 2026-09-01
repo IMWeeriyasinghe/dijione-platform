@@ -9,6 +9,7 @@ import {
   CalendarClock,
   FileText,
   LayoutDashboard,
+  Link2,
   MessageSquare,
   Tags,
   Users,
@@ -63,6 +64,7 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
         { label: "Applications", href: "/applications", icon: FileText },
         { label: "Interview Manager", href: "/interviews", icon: CalendarClock },
         { label: "Recruitment Postings", href: "/postings", icon: Tags },
+        { label: "Client Access Links", href: "/access-links", icon: Link2 },
       ],
     },
   ];
