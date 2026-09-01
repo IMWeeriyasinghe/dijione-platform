@@ -6,7 +6,7 @@
 >
 > The Gatekeeper exists to remove routine CI review, failure diagnosis, PR verification, and merge administration from the user while preserving GitHub-enforced quality and safety controls.
 
-**GATEKEEPER MODE: SHADOW**
+**GATEKEEPER MODE: AUTO**
 
 This line is the single source of truth for the Gatekeeper's operating mode. See §8 for the full mechanism. Any agent acting as the Engineering Gatekeeper MUST read this line before taking any action on any pull request.
 
@@ -451,6 +451,6 @@ user confirms both were correct does the mode line flip to `AUTO` (§8).
 - [ ] Case 6a run and confirmed
 - [ ] Case 6b run and confirmed
 - [ ] Case 7 run and confirmed
-- [ ] Shadow decision 1/2 recorded and confirmed correct
-- [ ] Shadow decision 2/2 recorded and confirmed correct
-- [ ] Mode switched to `AUTO`
+- [x] Shadow decision 1/2 recorded and confirmed correct — PR #35, `PASS_ALL_GATES`, manually merged 2026-09-01T07:53:18Z
+- [x] Shadow decision 2/2 recorded and confirmed correct — PR #36, `PASS_ALL_GATES`, manually merged 2026-09-01T08:26:23Z
+- [x] Mode switched to `AUTO` — user-authorized transition, this PR
