@@ -29,6 +29,7 @@ jobs:
           - shell-web
           - admin-web
           - talent-web
+          - talentflow-portal-web
           - birthday-web
           - birthday-supplier-web
     env:

@@ -1,0 +1,74 @@
+@import "tailwindcss";
+@source "../../../../packages/design-system/src/**/*.{ts,tsx}";
+
+:root {
+  --dt-red-deep: #8f2417;
+  --dt-red: #aa2f1d;
+  --dt-burnt-orange: #c9431d;
+  --dt-orange-deep: #db4d18;
+  --dt-orange: #f26a1b;
+  --dt-amber: #f59e0b;
+  --dt-yellow-soft: #fbc34a;
+
+  --dt-background: #f8f5f2;
+  --dt-surface: #ffffff;
+  --dt-surface-warm: #fff8ef;
+  --dt-cream: #ffefd5;
+
+  --dt-text-primary: #24140f;
+  --dt-text-secondary: #76584c;
+  --dt-border: #eadbd3;
+
+  --dt-success: #138a4b;
+  --dt-warning: #c78300;
+  --dt-danger: #c62d26;
+  --dt-info: #5b6472;
+
+  --background: var(--dt-background);
+  --foreground: var(--dt-text-primary);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-dt-red-deep: var(--dt-red-deep);
+  --color-dt-red: var(--dt-red);
+  --color-dt-burnt-orange: var(--dt-burnt-orange);
+  --color-dt-orange-deep: var(--dt-orange-deep);
+  --color-dt-orange: var(--dt-orange);
+  --color-dt-amber: var(--dt-amber);
+  --color-dt-yellow-soft: var(--dt-yellow-soft);
+
+  --color-dt-background: var(--dt-background);
+  --color-dt-surface: var(--dt-surface);
+  --color-dt-surface-warm: var(--dt-surface-warm);
+  --color-dt-cream: var(--dt-cream);
+
+  --color-dt-text-primary: var(--dt-text-primary);
+  --color-dt-text-secondary: var(--dt-text-secondary);
+  --color-dt-border: var(--dt-border);
+
+  --color-dt-success: var(--dt-success);
+  --color-dt-warning: var(--dt-warning);
+  --color-dt-danger: var(--dt-danger);
+  --color-dt-info: var(--dt-info);
+}
+
+body {
+  background: var(--dt-background);
+  color: var(--dt-text-primary);
+}
+
+* {
+  border-color: var(--dt-border);
+}
+
+.dt-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.dt-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--dt-border);
+  border-radius: 999px;
+}

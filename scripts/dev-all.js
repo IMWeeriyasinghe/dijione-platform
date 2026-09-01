@@ -37,6 +37,10 @@ const services = [
   { name: "admin-web", color: "\x1b[95m", cwd: "apps/admin-web", cmd: "npm", args: ["run", "dev"] },
   { name: "talent-web", color: "\x1b[93m", cwd: "apps/talent-web", cmd: "npm", args: ["run", "dev"] },
   { name: "birthday-web", color: "\x1b[92m", cwd: "apps/birthday-web", cmd: "npm", args: ["run", "dev"] },
+  // External-facing Client Talent Review Workspace (separate app, port
+  // 3100). Not proxied through shell-web — external client/prospect users
+  // reach it directly via a magic link.
+  { name: "talentflow-portal-web", color: "\x1b[38;5;214m", cwd: "apps/talentflow-portal-web", cmd: "npm", args: ["run", "dev"] },
   // External-facing supplier portal (separate app, port 3006). Not proxied
   // through shell-web — it is reached directly by external supplier users.
   { name: "birthday-supplier-web", color: "\x1b[96m", cwd: "apps/birthday-supplier-web", cmd: "npm", args: ["run", "dev"] },
