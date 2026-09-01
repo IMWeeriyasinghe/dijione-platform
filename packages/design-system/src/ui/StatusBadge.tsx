@@ -3,6 +3,18 @@ import { cn, stageLabel } from "../utils";
 type Tone = "success" | "warning" | "danger" | "neutral" | "brand";
 
 const STATUS_TONE: Record<string, Tone> = {
+  // Canonical recruitment stages (CanonicalStage) not already covered below
+  // by an overlapping Lifecycle/Application-status key — a promoted, real
+  // Lever-sourced TalentRequest/Application legitimately carries these far
+  // more often than the old mock data did, so an unmapped grey badge here
+  // is a much more visible gap with real data.
+  REQUEST_SUBMITTED: "neutral",
+  REQUIREMENT_CONFIRMED: "brand",
+  SOURCING: "brand",
+  SCREENING: "brand",
+  INTERVIEWS: "brand",
+  ONBOARDING: "brand",
+  DEPLOYED: "success",
   // Lifecycle / Customer Success status
   PENDING_REVIEW: "warning",
   CLARIFICATION_REQUIRED: "warning",

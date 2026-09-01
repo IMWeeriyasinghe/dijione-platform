@@ -169,7 +169,7 @@ export function ClientCandidatesTab({ requestId }: { requestId: number }) {
       {data.map((c) => (
         <Card key={c.application_id} className="p-5">
           <p className="text-base font-semibold text-dt-text-primary">{c.full_name}</p>
-          <p className="text-sm text-dt-text-secondary">{c.professional_title}</p>
+          <p className="text-sm text-dt-text-secondary">{c.professional_title || "—"}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {c.skills.map((s) => (
               <span key={s} className="rounded-full bg-dt-surface-warm px-2 py-0.5 text-xs text-dt-text-primary">
