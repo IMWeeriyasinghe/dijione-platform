@@ -64,24 +64,27 @@ def test_seed_grants_super_admin_birthday_admin_role(db):
         assert birthday_role.role == "BIRTHDAY_ADMIN"
         assert birthday_role.enabled is True
 
-        # Regression guard: a TalentFlow-only client persona must NOT pick
-        # up birthday access as a side effect of this change.
-        real_client = session.query(User).filter_by(persona_key="cms-group-client").one()
-        real_client_birthday_role = (
+        # Regression guard: a TalentFlow-only staff persona must NOT pick up
+        # birthday access as a side effect of this change. (Was the
+        # cms-group-client persona before the TALENT_CLIENT dev logins were
+        # removed — magic-link plan B.15; madushanka-ta is the equivalent
+        # single-module persona now.)
+        talent_only = session.query(User).filter_by(persona_key="madushanka-ta").one()
+        talent_only_birthday_role = (
             session.query(UserModuleRole)
-            .filter_by(user_id=real_client.id, module_key=MODULE_BIRTHDAY)
+            .filter_by(user_id=talent_only.id, module_key=MODULE_BIRTHDAY)
             .one_or_none()
         )
-        assert real_client_birthday_role is None
+        assert talent_only_birthday_role is None
 
-        # And the pre-existing talent-flow role assignment must be intact.
-        real_client_talent_role = (
+        # And its talent-flow role assignment must be intact.
+        talent_only_talent_role = (
             session.query(UserModuleRole)
-            .filter_by(user_id=real_client.id, module_key=MODULE_TALENT_FLOW)
+            .filter_by(user_id=talent_only.id, module_key=MODULE_TALENT_FLOW)
             .one_or_none()
         )
-        assert real_client_talent_role is not None
-        assert real_client_talent_role.role == "TALENT_CLIENT"
+        assert talent_only_talent_role is not None
+        assert talent_only_talent_role.role == "TA_MEMBER"
     finally:
         session.close()
 

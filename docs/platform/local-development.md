@@ -93,12 +93,14 @@ local validation, 2026-09-01 — see `apps/platform-api/app/core/
 real_dev_clients.py`) with stable `public_id`s, and writes every
 `UserModuleClientScope` / `UserModuleRole` row against the real
 `client_ref` string, not a bare integer — client isolation does not depend
-on seed-insertion order lining up across services. It also creates 3
-client-persona dev logins (`cms-group-client`, `databl-io-client`,
-`portal-technology-client` — the subset of real clients with the most
-posting volume in the live discovery run) plus the staff personas
-(`madushanka-ta`, `customer-success`, `ta-manager`, `platform-admin`,
-`super-admin`, `ta-portfolio`).
+on seed-insertion order lining up across services. It creates only staff
+personas (`madushanka-ta`, `customer-success`, `ta-manager`,
+`platform-admin`, `super-admin`, `ta-portfolio`) — there is **no**
+client-login dev persona. External client/prospect access to DijiTalentFlow
+is the real magic-link flow: a TA generates an access link (talent-web →
+*Client Access Links*) for a real client organisation and opens it in
+`talentflow-portal-web` (port 3100). See `docs/platform/data-ownership.md`
+and the magic-link plan.
 
 **`platform-api` must be running** (not just seeded) when you run
 `talent-api`'s seed script — unlike its old demo-data version, the current

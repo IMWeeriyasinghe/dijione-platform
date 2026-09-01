@@ -201,28 +201,12 @@ def seed() -> None:
                 title="DijiOne Super Admin", platform_role=PlatformRole.SUPER_ADMIN.value,
                 persona_key="super-admin", avatar_color="#5c1a15",
             ),
-            # Real, DTC-verified persona clients (PERSONA_CLIENTS — the
-            # subset of REAL_DEV_CLIENTS with the most real posting volume
-            # in the live discovery run; see real_dev_clients.py docstring).
-            # These local dev logins represent the real client
-            # organisation for demo purposes only — no specific real
-            # employee is asserted, so the persona's full_name is a
-            # generic role label, not an invented person's name.
-            dict(
-                email="client@cms-group.example", full_name="CMS group Client Contact",
-                title="Client Contact, CMS group", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="cms-group-client", avatar_color="#f26a1b",
-            ),
-            dict(
-                email="client@databl-io.example", full_name="Databl.io Client Contact",
-                title="Client Contact, Databl.io", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="databl-io-client", avatar_color="#f59e0b",
-            ),
-            dict(
-                email="client@portal-technology.example", full_name="Portal Technology Client Contact",
-                title="Client Contact, Portal Technology", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="portal-technology-client", avatar_color="#fbc34a",
-            ),
+            # No TALENT_CLIENT dev-login persona (removed 2026-09-02, magic-link
+            # plan B.15). External client access to DijiTalentFlow is now the
+            # real magic-link flow — a TA generates a link for a real client
+            # organisation and opens the talentflow-portal-web app against it.
+            # The TALENT_CLIENT *role* is unchanged; it only ever appears on a
+            # magic-link session token now, never on a seeded dev login.
             dict(
                 email="ruwan.gunasekara@dijitalteam.com", full_name="Ruwan Gunasekara",
                 title="Talent Acquisition Specialist (Portfolio)",
@@ -245,15 +229,14 @@ def seed() -> None:
         ta_manager = users_by_persona["ta-manager"]
         platform_admin = users_by_persona["platform-admin"]
         super_admin = users_by_persona["super-admin"]
-        cms_group_client_user = users_by_persona["cms-group-client"]
-        databl_io_client_user = users_by_persona["databl-io-client"]
-        portal_technology_client_user = users_by_persona["portal-technology-client"]
         ta_portfolio_user = users_by_persona["ta-portfolio"]
 
+        # PERSONA_CLIENTS still supplies the ta-portfolio persona's 2-client
+        # restriction below (CMS group + Databl.io); it no longer backs any
+        # client-login persona.
         persona_client_refs = {c.name: c.public_id for c in PERSONA_CLIENTS}
         cms_group_ref = persona_client_refs["CMS group"]
         databl_io_ref = persona_client_refs["Databl.io"]
-        portal_technology_ref = persona_client_refs["Portal Technology"]
 
         # Demonstrates DijiOne Phase 2 client/portfolio scope (CR §22): every
         # staff assignment defaults to ALL_CLIENTS except ta_portfolio_user,
@@ -265,9 +248,6 @@ def seed() -> None:
             (cs_user, MODULE_TALENT_FLOW, "CUSTOMER_SUCCESS", None, None),
             (ta_manager, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
             (platform_admin, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
-            (cms_group_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", cms_group_ref, None),
-            (databl_io_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", databl_io_ref, None),
-            (portal_technology_client_user, MODULE_TALENT_FLOW, "TALENT_CLIENT", portal_technology_ref, None),
             (ta_portfolio_user, MODULE_TALENT_FLOW, "TA_MEMBER", None, [cms_group_ref, databl_io_ref]),
             # DijiBirthday (Phase A-D): grant the Super Admin dev persona
             # BIRTHDAY_ADMIN so the "Super Admin can't see DijiBirthday"
@@ -302,8 +282,8 @@ def seed() -> None:
         print("Platform Core seed complete.")
         print(
             "  Dev personas: madushanka-ta, customer-success, ta-manager, "
-            "platform-admin, super-admin, cms-group-client, databl-io-client, "
-            "portal-technology-client, ta-portfolio (CMS group + Databl.io only)"
+            "platform-admin, super-admin, ta-portfolio (CMS group + Databl.io only). "
+            "No client-login persona — external client access is the magic-link flow."
         )
         print("  Now run: (cd ../talent-api && python scripts/seed.py [--reset])")
     finally:
