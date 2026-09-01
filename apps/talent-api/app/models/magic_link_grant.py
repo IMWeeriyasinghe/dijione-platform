@@ -59,7 +59,9 @@ class MagicLinkGrant(TimestampMixin, Base):
     # No FK to `users.id` — User is owned by platform-api's own database.
     issued_by_user_id: Mapped[int] = mapped_column(Integer)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_default_expiry)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_default_expiry, index=True
+    )
 
     redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

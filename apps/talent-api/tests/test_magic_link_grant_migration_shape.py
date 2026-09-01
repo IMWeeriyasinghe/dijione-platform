@@ -90,6 +90,24 @@ def test_token_hash_partial_none_of_it_duplicates_are_rejected(migrated_db):
         )
 
 
+def test_migration_indexes_match_the_model(migrated_db):
+    """The migration path and Base.metadata.create_all (the `db` test
+    fixture) must agree on the index set — the repo-wide convention that
+    every talent-api model index mirrors its migration."""
+    import app.models  # noqa: F401
+    from app.db.base import Base
+
+    migrated = {
+        name
+        for (name,) in migrated_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='magic_link_grants' "
+            "AND name NOT LIKE 'sqlite_autoindex_%'"
+        ).fetchall()
+    }
+    model = {idx.name for idx in Base.metadata.tables["magic_link_grants"].indexes}
+    assert migrated == model
+
+
 def test_client_id_foreign_key_enforced(migrated_db):
     migrated_db.execute("PRAGMA foreign_keys = ON")
     with pytest.raises(sqlite3.IntegrityError):
