@@ -127,6 +127,25 @@ source-synchronization lifecycle (scheduled/ad-hoc/async/single-flight/
 idempotent/freshness/notifications) — not repeated here to avoid drift
 between two copies of the same reference.
 
+### Local dev: do not run mock mode against a live-synced database
+
+`INTEGRATIONS_MODE` selects the data *source* (real Lever GET vs.
+`MockLeverClient` fixtures) but **not** the database — both modes write to
+the same `recruitment.db`. If you run a live GET-only discovery sync and
+then flip `INTEGRATIONS_MODE` back to `mock` (the correct resting state
+between controlled live sessions) and a sync fires, the 3 mock fixture
+postings (`post-senior-ppd`, `post-senior-py`, `post-cloud-arch`) get
+mixed in among the real rows and later surface as phantom "demo" postings
+on DijiTalentFlow's Recruitment Postings screen.
+
+`LeverPostingSyncService.sync_postings()` now **refuses** a mock-mode
+sync when the database already holds any non-fixture posting
+(`MockSyncAgainstRealDataError`), and the run is marked `FAILED` with a
+clear summary rather than contaminating the data. For isolated mock
+testing, point `DATABASE_URL` at a disposable file
+(`DATABASE_URL=sqlite:///./scratch-mock.db`), or just run the test suite,
+which already uses its own DB.
+
 ## Webhook handling
 
 `POST /api/recruitment/webhooks/lever` — HMAC-verified when a signing
