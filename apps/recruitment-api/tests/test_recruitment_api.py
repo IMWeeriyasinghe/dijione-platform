@@ -69,6 +69,44 @@ def test_candidacies_after_mock_sync(api_client, db):
     assert {r["posting_external_id"] for r in rows} == {"post-senior-ppd", "post-senior-py"}
 
 
+def test_candidacies_endpoint_skips_a_candidacy_with_an_unresolvable_posting(api_client, db):
+    """A real Lever candidacy can reference a posting that did not land
+    locally (confidential/filtered/archive-timing). It must be dropped, not
+    500 the consumer — regression for the NoneType crash the fresh live
+    re-sync surfaced (a dangling opp-ron-axel-py candidacy)."""
+    from app.models.recruitment_candidacy import RecruitmentCandidacy
+    from app.models.recruitment_candidate import RecruitmentCandidate
+
+    good_posting = _seed_posting(db, lever_id="p-good", title="Real Role")
+    doomed_posting = _seed_posting(db, lever_id="p-doomed", title="Doomed Role")
+    cand = RecruitmentCandidate(lever_contact_id="contact-1", full_name="Real Person")
+    db.add(cand)
+    db.flush()
+    db.add_all(
+        [
+            RecruitmentCandidacy(
+                recruitment_candidate_id=cand.id, posting_id=good_posting.id,
+                lever_opportunity_id="opp-good",
+            ),
+            RecruitmentCandidacy(
+                recruitment_candidate_id=cand.id, posting_id=doomed_posting.id,
+                lever_opportunity_id="opp-dangling",
+            ),
+        ]
+    )
+    db.commit()
+
+    # Delete the posting out from under the second candidacy (SQLite does
+    # not cascade without PRAGMA foreign_keys) — the real orphaning case.
+    db.delete(doomed_posting)
+    db.commit()
+
+    resp = api_client.get("/api/recruitment/candidacies", headers=internal_headers())
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert [r["external_id"] for r in rows] == ["opp-good"]  # dangling one dropped
+
+
 def test_ad_hoc_sync_is_202_and_single_flight(api_client, db):
     first = api_client.post(
         "/api/recruitment/internal/sync", json={"requested_by_user_id": 7}, headers=internal_headers()
