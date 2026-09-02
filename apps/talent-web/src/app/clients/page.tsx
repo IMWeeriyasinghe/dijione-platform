@@ -9,6 +9,11 @@ import { Table, Thead, Th, Tr, Td } from "@dijione/design-system";
 import { StatusBadge } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 
+// Industry / Account Manager are intentionally not shown: ClientOut still
+// carries them (real, nullable columns), but nothing in this codebase
+// populates them for the real DTC-verified client set yet — every row
+// would just render "—". Bring the columns back once a real source
+// exists rather than showing an always-empty field.
 export default function ClientPortfoliosPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["client-portfolios"],
@@ -28,8 +33,6 @@ export default function ClientPortfoliosPage() {
           <Thead>
             <tr>
               <Th>Client</Th>
-              <Th>Industry</Th>
-              <Th>Account Manager</Th>
               <Th>Total Requests</Th>
               <Th>Active Requests</Th>
               <Th>Status</Th>
@@ -43,8 +46,6 @@ export default function ClientPortfoliosPage() {
                     {c.name}
                   </Link>
                 </Td>
-                <Td>{c.industry || "—"}</Td>
-                <Td>{c.account_manager || "—"}</Td>
                 <Td>{c.total_requests}</Td>
                 <Td>{c.active_requests}</Td>
                 <Td>
