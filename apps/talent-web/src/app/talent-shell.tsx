@@ -10,7 +10,6 @@ import {
   FileText,
   LayoutDashboard,
   Link2,
-  MessageSquare,
   Tags,
   Users,
 } from "lucide-react";
@@ -38,6 +37,12 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Messages/Documents deliberately not in the top-level nav (DijiTalentFlow
+  // simplification, approved plan §I.5): both are empty in the real dataset
+  // and have no write UI of their own — they only ever aggregate each
+  // request's own Messages/Documents tab (still fully intact in
+  // RequestDetail). No code or data was removed; this is a nav-visibility
+  // trim only, reversible by adding the two entries back.
   const clientSections: NavSection[] = [
     {
       items: [
@@ -45,8 +50,6 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
         { label: "My Requests", href: "/requests", icon: Briefcase },
         { label: "Candidates", href: "/candidates", icon: Users },
         { label: "Interviews", href: "/interviews", icon: CalendarClock },
-        { label: "Messages", href: "/messages", icon: MessageSquare },
-        { label: "Documents", href: "/documents", icon: FileText },
       ],
     },
   ];

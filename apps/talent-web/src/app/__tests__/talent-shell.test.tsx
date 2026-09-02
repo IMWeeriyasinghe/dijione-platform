@@ -103,6 +103,11 @@ describe("TalentShell", () => {
     expect(screen.queryByText("Applications")).not.toBeInTheDocument();
     expect(screen.queryByText("Recruitment Postings")).not.toBeInTheDocument();
     expect(screen.queryByText("Client Access Links")).not.toBeInTheDocument();
+    // Messages/Documents are hidden from the top-level nav (empty in the
+    // real dataset, no write UI of their own) — still reachable inside a
+    // request's own tabs, just not as a standalone nav item.
+    expect(screen.queryByText("Messages")).not.toBeInTheDocument();
+    expect(screen.queryByText("Documents")).not.toBeInTheDocument();
     expect(screen.getByText("My Requests")).toBeInTheDocument();
     // DijiTalentFlow is not a client intake portal (retired 2026-09-01) —
     // no persona sees a "New Talent Request" action anywhere.
