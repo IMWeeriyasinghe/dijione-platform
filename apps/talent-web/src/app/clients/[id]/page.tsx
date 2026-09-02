@@ -41,15 +41,13 @@ export default function ClientPortfolioDetailPage({ params }: { params: Promise<
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-semibold text-dt-text-primary">{client.name}</h1>
-              <p className="text-sm text-dt-text-secondary">{client.industry || "—"}</p>
             </div>
             <StatusBadge status={client.status} />
           </div>
+          {/* Industry / Account Manager omitted: real, nullable ClientOut
+              columns, but nothing populates them for the real DTC-verified
+              client set yet — bring them back once a real source exists. */}
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-dt-text-secondary">Account Manager</dt>
-              <dd className="font-medium text-dt-text-primary">{client.account_manager || "—"}</dd>
-            </div>
             <div>
               <dt className="text-dt-text-secondary">Client Since</dt>
               <dd className="font-medium text-dt-text-primary">{formatDate(client.created_at)}</dd>
