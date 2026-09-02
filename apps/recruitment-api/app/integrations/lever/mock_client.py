@@ -33,6 +33,12 @@ _POSTINGS = [
     ),
 ]
 
+# The complete set of posting ids this mock provider will ever emit. The
+# sync path uses this to refuse to write mock fixtures into a database that
+# already holds real, live-synced postings (which silently mixes demo data
+# into real data — see LeverPostingSyncService.sync_postings).
+FIXTURE_POSTING_IDS: frozenset[str] = frozenset(p.id for p in _POSTINGS)
+
 # Real 14-stage pipeline confirmed by live Lever tenant discovery — mirrors
 # the actual Dijital Team stage catalogue, not a generic assumption.
 _STAGES = [

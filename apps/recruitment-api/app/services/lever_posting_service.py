@@ -15,10 +15,16 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.integrations.factory import get_lever_client
+from app.integrations.lever.mock_client import FIXTURE_POSTING_IDS, MockLeverClient
 from app.models.posting import Posting
 from app.repositories.posting_repo import PostingRepository
 
 logger = logging.getLogger("recruitment-api.lever_posting_service")
+
+
+class MockSyncAgainstRealDataError(RuntimeError):
+    """Raised when a mock-mode posting sync would write fixture data into a
+    database that already holds real, live-synced postings."""
 
 
 class LeverPostingSyncService:
@@ -28,6 +34,23 @@ class LeverPostingSyncService:
 
     def sync_postings(self) -> dict:
         client = get_lever_client()
+
+        # Guard: the mock provider and the live provider write to the SAME
+        # database (there is no per-mode DB separation). If someone flips a
+        # live-synced local/dev DB back to INTEGRATIONS_MODE=mock and runs a
+        # sync, the 3 mock fixtures get mixed in among the real postings and
+        # surface as phantom "demo" rows. Refuse rather than contaminate —
+        # use a disposable DATABASE_URL for isolated mock testing.
+        if isinstance(client, MockLeverClient):
+            real_count = self.posting_repo.count_outside(FIXTURE_POSTING_IDS)
+            if real_count > 0:
+                raise MockSyncAgainstRealDataError(
+                    f"Refusing a mock-mode posting sync: this database already holds "
+                    f"{real_count} non-fixture posting(s), i.e. real live-synced data. "
+                    f"Point DATABASE_URL at a disposable file for mock testing, or run "
+                    f"in live mode."
+                )
+
         lever_postings = client.list_postings()
 
         created = 0
