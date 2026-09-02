@@ -60,6 +60,33 @@ If Dijital Team supplies an official brand guideline later, only this one
 block needs to change — every component consumes the `--dt-*` variables,
 never a hardcoded hex value.
 
+### Official brand guideline — received (2026‑09), token alignment pending
+
+The authoritative Dijital Team brand materials are now available at
+`C:\Projects\Diji Projects\Dijital Team Brand Guideline` (a READ‑ONLY
+reference exception to the project‑root boundary — see root `CLAUDE.md`
+"Dijital Team Branding Agent"). The full baseline is
+`docs/talent-flow/brand-baseline.md`. The verified facts:
+
+- **Official colours (the only five):** Black `#000000`, Green `#056839`,
+  Red `#BF1E2E`, Orange `#F1592A`, Yellow `#FCB040`. There is no sanctioned
+  grey scale or gradient spec; the warm off‑white surfaces above are an
+  approved extension (CLAUDE.md §50), not brand colours.
+- **Supporting font:** **Be Vietnam Pro** (Google Fonts; Light 300 / Bold
+  700). The logo/tagline custom font is never recreated — use the logo files.
+- **Logo:** black lowercase `dijital team` wordmark, four‑dot `j` mark
+  (yellow / orange / red / green). White/reversed version for dark or busy
+  backgrounds; clear space = 2× dot width; min 120 px wide on screen.
+
+The `--dt-*` token block above is still the CLAUDE.md §48 **derived** MVP
+palette and does **not** yet match the official values. Alignment (retire
+the invented `--dt-red-deep` / `--dt-burnt-orange` / `--dt-orange-deep`
+shades, set one canonical value per brand colour, align `--dt-success` →
+`#056839` and `--dt-danger` → `#BF1E2E`, switch `--font-sans` to Be Vietnam
+Pro, replace the approximate logo asset with the official one + a white
+variant) lands as a dedicated brand‑implementation PR in the Monitoring‑First
+UX iteration — see `docs/talent-flow/brand-baseline.md` §F and the plan.
+
 ## Gradients
 
 Used selectively (CLAUDE.md §49), never on every card:

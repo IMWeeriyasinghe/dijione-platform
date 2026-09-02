@@ -27,38 +27,183 @@
 > truth for *what* DijiOne and DijiTalentFlow must do.
 
 ---
-# ENGINEERING DELIVERY AND GATEKEEPER CONTRACT
+# ENGINEERING DELIVERY, BRANDING AND GATEKEEPER CONTRACT
 
-DijiOne uses two separate engineering responsibilities:
+DijiOne uses three separate specialist responsibilities:
 
 1. **Development Agent** — implementation.
-2. **Engineering Gatekeeper** — independent verification and delivery control.
+2. **Dijital Team Branding Agent** — official brand interpretation, visual identity governance and brand-fidelity review.
+3. **Engineering Gatekeeper** — independent engineering verification and delivery control.
 
 ## Development Agent
+
+The Development Agent is the primary implementation agent for DijiOne.
 
 The Development Agent owns:
 
 - implementation;
 - bug fixes;
 - refactoring;
+- frontend and backend development;
 - tests;
 - migrations;
 - implementation-related documentation;
 - local verification;
 - branch/commit preparation;
 - pull-request preparation;
-- correcting defects returned by the Engineering Gatekeeper.
+- correcting defects returned by the Engineering Gatekeeper;
+- implementing approved recommendations from specialist agents.
+
+The Development Agent MUST remain aligned with:
+
+- the root `CLAUDE.md`;
+- approved architecture and product requirements;
+- applicable specialist policies;
+- established service/data ownership boundaries;
+- security and provider-safety contracts.
+
+### Specialist-agent collaboration
+
+The Development Agent remains responsible for implementation even when
+specialist agents provide guidance.
+
+For work materially affecting Dijital Team visual identity, the Development
+Agent SHOULD use the Dijital Team Branding Agent defined at:
+
+`.claude/agents/branding-agent.md`
+
+The Branding Agent provides brand interpretation, visual guidance and
+brand-fidelity review.
+
+The Branding Agent does not replace the Development Agent as the
+implementation owner.
+
+Where applicable, the Development Agent should implement approved Branding
+Agent recommendations and return the resulting UI for brand review.
+
+A branding recommendation MUST NOT override:
+
+- accessibility;
+- security;
+- authorization;
+- architecture;
+- product/business requirements;
+- established data ownership.
+
+Any material conflict must be reported rather than resolved by silently
+changing one of these requirements.
+
+### Delivery responsibility
 
 The Development Agent MUST NOT treat its own successful local verification
 as final approval for merge.
 
-When development work is complete, the expected lifecycle is:
+When development work is complete, the normal engineering lifecycle is:
 
 Development Agent
+→ implementation
+→ local verification
 → commit/push
 → Pull Request
 → GitHub CI
 → Engineering Gatekeeper
+
+For UI work requiring brand review, the lifecycle becomes:
+
+Development Agent
+→ implementation
+→ local verification
+→ Branding Agent review
+→ brand corrections where required
+→ commit/push
+→ Pull Request
+→ GitHub CI
+→ Engineering Gatekeeper
+
+The Engineering Gatekeeper remains the final independent engineering
+verification and merge-control authority.
+
+
+## Dijital Team Branding Agent
+
+The Dijital Team Branding Agent is the specialist authority for interpretation
+and application of the official Dijital Team visual identity across DijiOne
+and its applications.
+
+The Branding Agent owns:
+
+- interpretation of official Dijital Team brand guidelines;
+- identification and correct usage of official logos and brand assets;
+- brand colour and typography guidance;
+- authentication and login visual guidance;
+- DijiOne and module visual-brand consistency;
+- shared design-system brand review;
+- internal and external application brand-fidelity review;
+- implementation-ready branding recommendations;
+- independent brand review of UI-heavy changes when applicable.
+
+The authoritative detailed Branding Agent policy is:
+
+`.claude/agents/branding-agent.md`
+
+Any agent acting as the Dijital Team Branding Agent MUST read and follow that
+document before making a branding decision.
+
+### Official brand source
+
+The authoritative local Dijital Team brand-reference directory is:
+
+`C:\Projects\Diji Projects\Dijital Team Brand Guideline`
+
+This directory is an explicitly authorized READ-ONLY reference exception to
+the normal project-root boundary.
+
+Agents MAY:
+
+- list files and directories within this brand-reference directory;
+- read brand guideline documents;
+- inspect images and visual assets;
+- inspect logos, icons and artwork;
+- inspect typography, colour and style guidance;
+- use these materials to make brand recommendations.
+
+Agents MUST NOT:
+
+- modify files in this directory;
+- rename files in this directory;
+- move files in this directory;
+- delete files in this directory;
+- overwrite files in this directory;
+- reorganize this directory;
+- use this directory as an application runtime dependency.
+
+When implementation is approved, required brand assets must be copied into
+an appropriate location inside the DijiOne repository. The application must
+never depend at runtime on the external brand-reference directory.
+
+### Branding Agent boundaries
+
+The Branding Agent does NOT own:
+
+- product or business requirements;
+- application architecture;
+- backend architecture;
+- data ownership;
+- API contracts;
+- authorization or security architecture;
+- deployment;
+- database design;
+- merge approval.
+
+The Development Agent remains responsible for implementation.
+
+The Engineering Gatekeeper remains responsible for final engineering,
+security, CI and merge eligibility.
+
+Where brand guidance conflicts with accessibility, security or core
+usability, the Branding Agent MUST identify the conflict rather than
+silently overriding those requirements.
+
 
 ## Engineering Gatekeeper
 
@@ -2949,14 +3094,64 @@ Own:
 
 - DijiTalentFlow business functionality.
 
+
 ## Lever Agent
 
-Own:
+The persistent Lever specialist agent is defined at:
 
-- Lever provider abstraction;
-- mock provider;
-- tests;
-- later live mapping.
+`.claude/agents/lever-agent.md`
+
+The Lever Agent is the specialist authority for Lever integration,
+live-data discovery, provider mapping, Recruitment Source synchronization,
+and Lever provider-safety compliance.
+
+The Lever Agent operates through the DijiOne Recruitment Source domain:
+
+`apps/recruitment-api`
+
+The Recruitment Source domain is the single DijiOne owner of direct Lever
+access.
+
+The Lever Agent owns specialist work relating to:
+
+- Lever API discovery;
+- Lever provider abstraction and adapter behavior;
+- live Lever read-only data inspection;
+- Lever DTO and field mapping;
+- postings;
+- opportunities/candidacies;
+- candidates;
+- recruitment stages;
+- archive reasons;
+- interviews and other approved recruitment metadata;
+- governed `DTC - <Client Name>` tag interpretation at the provider boundary;
+- Recruitment Source synchronization;
+- reconciliation and idempotency;
+- sync-run/freshness behavior;
+- rate-limit and provider-failure handling;
+- Lever integration tests;
+- Lever provider-safety verification.
+
+The Lever Agent MUST preserve:
+
+`LEVER ACCESS MODE = READ ONLY`
+
+Only GET/read operations against Lever are authorized.
+
+The Lever Agent MUST NOT perform or introduce POST, PUT, PATCH or DELETE
+operations against Lever unless the governing contract is explicitly changed
+with human authorization.
+
+DijiTalentFlow and other DijiOne applications MUST NOT access Lever directly.
+They consume the Recruitment Source internal API.
+
+The Development Agent remains responsible for general implementation and
+integration of approved Lever-related changes into the wider DijiOne
+platform.
+
+The Engineering Gatekeeper remains responsible for final engineering,
+security, CI and merge eligibility.
+
 
 ## HubSpot Agent
 
@@ -2967,14 +3162,22 @@ Own:
 - tests;
 - later live mapping.
 
-## UI/Brand Agent
+## Dijital Team Branding Agent
 
-Own:
+The persistent specialist agent is defined at:
 
-- Dijital Team visual research;
-- design tokens;
-- DijiOne design system;
-- consistent module styling.
+`.claude/agents/branding-agent.md`
+
+Owns:
+
+- official Dijital Team brand interpretation;
+- official brand asset guidance;
+- visual identity governance;
+- design-system brand alignment;
+- consistent DijiOne/module branding;
+- independent brand-fidelity review.
+
+Implementation remains the responsibility of the Development Agent.
 
 ## AI/Copilot Agent
 
