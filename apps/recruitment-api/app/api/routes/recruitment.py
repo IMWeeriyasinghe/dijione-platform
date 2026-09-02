@@ -106,6 +106,10 @@ def list_candidacies(
     rows = RecruitmentCandidacyRepository(db).list(posting_id=posting_local_id, limit=limit)
     out: list[CandidacyOut] = []
     for c in rows:
+        if c.posting is None or c.candidate is None:
+            # Belt-and-braces: the repo already inner-joins these out, but
+            # never let an unprojectable candidacy 500 the consumer.
+            continue
         out.append(
             CandidacyOut(
                 external_id=c.lever_opportunity_id,

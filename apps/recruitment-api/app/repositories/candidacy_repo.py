@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.posting import Posting
 from app.models.recruitment_candidacy import RecruitmentCandidacy
 from app.models.recruitment_candidate import RecruitmentCandidate
 
@@ -17,7 +18,20 @@ class RecruitmentCandidacyRepository:
         ).scalars().first()
 
     def list(self, *, posting_id: int | None = None, limit: int = 200) -> list[RecruitmentCandidacy]:
-        stmt = select(RecruitmentCandidacy).order_by(RecruitmentCandidacy.updated_at.desc())
+        # INNER joins on posting + candidate: a candidacy whose posting or
+        # contact did not resolve locally (a confidential/filtered posting,
+        # an archive-timing gap, or a stale FK) is not projectable to
+        # DijiTalentFlow and would otherwise crash the DTO builder on a
+        # NoneType relationship. Drop it here rather than 500 the consumer.
+        stmt = (
+            select(RecruitmentCandidacy)
+            .join(Posting, RecruitmentCandidacy.posting_id == Posting.id)
+            .join(
+                RecruitmentCandidate,
+                RecruitmentCandidacy.recruitment_candidate_id == RecruitmentCandidate.id,
+            )
+            .order_by(RecruitmentCandidacy.updated_at.desc())
+        )
         if posting_id is not None:
             stmt = stmt.where(RecruitmentCandidacy.posting_id == posting_id)
         return list(self.db.execute(stmt.limit(limit)).scalars().all())
