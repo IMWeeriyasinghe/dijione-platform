@@ -50,9 +50,28 @@ function Badge({ tone, children }: { tone: keyof typeof TONE_CLASS; children: Re
   );
 }
 
+// The Recruitment Source read model carries ~3.5 years of Lever history —
+// the large majority are old `closed` postings with no DTC tag, which is
+// correct fail-closed behaviour but useless as a default TA view. Default
+// to what a TA acts on now; every other cut stays one click away, and
+// "All" is an explicit escape hatch (nothing is hidden from diagnosis).
+type PostingFilter = "active" | "verified" | "unmapped" | "review" | "all";
+
+const FILTERS: { key: PostingFilter; label: string; match: (p: PostingRow) => boolean }[] = [
+  { key: "active", label: "Recent / Active", match: (p) => p.state !== "closed" },
+  { key: "verified", label: "Verified", match: (p) => p.mapping_status === "VERIFIED" },
+  { key: "unmapped", label: "Unmapped", match: (p) => p.mapping_status === "UNMAPPED" },
+  {
+    key: "review",
+    label: "Needs review",
+    match: (p) => p.mapping_status !== "VERIFIED" && NEEDS_REVIEW.has(p.resolution_status),
+  },
+  { key: "all", label: "All", match: () => true },
+];
+
 export function PostingsView() {
   const qc = useQueryClient();
-  const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
+  const [filter, setFilter] = useState<PostingFilter>("active");
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
   const [pickClientId, setPickClientId] = useState<number | null>(null);
 
@@ -76,11 +95,8 @@ export function PostingsView() {
   if (postings.isError || !postings.data)
     return <ErrorState onRetry={() => postings.refetch()} />;
 
-  const rows = needsReviewOnly
-    ? postings.data.filter(
-        (p) => p.mapping_status !== "VERIFIED" && NEEDS_REVIEW.has(p.resolution_status),
-      )
-    : postings.data;
+  const all = postings.data;
+  const rows = all.filter(FILTERS.find((f) => f.key === filter)!.match);
 
   return (
     <div>
@@ -89,14 +105,32 @@ export function PostingsView() {
         description="Lever job postings and their client mapping. A posting becomes visible to a client only once its 'DTC - <Client>' tag resolves to a verified client — or a staff member verifies it manually."
       />
 
-      <label className="mb-4 flex items-center gap-2 text-sm text-dt-text-secondary">
-        <input
-          type="checkbox"
-          checked={needsReviewOnly}
-          onChange={(e) => setNeedsReviewOnly(e.target.checked)}
-        />
-        Needs review only
-      </label>
+      <div className="mb-2 flex flex-wrap gap-2">
+        {FILTERS.map((f) => {
+          const count = all.filter(f.match).length;
+          const active = filter === f.key;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={
+                active
+                  ? "rounded-full border border-dt-orange bg-dt-cream px-3 py-1 text-xs font-medium text-dt-burnt-orange"
+                  : "rounded-full border border-dt-border px-3 py-1 text-xs text-dt-text-secondary hover:border-dt-orange"
+              }
+            >
+              {f.label} <span className="opacity-60">({count})</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mb-4 text-xs text-dt-text-secondary">
+        Showing {rows.length} of {all.length} postings
+        {filter === "active" && all.length > rows.length
+          ? ` — ${all.length - rows.length} closed/older hidden (use "All")`
+          : ""}
+      </p>
 
       {rows.length === 0 ? (
         <EmptyState title="Nothing here" description="No postings match the current filter." />
