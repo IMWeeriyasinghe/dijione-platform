@@ -19,16 +19,34 @@ export default function OverviewPage() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold text-dt-text-primary">Overview</h2>
-        <p className="text-sm text-dt-text-secondary">
-          Where your talent requests stand right now.
-        </p>
+        <h2 className="text-xl font-semibold text-dt-text-primary">
+          Your engagement{data.client_name ? ` — ${data.client_name}` : ""}
+        </h2>
+        <p className="text-sm text-dt-text-secondary">Recruitment managed by Dijital Team.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard label="Active requests" value={data.active_requests} icon={Briefcase} tone="brand" />
-        <MetricCard label="Candidates in process" value={data.candidates_in_process} icon={Users} />
-        <MetricCard label="Interviews this week" value={data.interviews_this_week} icon={CalendarClock} />
+        <MetricCard
+          label="Active requests"
+          value={data.active_requests}
+          icon={Briefcase}
+          tone="brand"
+          href="/requests"
+        />
+        <MetricCard
+          label="Candidates in process"
+          value={data.candidates_in_process}
+          icon={Users}
+          href="/requests"
+        />
+        <MetricCard
+          label="Interviews this week"
+          value={data.interviews_this_week}
+          icon={CalendarClock}
+          href={data.interviews_this_week > 0 ? "/interviews" : undefined}
+        />
+        {/* Offers in progress: no offer-specific view exists on the portal
+            yet — decorative, not a link (plan §D). */}
         <MetricCard label="Offers in progress" value={data.offers_in_progress} icon={Briefcase} />
       </div>
 

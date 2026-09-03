@@ -74,5 +74,12 @@ export const getRequest = (id: number) =>
 export const listRequestCandidates = (id: number) =>
   request<ClientSafeCandidateOut[]>(`/api/talent/external/requests/${id}/candidates`);
 
+// Candidate Review Detail — the single-candidate view behind a clickable
+// card. Server enforces the full fail-closed invariant (session -> grant's
+// own client_id -> this application belongs to that client -> is_client_
+// visible); any failure is an identical 404, never distinguishable here.
+export const getCandidateReview = (applicationId: number) =>
+  request<ClientSafeCandidateOut>(`/api/talent/external/applications/${applicationId}`);
+
 export const listInterviews = () =>
   request<ClientInterviewOut[]>("/api/talent/external/interviews");
