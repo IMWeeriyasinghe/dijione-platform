@@ -41,3 +41,7 @@ class RecruitmentPostingRef(TimestampMixin, Base):
 
     source_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # When Lever created the posting (fact, refreshed every sync) — shown
+    # to staff as the postings-review "Created" column.
+    lever_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -105,6 +105,7 @@ class PostingRepository:
         ref.dtc_client_name = dtc.get("client_name")
         ref.dtc_raw_tag = dtc.get("raw_tag")
         ref.source_synced_at = _parse_iso(dto.get("synced_at"))
+        ref.lever_created_at = _parse_iso(dto.get("lever_created_at"))
         ref.last_seen_at = datetime.now(UTC)
         self.db.flush()
         return ref

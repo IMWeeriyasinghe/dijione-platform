@@ -239,3 +239,7 @@ class DtcResolutionStatus(StrEnum):
     AMBIGUOUS_CLIENT_NAME = "AMBIGUOUS_CLIENT_NAME"
     MALFORMED_TAG = "MALFORMED_TAG"
     CONFLICT_MANUAL_OVERRIDE = "CONFLICT_MANUAL_OVERRIDE"
+    # A staff user explicitly unmapped a VERIFIED posting (REJECTED/MANUAL).
+    # The DTC reconciler treats REJECTED as absolute and never touches it —
+    # see PostingClientMappingReconciler._reconcile_one's early return.
+    MANUALLY_UNMAPPED = "MANUALLY_UNMAPPED"
