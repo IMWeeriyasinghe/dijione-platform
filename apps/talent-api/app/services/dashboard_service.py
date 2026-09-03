@@ -15,6 +15,7 @@ from app.models.candidate import Candidate
 from app.models.client import Client
 from app.models.interview import Interview
 from app.models.talent_request import TalentRequest
+from app.repositories.client_repo import ClientRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.dashboard import ClientDashboardOut, TaDashboardOut
 from app.services.talent_request_service import ACTIVE_APPLICATION_STATUSES, TalentRequestService
@@ -25,8 +26,10 @@ class DashboardService:
         self.db = db
         self.request_repo = TalentRequestRepository(db)
         self.request_service = TalentRequestService(db)
+        self.client_repo = ClientRepository(db)
 
     def client_dashboard(self, client_id: int) -> ClientDashboardOut:
+        client = self.client_repo.get_by_id(client_id)
         requests = self.request_repo.list_for_scope(client_id=client_id)
         active_requests = [
             r
@@ -72,6 +75,7 @@ class DashboardService:
             ).scalar_one()
 
         return ClientDashboardOut(
+            client_name=client.name if client else "",
             active_requests=len(active_requests),
             candidates_in_process=candidates_in_process,
             interviews_this_week=interviews_this_week,

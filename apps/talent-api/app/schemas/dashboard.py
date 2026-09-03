@@ -4,6 +4,7 @@ from app.schemas.talent_request import TalentRequestOut
 
 
 class ClientDashboardOut(BaseModel):
+    client_name: str
     active_requests: int
     candidates_in_process: int
     interviews_this_week: int
