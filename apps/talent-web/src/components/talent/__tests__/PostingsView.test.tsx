@@ -91,7 +91,10 @@ describe("PostingsView — Created column", () => {
     ]);
     wrap(<PostingsView />);
     await screen.findByText("Has Date");
-    expect(screen.getByText("12 Aug 2026")).toBeInTheDocument();
+    // formatDate uses the runtime's default locale (day/month order
+    // differs between environments) — match on content, not exact
+    // formatting, to avoid a CI-vs-local locale mismatch.
+    expect(screen.getByText((text) => text.includes("2026") && text.includes("Aug"))).toBeInTheDocument();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 });
