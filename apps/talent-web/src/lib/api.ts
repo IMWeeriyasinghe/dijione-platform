@@ -196,6 +196,7 @@ export const createMagicLinkGrant = (body: {
   contact_name?: string;
   contact_email?: string;
   expires_in_days?: number;
+  expires_at?: string;
 }) =>
   request<MagicLinkGrantCreatedOut>("/api/talent/external/grants", {
     method: "POST",
@@ -208,4 +209,13 @@ export const revokeMagicLinkGrant = (publicId: string) =>
 export const regenerateMagicLinkGrant = (publicId: string) =>
   request<MagicLinkGrantCreatedOut>(`/api/talent/external/grants/${publicId}/regenerate`, {
     method: "POST",
+  });
+
+// Pushes expires_at forward on the SAME grant — token/public_id unchanged,
+// so the client's existing URL keeps working. Extend-only (the backend
+// rejects a shorter target); a revoked grant can never be extended.
+export const extendMagicLinkGrant = (publicId: string, expires_at: string) =>
+  request<MagicLinkGrantOut>(`/api/talent/external/grants/${publicId}/extend`, {
+    method: "POST",
+    body: JSON.stringify({ expires_at }),
   });
