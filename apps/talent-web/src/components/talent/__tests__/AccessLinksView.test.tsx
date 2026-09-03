@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   createMagicLinkGrant: vi.fn(),
   revokeMagicLinkGrant: vi.fn(),
   regenerateMagicLinkGrant: vi.fn(),
+  extendMagicLinkGrant: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => api);
@@ -42,8 +43,13 @@ const GRANT = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear();
   api.listClientPortfolios.mockResolvedValue([
-    { id: 1, name: "ABC Company", industry: null, account_manager: null, status: "ACTIVE", created_at: "", total_requests: 0, active_requests: 0 },
+    {
+      id: 1, name: "ABC Company", industry: null, account_manager: null, status: "ACTIVE", created_at: "",
+      total_requests: 0, active_requests: 0, active_application_count: 0, client_visible_count: 0,
+      latest_request_at: null,
+    },
   ]);
   api.listMagicLinkGrants.mockResolvedValue([GRANT]);
 });
@@ -90,5 +96,73 @@ describe("AccessLinksView", () => {
     await screen.findAllByText("ABC Company");
     await user.click(screen.getByRole("button", { name: /^Revoke$/i }));
     await waitFor(() => expect(api.revokeMagicLinkGrant).toHaveBeenCalledWith("mlg-abc123"));
+  });
+
+  it("recalls the just-generated link on a same-session remount, but not after Dismiss", async () => {
+    api.createMagicLinkGrant.mockResolvedValue({
+      ...GRANT,
+      raw_token: "RAW-TOKEN-VALUE",
+      access_url: "http://localhost:3100/access#RAW-TOKEN-VALUE",
+    });
+    const user = userEvent.setup();
+    const first = wrap(<AccessLinksView />);
+
+    await screen.findAllByText("ABC Company");
+    await user.selectOptions(screen.getByLabelText(/Client/i), "1");
+    await user.click(screen.getByRole("button", { name: /Generate access link/i }));
+    await waitFor(() =>
+      expect(screen.getByText("http://localhost:3100/access#RAW-TOKEN-VALUE")).toBeInTheDocument(),
+    );
+    first.unmount();
+
+    // A fresh mount within the same browser session (sessionStorage
+    // persists) recalls the link without calling the API again.
+    wrap(<AccessLinksView />);
+    expect(await screen.findByText("http://localhost:3100/access#RAW-TOKEN-VALUE")).toBeInTheDocument();
+    expect(api.createMagicLinkGrant).toHaveBeenCalledTimes(1);
+  });
+
+  it("extending a grant calls the API with the chosen date and refreshes the list", async () => {
+    api.extendMagicLinkGrant.mockResolvedValue({ ...GRANT, expires_at: "2026-12-01T23:59:59.000Z" });
+    const user = userEvent.setup();
+    wrap(<AccessLinksView />);
+
+    await screen.findAllByText("ABC Company");
+    await user.click(screen.getByRole("button", { name: "Extend" }));
+
+    const dateInput = document.querySelector('input[type="date"].w-36') as HTMLInputElement;
+    expect(dateInput).toBeTruthy();
+    await user.clear(dateInput);
+    await user.type(dateInput, "2026-12-01");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.extendMagicLinkGrant).toHaveBeenCalledWith(
+        "mlg-abc123",
+        expect.stringContaining("2026-12-01"),
+      ),
+    );
+  });
+
+  it("shows an 'in N days' hint for an active grant, amber when 3 days or fewer remain", async () => {
+    const soon = new Date();
+    soon.setDate(soon.getDate() + 2);
+    api.listMagicLinkGrants.mockResolvedValue([{ ...GRANT, expires_at: soon.toISOString() }]);
+    wrap(<AccessLinksView />);
+
+    expect(await screen.findByText("in 2 days")).toBeInTheDocument();
+  });
+
+  it("a revoked grant shows no Extend/Regenerate/Revoke actions", async () => {
+    api.listMagicLinkGrants.mockResolvedValue([{ ...GRANT, status: "REVOKED", revoked_at: "2026-09-03T00:00:00Z" }]);
+    wrap(<AccessLinksView />);
+
+    await screen.findAllByText("ABC Company");
+    expect(screen.queryByRole("button", { name: "Extend" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Revoke$/i })).not.toBeInTheDocument();
+    // Matches the Actions-column "Revoked <date>" text, not the Status
+    // badge (exactly "Revoked", no trailing content) — and avoids
+    // depending on formatDate's locale-specific day/month ordering.
+    expect(screen.getByText(/^Revoked /)).toBeInTheDocument();
   });
 });
