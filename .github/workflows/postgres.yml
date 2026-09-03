@@ -23,7 +23,45 @@ permissions:
   contents: read
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      platform-api: ${{ steps.filter.outputs.platform-api }}
+      talent-api: ${{ steps.filter.outputs.talent-api }}
+      recruitment-api: ${{ steps.filter.outputs.recruitment-api }}
+      people-api: ${{ steps.filter.outputs.people-api }}
+      commercial-api: ${{ steps.filter.outputs.commercial-api }}
+      birthday-api: ${{ steps.filter.outputs.birthday-api }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Same broad per-service scope as this workflow's own
+          # pull_request.paths — trigger coverage is intentionally
+          # unchanged, only the matrix-entry-level gating is new.
+          filters: |
+            platform-api:
+              - 'apps/platform-api/**'
+              - 'packages/auth-client-py/**'
+            talent-api:
+              - 'apps/talent-api/**'
+              - 'packages/auth-client-py/**'
+            recruitment-api:
+              - 'apps/recruitment-api/**'
+              - 'packages/auth-client-py/**'
+            people-api:
+              - 'apps/people-api/**'
+              - 'packages/auth-client-py/**'
+            commercial-api:
+              - 'apps/commercial-api/**'
+              - 'packages/auth-client-py/**'
+            birthday-api:
+              - 'apps/birthday-api/**'
+              - 'packages/auth-client-py/**'
+
   pg:
+    needs: detect
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -41,6 +79,7 @@ jobs:
             db: commercial_dev
           - service: birthday-api
             db: birthday_dev
+    if: needs.detect.outputs[matrix.service] == 'true'
     services:
       postgres:
         image: postgres:16

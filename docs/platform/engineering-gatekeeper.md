@@ -200,10 +200,10 @@ bypass it:
     commercial-api, birthday-api (6)
   - `pg`: platform-api, talent-api, recruitment-api, people-api,
     commercial-api, birthday-api (6)
-  - `lint-build`: shell-web, admin-web, talent-web, birthday-web,
-    birthday-supplier-web (5)
+  - `lint-build`: shell-web, admin-web, talent-web, talentflow-portal-web,
+    birthday-web, birthday-supplier-web (6)
   - `gitleaks` (1)
-  - **26 named contexts total.**
+  - **27 named contexts total.**
 - `enforce_admins = true` — protection applies even to the repo owner.
   CODEOWNERS names only the human user themselves, so without this the
   "no bypass" guarantee has a hole.
@@ -319,6 +319,33 @@ classification does **not** by itself mean human escalation:
    whether it looks accidental or deliberate) — unless the PR also modified
    the guard test's own skip/allowlist logic, in which case treat it as
    the intentional-weakening case in §5/§7 (`HUMAN_REQUIRED`).
+
+   **Matrix-level `skipped` conclusion — verify against the diff, don't
+   trust it blindly.** `api.yml`, `migrations.yml`, `postgres.yml`, and
+   `web.yml` each run a `detect` job (`dorny/paths-filter@v3`) ahead of
+   their matrix job, and gate each matrix leg with
+   `if: needs.detect.outputs[matrix.<key>] == 'true'`. A leg that doesn't
+   run reports `conclusion: skipped` in `gh pr checks` / the check-runs
+   API — this is architecturally identical to a workflow that never
+   triggered at all (§4's existing not-triggered-is-not-a-defect rule),
+   but is **not** automatically acceptable the same way. Before treating
+   any `skipped` matrix leg as legitimate, the Gatekeeper MUST:
+   - pull the actual PR diff (`gh pr diff` or the compare API) and confirm
+     the skipped service/app's own directory, and every shared path its
+     `detect` filter also watches (e.g. `packages/auth-client-py/**` for
+     api/postgres legs, `packages/**` + root lockfiles for web legs), is
+     genuinely absent from the changed-files list;
+   - for a `packages/**` or shared-dependency change, confirm **no**
+     consumer leg is skipped — a skip on a fan-out-eligible service/app
+     when a shared dependency changed is a `CI_CONFIGURATION_DEFECT`
+     (the filter didn't fan out correctly), not a legitimate skip;
+   - treat a `skipped` leg whose component the diff *does* touch as a
+     `CI_CONFIGURATION_DEFECT` (the `detect` job's filter is wrong or
+     stale) and route it to the Development Agent like any other
+     configuration defect, not silently accept it as `PASS`.
+   A verified-legitimate skip carries no further weight — it is treated
+   exactly like a not-triggered workflow (informational, not a gate
+   failure). An unverified skip must never be waved through.
 2. **New cross-service DB/FK reference.** `gh pr diff` scanned for a new
    import of another service's SQLAlchemy models, or a new engine/session
    pointed at another service's `DATABASE_URL` env var — violates the "no
