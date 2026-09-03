@@ -44,6 +44,18 @@ from app.services.audit_service import AuditService
 _RAW_TOKEN_BYTES = 32
 _TOKEN_PREFIX_LEN = 8
 
+# Plan §H2/§H3: user-selectable expiry, default 14d, min 1d, max 90d, no
+# indefinite grants — enforced here (not just at the Pydantic Field on
+# GrantCreateRequest.expires_in_days) so the expires_at path gets the same
+# bound.
+_MIN_EXPIRY_DAYS = 1
+_MAX_EXPIRY_DAYS = 90
+
+
+class InvalidExpiryError(ValueError):
+    """expires_at/expires_in_days is out of the allowed [1, 90] day window,
+    or (extend only) does not move expiry forward."""
+
 
 def hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
@@ -113,14 +125,24 @@ class MagicLinkService:
         contact_name: str = "",
         contact_email: str = "",
         expires_in_days: int | None = None,
+        expires_at: datetime | None = None,
     ) -> tuple[MagicLinkGrant, str]:
         """Mint a new grant for a client. Returns ``(grant, raw_token)`` —
         the raw token is surfaced to the TA exactly once and never stored.
-        Caller commits."""
+        Caller commits.
+
+        ``expires_at`` (an explicit date picker choice) takes precedence
+        over ``expires_in_days`` when both are given; neither given falls
+        back to the configured default (14 days). Either path is bounded
+        to [1, 90] days from now — raises ``InvalidExpiryError`` outside
+        that window."""
         settings = get_settings()
-        days = expires_in_days or settings.external_grant_default_expiry_days
-        raw, token_hash, token_prefix = generate_raw_token()
         now = datetime.now(UTC)
+        resolved_expiry = self._resolve_expiry(
+            now, expires_at=expires_at, expires_in_days=expires_in_days,
+            default_days=settings.external_grant_default_expiry_days,
+        )
+        raw, token_hash, token_prefix = generate_raw_token()
         grant = MagicLinkGrant(
             public_id=f"mlg-{uuid.uuid4().hex[:12]}",
             client_id=client_id,
@@ -131,7 +153,7 @@ class MagicLinkService:
             token_prefix=token_prefix,
             issued_by_user_id=issued_by_user_id,
             issued_at=now,
-            expires_at=now + timedelta(days=days),
+            expires_at=resolved_expiry,
         )
         self.db.add(grant)
         self.db.flush()
@@ -148,6 +170,83 @@ class MagicLinkService:
             },
         )
         return grant, raw
+
+    def extend_grant(
+        self,
+        grant: MagicLinkGrant,
+        *,
+        actor_user_id: int,
+        expires_at: datetime | None = None,
+        expires_in_days: int | None = None,
+    ) -> MagicLinkGrant:
+        """Push ``expires_at`` forward on the SAME grant row — token_hash,
+        token_prefix, and public_id never change, so the URL a client
+        already has keeps working (plan §H3: "don't force a client to
+        bookmark a new URL every few weeks"). Extend-only: the new expiry
+        must be later than the grant's current one; Revoke is the only way
+        to shorten/cut access. A revoked grant can never be extended — it
+        must be regenerated. An expired-but-not-revoked grant CAN be
+        extended (re-activates the same URL — the core "long-running
+        client" use case). Caller commits."""
+        if grant.revoked_at is not None:
+            raise InvalidExpiryError("A revoked access link cannot be extended — regenerate it instead")
+
+        now = datetime.now(UTC)
+        new_expiry = self._resolve_expiry(
+            now, expires_at=expires_at, expires_in_days=expires_in_days, default_days=None,
+        )
+        current_expiry = grant.expires_at
+        if current_expiry.tzinfo is None:  # SQLite round-trip, see MagicLinkGrant.status
+            current_expiry = current_expiry.replace(tzinfo=UTC)
+        if new_expiry <= current_expiry:
+            raise InvalidExpiryError("The new expiry must be later than the current expiry")
+
+        old_expiry = grant.expires_at
+        grant.expires_at = new_expiry
+        self.audit.log(
+            actor_id=actor_user_id,
+            action="talent.external.link_extended",
+            entity_type="magic_link_grant",
+            entity_id=grant.id,
+            metadata={
+                "grant_public_id": grant.public_id,
+                "client_id": grant.client_id,
+                "old_expires_at": old_expiry.isoformat(),
+                "new_expires_at": new_expiry.isoformat(),
+            },
+        )
+        return grant
+
+    def _resolve_expiry(
+        self,
+        now: datetime,
+        *,
+        expires_at: datetime | None,
+        expires_in_days: int | None,
+        default_days: int | None,
+    ) -> datetime:
+        """``expires_at`` wins over ``expires_in_days``; neither given uses
+        ``default_days`` (create only — extend has no implicit default, a
+        caller must say how far to push). Always bounded to
+        [_MIN_EXPIRY_DAYS, _MAX_EXPIRY_DAYS] days from ``now``."""
+        if expires_at is not None:
+            resolved = expires_at
+            if resolved.tzinfo is None:
+                resolved = resolved.replace(tzinfo=UTC)
+        elif expires_in_days is not None:
+            resolved = now + timedelta(days=expires_in_days)
+        elif default_days is not None:
+            resolved = now + timedelta(days=default_days)
+        else:
+            raise InvalidExpiryError("An expiry date or day count is required")
+
+        min_allowed = now + timedelta(days=_MIN_EXPIRY_DAYS)
+        max_allowed = now + timedelta(days=_MAX_EXPIRY_DAYS)
+        if not (min_allowed <= resolved <= max_allowed):
+            raise InvalidExpiryError(
+                f"Expiry must be between {_MIN_EXPIRY_DAYS} and {_MAX_EXPIRY_DAYS} days from now"
+            )
+        return resolved
 
     def revoke_grant(
         self, grant: MagicLinkGrant, *, revoked_by_user_id: int, audit_action: str = "link_revoked"

@@ -27,6 +27,21 @@ class GrantCreateRequest(BaseModel):
     # None → the configured default (14 days). Bounded so a TA cannot mint
     # an effectively-indefinite link (plan B.5: "No indefinite grants").
     expires_in_days: int | None = Field(default=None, ge=1, le=90)
+    # An explicit expiry date picker (plan §H2) sends this instead of a day
+    # count — a TA thinks in "expires on <date>", not "in N days". When
+    # both are given, expires_at wins. Bounds (now+[1,90]d) are enforced in
+    # MagicLinkService.create_grant, where "now" is meaningful — a Field
+    # constraint here can't see the current time.
+    expires_at: datetime | None = None
+
+
+class GrantExtendRequest(BaseModel):
+    """Extend-only: moves expires_at forward, never back — shortening is
+    what Revoke is for. Same now+[1,90]d bound as create; also validated
+    against the grant's *current* expires_at in the service."""
+
+    expires_at: datetime | None = None
+    expires_in_days: int | None = Field(default=None, ge=1, le=90)
 
 
 class GrantOut(BaseModel):
