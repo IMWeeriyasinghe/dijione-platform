@@ -82,7 +82,7 @@ export default function RequestDetailPage() {
       </Card>
 
       <h3 className="mt-8 mb-3 text-sm font-semibold text-dt-text-primary">
-        Candidates shared with you
+        Candidates shared with you ({candidates.data?.length ?? 0})
       </h3>
       {candidates.isLoading ? (
         <LoadingState label="Loading candidates…" />
@@ -96,37 +96,39 @@ export default function RequestDetailPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {candidates.data.map((c) => (
-            <li
-              key={c.application_id}
-              className="rounded-xl border border-dt-border bg-dt-surface p-4"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-medium text-dt-text-primary">{c.full_name}</span>
-                <StatusBadge status={c.current_stage} />
-              </div>
-              <p className="text-sm text-dt-text-secondary">{c.professional_title || "—"}</p>
-              {c.skills.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {c.skills.map((skill) => (
-                    <span
-                      key={skill}
-                      className="rounded-full bg-dt-surface-warm px-2 py-0.5 text-xs text-dt-text-secondary"
-                    >
-                      {skill}
-                    </span>
-                  ))}
+            <li key={c.application_id}>
+              <Link
+                href={`/candidates/${c.application_id}`}
+                className="block rounded-xl border border-dt-border bg-dt-surface p-4 transition hover:border-dt-orange hover:shadow-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-dt-text-primary">{c.full_name}</span>
+                  <StatusBadge status={c.current_stage} />
                 </div>
-              )}
-              {c.relevant_experience_summary && (
-                <p className="mt-2 text-sm text-dt-text-secondary">
-                  {c.relevant_experience_summary}
-                </p>
-              )}
-              {c.upcoming_interview_status && (
-                <p className="mt-2 text-xs text-dt-burnt-orange">
-                  Interview: {c.upcoming_interview_status}
-                </p>
-              )}
+                <p className="text-sm text-dt-text-secondary">{c.professional_title || "—"}</p>
+                {c.skills.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {c.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="rounded-full bg-dt-surface-warm px-2 py-0.5 text-xs text-dt-text-secondary"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {c.relevant_experience_summary && (
+                  <p className="mt-2 text-sm text-dt-text-secondary">
+                    {c.relevant_experience_summary}
+                  </p>
+                )}
+                {c.upcoming_interview_status && (
+                  <p className="mt-2 text-xs text-dt-burnt-orange">
+                    Interview: {c.upcoming_interview_status}
+                  </p>
+                )}
+              </Link>
             </li>
           ))}
         </ul>

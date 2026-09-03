@@ -167,6 +167,7 @@ export type DocumentOut = {
 };
 
 export type ClientDashboardOut = {
+  client_name: string;
   active_requests: number;
   candidates_in_process: number;
   interviews_this_week: number;
