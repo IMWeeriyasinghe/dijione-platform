@@ -72,21 +72,11 @@ export const createApplication = (payload: {
   talent_request_id: number;
   current_stage?: string;
 }) => request<ApplicationOut>("/api/talent/applications", { method: "POST", body: JSON.stringify(payload) });
-export const updateApplicationStage = (id: number, stage: string) =>
-  request<ApplicationOut>(`/api/talent/applications/${id}/stage`, {
-    method: "PATCH",
-    body: JSON.stringify({ stage }),
-  });
-export const updateApplicationStatus = (id: number, status: string, rejection_reason = "") =>
-  request<ApplicationOut>(`/api/talent/applications/${id}/status`, {
-    method: "PATCH",
-    body: JSON.stringify({ status, rejection_reason }),
-  });
-export const updateApplicationScore = (id: number, score: number, recruiter_notes = "") =>
-  request<ApplicationOut>(`/api/talent/applications/${id}/score`, {
-    method: "PATCH",
-    body: JSON.stringify({ score, recruiter_notes }),
-  });
+// NOTE: no updateApplicationStage/Status/Score — recruitment stage and
+// status are Lever facts, read-only in DijiTalentFlow (the backend routes
+// 403 unconditionally); score has no Lever source and is fully retired
+// (the service method no longer exists). See
+// apps/talent-api/app/api/routes/talent_applications.py.
 export const updateApplicationVisibility = (
   id: number,
   is_client_visible: boolean,

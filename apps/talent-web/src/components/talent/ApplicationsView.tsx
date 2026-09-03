@@ -4,17 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import {
-  listApplications,
-  updateApplicationScore,
-  updateApplicationStage,
-  updateApplicationStatus,
-  updateApplicationVisibility,
-} from "@/lib/api";
-import { APPLICATION_STATUSES, CANONICAL_STAGES } from "@dijione/contracts";
-import { stageLabel } from "@dijione/design-system";
+import { listApplications, updateApplicationVisibility } from "@/lib/api";
 import { PageHeader } from "@dijione/design-system";
-import { Select } from "@dijione/design-system";
 import { StatusBadge } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { Table, Thead, Th, Tr, Td } from "@dijione/design-system";
@@ -35,7 +26,7 @@ export function ApplicationsView({ initialSearch = "" }: { initialSearch?: strin
     <div>
       <PageHeader
         title="Applications"
-        description="Manage every candidate application across all clients — stage, status, score and client visibility."
+        description="Monitor every candidate application across all clients — stage and status are synced from Lever; client visibility is the one thing you curate here."
       />
 
       <div className="relative mb-6 max-w-md">
@@ -60,7 +51,6 @@ export function ApplicationsView({ initialSearch = "" }: { initialSearch?: strin
               <Th>Request</Th>
               <Th>Stage</Th>
               <Th>Status</Th>
-              <Th>Score</Th>
               <Th>Client Visible</Th>
             </tr>
           </Thead>
@@ -79,53 +69,12 @@ export function ApplicationsView({ initialSearch = "" }: { initialSearch?: strin
                   <p className="text-xs text-dt-text-secondary">{app.client_name}</p>
                 </Td>
                 <Td>
-                  <Select
-                    value={app.current_stage}
-                    onChange={async (e) => {
-                      await updateApplicationStage(app.id, e.target.value);
-                      invalidate();
-                    }}
-                    className="w-44 py-1.5 text-xs"
-                  >
-                    {CANONICAL_STAGES.map((s) => (
-                      <option key={s} value={s}>
-                        {stageLabel(s)}
-                      </option>
-                    ))}
-                  </Select>
+                  <StatusBadge status={app.current_stage} />
+                  <p className="mt-1 text-[11px] text-dt-text-secondary">Synced from Lever</p>
                 </Td>
                 <Td>
-                  <Select
-                    value={app.status}
-                    onChange={async (e) => {
-                      await updateApplicationStatus(app.id, e.target.value);
-                      invalidate();
-                    }}
-                    className="w-36 py-1.5 text-xs"
-                  >
-                    {APPLICATION_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {stageLabel(s)}
-                      </option>
-                    ))}
-                  </Select>
-                </Td>
-                <Td>
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.1}
-                    defaultValue={app.score ?? ""}
-                    onBlur={async (e) => {
-                      const value = e.target.value === "" ? null : Number(e.target.value);
-                      if (value !== null) {
-                        await updateApplicationScore(app.id, value);
-                        invalidate();
-                      }
-                    }}
-                    className="w-16 rounded-lg border border-dt-border px-2 py-1 text-xs focus:border-dt-orange focus:outline-none"
-                  />
+                  <StatusBadge status={app.status} />
+                  <p className="mt-1 text-[11px] text-dt-text-secondary">Synced from Lever</p>
                 </Td>
                 <Td>
                   <label className="flex items-center gap-2 text-xs">
