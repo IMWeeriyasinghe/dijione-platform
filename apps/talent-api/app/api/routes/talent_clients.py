@@ -20,7 +20,7 @@ def list_client_portfolios(
     repo = ClientRepository(db)
     out = []
     for client in repo.list_for_scope(allowed_client_ids=scope.client_ids):
-        total, active = repo.portfolio_counts(client.id)
+        summary = repo.portfolio_summary(client.id)
         out.append(
             ClientPortfolioOut(
                 id=client.id,
@@ -29,8 +29,11 @@ def list_client_portfolios(
                 account_manager=client.account_manager,
                 status=client.status,
                 created_at=client.created_at,
-                total_requests=total,
-                active_requests=active,
+                total_requests=summary.total_requests,
+                active_requests=summary.active_requests,
+                active_application_count=summary.active_application_count,
+                client_visible_count=summary.client_visible_count,
+                latest_request_at=summary.latest_request_at,
             )
         )
     return out

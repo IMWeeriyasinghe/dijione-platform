@@ -136,6 +136,34 @@ def external_list_request_candidates(
     return [service.to_client_safe_out(app) for app in applications]
 
 
+@router.get("/applications/{application_id}", response_model=ClientSafeCandidateOut)
+def external_get_candidate_review(
+    application_id: int,
+    scope: ExternalClientScope = Depends(
+        require_external_permission("talent.candidates.read_client_safe")
+    ),
+    db: Session = Depends(get_db),
+) -> ClientSafeCandidateOut:
+    """Candidate Review Detail — the client-safe single-candidate view
+    behind a clickable card on the external request-detail page.
+
+    Fail-closed 4-part invariant, all server-resolved, none from the URL:
+    (1) a valid external session (``require_external_permission``);
+    (2) ``scope.client_id`` resolved from the re-validated grant row, never
+        the URL/query/token claim; (3) the application's own request must
+        belong to that exact client — enforced by the join inside
+        ``ApplicationRepository.get_by_id(client_id=...)``, the same
+        primitive ``external_list_requests``/``external_get_request`` use;
+        (4) ``is_client_visible`` must be True. Any failure is an identical
+        404 — no existence leak between "wrong client", "not yet curated",
+        and "no such application"."""
+    application = ApplicationRepository(db).get_by_id(application_id, client_id=scope.client_id)
+    if application is None or not application.is_client_visible:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found")
+
+    return CandidateService(db).to_client_safe_out(application)
+
+
 @router.get("/interviews")
 def external_list_interviews(
     scope: ExternalClientScope = Depends(require_external_permission("talent.interviews.read_own")),
