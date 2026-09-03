@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "@dijione/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Briefcase, CalendarClock, LayoutDashboard, LogOut } from "lucide-react";
 import Link from "next/link";
@@ -16,9 +17,10 @@ const NAV = [
 
 function NoSession() {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-dt-background px-4">
       <div className="w-full max-w-md rounded-2xl border border-dt-border bg-dt-surface p-8 text-center shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-dt-burnt-orange">
+        <BrandLogo width={150} className="mx-auto mb-5" />
+        <p className="text-xs font-semibold uppercase tracking-wide text-dt-orange">
           Client Talent Review Workspace
         </p>
         <h1 className="mt-2 text-xl font-semibold text-dt-text-primary">
@@ -28,6 +30,7 @@ function NoSession() {
           Use the access link your Dijital Team contact sent you. If it has expired, ask them
           to send a new one.
         </p>
+        <p className="mt-5 text-xs text-dt-text-secondary">Provided by Dijital Team.</p>
       </div>
     </div>
   );
@@ -45,13 +48,18 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-dt-border bg-dt-surface px-6 py-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">
-            Dijital Team
-          </p>
-          <h1 className="text-lg font-semibold text-dt-text-primary">
-            Client Talent Review Workspace
-          </h1>
+        <div className="flex items-center gap-3">
+          {/* 120px = the guideline's stated minimum on-screen width for the
+              wordmark without a tagline. */}
+          <BrandLogo width={120} />
+          <div className="border-l border-dt-border pl-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">
+              Dijital Team
+            </p>
+            <h1 className="text-lg font-semibold text-dt-text-primary">
+              Client Talent Review Workspace
+            </h1>
+          </div>
         </div>
         <nav className="flex items-center gap-4 text-sm font-medium text-dt-text-secondary">
           {NAV.map((item) => (

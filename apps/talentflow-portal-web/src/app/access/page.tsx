@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "@dijione/design-system";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -37,9 +38,10 @@ export default function AccessPage() {
   }, [establish, router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-dt-background px-4">
       <div className="w-full max-w-md rounded-2xl border border-dt-border bg-dt-surface p-8 text-center shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-dt-burnt-orange">
+        <BrandLogo width={150} className="mx-auto mb-5" />
+        <p className="text-xs font-semibold uppercase tracking-wide text-dt-orange">
           Client Talent Review Workspace
         </p>
         {phase === "working" ? (

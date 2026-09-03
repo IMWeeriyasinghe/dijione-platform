@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
+/* Official Dijital Team brand system (verified from the authoritative
+ * "Dijital Team Style Guidelines" — see docs/talent-flow/brand-baseline.md).
+ * Exactly five sanctioned colours: black #000000, green #056839,
+ * red #BF1E2E, orange #F1592A, yellow #FCB040. No sanctioned neutral/grey
+ * scale, gradient spec, or tint/shade family exists in the guideline —
+ * the warm off-white surfaces below are DijiTalentFlow extensions, not
+ * brand colours, and are kept as-is.
+ *
+ * --dt-red-deep/--dt-burnt-orange/--dt-orange-deep previously held three
+ * separate invented shades; every DijiOne app (not just DijiTalentFlow)
+ * references these token NAMES in Tailwind utility classes, so the names
+ * stay for compatibility across out-of-scope apps (admin-web, birthday-web,
+ * birthday-supplier-web, shell-web) this iteration does not touch — but
+ * each one now resolves to one of the two canonical brand hexes below,
+ * collapsing the invented family down to "one canonical value per brand
+ * colour" without a repo-wide class rename. */
 :root {
-  --dt-red-deep: #8f2417;
-  --dt-red: #aa2f1d;
-  --dt-burnt-orange: #c9431d;
-  --dt-orange-deep: #db4d18;
-  --dt-orange: #f26a1b;
-  --dt-amber: #f59e0b;
-  --dt-yellow-soft: #fbc34a;
+  --dt-red-deep: #bf1e2e;
+  --dt-red: #bf1e2e;
+  --dt-burnt-orange: #f1592a;
+  --dt-orange-deep: #f1592a;
+  --dt-orange: #f1592a;
+  --dt-amber: #fcb040;
+  --dt-yellow-soft: #fcb040;
 
   --dt-background: #f8f5f2;
   --dt-surface: #ffffff;
   --dt-surface-warm: #fff8ef;
   --dt-cream: #ffefd5;
 
-  --dt-text-primary: #24140f;
+  /* #111111 for body text, not the brand's literal #000000 — pure black
+   * is harsh at small sizes; #000000 stays reserved for the logo itself
+   * (see <BrandLogo>). */
+  --dt-text-primary: #111111;
   --dt-text-secondary: #76584c;
   --dt-border: #eadbd3;
 
-  --dt-success: #138a4b;
+  --dt-success: #056839;
+  /* Kept as a readable dark amber for text, not the brand's literal
+   * #FCB040 — the brand yellow fails contrast as a text colour. */
   --dt-warning: #c78300;
-  --dt-danger: #c62d26;
+  --dt-danger: #bf1e2e;
   --dt-info: #5b6472;
 
   --background: var(--dt-background);

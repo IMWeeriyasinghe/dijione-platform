@@ -52,6 +52,8 @@ describe("AppShell (Client Talent Review Workspace)", () => {
       screen.getByText(/opened from a secure link/i),
     ).toBeInTheDocument();
     expect(screen.queryByText("Requests")).not.toBeInTheDocument();
+    // The official Dijital Team wordmark is on the secure-link screen.
+    expect(screen.getByAltText("Dijital Team")).toBeInTheDocument();
   });
 
   it("renders the workspace chrome with a session and no staff surfaces", () => {
@@ -63,6 +65,7 @@ describe("AppShell (Client Talent Review Workspace)", () => {
     render(<AppShell>workspace content</AppShell>);
 
     expect(screen.getByText("Client Talent Review Workspace")).toBeInTheDocument();
+    expect(screen.getByAltText("Dijital Team")).toBeInTheDocument();
     expect(screen.getByText("Overview")).toBeInTheDocument();
     expect(screen.getByText("Requests")).toBeInTheDocument();
     expect(screen.getByText("Interviews")).toBeInTheDocument();

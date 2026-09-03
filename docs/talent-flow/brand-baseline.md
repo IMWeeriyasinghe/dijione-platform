@@ -3,10 +3,21 @@
 Read-only brand discovery run for the Monitoring-First UX & Client Access
 Refinement iteration. Compares the authoritative Dijital Team brand materials
 against `packages/design-system`, `apps/talent-web`, and
-`apps/talentflow-portal-web`. **No application code changed** — the brand
-implementation is a later PR (plan §M PR 11). All colour / typography / logo
-values below are verified from the authoritative folder, not inferred from the
-current app.
+`apps/talentflow-portal-web`. All colour / typography / logo values below are
+verified from the authoritative folder, not inferred from the current app.
+
+> **Status (post PR 11):** the design-system colour tokens and the
+> `talent-web` / `talentflow-portal-web` copies are now aligned to the five
+> official colours; `--font-sans` is Be Vietnam Pro in those two apps; the
+> official `_XLGE.png` wordmark is in each app's `public/brand/` and rendered
+> via the new shared `<BrandLogo>`; the external portal shell + access screen
+> carry the logo and the `#F1592A` eyebrow. Items still open by design:
+> `admin-web` / `birthday-web` / `birthday-supplier-web` / `shell-web`
+> token+font alignment (out of scope this iteration); a true vector-exported
+> white logo asset (the current `variant="light"` uses a CSS filter on the
+> black wordmark — geometry-preserving and guideline-compliant, but a
+> dedicated reversed export from the `.eps` is a later nicety); the FUTURE
+> ENTRA/SSO assets in §K.
 
 Authoritative source (READ-ONLY): `C:\Projects\Diji Projects\Dijital Team Brand Guideline`.
 

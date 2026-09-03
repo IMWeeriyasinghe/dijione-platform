@@ -1,5 +1,6 @@
 // UI primitives
 export * from "./ui/Avatar";
+export * from "./ui/BrandLogo";
 export * from "./ui/Button";
 export * from "./ui/Card";
 export * from "./ui/FormField";

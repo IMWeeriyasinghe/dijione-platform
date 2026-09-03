@@ -5,27 +5,34 @@
    still generated here. */
 @source "../../../../packages/design-system/src/**/*.{ts,tsx}";
 
+/* Official Dijital Team brand system — see
+   packages/design-system/src/globals.css (the canonical source this file
+   is copied from — Tailwind v4 has no cross-package @import for tokens
+   yet) and docs/talent-flow/brand-baseline.md for the verified values and
+   rationale, including why the invented-shade token NAMES stay (shared
+   Tailwind utility classes across every DijiOne app) while their hexes
+   now collapse to the two canonical brand colours. */
 :root {
-  --dt-red-deep: #8f2417;
-  --dt-red: #aa2f1d;
-  --dt-burnt-orange: #c9431d;
-  --dt-orange-deep: #db4d18;
-  --dt-orange: #f26a1b;
-  --dt-amber: #f59e0b;
-  --dt-yellow-soft: #fbc34a;
+  --dt-red-deep: #bf1e2e;
+  --dt-red: #bf1e2e;
+  --dt-burnt-orange: #f1592a;
+  --dt-orange-deep: #f1592a;
+  --dt-orange: #f1592a;
+  --dt-amber: #fcb040;
+  --dt-yellow-soft: #fcb040;
 
   --dt-background: #f8f5f2;
   --dt-surface: #ffffff;
   --dt-surface-warm: #fff8ef;
   --dt-cream: #ffefd5;
 
-  --dt-text-primary: #24140f;
+  --dt-text-primary: #111111;
   --dt-text-secondary: #76584c;
   --dt-border: #eadbd3;
 
-  --dt-success: #138a4b;
+  --dt-success: #056839;
   --dt-warning: #c78300;
-  --dt-danger: #c62d26;
+  --dt-danger: #bf1e2e;
   --dt-info: #5b6472;
 
   --background: var(--dt-background);
@@ -58,7 +65,7 @@
   --color-dt-danger: var(--dt-danger);
   --color-dt-info: var(--dt-info);
 
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-be-vietnam-pro);
   --font-mono: var(--font-geist-mono);
 }
 

@@ -33,59 +33,70 @@ mapped into Tailwind v4 via `@theme inline`, so every utility class
 of truth:
 
 ```css
---dt-red-deep: #8f2417;
---dt-red: #aa2f1d;
---dt-burnt-orange: #c9431d;
---dt-orange-deep: #db4d18;
---dt-orange: #f26a1b;
---dt-amber: #f59e0b;
---dt-yellow-soft: #fbc34a;
+/* Official Dijital Team brand system (docs/talent-flow/brand-baseline.md).
+   The five sanctioned colours: black #000000, green #056839, red #BF1E2E,
+   orange #F1592A, yellow #FCB040. The three formerly-invented red/orange
+   token NAMES stay (shared Tailwind utility classes across every DijiOne
+   app) but now each resolves to one of the two canonical hexes. */
+--dt-red-deep: #bf1e2e;   /* = --dt-red */
+--dt-red: #bf1e2e;
+--dt-burnt-orange: #f1592a; /* = --dt-orange */
+--dt-orange-deep: #f1592a;  /* = --dt-orange */
+--dt-orange: #f1592a;
+--dt-amber: #fcb040;
+--dt-yellow-soft: #fcb040;  /* one yellow */
 
---dt-background: #f8f5f2;
---dt-surface: #ffffff;
+--dt-background: #f8f5f2;   /* warm off-white surfaces: brand extension,
+--dt-surface: #ffffff;         not a sanctioned brand colour — kept as-is */
 --dt-surface-warm: #fff8ef;
 --dt-cream: #ffefd5;
 
---dt-text-primary: #24140f;
+--dt-text-primary: #111111; /* body text; #000000 is reserved for the logo */
 --dt-text-secondary: #76584c;
 --dt-border: #eadbd3;
 
---dt-success: #138a4b;
---dt-warning: #c78300;
---dt-danger: #c62d26;
---dt-info: #5b6472;
+--dt-success: #056839;      /* brand green = semantic success */
+--dt-warning: #c78300;      /* readable dark amber for text; brand #FCB040
+                              fails contrast as a text colour */
+--dt-danger: #bf1e2e;       /* brand red = semantic danger */
+--dt-info: #5b6472;         /* neutral, not a brand colour */
+
+--font-sans: var(--font-be-vietnam-pro); /* talent-web + talentflow-portal-web */
 ```
 
-If Dijital Team supplies an official brand guideline later, only this one
-block needs to change — every component consumes the `--dt-*` variables,
-never a hardcoded hex value.
+Every component consumes the `--dt-*` variables, never a hardcoded hex —
+so this one block is the single point of change.
 
-### Official brand guideline — received (2026‑09), token alignment pending
+> **Scope note.** The block above is the canonical source in
+> `packages/design-system/src/globals.css`, which Tailwind v4 has no
+> cross-package `@import` for, so each app keeps its own copy in
+> `apps/<app>/src/app/globals.css`. The brand-alignment PR updated only
+> **`talent-web`** and **`talentflow-portal-web`** (the DijiTalentFlow
+> surfaces). `admin-web` / `birthday-web` / `birthday-supplier-web` /
+> `shell-web` still hold the older derived palette in their own copies and
+> are aligned in a later pass — they were explicitly out of scope for the
+> Monitoring-First UX iteration.
 
-The authoritative Dijital Team brand materials are now available at
-`C:\Projects\Diji Projects\Dijital Team Brand Guideline` (a READ‑ONLY
-reference exception to the project‑root boundary — see root `CLAUDE.md`
-"Dijital Team Branding Agent"). The full baseline is
-`docs/talent-flow/brand-baseline.md`. The verified facts:
+### Official brand guideline — verified facts
+
+Authoritative materials: `C:\Projects\Diji Projects\Dijital Team Brand
+Guideline` (a READ‑ONLY reference exception — see root `CLAUDE.md` "Dijital
+Team Branding Agent"). Full baseline: `docs/talent-flow/brand-baseline.md`.
 
 - **Official colours (the only five):** Black `#000000`, Green `#056839`,
-  Red `#BF1E2E`, Orange `#F1592A`, Yellow `#FCB040`. There is no sanctioned
-  grey scale or gradient spec; the warm off‑white surfaces above are an
-  approved extension (CLAUDE.md §50), not brand colours.
-- **Supporting font:** **Be Vietnam Pro** (Google Fonts; Light 300 / Bold
-  700). The logo/tagline custom font is never recreated — use the logo files.
+  Red `#BF1E2E`, Orange `#F1592A`, Yellow `#FCB040`. No sanctioned grey
+  scale or gradient spec.
+- **Supporting font:** **Be Vietnam Pro** (Google Fonts; weights 300 / 400
+  / 600 / 700 in the apps). The logo/tagline custom font is never
+  recreated — use the logo files.
 - **Logo:** black lowercase `dijital team` wordmark, four‑dot `j` mark
   (yellow / orange / red / green). White/reversed version for dark or busy
   backgrounds; clear space = 2× dot width; min 120 px wide on screen.
-
-The `--dt-*` token block above is still the CLAUDE.md §48 **derived** MVP
-palette and does **not** yet match the official values. Alignment (retire
-the invented `--dt-red-deep` / `--dt-burnt-orange` / `--dt-orange-deep`
-shades, set one canonical value per brand colour, align `--dt-success` →
-`#056839` and `--dt-danger` → `#BF1E2E`, switch `--font-sans` to Be Vietnam
-Pro, replace the approximate logo asset with the official one + a white
-variant) lands as a dedicated brand‑implementation PR in the Monitoring‑First
-UX iteration — see `docs/talent-flow/brand-baseline.md` §F and the plan.
+  Rendered via the shared `<BrandLogo variant="dark"|"light" />` component
+  from `@dijione/design-system`, backed by the official
+  `Dijital_Team_logo_XLGE.png` copied into each app's own `public/brand/`.
+  `variant="light"` applies a `brightness(0) invert(1)` filter for the
+  sanctioned pure-white reversed treatment on dark backgrounds.
 
 ## Gradients
 
@@ -118,17 +129,22 @@ it stays meaningful next to the semantic colours above.
 
 ## Typography
 
-Geist Sans (via `next/font/google`, already wired in `app/layout.tsx`) — a
-modern, professional, open sans-serif used as the CLAUDE.md §53-compliant
-fallback until an official Dijital Team web font can be confirmed and
-licensed for the application.
+**Be Vietnam Pro** — the official Dijital Team supporting font (Google
+Fonts), loaded via `next/font/google` in `app/layout.tsx` (weights 300 /
+400 / 600 / 700) and exposed as `--font-be-vietnam-pro` → `--font-sans`.
+Live in `talent-web` and `talentflow-portal-web`; the other apps still use
+Geist Sans pending their own alignment pass (see the scope note under
+Tokens). The type scale is unchanged — only the family. Geist Mono stays
+as the monospace fallback.
 
 ## Components
 
 Shared primitives live in `packages/design-system/src/ui/`, imported as
 `@dijione/design-system`:
 
-`Card`, `Button`, `StatusBadge`, `MetricCard`, `Table` (`Thead`/`Th`/`Tr`/`Td`),
+`Card`, `Button`, `StatusBadge`, `MetricCard` (optional `href` makes the
+whole card a click-through link), `BrandLogo` (`variant="dark"|"light"`,
+the official wordmark), `Table` (`Thead`/`Th`/`Tr`/`Td`),
 `StageTimeline` / `CompactStageStrip` / `StageProgressBar`, `Modal`,
 `FormField` (`Input`/`Textarea`/`Select`), `Avatar`, `PageHeader`,
 `EmptyState` / `LoadingState` / `ErrorState`.
