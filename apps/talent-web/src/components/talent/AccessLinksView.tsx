@@ -76,15 +76,22 @@ export function endOfDayIso(dateStr: string): string {
 // The date picker offers whole calendar days, but a submitted value is
 // end-of-that-day (23:59:59 local) — up to ~24h later than "the same
 // instant N days from now" the backend actually bounds against
-// (MagicLinkService._resolve_expiry: now + [1, 90] days). Offering day 90
-// itself as the max selectable date can therefore submit up to ~24h past
-// the backend's max_allowed when "now" is early in today's local day.
-// Offering day 89 instead keeps every possible end-of-day submission
-// comfortably inside the backend's 90-day ceiling, regardless of the
-// time of day "now" falls on.
+// (MagicLinkService._resolve_expiry: now + [1, 90] days, a fixed
+// millisecond duration). Offering day 90 itself as the max selectable
+// date can therefore submit up to ~24h past the backend's max_allowed
+// when "now" is early in today's local day.
+//
+// A single day of buffer (day 89) is NOT enough: at the true worst case
+// ("now" at local midnight) its margin against the backend's fixed
+// 90-day ceiling is only ~1 second, which a single DST transition
+// falling inside the 89-day forward window erodes to negative — the
+// local calendar-day arithmetic stretches by the DST hour relative to
+// the backend's fixed-duration bound. Day 88 restores a real ~24h
+// margin, comfortably absorbing a ±1h DST shift on top of the
+// worst-case time-of-day.
 // Exported for the timezone-consistency regression test.
 export function maxSelectableDate(): string {
-  return dateInputValue(MAX_EXPIRY_DAYS - 1);
+  return dateInputValue(MAX_EXPIRY_DAYS - 2);
 }
 
 function daysUntil(iso: string): number {

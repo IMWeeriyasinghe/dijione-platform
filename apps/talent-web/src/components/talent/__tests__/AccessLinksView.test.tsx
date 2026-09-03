@@ -199,4 +199,24 @@ describe("dateInputValue / endOfDayIso — timezone consistency", () => {
     expect(minSubmitted).toBeGreaterThanOrEqual(backendMin);
     expect(maxSubmitted).toBeLessThanOrEqual(backendMax);
   });
+
+  it("the max bound survives a DST transition inside the offered window, at the true worst-case time of day (local midnight)", () => {
+    // America/Los_Angeles: "now" pinned to local midnight (the worst case
+    // for a fixed calendar-day buffer — see maxSelectableDate's comment),
+    // with the window's 88 forward days crossing the Nov 1, 2026 US
+    // fall-back DST transition. A single day of buffer (day 89) leaves
+    // only ~1 second of margin at this worst-case time of day, which the
+    // 1-hour DST shift pushes negative; day 88 keeps a real ~24h margin
+    // that absorbs it.
+    process.env.TZ = "America/Los_Angeles";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T07:00:00.000Z")); // 2026-09-03 00:00 PDT
+
+    const now = Date.now();
+    const maxDate = maxSelectableDate();
+    const maxSubmitted = new Date(endOfDayIso(maxDate)).getTime();
+    const backendMax = now + 90 * 86_400_000;
+
+    expect(maxSubmitted).toBeLessThanOrEqual(backendMax);
+  });
 });
