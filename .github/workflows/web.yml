@@ -20,7 +20,62 @@ permissions:
   contents: read
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      shell-web: ${{ steps.filter.outputs.shell-web }}
+      admin-web: ${{ steps.filter.outputs.admin-web }}
+      talent-web: ${{ steps.filter.outputs.talent-web }}
+      talentflow-portal-web: ${{ steps.filter.outputs.talentflow-portal-web }}
+      birthday-web: ${{ steps.filter.outputs.birthday-web }}
+      birthday-supplier-web: ${{ steps.filter.outputs.birthday-supplier-web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # A packages/** or root-lockfile change fans out to every app —
+          # shared-dependency coverage must never be narrowed.
+          filters: |
+            shell-web:
+              - 'apps/shell-web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+            admin-web:
+              - 'apps/admin-web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+            talent-web:
+              - 'apps/talent-web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+            talentflow-portal-web:
+              - 'apps/talentflow-portal-web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+            birthday-web:
+              - 'apps/birthday-web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+            birthday-supplier-web:
+              - 'apps/birthday-supplier-web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+
   lint-build:
+    needs: detect
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -32,6 +87,7 @@ jobs:
           - talentflow-portal-web
           - birthday-web
           - birthday-supplier-web
+    if: needs.detect.outputs[matrix.app] == 'true'
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:

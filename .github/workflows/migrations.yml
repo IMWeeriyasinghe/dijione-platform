@@ -21,7 +21,44 @@ permissions:
   contents: read
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      platform-api: ${{ steps.filter.outputs.platform-api }}
+      talent-api: ${{ steps.filter.outputs.talent-api }}
+      recruitment-api: ${{ steps.filter.outputs.recruitment-api }}
+      people-api: ${{ steps.filter.outputs.people-api }}
+      commercial-api: ${{ steps.filter.outputs.commercial-api }}
+      birthday-api: ${{ steps.filter.outputs.birthday-api }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Mirrors this workflow's own top-level pull_request.paths scope,
+          # per service — including the pre-existing gap where
+          # commercial-api has no dedicated alembic/** trigger today.
+          filters: |
+            platform-api:
+              - 'apps/platform-api/alembic/**'
+              - 'apps/platform-api/app/models/**'
+            talent-api:
+              - 'apps/talent-api/alembic/**'
+              - 'apps/talent-api/app/models/**'
+            recruitment-api:
+              - 'apps/recruitment-api/alembic/**'
+              - 'apps/recruitment-api/app/models/**'
+            people-api:
+              - 'apps/people-api/alembic/**'
+              - 'apps/people-api/app/models/**'
+            commercial-api:
+              - 'apps/commercial-api/app/models/**'
+            birthday-api:
+              - 'apps/birthday-api/alembic/**'
+              - 'apps/birthday-api/app/models/**'
+
   upgrade:
+    needs: detect
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -33,6 +70,7 @@ jobs:
           - people-api
           - commercial-api
           - birthday-api
+    if: needs.detect.outputs[matrix.service] == 'true'
     defaults:
       run:
         working-directory: apps/${{ matrix.service }}
