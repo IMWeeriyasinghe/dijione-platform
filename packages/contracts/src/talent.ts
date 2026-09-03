@@ -16,6 +16,12 @@ export type ClientOut = {
 export type ClientPortfolioOut = ClientOut & {
   total_requests: number;
   active_requests: number;
+  // Client Portfolios card uplift (plan §E) — how much of this client's
+  // pipeline is actually moving, how much has actually been curated/shown
+  // to them, and when they were last engaged.
+  active_application_count: number;
+  client_visible_count: number;
+  latest_request_at: string | null;
 };
 
 export type StageProgress = {
