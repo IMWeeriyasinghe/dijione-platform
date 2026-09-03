@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   listClientPortfolios: vi.fn(),
@@ -15,7 +15,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => api);
 
-import { AccessLinksView } from "../AccessLinksView";
+import { AccessLinksView, dateInputValue, endOfDayIso, maxSelectableDate } from "../AccessLinksView";
 
 function wrap(node: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -164,5 +164,39 @@ describe("AccessLinksView", () => {
     // badge (exactly "Revoked", no trailing content) — and avoids
     // depending on formatDate's locale-specific day/month ordering.
     expect(screen.getByText(/^Revoked /)).toBeInTheDocument();
+  });
+});
+
+describe("dateInputValue / endOfDayIso — timezone consistency", () => {
+  const ORIGINAL_TZ = process.env.TZ;
+
+  afterEach(() => {
+    process.env.TZ = ORIGINAL_TZ;
+    vi.useRealTimers();
+  });
+
+  it("the offered min/max bounds and their submitted expires_at stay inside the backend's [1,90]-day window in a positive-UTC-offset timezone", () => {
+    // Asia/Kolkata (UTC+5:30). Pinned to a local early-morning instant —
+    // the exact condition that made the old UTC-round-trip version of
+    // dateInputValue() return a date one day earlier than the local
+    // calendar day, disagreeing with endOfDayIso's local-time parse.
+    process.env.TZ = "Asia/Kolkata";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T20:30:00.000Z")); // 2026-09-04 02:00 IST
+
+    const now = Date.now();
+    const minDate = dateInputValue(1); // MIN_EXPIRY_DAYS
+    const maxDate = maxSelectableDate(); // what the UI's max= attribute offers
+
+    const minSubmitted = new Date(endOfDayIso(minDate)).getTime();
+    const maxSubmitted = new Date(endOfDayIso(maxDate)).getTime();
+
+    // Same bound the backend enforces (MagicLinkService._resolve_expiry):
+    // now + [1, 90] days, inclusive.
+    const backendMin = now + 1 * 86_400_000;
+    const backendMax = now + 90 * 86_400_000;
+
+    expect(minSubmitted).toBeGreaterThanOrEqual(backendMin);
+    expect(maxSubmitted).toBeLessThanOrEqual(backendMax);
   });
 });

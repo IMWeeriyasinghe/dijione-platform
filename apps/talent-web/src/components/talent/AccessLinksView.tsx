@@ -48,14 +48,43 @@ function fmt(value: string | null): string {
   });
 }
 
-function dateInputValue(daysFromNow: number): string {
+// Both of these work in ONE consistent time frame (local wall-clock day),
+// start to finish — never round-tripping a date-only value through
+// toISOString()/UTC partway. That round-trip is what caused the bug: in a
+// positive-UTC-offset timezone (e.g. late evening in Asia/Australia),
+// today's UTC calendar date is already tomorrow's local date, so the
+// offered `min` and the value actually submitted disagreed by up to a
+// day — occasionally landing outside the backend's own [1, 90]-day bound
+// and turning a date the picker itself offered into a 400.
+// Exported for the timezone-consistency regression test — not used
+// elsewhere outside this file.
+export function dateInputValue(daysFromNow: number): string {
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function endOfDayIso(dateStr: string): string {
+export function endOfDayIso(dateStr: string): string {
+  // Parsed as local time (no "Z"/offset suffix) — the same frame
+  // dateInputValue's Y/M/D came from.
   return new Date(`${dateStr}T23:59:59`).toISOString();
+}
+
+// The date picker offers whole calendar days, but a submitted value is
+// end-of-that-day (23:59:59 local) — up to ~24h later than "the same
+// instant N days from now" the backend actually bounds against
+// (MagicLinkService._resolve_expiry: now + [1, 90] days). Offering day 90
+// itself as the max selectable date can therefore submit up to ~24h past
+// the backend's max_allowed when "now" is early in today's local day.
+// Offering day 89 instead keeps every possible end-of-day submission
+// comfortably inside the backend's 90-day ceiling, regardless of the
+// time of day "now" falls on.
+// Exported for the timezone-consistency regression test.
+export function maxSelectableDate(): string {
+  return dateInputValue(MAX_EXPIRY_DAYS - 1);
 }
 
 function daysUntil(iso: string): number {
@@ -257,7 +286,7 @@ export function AccessLinksView() {
               type="date"
               value={expiryDate}
               min={dateInputValue(MIN_EXPIRY_DAYS)}
-              max={dateInputValue(MAX_EXPIRY_DAYS)}
+              max={maxSelectableDate()}
               onChange={(e) => e.target.value && setExpiryDate(e.target.value)}
             />
           </FormField>
@@ -338,7 +367,7 @@ export function AccessLinksView() {
                           type="date"
                           value={extendDate}
                           min={dateInputValue(MIN_EXPIRY_DAYS)}
-                          max={dateInputValue(MAX_EXPIRY_DAYS)}
+                          max={maxSelectableDate()}
                           onChange={(e) => setExtendDate(e.target.value)}
                           className="w-36 py-1.5 text-xs"
                         />
