@@ -22,15 +22,18 @@ diff-then-write, no commit (the caller commits). Fail closed, always:
 Source vs workflow, strictly separated (never blur the two):
   * refreshed every run: TalentRequest.designation/location;
     Candidate.full_name/professional_title/email (only when non-blank);
-    Application.current_stage/lever_archive_reason;
+    Application.current_stage/status/lever_archive_reason — both stage and
+    status are Lever facts (DijiTalentFlow monitoring-first iteration), so
+    both are kept in sync with the Recruitment Source on every reconcile;
   * set once at creation, then TalentFlow-owned forever: TalentRequest
     workflow fields (current_stage/lifecycle_status/customer_success_status/
     ta_status/client_safe_status_text/priority/description/notes);
     Candidate.availability_status/summary/skills/cv_reference/phone/location;
-    Application.status/score/recruiter_notes/client_visible_notes/
-    rejection_reason/is_client_visible (always False on promotion — a TA
-    must explicitly curate client visibility; see CandidateService and
-    TalentRequestService for the exact field-by-field split).
+    Application.score (no authoritative source — retained as tech debt,
+    never written)/recruiter_notes/client_visible_notes/rejection_reason/
+    is_client_visible (always False on promotion — a TA must explicitly
+    curate client visibility; see CandidateService and TalentRequestService
+    for the exact field-by-field split).
 """
 
 from __future__ import annotations
@@ -203,6 +206,7 @@ class VerifiedPostingPromotionReconciler:
         self, candidate_id: int, talent_request_id: int, chosen: dict, summary: PromotionSummary
     ) -> None:
         src_stage = _safe_stage(chosen.get("current_stage"))
+        src_status = _safe_status(chosen.get("status"))
         src_reason = chosen.get("lever_archive_reason")
         opportunity_id = chosen.get("external_id") or ""
 
@@ -212,7 +216,7 @@ class VerifiedPostingPromotionReconciler:
                 candidate_id=candidate_id,
                 talent_request_id=talent_request_id,
                 current_stage=src_stage,
-                status=_safe_status(chosen.get("status")),
+                status=src_status,
                 lever_opportunity_id=opportunity_id or None,
                 lever_archive_reason=src_reason,
                 is_client_visible=False,
@@ -228,6 +232,9 @@ class VerifiedPostingPromotionReconciler:
         changed = False
         if existing.current_stage != src_stage:
             existing.current_stage = src_stage
+            changed = True
+        if existing.status != src_status:
+            existing.status = src_status
             changed = True
         if existing.lever_archive_reason != src_reason:
             existing.lever_archive_reason = src_reason
@@ -250,6 +257,7 @@ class VerifiedPostingPromotionReconciler:
             summary.applications_updated += 1
             self._audit_application(existing, "source_facts_refreshed", {
                 "current_stage": existing.current_stage,
+                "status": existing.status,
                 "lever_archive_reason": existing.lever_archive_reason,
             })
         else:

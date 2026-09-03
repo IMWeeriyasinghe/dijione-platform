@@ -78,3 +78,21 @@ built only from `Application` rows where `is_client_visible=True` for that
 specific request, and explicitly excludes `score`, `recruiter_notes`, and
 any other-client `Application` (CLAUDE.md §35). The exclusion is structural
 (the DTO has no such fields), not a filtering step that could be forgotten.
+
+## Tech debt: `Application.score`
+
+`Application.score` (`Float`, nullable) has **no authoritative source** —
+Lever exposes no candidate score, and the field was originally local dev
+scaffolding for a manual-rating idea that was never built out. As of the
+DijiTalentFlow monitoring-first iteration, `PATCH
+/api/talent/applications/{id}/score` and `ApplicationService.update_score`
+are retired entirely (route returns 403; the service method no longer
+exists) — nothing in the product reads or writes this column any more. The
+column itself is **kept** rather than dropped, purely as zero-risk
+back-compat (no migration required, no risk to existing rows); it should be
+removed in a future migration once there is confidence nothing external
+still expects the field to exist. `Application.current_stage` and
+`Application.status` are the opposite case — they **are** Lever facts, so
+they stay read-only in the product but are actively refreshed from the
+Recruitment Source on every reconcile (see
+`VerifiedPostingPromotionReconciler`).
