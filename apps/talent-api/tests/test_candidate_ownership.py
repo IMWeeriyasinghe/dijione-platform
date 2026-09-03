@@ -111,10 +111,11 @@ def test_client_safe_view_hides_internal_fields_and_other_client_applications(
         actor_id=two_tenant_world["ta_user_id"],
         payload=ApplicationCreate(candidate_id=candidate.id, talent_request_id=xyz_request.id),
     )
-    application_service.update_score(
-        application_id=abc_app.id, actor_id=two_tenant_world["ta_user_id"],
-        score=9.5, recruiter_notes="Confidential internal recruiter note.",
-    )
+    # score/recruiter_notes have no product write path any more (Lever
+    # facts / retired field) — set directly to exercise the same
+    # cross-tenant leak check this test guards.
+    abc_app.score = 9.5
+    abc_app.recruiter_notes = "Confidential internal recruiter note."
     application_service.update_visibility(
         application_id=abc_app.id, actor_id=two_tenant_world["ta_user_id"],
         is_client_visible=True, client_visible_notes="Great fit for the ABC role.",

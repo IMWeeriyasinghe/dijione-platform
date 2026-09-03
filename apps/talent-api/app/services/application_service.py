@@ -2,8 +2,6 @@ from sqlalchemy.orm import Session
 
 from app.core.constants import (
     MODULE_TALENT_FLOW,
-    ApplicationStatus,
-    CanonicalStage,
     NotificationType,
     TalentFlowRole,
 )
@@ -32,10 +30,6 @@ class InvalidApplicationValueError(Exception):
     """A client-supplied stage/status value is not a recognised enum member."""
 
     pass
-
-
-_VALID_STAGES = {s.value for s in CanonicalStage}
-_VALID_STATUSES = {s.value for s in ApplicationStatus}
 
 
 class ApplicationService:
@@ -88,79 +82,14 @@ class ApplicationService:
         )
         return application
 
-    def update_stage(
-        self,
-        *,
-        application_id: int,
-        actor_id: int,
-        stage: str,
-        allowed_client_ids: list[int] | None = None,
-    ) -> Application:
-        if stage not in _VALID_STAGES:
-            raise InvalidApplicationValueError(f"Unknown stage '{stage}'")
-        application = self._get_or_raise(application_id, allowed_client_ids=allowed_client_ids)
-        previous = application.current_stage
-        application.current_stage = stage
-        self.audit.log(
-            actor_id=actor_id,
-            action="application.stage_changed",
-            entity_type="Application",
-            entity_id=application.id,
-            previous_state={"current_stage": previous},
-            new_state={"current_stage": stage},
-        )
-        if application.is_client_visible:
-            self._notify_client(application, NotificationType.APPLICATION_STAGE_CHANGED.value,
-                                 f"Update on {application.candidate.full_name}",
-                                 f"Now at stage: {stage.replace('_', ' ').title()}")
-        return application
-
-    def update_status(
-        self,
-        *,
-        application_id: int,
-        actor_id: int,
-        status: str,
-        rejection_reason: str,
-        allowed_client_ids: list[int] | None = None,
-    ) -> Application:
-        if status not in _VALID_STATUSES:
-            raise InvalidApplicationValueError(f"Unknown status '{status}'")
-        application = self._get_or_raise(application_id, allowed_client_ids=allowed_client_ids)
-        previous = application.status
-        application.status = status
-        application.rejection_reason = rejection_reason
-        self.audit.log(
-            actor_id=actor_id,
-            action="application.status_changed",
-            entity_type="Application",
-            entity_id=application.id,
-            previous_state={"status": previous},
-            new_state={"status": status},
-        )
-        return application
-
-    def update_score(
-        self,
-        *,
-        application_id: int,
-        actor_id: int,
-        score: float,
-        recruiter_notes: str,
-        allowed_client_ids: list[int] | None = None,
-    ) -> Application:
-        application = self._get_or_raise(application_id, allowed_client_ids=allowed_client_ids)
-        application.score = score
-        if recruiter_notes:
-            application.recruiter_notes = recruiter_notes
-        self.audit.log(
-            actor_id=actor_id,
-            action="application.scored",
-            entity_type="Application",
-            entity_id=application.id,
-            new_state={"score": score},
-        )
-        return application
+    # NOTE: `update_stage` / `update_status` / `update_score` were removed
+    # (DijiTalentFlow monitoring-first iteration). Recruitment stage and
+    # status are Lever facts, refreshed from the Recruitment Source by
+    # `VerifiedPostingPromotionReconciler` on every reconcile; `score` has
+    # no authoritative source. The corresponding PATCH routes now 403. The
+    # `Application.score` column is retained purely for zero-risk
+    # back-compat and is recorded as tech debt in
+    # `docs/talent-flow/data-model.md` — nothing reads or writes it.
 
     def update_visibility(
         self,

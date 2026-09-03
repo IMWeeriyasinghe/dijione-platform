@@ -8,7 +8,7 @@ source-owned fields refresh on every run, TalentFlow-owned workflow state
 never does.
 """
 
-from app.core.constants import ApplicationStatus, CanonicalStage
+from app.core.constants import CanonicalStage
 from app.models.application import Application
 from app.models.candidate import Candidate
 from app.models.talent_request import TalentRequest
@@ -136,25 +136,26 @@ def test_second_run_creates_zero_new_rows(db, two_tenant_world):
 
 
 def test_source_refresh_does_not_overwrite_application_workflow_state(db, two_tenant_world):
+    # Stage/status are Lever facts and are refreshed from the source on
+    # every reconcile (monitoring-first iteration); score has no
+    # authoritative source and is never written. Only TalentFlow-owned
+    # curation state (is_client_visible/client_visible_notes) must survive
+    # a source refresh untouched.
     name = two_tenant_world["abc"].name
     _verify(db, [_dtc_ok("p1", name)])
     candidacy = recruitment_candidacy_dto(
         "opp-1", posting_external_id="p1", candidate_external_id="contact-1",
-        current_stage="SCREENING",
+        current_stage="SCREENING", status="ACTIVE",
     )
     _promote(db, candidacies=[candidacy])
 
     candidate = CandidateRepository(db).get_by_lever_external_id("contact-1")
     tr = TalentRequestRepository(db).get_by_posting_external_id("p1")
     application = ApplicationRepository(db).get_for_pair(candidate.id, tr.id)
-    ApplicationService(db).update_status(
-        application_id=application.id, actor_id=two_tenant_world["ta_user_id"],
-        status=ApplicationStatus.SHORTLISTED.value, rejection_reason="",
-    )
-    ApplicationService(db).update_score(
-        application_id=application.id, actor_id=two_tenant_world["ta_user_id"],
-        score=8.5, recruiter_notes="Strong candidate.",
-    )
+    # score/recruiter_notes have no product write path any more — set
+    # directly, purely to prove a source refresh never touches them.
+    application.score = 8.5
+    application.recruiter_notes = "Strong candidate."
     ApplicationService(db).update_visibility(
         application_id=application.id, actor_id=two_tenant_world["ta_user_id"],
         is_client_visible=True, client_visible_notes="Great fit.",
@@ -163,14 +164,14 @@ def test_source_refresh_does_not_overwrite_application_workflow_state(db, two_te
 
     advanced_candidacy = recruitment_candidacy_dto(
         "opp-1", posting_external_id="p1", candidate_external_id="contact-1",
-        current_stage="INTERVIEWS", lever_archive_reason="Withdrew",
+        current_stage="INTERVIEWS", status="SHORTLISTED", lever_archive_reason="Withdrew",
     )
     _promote(db, candidacies=[advanced_candidacy])
 
     db.refresh(application)
     assert application.current_stage == "INTERVIEWS"
+    assert application.status == "SHORTLISTED"
     assert application.lever_archive_reason == "Withdrew"
-    assert application.status == ApplicationStatus.SHORTLISTED.value
     assert application.score == 8.5
     assert application.recruiter_notes == "Strong candidate."
     assert application.is_client_visible is True

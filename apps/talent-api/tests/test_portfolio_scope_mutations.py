@@ -73,24 +73,26 @@ def test_scoped_staff_cannot_read_out_of_portfolio_application(api_client, db, t
 
 
 def test_scoped_staff_cannot_mutate_out_of_portfolio_application(api_client, db, two_tenant_world, platform_calls):
+    # stage/status/score are retired (403 unconditionally, before any
+    # portfolio/existence check is even reached — see
+    # test_lever_facts_read_only.py) — the only remaining TalentFlow-owned
+    # mutation is visibility, so that's the one portfolio scope must guard.
     seeded = _seed(db, two_tenant_world)
     headers = _portfolio_headers(two_tenant_world)
     xyz_app = seeded["xyz"]["application_id"]
 
-    for path, body in (
-        (f"/api/talent/applications/{xyz_app}/stage", {"stage": "INTERVIEWS"}),
-        (f"/api/talent/applications/{xyz_app}/status", {"status": "SHORTLISTED"}),
-        (f"/api/talent/applications/{xyz_app}/score", {"score": 8.0}),
-        (f"/api/talent/applications/{xyz_app}/visibility", {"is_client_visible": True}),
-    ):
-        resp = api_client.patch(path, headers=headers, json=body)
-        assert resp.status_code == 404, f"{path} should 404 for an out-of-portfolio staff user"
+    resp = api_client.patch(
+        f"/api/talent/applications/{xyz_app}/visibility",
+        headers=headers,
+        json={"is_client_visible": True},
+    )
+    assert resp.status_code == 404, "visibility should 404 for an out-of-portfolio staff user"
 
     # ...but the in-portfolio application is mutable.
     ok = api_client.patch(
-        f"/api/talent/applications/{seeded['abc']['application_id']}/stage",
+        f"/api/talent/applications/{seeded['abc']['application_id']}/visibility",
         headers=headers,
-        json={"stage": "SCREENING"},
+        json={"is_client_visible": True},
     )
     assert ok.status_code == 200
 
@@ -167,9 +169,9 @@ def test_unrestricted_staff_unaffected(api_client, db, two_tenant_world):
     seeded = _seed(db, two_tenant_world)
     # client_ids=None (ALL_CLIENTS) -> can mutate any client's records.
     resp = api_client.patch(
-        f"/api/talent/applications/{seeded['xyz']['application_id']}/stage",
+        f"/api/talent/applications/{seeded['xyz']['application_id']}/visibility",
         headers=two_tenant_world["ta_headers"],
-        json={"stage": "INTERVIEWS"},
+        json={"is_client_visible": True},
     )
     assert resp.status_code == 200
 

@@ -74,10 +74,11 @@ def test_source_outage_does_not_corrupt_existing_promoted_data(db, two_tenant_wo
         application_id=application.id, actor_id=two_tenant_world["ta_user_id"],
         is_client_visible=True, client_visible_notes="Curated for the client.",
     )
-    ApplicationService(db).update_score(
-        application_id=application.id, actor_id=two_tenant_world["ta_user_id"],
-        score=9.0, recruiter_notes="Top candidate.",
-    )
+    # score/recruiter_notes have no product write path any more (Lever
+    # facts / retired field) — set directly to exercise the same
+    # outage-survives-curated-data check this test guards.
+    application.score = 9.0
+    application.recruiter_notes = "Top candidate."
     db.commit()
 
     down = RecruitmentConsumerService(db, client=FakeRecruitmentClient(down=True))

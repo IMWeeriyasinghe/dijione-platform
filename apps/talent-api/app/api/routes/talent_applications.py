@@ -21,6 +21,19 @@ from app.services.application_service import (
 
 router = APIRouter(prefix="/api/talent/applications", tags=["talent-applications"])
 
+# DijiTalentFlow is a monitoring/review layer over Lever, not a parallel ATS.
+# Recruitment stage and status are Lever facts — they are refreshed from the
+# Recruitment Source on every reconcile, so a manual edit here would be
+# silently reverted. `score` has no authoritative Lever source at all. All
+# three edit endpoints are therefore retired (403), the same way
+# `POST /api/talent/requests` and `POST /api/talent/candidates` were. The
+# only application field DijiTalentFlow owns and lets a TA change is
+# `is_client_visible` — see `update_visibility` below.
+_LEVER_OWNED_MSG = (
+    "Recruitment stage and status are maintained in Lever and are read-only in "
+    "DijiTalentFlow. Candidate scoring is not a DijiTalentFlow capability."
+)
+
 
 @router.get("", response_model=list[ApplicationOut])
 def list_applications(
@@ -66,16 +79,9 @@ def update_stage(
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> ApplicationOut:
-    service = ApplicationService(db)
-    application = _apply_or_404(
-        service, lambda: service.update_stage(
-            application_id=application_id, actor_id=scope.user.id, stage=payload.stage,
-            allowed_client_ids=scope.client_ids,
-        )
-    )
-    db.commit()
-    db.refresh(application)
-    return service.to_out(application)
+    """Retired — recruitment stage is a Lever fact (see module docstring).
+    The route and schema are kept for contract stability; it always 403s."""
+    raise HTTPException(status.HTTP_403_FORBIDDEN, _LEVER_OWNED_MSG)
 
 
 @router.patch("/{application_id}/status", response_model=ApplicationOut)
@@ -85,20 +91,8 @@ def update_status(
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> ApplicationOut:
-    service = ApplicationService(db)
-    application = _apply_or_404(
-        service,
-        lambda: service.update_status(
-            application_id=application_id,
-            actor_id=scope.user.id,
-            status=payload.status,
-            rejection_reason=payload.rejection_reason,
-            allowed_client_ids=scope.client_ids,
-        ),
-    )
-    db.commit()
-    db.refresh(application)
-    return service.to_out(application)
+    """Retired — recruitment status is a Lever fact (see module docstring)."""
+    raise HTTPException(status.HTTP_403_FORBIDDEN, _LEVER_OWNED_MSG)
 
 
 @router.patch("/{application_id}/score", response_model=ApplicationOut)
@@ -108,20 +102,9 @@ def update_score(
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> ApplicationOut:
-    service = ApplicationService(db)
-    application = _apply_or_404(
-        service,
-        lambda: service.update_score(
-            application_id=application_id,
-            actor_id=scope.user.id,
-            score=payload.score,
-            recruiter_notes=payload.recruiter_notes,
-            allowed_client_ids=scope.client_ids,
-        ),
-    )
-    db.commit()
-    db.refresh(application)
-    return service.to_out(application)
+    """Retired — candidate scoring has no authoritative source and is not a
+    DijiTalentFlow capability (see module docstring)."""
+    raise HTTPException(status.HTTP_403_FORBIDDEN, _LEVER_OWNED_MSG)
 
 
 @router.patch("/{application_id}/visibility", response_model=ApplicationOut)
