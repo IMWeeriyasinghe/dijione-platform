@@ -5,6 +5,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  Modal,
   PageHeader,
   Select,
   Table,
@@ -12,6 +13,7 @@ import {
   Th,
   Thead,
   Tr,
+  formatDate,
 } from "@dijione/design-system";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -19,6 +21,8 @@ import {
   type PostingRow,
   listClientPortfolios,
   listRecruitmentPostings,
+  reopenPostingMapping,
+  unmapPostingMapping,
   verifyPostingMapping,
 } from "@/lib/api";
 
@@ -34,10 +38,21 @@ const TONE_CLASS = {
   success: "bg-dt-cream text-dt-success",
   warning: "bg-dt-cream text-dt-warning",
   neutral: "bg-dt-surface-warm text-dt-text-secondary",
+  danger: "bg-dt-cream text-dt-danger",
 } as const;
 
+// Four visible states (plan §G2), all already representable by the
+// existing status/source columns — this only labels them:
+//   Auto-verified     VERIFIED / LEVER_DTC_TAG  — DTC-managed
+//   Manually verified VERIFIED / MANUAL         — DTC never overwrites
+//   Manually unmapped REJECTED / MANUAL         — reconciler-immune
+//   Unmapped          UNMAPPED / ""             — DTC will resolve it
 function mappingLabel(p: PostingRow): { text: string; tone: keyof typeof TONE_CLASS } {
-  if (p.mapping_status === "VERIFIED") return { text: "Mapped", tone: "success" };
+  if (p.mapping_status === "VERIFIED" && p.mapping_source === "MANUAL") {
+    return { text: "Manually verified", tone: "success" };
+  }
+  if (p.mapping_status === "VERIFIED") return { text: "Auto-verified", tone: "success" };
+  if (p.mapping_status === "REJECTED") return { text: "Manually unmapped", tone: "danger" };
   if (NEEDS_REVIEW.has(p.resolution_status)) return { text: "Needs review", tone: "warning" };
   return { text: "Unmapped", tone: "neutral" };
 }
@@ -74,6 +89,7 @@ export function PostingsView() {
   const [filter, setFilter] = useState<PostingFilter>("active");
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
   const [pickClientId, setPickClientId] = useState<number | null>(null);
+  const [unmapTarget, setUnmapTarget] = useState<PostingRow | null>(null);
 
   const postings = useQuery({
     queryKey: ["recruitment-postings"],
@@ -81,14 +97,31 @@ export function PostingsView() {
   });
   const clients = useQuery({ queryKey: ["client-portfolios"], queryFn: listClientPortfolios });
 
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ["recruitment-postings"] });
+  }
+
   const verify = useMutation({
     mutationFn: ({ id, clientId }: { id: number; clientId: number }) =>
       verifyPostingMapping(id, clientId),
     onSuccess: () => {
       setVerifyingId(null);
       setPickClientId(null);
-      qc.invalidateQueries({ queryKey: ["recruitment-postings"] });
+      invalidate();
     },
+  });
+
+  const unmap = useMutation({
+    mutationFn: (id: number) => unmapPostingMapping(id),
+    onSuccess: () => {
+      setUnmapTarget(null);
+      invalidate();
+    },
+  });
+
+  const reopen = useMutation({
+    mutationFn: (id: number) => reopenPostingMapping(id),
+    onSuccess: invalidate,
   });
 
   if (postings.isLoading) return <LoadingState label="Loading recruitment postings…" />;
@@ -140,6 +173,7 @@ export function PostingsView() {
             <Thead>
               <Tr>
                 <Th>Posting</Th>
+                <Th>Created</Th>
                 <Th>Lever client tag</Th>
                 <Th>Resolved client</Th>
                 <Th>Mapping</Th>
@@ -149,11 +183,16 @@ export function PostingsView() {
             <tbody>
               {rows.map((p) => {
                 const m = mappingLabel(p);
+                const isVerified = p.mapping_status === "VERIFIED";
+                const isManuallyUnmapped = p.mapping_status === "REJECTED";
                 return (
                   <Tr key={p.id}>
                     <Td>
                       <div className="font-medium text-dt-text-primary">{p.title}</div>
                       <div className="text-xs text-dt-text-secondary">{p.state}</div>
+                    </Td>
+                    <Td className="whitespace-nowrap text-xs text-dt-text-secondary">
+                      {p.lever_created_at ? formatDate(p.lever_created_at) : "—"}
                     </Td>
                     <Td>{p.dtc_source_tag ?? <span className="text-dt-text-secondary">Not supplied</span>}</Td>
                     <Td>{p.mapping_client_name ?? "—"}</Td>
@@ -190,17 +229,33 @@ export function PostingsView() {
                             Cancel
                           </Button>
                         </div>
-                      ) : (
+                      ) : isManuallyUnmapped ? (
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() => {
-                            setVerifyingId(p.id);
-                            setPickClientId(p.mapping_client_id ?? null);
-                          }}
+                          disabled={reopen.isPending}
+                          onClick={() => reopen.mutate(p.id)}
                         >
-                          Verify manually
+                          Reopen
                         </Button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setVerifyingId(p.id);
+                              setPickClientId(p.mapping_client_id ?? null);
+                            }}
+                          >
+                            {isVerified ? "Change" : "Verify manually"}
+                          </Button>
+                          {isVerified && (
+                            <Button size="sm" variant="ghost" onClick={() => setUnmapTarget(p)}>
+                              Unmap
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </Td>
                   </Tr>
@@ -210,6 +265,27 @@ export function PostingsView() {
           </Table>
         </div>
       )}
+
+      <Modal open={unmapTarget !== null} onClose={() => setUnmapTarget(null)} title="Remove client mapping?">
+        <p className="text-sm text-dt-text-secondary">
+          <span className="font-medium text-dt-text-primary">{unmapTarget?.title}</span> will stop being
+          visible to {unmapTarget?.mapping_client_name ?? "its current client"}. This does not change
+          anything in Lever, and can be undone with Reopen. The next sync will not re-verify it — DTC
+          reconciliation never overrides a manually unmapped posting.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setUnmapTarget(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={unmap.isPending}
+            onClick={() => unmapTarget && unmap.mutate(unmapTarget.id)}
+          >
+            {unmap.isPending ? "Unmapping…" : "Unmap"}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
