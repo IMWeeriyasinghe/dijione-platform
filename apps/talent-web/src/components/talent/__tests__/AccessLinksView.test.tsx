@@ -15,7 +15,12 @@ const api = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => api);
 
-import { AccessLinksView, dateInputValue, endOfDayIso, maxSelectableDate } from "../AccessLinksView";
+import {
+  AccessLinksView,
+  endOfDayIso,
+  maxSelectableDate,
+  minSelectableDate,
+} from "../AccessLinksView";
 
 function wrap(node: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -185,7 +190,7 @@ describe("dateInputValue / endOfDayIso — timezone consistency", () => {
     vi.setSystemTime(new Date("2026-09-03T20:30:00.000Z")); // 2026-09-04 02:00 IST
 
     const now = Date.now();
-    const minDate = dateInputValue(1); // MIN_EXPIRY_DAYS
+    const minDate = minSelectableDate(); // what the UI's min= attribute offers
     const maxDate = maxSelectableDate(); // what the UI's max= attribute offers
 
     const minSubmitted = new Date(endOfDayIso(minDate)).getTime();
@@ -200,14 +205,13 @@ describe("dateInputValue / endOfDayIso — timezone consistency", () => {
     expect(maxSubmitted).toBeLessThanOrEqual(backendMax);
   });
 
-  it("the max bound survives a DST transition inside the offered window, at the true worst-case time of day (local midnight)", () => {
+  it("the max bound survives a fall-back DST transition inside the offered window, at the true worst-case time of day (local midnight)", () => {
     // America/Los_Angeles: "now" pinned to local midnight (the worst case
-    // for a fixed calendar-day buffer — see maxSelectableDate's comment),
-    // with the window's 88 forward days crossing the Nov 1, 2026 US
-    // fall-back DST transition. A single day of buffer (day 89) leaves
-    // only ~1 second of margin at this worst-case time of day, which the
-    // 1-hour DST shift pushes negative; day 88 keeps a real ~24h margin
-    // that absorbs it.
+    // for a fixed calendar-day buffer — see the helper comment), with the
+    // window's 88 forward days crossing the Nov 1, 2026 US fall-back DST
+    // transition. A single day of buffer (day 89) leaves only ~1 second of
+    // margin at this worst-case time of day, which the 1-hour DST shift
+    // pushes negative; day 88 keeps a real ~24h margin that absorbs it.
     process.env.TZ = "America/Los_Angeles";
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-03T07:00:00.000Z")); // 2026-09-03 00:00 PDT
@@ -218,5 +222,24 @@ describe("dateInputValue / endOfDayIso — timezone consistency", () => {
     const backendMax = now + 90 * 86_400_000;
 
     expect(maxSubmitted).toBeLessThanOrEqual(backendMax);
+  });
+
+  it("the min bound survives a spring-forward DST transition inside the offered window, at the worst-case time of day (late evening)", () => {
+    // America/Los_Angeles: "now" pinned to the evening before the
+    // 2026-03-08 US spring-forward. The old zero-buffer min (day 1)
+    // submitted tomorrow-23:59:59-local, which after losing the DST hour
+    // lands ~59 min BELOW the backend's now+1-day floor -> a 400 on the
+    // very date the picker offered. minSelectableDate() (day 2) keeps a
+    // full ~24h margin that absorbs the -1h shift plus request latency.
+    process.env.TZ = "America/Los_Angeles";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-08T07:59:00.000Z")); // 2026-03-07 23:59 PST
+
+    const now = Date.now();
+    const minDate = minSelectableDate();
+    const minSubmitted = new Date(endOfDayIso(minDate)).getTime();
+    const backendMin = now + 1 * 86_400_000;
+
+    expect(minSubmitted).toBeGreaterThanOrEqual(backendMin);
   });
 });

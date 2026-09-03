@@ -56,9 +56,7 @@ function fmt(value: string | null): string {
 // offered `min` and the value actually submitted disagreed by up to a
 // day — occasionally landing outside the backend's own [1, 90]-day bound
 // and turning a date the picker itself offered into a 400.
-// Exported for the timezone-consistency regression test — not used
-// elsewhere outside this file.
-export function dateInputValue(daysFromNow: number): string {
+function dateInputValue(daysFromNow: number): string {
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
   const y = d.getFullYear();
@@ -74,22 +72,30 @@ export function endOfDayIso(dateStr: string): string {
 }
 
 // The date picker offers whole calendar days, but a submitted value is
-// end-of-that-day (23:59:59 local) — up to ~24h later than "the same
-// instant N days from now" the backend actually bounds against
+// end-of-that-day (23:59:59 local) — up to ~24h off "the same instant N
+// days from now" the backend actually bounds against
 // (MagicLinkService._resolve_expiry: now + [1, 90] days, a fixed
-// millisecond duration). Offering day 90 itself as the max selectable
-// date can therefore submit up to ~24h past the backend's max_allowed
-// when "now" is early in today's local day.
+// millisecond duration). So the picker's own min/max must each be pulled
+// a whole day *inside* the raw N-day mark: end-of-day-of-day-(N-1) is at
+// most ~1 real second past the raw N-day duration and can go negative
+// when a DST transition falls inside the forward window (local
+// calendar-day arithmetic stretches/shrinks by the DST hour relative to
+// the backend's fixed-duration bound). A full extra day of buffer on
+// each side restores a real ~24h margin that comfortably absorbs a ±1h
+// DST shift plus ordinary request latency.
 //
-// A single day of buffer (day 89) is NOT enough: at the true worst case
-// ("now" at local midnight) its margin against the backend's fixed
-// 90-day ceiling is only ~1 second, which a single DST transition
-// falling inside the 89-day forward window erodes to negative — the
-// local calendar-day arithmetic stretches by the DST hour relative to
-// the backend's fixed-duration bound. Day 88 restores a real ~24h
-// margin, comfortably absorbing a ±1h DST shift on top of the
-// worst-case time-of-day.
-// Exported for the timezone-consistency regression test.
+//   min offered = day 2   (MIN_EXPIRY_DAYS + 1) — end-of-day is always
+//                          well past the backend's now+1-day floor even
+//                          after a spring-forward inside the window.
+//   max offered = day 88  (MAX_EXPIRY_DAYS - 2) — end-of-day is always
+//                          well under the backend's now+90-day ceiling
+//                          even after a fall-back inside the window.
+//
+// Exported for the timezone-consistency regression tests.
+export function minSelectableDate(): string {
+  return dateInputValue(MIN_EXPIRY_DAYS + 1);
+}
+
 export function maxSelectableDate(): string {
   return dateInputValue(MAX_EXPIRY_DAYS - 2);
 }
@@ -292,7 +298,7 @@ export function AccessLinksView() {
               id="al-expiry"
               type="date"
               value={expiryDate}
-              min={dateInputValue(MIN_EXPIRY_DAYS)}
+              min={minSelectableDate()}
               max={maxSelectableDate()}
               onChange={(e) => e.target.value && setExpiryDate(e.target.value)}
             />
@@ -373,7 +379,7 @@ export function AccessLinksView() {
                         <Input
                           type="date"
                           value={extendDate}
-                          min={dateInputValue(MIN_EXPIRY_DAYS)}
+                          min={minSelectableDate()}
                           max={maxSelectableDate()}
                           onChange={(e) => setExtendDate(e.target.value)}
                           className="w-36 py-1.5 text-xs"
