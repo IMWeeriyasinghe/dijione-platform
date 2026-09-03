@@ -49,7 +49,9 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-dt-border bg-dt-surface px-6 py-4">
         <div className="flex items-center gap-3">
-          <BrandLogo width={116} />
+          {/* 120px = the guideline's stated minimum on-screen width for the
+              wordmark without a tagline. */}
+          <BrandLogo width={120} />
           <div className="border-l border-dt-border pl-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">
               Dijital Team
