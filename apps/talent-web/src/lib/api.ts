@@ -148,6 +148,7 @@ export type PostingRow = {
   state: string;
   location: string;
   archived: boolean;
+  lever_created_at: string | null;
   mapping_status: "UNMAPPED" | "VERIFIED" | "REJECTED";
   mapping_client_id: number | null;
   mapping_client_name: string | null;
@@ -165,6 +166,14 @@ export const verifyPostingMapping = (postingId: number, client_id: number) =>
     method: "POST",
     body: JSON.stringify({ client_id }),
   });
+// "Manually Unmapped" (REJECTED/MANUAL) — the reconciler-immune state that
+// actually survives the next DTC reconcile, unlike a naive reset to
+// UNMAPPED. Reopen returns to plain UNMAPPED so DTC (or a fresh manual
+// verify) can resolve it again. See apps/talent-api/app/api/routes/talent_postings.py.
+export const unmapPostingMapping = (postingId: number) =>
+  request<PostingRow>(`/api/talent/postings/${postingId}/unmap-mapping`, { method: "POST" });
+export const reopenPostingMapping = (postingId: number) =>
+  request<PostingRow>(`/api/talent/postings/${postingId}/reopen-mapping`, { method: "POST" });
 export const getRecruitmentSyncRun = (runId: string) =>
   request<{ run: SyncRunSummary | null }>(`/api/talent/integrations/recruitment/sync/${runId}`);
 export const requestRecruitmentSync = () =>
