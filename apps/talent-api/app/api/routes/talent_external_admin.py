@@ -17,8 +17,8 @@ from app.api.deps import TalentScope, require_staff_scope
 from app.db.session import get_db
 from app.repositories.client_repo import ClientRepository
 from app.repositories.magic_link_grant_repo import MagicLinkGrantRepository
-from app.schemas.external import GrantCreatedOut, GrantCreateRequest, GrantOut
-from app.services.magic_link_service import MagicLinkService
+from app.schemas.external import GrantCreatedOut, GrantCreateRequest, GrantExtendRequest, GrantOut
+from app.services.magic_link_service import InvalidExpiryError, MagicLinkService
 
 router = APIRouter(prefix="/api/talent/external/grants", tags=["talent-external-admin"])
 
@@ -76,13 +76,17 @@ def create_grant(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
 
     service = MagicLinkService(db)
-    grant, raw = service.create_grant(
-        client_id=client.id,
-        issued_by_user_id=scope.user.id,
-        contact_name=payload.contact_name,
-        contact_email=payload.contact_email,
-        expires_in_days=payload.expires_in_days,
-    )
+    try:
+        grant, raw = service.create_grant(
+            client_id=client.id,
+            issued_by_user_id=scope.user.id,
+            contact_name=payload.contact_name,
+            contact_email=payload.contact_email,
+            expires_in_days=payload.expires_in_days,
+            expires_at=payload.expires_at,
+        )
+    except InvalidExpiryError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     db.commit()
     db.refresh(grant)
     base = _to_out(grant, client.name)
@@ -106,6 +110,33 @@ def revoke_grant(
 ) -> GrantOut:
     grant = _load_in_scope(db, scope, public_id)
     MagicLinkService(db).revoke_grant(grant, revoked_by_user_id=scope.user.id)
+    db.commit()
+    db.refresh(grant)
+    client = ClientRepository(db).get_by_id(grant.client_id)
+    return _to_out(grant, client.name if client else "")
+
+
+@router.post("/{public_id}/extend", response_model=GrantOut)
+def extend_grant(
+    public_id: str,
+    payload: GrantExtendRequest,
+    scope: TalentScope = Depends(require_staff_scope),
+    db: Session = Depends(get_db),
+) -> GrantOut:
+    """Push expires_at forward on the same grant/URL — see
+    MagicLinkService.extend_grant. Extend-only (never shortens), rejects a
+    revoked grant (regenerate instead), accepts an already-expired-but-not-
+    revoked grant (re-activates the same URL)."""
+    grant = _load_in_scope(db, scope, public_id)
+    try:
+        MagicLinkService(db).extend_grant(
+            grant,
+            actor_user_id=scope.user.id,
+            expires_at=payload.expires_at,
+            expires_in_days=payload.expires_in_days,
+        )
+    except InvalidExpiryError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     db.commit()
     db.refresh(grant)
     client = ClientRepository(db).get_by_id(grant.client_id)
