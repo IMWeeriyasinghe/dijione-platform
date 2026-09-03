@@ -15,16 +15,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import TalentScope, get_talent_scope, require_staff_scope
-from app.core.constants import PostingClientMappingSource, PostingClientMappingStatus
+from app.core.constants import (
+    DtcResolutionStatus,
+    PostingClientMappingSource,
+    PostingClientMappingStatus,
+)
 from app.db.session import get_db
 from app.repositories.client_repo import ClientRepository
 from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
 from app.repositories.posting_repo import PostingRepository
 from app.schemas.posting import ClientSafePostingOut, PostingClientMappingVerify, PostingOut
+from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/api/talent/postings", tags=["postings"])
 
 _UNMAPPED = PostingClientMappingStatus.UNMAPPED.value
+_VERIFIED = PostingClientMappingStatus.VERIFIED.value
+_REJECTED = PostingClientMappingStatus.REJECTED.value
+_MANUAL = PostingClientMappingSource.MANUAL.value
 
 
 def _to_posting_out(ref, mapping, client_name: str | None) -> PostingOut:
@@ -37,6 +45,7 @@ def _to_posting_out(ref, mapping, client_name: str | None) -> PostingOut:
         location=ref.location,
         archived=ref.archived,
         source_synced_at=ref.source_synced_at,
+        lever_created_at=ref.lever_created_at,
         mapping_status=mapping.status if mapping else _UNMAPPED,
         mapping_client_id=mapping.client_id if mapping else None,
         mapping_client_name=client_name,
@@ -100,6 +109,87 @@ def verify_posting_mapping(
     db.refresh(mapping)
 
     return _to_posting_out(ref, mapping, client.name)
+
+
+@router.post("/{ref_id}/unmap-mapping", response_model=PostingOut)
+def unmap_posting_mapping(
+    ref_id: int,
+    scope: TalentScope = Depends(require_staff_scope),
+    db: Session = Depends(get_db),
+) -> PostingOut:
+    """Explicit, staff-only "Manually Unmapped" — sets REJECTED/MANUAL, the
+    one mapping state the DTC reconciler treats as absolute and never
+    touches (see PostingClientMappingReconciler._reconcile_one's early
+    return on m.status == REJECTED). A naive reset to UNMAPPED would be
+    re-VERIFIED by the very next reconcile if the posting still carries a
+    valid DTC tag — REJECTED is what actually "sticks". Never calls Lever;
+    the posting itself is untouched, only DijiTalentFlow's trust record."""
+    posting_repo = PostingRepository(db)
+    mapping_repo = PostingClientMappingRepository(db)
+
+    ref = posting_repo.get_ref_by_id(ref_id)
+    if ref is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
+
+    mapping = mapping_repo.get_or_create(ref.external_id, provider=ref.provider)
+    previous = {"status": mapping.status, "client_id": mapping.client_id, "source": mapping.source}
+    mapping.status = _REJECTED
+    mapping.source = _MANUAL
+    mapping.client_id = None
+    mapping.verified_by_user_id = scope.user.id
+    mapping.verified_at = datetime.now(UTC)
+    mapping.resolution_status = DtcResolutionStatus.MANUALLY_UNMAPPED.value
+    db.commit()
+    db.refresh(mapping)
+
+    AuditService().log(
+        actor_id=scope.user.id,
+        action="posting_mapping.manually_unmapped",
+        entity_type="PostingClientMapping",
+        entity_id=mapping.id,
+        new_state={"previous": previous, "posting_external_id": ref.external_id},
+    )
+
+    return _to_posting_out(ref, mapping, None)
+
+
+@router.post("/{ref_id}/reopen-mapping", response_model=PostingOut)
+def reopen_posting_mapping(
+    ref_id: int,
+    scope: TalentScope = Depends(require_staff_scope),
+    db: Session = Depends(get_db),
+) -> PostingOut:
+    """Undo a Manually Unmapped decision — returns the mapping to plain
+    UNMAPPED so the next DTC reconcile (or a fresh manual verify) can
+    resolve it again. Only meaningful from REJECTED; a no-op guard keeps it
+    safe to call from any state."""
+    posting_repo = PostingRepository(db)
+    mapping_repo = PostingClientMappingRepository(db)
+
+    ref = posting_repo.get_ref_by_id(ref_id)
+    if ref is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
+
+    mapping = mapping_repo.get_or_create(ref.external_id, provider=ref.provider)
+    previous = {"status": mapping.status, "client_id": mapping.client_id, "source": mapping.source}
+    mapping.status = _UNMAPPED
+    mapping.source = ""
+    mapping.client_id = None
+    mapping.verified_by_user_id = None
+    mapping.verified_at = None
+    mapping.resolution_status = DtcResolutionStatus.NO_DTC_TAG.value
+    db.commit()
+    db.refresh(mapping)
+
+    AuditService().log(
+        actor_id=scope.user.id,
+        action="posting_mapping.reopened",
+        entity_type="PostingClientMapping",
+        entity_id=mapping.id,
+        new_state={"previous": previous, "posting_external_id": ref.external_id},
+    )
+
+    return _to_posting_out(ref, mapping, None)
 
 
 @router.get("/client-visible", response_model=list[ClientSafePostingOut])

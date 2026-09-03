@@ -17,6 +17,7 @@ class PostingOut(BaseModel):
     location: str
     archived: bool
     source_synced_at: datetime | None = None
+    lever_created_at: datetime | None = None
 
     mapping_status: str
     mapping_client_id: int | None
