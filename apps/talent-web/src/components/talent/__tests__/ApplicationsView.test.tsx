@@ -81,3 +81,33 @@ describe("ApplicationsView — read-only recruitment state", () => {
     );
   });
 });
+
+describe("ApplicationsView — status click-through filter", () => {
+  it("filters to the initial status and shows a clearable chip", async () => {
+    const user = userEvent.setup();
+    api.listApplications.mockResolvedValue([
+      application({ candidate_name: "Offer Candidate", status: "OFFER" }),
+      application({ candidate_name: "Active Candidate", status: "ACTIVE" }),
+    ]);
+    wrap(<ApplicationsView initialStatus="OFFER" />);
+
+    expect(await screen.findByText("Offer Candidate")).toBeInTheDocument();
+    expect(screen.queryByText("Active Candidate")).not.toBeInTheDocument();
+    expect(screen.getByText(/Status: OFFER/)).toBeInTheDocument();
+
+    await user.click(screen.getByText(/Status: OFFER/));
+    expect(await screen.findByText("Active Candidate")).toBeInTheDocument();
+  });
+
+  it("shows every row and no chip when no initial status is given", async () => {
+    api.listApplications.mockResolvedValue([
+      application({ candidate_name: "Offer Candidate", status: "OFFER" }),
+      application({ candidate_name: "Active Candidate", status: "ACTIVE" }),
+    ]);
+    wrap(<ApplicationsView />);
+
+    expect(await screen.findByText("Offer Candidate")).toBeInTheDocument();
+    expect(screen.getByText("Active Candidate")).toBeInTheDocument();
+    expect(screen.queryByText(/Status:/)).not.toBeInTheDocument();
+  });
+});

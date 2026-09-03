@@ -7,7 +7,12 @@ import { LoadingState } from "@dijione/design-system";
 
 function ApplicationsPageInner() {
   const searchParams = useSearchParams();
-  return <ApplicationsView initialSearch={searchParams.get("search") ?? ""} />;
+  return (
+    <ApplicationsView
+      initialSearch={searchParams.get("search") ?? ""}
+      initialStatus={searchParams.get("status") ?? ""}
+    />
+  );
 }
 
 export default function ApplicationsPage() {

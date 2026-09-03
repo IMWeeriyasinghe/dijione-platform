@@ -10,13 +10,25 @@ import { StatusBadge } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { Table, Thead, Th, Tr, Td } from "@dijione/design-system";
 
-export function ApplicationsView({ initialSearch = "" }: { initialSearch?: string }) {
+export function ApplicationsView({
+  initialSearch = "",
+  initialStatus = "",
+}: {
+  initialSearch?: string;
+  initialStatus?: string;
+}) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState(initialSearch);
+  // The API has no status_filter for applications — this is a frontend-only
+  // filter applied after fetch, used by the Operations Dashboard's "Offers
+  // in Progress" click-through (?status=OFFER).
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["applications", "all", search],
     queryFn: () => listApplications({ search: search || undefined }),
   });
+
+  const rows = statusFilter ? data?.filter((a) => a.status === statusFilter) : data;
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ["applications"] });
@@ -29,21 +41,33 @@ export function ApplicationsView({ initialSearch = "" }: { initialSearch?: strin
         description="Monitor every candidate application across all clients — stage and status are synced from Lever; client visibility is the one thing you curate here."
       />
 
-      <div className="relative mb-6 max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-dt-text-secondary" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by designation…"
-          className="w-full rounded-lg border border-dt-border bg-dt-surface py-2 pl-9 pr-3 text-sm focus:border-dt-orange focus:outline-none focus:ring-2 focus:ring-dt-orange/20"
-        />
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="relative max-w-md flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-dt-text-secondary" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by designation…"
+            className="w-full rounded-lg border border-dt-border bg-dt-surface py-2 pl-9 pr-3 text-sm focus:border-dt-orange focus:outline-none focus:ring-2 focus:ring-dt-orange/20"
+          />
+        </div>
+        {statusFilter && (
+          <button
+            type="button"
+            onClick={() => setStatusFilter("")}
+            className="flex items-center gap-1.5 rounded-full border border-dt-orange/30 bg-dt-surface-warm px-3 py-1 text-xs font-medium text-dt-burnt-orange"
+          >
+            Status: {statusFilter}
+            <span aria-hidden>×</span>
+          </button>
+        )}
       </div>
 
       {isLoading && <LoadingState label="Loading applications…" />}
       {isError && <ErrorState onRetry={() => refetch()} />}
-      {data && data.length === 0 && <EmptyState title="No applications found" />}
+      {rows && rows.length === 0 && <EmptyState title="No applications found" />}
 
-      {data && data.length > 0 && (
+      {rows && rows.length > 0 && (
         <Table>
           <Thead>
             <tr>
@@ -55,7 +79,7 @@ export function ApplicationsView({ initialSearch = "" }: { initialSearch?: strin
             </tr>
           </Thead>
           <tbody>
-            {data.map((app) => (
+            {rows.map((app) => (
               <Tr key={app.id}>
                 <Td className="font-medium">
                   <Link href={`/candidates/${app.candidate_id}`} className="hover:text-dt-burnt-orange">

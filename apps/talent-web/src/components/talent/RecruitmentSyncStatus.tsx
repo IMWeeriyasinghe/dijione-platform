@@ -121,6 +121,13 @@ export function RecruitmentSyncStatus() {
         <p className="text-xs text-dt-text-secondary">
           Last synced: {relativeTime(lastOk)} · {statusLine}
         </p>
+        {/* Truthful, not a live guarantee: this environment has no way to
+            prove a scheduler is currently running, so we state the
+            configured schedule as configuration — never "Automatic sync:
+            Active" without a real runtime signal (plan §D). */}
+        <p className="text-xs text-dt-text-secondary">
+          Sync schedule: every 6 h (runs automatically in deployed environments)
+        </p>
         {needsReview > 0 && (
           <Link
             href="/postings"
