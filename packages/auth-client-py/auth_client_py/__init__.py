@@ -6,9 +6,19 @@ from auth_client_py.claims import (
     SupplierClaims,
     decode_claims,
 )
+from auth_client_py.correlation import (
+    CORRELATION_HEADER,
+    CorrelationIdFilter,
+    CorrelationIdMiddleware,
+    get_correlation_id,
+    new_correlation_id,
+    set_correlation_id,
+)
+from auth_client_py.migration_status import alembic_head_status
 from auth_client_py.people_client import EmployeeDirectoryClient
 from auth_client_py.platform_client import PlatformClient
 from auth_client_py.recruitment_client import RecruitmentSourceClient
+from auth_client_py.security import InsecureConfigError, assert_trust_anchors_safe
 
 # ``fastapi_deps`` (make_get_claims / make_verify_internal_request) is imported
 # directly from the submodule by services — it pulls in FastAPI, which is a
@@ -24,4 +34,16 @@ __all__ = [
     "PlatformClient",
     "RecruitmentSourceClient",
     "EmployeeDirectoryClient",
+    # correlation-id
+    "CorrelationIdMiddleware",
+    "CorrelationIdFilter",
+    "CORRELATION_HEADER",
+    "get_correlation_id",
+    "set_correlation_id",
+    "new_correlation_id",
+    # startup safety
+    "assert_trust_anchors_safe",
+    "InsecureConfigError",
+    # health diagnostics
+    "alembic_head_status",
 ]

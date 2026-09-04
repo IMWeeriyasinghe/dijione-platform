@@ -149,8 +149,16 @@ class PlatformClient:
         )
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        from auth_client_py.correlation import CORRELATION_HEADER, get_correlation_id
+
+        extra: dict[str, str] = {}
         if self._caller:
-            kwargs["headers"] = {**kwargs.get("headers", {}), "X-Internal-Caller": self._caller}
+            extra["X-Internal-Caller"] = self._caller
+        cid = get_correlation_id()
+        if cid:
+            extra[CORRELATION_HEADER] = cid
+        if extra:
+            kwargs["headers"] = {**kwargs.get("headers", {}), **extra}
         if self._client is not None:
             # An injected test client (e.g. starlette's TestClient) doesn't
             # accept a per-call `timeout` override — it's already bound to

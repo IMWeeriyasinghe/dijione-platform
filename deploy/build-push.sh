@@ -12,8 +12,10 @@ TAG="${TAG:-latest}"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-false}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 
+# talentflow-portal-web is the external Client Talent Review Workspace —
+# always part of DijiTalentFlow, its own hostname, not proxied through shell-web.
 API_SERVICES=(platform-api admin-api talent-api recruitment-api)
-WEB_APPS=(shell-web admin-web talent-web)
+WEB_APPS=(shell-web admin-web talent-web talentflow-portal-web)
 if [ "$DEPLOY_BIRTHDAY" = "true" ]; then
   API_SERVICES+=(people-api birthday-api)
   WEB_APPS+=(birthday-web birthday-supplier-web)

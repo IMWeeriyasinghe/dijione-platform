@@ -1,0 +1,30 @@
+# Repo-root .dockerignore — the build context for BOTH images is the repo root
+# (see deploy/Dockerfile.api / deploy/Dockerfile.web). Docker only reads
+# `.dockerignore` from the context root or `<dockerfile>.dockerignore`; a file
+# under deploy/ is silently ignored. Keep the context small and never ship
+# local state or secrets.
+**/.venv
+**/venv
+**/node_modules
+**/.next
+**/.turbo
+**/.git
+**/.github
+**/.ruff_cache
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/*.tsbuildinfo
+**/*.db
+**/test_*.db
+**/*.log
+**/coverage
+**/.coverage
+**/.DS_Store
+# Never ship env files; the example files are safe (no real values).
+**/.env
+**/.env.*
+!**/.env.example
+# Docs / diagrams are not needed at runtime.
+docs/diagrams/rendered

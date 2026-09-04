@@ -1,27 +1,43 @@
 #!/usr/bin/env bash
-# Deterministic first-boot for a fresh DijiOne environment.
+# ============================================================================
+# LOCAL DEVELOPMENT ONLY. Do NOT run this in a hosted environment.
+#
+# It seeds the full local demo dataset, including the `ta-portfolio` demo
+# persona and its 2-client portfolio scope. Hosted DEV / UAT / PROD use the
+# split scripts instead:
+#
+#   scripts/db-migrate.sh              schema + catalog/reference only
+#   scripts/dev-identity-bootstrap.sh  staff dev personas + RBAC only (optional)
+#
+# Hosted TalentFlow BUSINESS data (clients-as-records, TalentRequests,
+# candidates, applications, interviews, messages, documents) is NEVER
+# seeded — it originates from the controlled Recruitment Source / Lever
+# GET-only sync + canonical organisation reconciliation. The canonical
+# Client MASTER set is platform-owned reference data seeded by
+# platform-api's own migration (h8i9j0k1l2m3). See
+# docs/platform/hosted-dev-data.md.
+# ============================================================================
+#
+# Deterministic first-boot for a fresh LOCAL DijiOne database:
 #
 #   1. apply migrations for every DB-owning service
-#   2. seed platform-api's demo data (dev personas + module-role/client-scope
-#      assignments) — the role/permission/module_registry catalog itself is
-#      now seeded by platform-api's own f6a7b8c9d0e1 migration (Architecture
-#      Completion Plan Wave G), so step 1 alone already makes the Admin
-#      Center usable; this step adds the *demo* dev personas on top
-#   3. seed talent-api demo data (3 clients + requests / candidates / ...)
+#   2. seed platform-api's dev personas + module-role/client-scope
+#      assignments (the RBAC catalog + module registry are also migration-
+#      seeded by f6a7b8c9d0e1, so step 1 alone already makes the Admin
+#      Center usable; this adds the demo personas on top)
+#   3. mirror talent-api's Client extension rows from the canonical directory
+#      (no fictional TalentRequest/Candidate/Application/... — those were
+#      retired; real business data comes from the recruitment sync flow)
 #
-# Only migrate/seed the source-domain services (recruitment-api, people-api,
-# commercial-api) if this environment deploys them — they have no demo-data
-# seed script of their own (source domains hold synced provider data, not
-# hand-authored fixtures); their migrations alone leave them correctly empty
-# until a sync run populates them.
+# Only the source-domain services (recruitment-api, people-api,
+# commercial-api) are migrated if this environment deploys them; they have
+# no seed script — their migrations leave them correctly empty until a sync
+# run populates them.
 #
 # Usage (from the repo root, with each service's env already set —
 #   DATABASE_URL, JWT_DEV_SECRET, INTERNAL_SERVICE_SECRET, INTEGRATIONS_MODE=mock, ...):
 #
 #   PYTHON=python ./scripts/bootstrap-dev.sh
-#
-# In Azure this is invoked as a Container Apps one-off job that shares the
-# API images and their env — see deploy/README.md.
 
 set -euo pipefail
 

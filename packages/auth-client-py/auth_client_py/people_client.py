@@ -71,9 +71,14 @@ class EmployeeDirectoryClient:
         return resp
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        from auth_client_py.correlation import CORRELATION_HEADER, get_correlation_id
+
         headers = {"X-Internal-Token": self._internal_secret}
         if self._caller:
             headers["X-Internal-Caller"] = self._caller
+        cid = get_correlation_id()
+        if cid:
+            headers[CORRELATION_HEADER] = cid
         kwargs["headers"] = {**headers, **kwargs.get("headers", {})}
         if self._client is not None:
             return self._client.request(method, path, **kwargs)

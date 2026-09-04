@@ -13,7 +13,9 @@
 # Upstream URLs are read from the environment at server start
 # (PLATFORM_API_URL, TALENT_API_URL, ...) — see each next.config.ts.
 
-ARG NODE_VERSION=22
+# Keep in sync with .nvmrc (the CI web workflow and the local dev tooling both
+# read .nvmrc). Bump both together if the Node baseline changes.
+ARG NODE_VERSION=20
 
 # ---- build ----
 FROM node:${NODE_VERSION}-slim AS build
@@ -26,6 +28,9 @@ COPY packages ./packages
 COPY apps ./apps
 RUN npm ci
 RUN npm run build --workspace apps/${APP}
+# `public/` is optional for a Next.js app (birthday-web / birthday-supplier-web
+# have none). Guarantee it exists so the run-stage COPY below never fails.
+RUN mkdir -p apps/${APP}/public
 
 # ---- run ----
 FROM node:${NODE_VERSION}-slim AS run
@@ -37,10 +42,14 @@ WORKDIR /app
 
 # Standalone bundle: a self-contained server + traced node_modules + the
 # traced workspace packages. In a monorepo the server entry is at
-# apps/<APP>/server.js relative to the standalone root.
-COPY --from=build /repo/apps/${APP}/.next/standalone ./
-COPY --from=build /repo/apps/${APP}/.next/static ./apps/${APP}/.next/static
-COPY --from=build /repo/apps/${APP}/public ./apps/${APP}/public
+# apps/<APP>/server.js relative to the standalone root. `--chown` so the
+# non-root user below owns the files it serves.
+COPY --from=build --chown=node:node /repo/apps/${APP}/.next/standalone ./
+COPY --from=build --chown=node:node /repo/apps/${APP}/.next/static ./apps/${APP}/.next/static
+COPY --from=build --chown=node:node /repo/apps/${APP}/public ./apps/${APP}/public
+
+# Run as the unprivileged `node` user (uid 1000, ships with the base image).
+USER node
 
 # Container Apps sets $PORT; Next standalone honours PORT/HOSTNAME.
 ENV PORT=3000 HOSTNAME=0.0.0.0
