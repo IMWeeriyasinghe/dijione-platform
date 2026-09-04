@@ -10,33 +10,43 @@
 
 | Service | Kind | Ingress | Target port | Min/Max replicas | Database |
 |---|---|---|---|---|---|
-| `shell-web` | Next.js (standalone) | **external** (the only one) | 3000 | 1 / 3 | — |
+| `shell-web` | Next.js (standalone) | **external** (the DijiOne gateway) | 3000 | 1 / 3 | — |
+| `talentflow-portal-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0 / 2 | — |
+| `birthday-supplier-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0 / 2 | — |
 | `admin-web` | Next.js | internal | 3000 | 0 / 2 | — |
 | `talent-web` | Next.js | internal | 3000 | 0 / 2 | — |
 | `birthday-web` | Next.js | internal | 3000 | 0 / 2 | — |
-| `birthday-supplier-web` | Next.js | **external** (separate hostname) | 3000 | 0 / 2 | — |
 | `platform-api` | FastAPI | internal | 8000 | 1 / 3 | `platform_dev` |
 | `admin-api` | FastAPI (zero-DB BFF) | internal | 8000 | 0 / 2 | — |
 | `talent-api` | FastAPI | internal | 8000 | 1 / 3 | `talent_dev` |
 | `recruitment-api` | FastAPI (source domain — Lever) | internal | 8000 | 0 / 2 | `recruitment_dev` |
 | `people-api` | FastAPI (source domain — BambooHR) | internal | 8000 | 0 / 2 | `people_dev` |
-| `commercial-api` | FastAPI skeleton (HubSpot, deferred) | internal | 8000 | 0 / 1 | `commercial_dev` (later) |
 | `birthday-api` | FastAPI | internal | 8000 | 0 / 2 | `birthday_dev` |
-| `spark-api` | FastAPI skeleton | internal | 8000 | 0 / 1 | — |
+| `commercial-api` | FastAPI skeleton (HubSpot, deferred) | — | 8000 | — | `commercial_dev` (later) — **not deployed to the first DEV** |
+| `spark-api` | FastAPI skeleton | — | 8000 | — | — **not deployed** (deliberate) |
 
-`platform-api` / `talent-api` keep `min-replicas = 1` because a cold start on
-the authorization / workspace path is user-visible; every other backend can
-scale to zero.
+Three apps take public ingress: `shell-web` (the gateway), `talentflow-portal-web`
+(external Client Talent Review Workspace, magic-link auth), and
+`birthday-supplier-web` (external supplier portal). Neither external portal is
+proxied through `shell-web`. `platform-api` / `talent-api` keep
+`min-replicas = 1` because a cold start on the authorization / workspace path is
+user-visible; every other backend scales to zero. `commercial-api` and
+`spark-api` are skeletons and are **not** provisioned until they carry real
+business logic.
 
 ## External vs internal ingress
 
-Only **`shell-web`** (the DijiOne gateway) and **`birthday-supplier-web`**
-(the external supplier portal, a deliberately separate hostname) accept
-public traffic. Everything else is `--ingress internal` and reachable only
-from inside the Container Apps environment. Production routes the browser to
-the internal web zones and `/api/*` prefixes through Azure Front Door / API
-Management doing the same path fan-out that `shell-web`'s Next.js rewrites do
-in dev (see `docs/platform/service-contracts.md` "Gateway / routing").
+**`shell-web`** (the DijiOne gateway), **`talentflow-portal-web`** (external
+client portal), and **`birthday-supplier-web`** (external supplier portal) accept
+public traffic — the two portals on their own separate hostnames, never proxied
+through `shell-web`. Everything else is `--ingress internal` and reachable only
+from inside the Container Apps environment. DEV uses the free
+`*.<region>.azurecontainerapps.io` hostnames (free managed TLS); a custom domain
+(`dijione.<env>.dijitalteam.com` + the two portal subdomains) is a UAT/PROD add.
+Front Door / API Management is **not** used for DEV — `shell-web`'s Next.js
+rewrites already do the path fan-out, and ACA ingress already terminates TLS;
+add Front Door only when a WAF or custom multi-origin domain requires it
+(`docs/platform/service-contracts.md` "Gateway / routing").
 
 ## Databases (one per domain, PostgreSQL Flexible Server B1ms)
 
@@ -52,6 +62,12 @@ the `postgres` CI workflow runs migrations + the full suite against
 production.
 
 ## Scheduled source-sync Jobs (Container Apps Jobs — replica-safe, NOT in-process timers)
+
+Two are always present (`recruitment-sync-job`, `talent-reconcile-job`); the two
+People/Birthday jobs are added only when DijiBirthday is deployed. A separate
+**manual `migrate`** Job (one per DB-owning service, each on that service's own
+image) runs `alembic upgrade head` — see `deploy/bicep/` and
+`docs/platform/hosted-dev-data.md`.
 
 | Job | Image | Cron (UTC) | Does |
 |---|---|---|---|

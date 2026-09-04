@@ -1,177 +1,148 @@
-# DijiOne — first Azure DEV deployment
+# DijiOne — Azure DEV deployment
 
-Meeting-DEV target (Data Ownership Architecture v2 + Pre-DEV Execution Plan):
+**Provisioning of record: Bicep** (`deploy/bicep/`), driven by
+`deploy/deploy.sh`. `deploy/provision.sh` and `deploy/build-push.sh` are
+**superseded** — kept only for reference until the Bicep path is verified
+against a real subscription.
 
-- **Azure Container Apps** (consumption / scale-to-zero) for all services
-- **one Azure Database for PostgreSQL Flexible Server** (Burstable B1ms, stoppable)
-- **shell-web** = external ingress + env-driven Next.js rewrites → internal services
-- **infra-level Microsoft Entra gate** ("Easy Auth") on shell-web; `AUTH_MODE=dev`
-  (Dev Identity Mode) inside for the first cut; full in-app Entra SSO is Wave 4b
-- `INTEGRATIONS_MODE=mock` everywhere — no live Lever/HubSpot/BambooHR, no local
-  `.db` uploaded, fresh seeded demo data only
-- **not deployed:** `spark-api` (skeleton). `birthday-*` optional.
+> Nothing in this directory runs during planning. These are the steps for
+> whoever owns the Azure subscription + Entra tenant. Every step is gated
+> on explicit human approval — see `docs/platform/pre-cloud-handoff.md`.
 
-Nothing here runs during planning. These are the exact steps for whoever owns
-the Azure subscription + Entra tenant.
+Approved decisions (planning session): **region `southeastasia`**; short
+Container App names kept as the internal DNS identifiers; `talent-api`
+`min-replicas=1` for DEV; **Key Vault from day one**; Easy Auth on
+`shell-web` as the interim perimeter gate (not the final identity design);
+first DEV = **full platform incl. DijiBirthday**; `commercial-api` /
+`spark-api` not deployed.
 
 ---
 
-## 0. Prerequisites (user)
+## Layout
 
-- `az login` (Azure CLI ≥ 2.60), on a subscription with spend approved (~$20–35/mo
-  running; ~$10 with PostgreSQL stopped between demos).
-- Docker, to build the images (`deploy/build-push.sh`).
-- An **Entra app registration** for DijiOne DEV — single-tenant, **Web** platform,
-  delegated `openid profile email`, one **client secret**. Note the **Tenant ID**
-  and **Application (client) ID**. The redirect URI is added in step 5 once the
-  shell-web hostname exists.
-- An image registry: GitHub Container Registry (free) or Azure Container Registry
-  Basic (~$5/mo).
-
-## 1. Verify the images build (before touching Azure)
-
-```bash
-# from the repo root
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=platform-api -t dijione/platform-api .
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=admin-api     -t dijione/admin-api .
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api      -t dijione/talent-api .
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=recruitment-api -t dijione/recruitment-api .
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=people-api     -t dijione/people-api .    # optional
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=commercial-api -t dijione/commercial-api . # optional
-docker build -f deploy/Dockerfile.api --build-arg SERVICE=birthday-api  -t dijione/birthday-api .   # optional
-docker build -f deploy/Dockerfile.web --build-arg APP=shell-web    -t dijione/shell-web .
-docker build -f deploy/Dockerfile.web --build-arg APP=admin-web    -t dijione/admin-web .
-docker build -f deploy/Dockerfile.web --build-arg APP=talent-web   -t dijione/talent-web .
-docker build -f deploy/Dockerfile.web --build-arg APP=birthday-web -t dijione/birthday-web .        # optional
-docker build -f deploy/Dockerfile.web --build-arg APP=birthday-supplier-web -t dijione/birthday-supplier-web . # optional
+```
+deploy/
+  bicep/
+    main.bicep                    orchestrator (RG scope); loops the service catalogue
+    main.dev.bicepparam           DEV params (imageTag + pgAdminPassword supplied at deploy time)
+    modules/
+      observability.bicep         Log Analytics + daily cap
+      acr.bicep                   Container Registry (Basic)
+      keyvault.bicep              Key Vault (RBAC) + placeholder secret versions
+      postgres.bicep              Flexible Server B1ms + databases[] + PgBouncer + public|private networking
+      containerapp-env.bicep      the single Container Apps Environment
+      containerapp.bicep          ONE reusable Container App (api|web) + its AcrPull / KV Secrets User grants
+      job.bicep                   ONE reusable Job (Schedule|Manual) + its grants
+  deploy.sh                       operator runbook: az acr build -> az deployment -> migrate jobs -> smoke
+  Dockerfile.api / Dockerfile.web shared, build-arg parameterised images
+  provision.sh / build-push.sh    SUPERSEDED (reference only)
 ```
 
-Then run the stack locally against a throwaway Postgres to catch SQLite-isms and
-prove the env-driven wiring (`docker network` + `postgres:16` container; set
-`DATABASE_URL=postgresql+psycopg://...`, `PLATFORM_API_URL`, `TALENT_API_URL`, ...
-per service). Run `./scripts/bootstrap-dev.sh` inside a temporary api container,
-then `GET /health/deep` on each service.
+## Prerequisites (user)
 
-> **Known-untested:** these Dockerfiles have not been `docker build`-verified in
-> this environment (no Docker available at authoring time). Expect to iterate on
-> the Next.js `standalone` copy paths and the `psycopg` wheel install on first
-> build.
+- `az login` (Azure CLI ≥ 2.60) on a subscription with spend approved.
+- Resource group `rg-dijione-dev` created (`az group create -n rg-dijione-dev -l southeastasia`).
+- **No local Docker needed** — images build server-side with `az acr build`.
+- An Entra app registration for DijiOne DEV — single-tenant, **Web**, delegated
+  `openid profile email`, one client secret. Redirect URI added in step 5.
 
-## 2. Provision Azure
+## Deploy
 
 ```bash
-./deploy/provision.sh          # edit the variables at the top first
+# 1. set the Key Vault secret VALUES (once; never in a file)
+az keyvault secret set --vault-name kv-dijione-dev -n jwt-dev-secret            --value "$(openssl rand -hex 32)"
+az keyvault secret set --vault-name kv-dijione-dev -n internal-service-secret   --value "$(openssl rand -hex 32)"
+az keyvault secret set --vault-name kv-dijione-dev -n external-session-jwt-secret --value "$(openssl rand -hex 32)"
+#    ...and one database-url-<domain> per DB-owning service, e.g.
+az keyvault secret set --vault-name kv-dijione-dev -n database-url-platform \
+  --value 'postgresql+psycopg://dijione:<pw>@psql-dijione-dev.postgres.database.azure.com/platform_dev?sslmode=require'
+
+# 2. build + deploy + migrate + smoke — one command, one environment
+./deploy/deploy.sh dev <gitsha>
 ```
 
-Creates: resource group, Log Analytics workspace, Container Apps environment,
-PostgreSQL Flexible Server (B1ms) + one database per domain (`platform_dev`, `talent_dev`, `recruitment_dev`; `people_dev` / `birthday_dev` with `DEPLOY_BIRTHDAY=true`; `commercial_dev` with `DEPLOY_COMMERCIAL=true`) + the scheduled source-sync Jobs (`recruitment-sync-job`, `talent-reconcile-job`, and the People/Birthday jobs when enabled) +
-a firewall rule for Azure services, and the Container Apps (internal ingress for
-the APIs + `admin-web`/`talent-web`, external ingress for `shell-web`).
+`deploy.sh` runs: start PostgreSQL → `az acr build` each image as
+`:<gitsha>` + `:dev` → check the KV secrets are set → `az deployment group
+create` (Bicep) → per-service env (`az containerapp update --set-env-vars`
+for the internal `http://<name>` URLs) → **run the per-service `migrate`
+jobs** → `GET /health/deep` on each backend → print the three public FQDNs.
 
-## 3. Build & push images
+## 5. Entra gate + HTTPS
 
-```bash
-./deploy/build-push.sh         # set REGISTRY at the top
-```
-
-## 4. Point the Container Apps at the pushed images + set env/secrets
-
-`provision.sh` wires the env vars and secret *references*; set the secret
-*values* directly in Azure (never in a file):
+DEV uses the free `*.<region>.azurecontainerapps.io` hostnames (free
+managed TLS, no DNS work). After `shell-web` exists:
 
 ```bash
-az containerapp secret set -g rg-dijione-dev -n platform-api \
-  --secrets jwt-dev-secret=<high-entropy> internal-secret=<high-entropy> \
-            db-url='postgresql+psycopg://dijione:<pw>@psql-dijione-dev.postgres.database.azure.com/platform_dev?sslmode=require'
-# repeat the shared jwt-dev-secret / internal-secret for admin-api, talent-api, birthday-api
-# talent-api / birthday-api get their own db-url (talent_dev) — birthday-api can stay SQLite-on-nothing only if NOT deployed
-```
-
-Required env per service (localhost defaults are in each `.env.example`):
-
-| Service | Env |
-|---|---|
-| `platform-api` | `DATABASE_URL`, `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `API_CORS_ORIGINS=https://<shell-host>`, `DEV_IDENTITY_MODE=true`, `TALENT_API_URL=http://talent-api` |
-| `admin-api` | `PLATFORM_API_URL=http://platform-api`, `TALENT_API_URL=http://talent-api`, `INTERNAL_SERVICE_SECRET`, `API_CORS_ORIGINS=https://<shell-host>` |
-| `talent-api` | `DATABASE_URL` (talent_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `RECRUITMENT_API_URL=http://recruitment-api`, `INTEGRATIONS_MODE=mock`, `API_CORS_ORIGINS=https://<shell-host>` |
-| `recruitment-api` | `DATABASE_URL` (recruitment_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock` (set `live` + `LEVER_API_KEY` only when doing live discovery), `OPPORTUNITY_SYNC_LIMIT=200` |
-| `people-api` (opt) | `DATABASE_URL` (people_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `INTEGRATIONS_MODE=mock` (set `live` + `BAMBOOHR_API_KEY`/`BAMBOOHR_SUBDOMAIN` only when configured) |
-| `birthday-api` (opt) | `DATABASE_URL` (birthday_dev), `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `PLATFORM_API_URL=http://platform-api`, `PEOPLE_API_URL=http://people-api`, `INTEGRATIONS_MODE=mock`, `EMAIL_SENDING_MODE=mock` |
-| `shell-web` | `ADMIN_WEB_URL=http://admin-web`, `TALENT_WEB_URL=http://talent-web`, `BIRTHDAY_WEB_URL=http://birthday-web`, `PLATFORM_API_URL=http://platform-api`, `ADMIN_API_URL=http://admin-api`, `TALENT_API_URL=http://talent-api`, `BIRTHDAY_API_URL=http://birthday-api`, `SPARK_API_URL=http://spark-api` |
-| `admin-web` | `PLATFORM_API_URL=http://platform-api`, `ADMIN_API_URL=http://admin-api` |
-| `talent-web` | `PLATFORM_API_URL=http://platform-api`, `TALENT_API_URL=http://talent-api` |
-| `birthday-web` (opt) | `PLATFORM_API_URL=http://platform-api`, `BIRTHDAY_API_URL=http://birthday-api` |
-
-`http://<app-name>` resolves via the Container Apps environment's internal DNS.
-
-## 5. Bootstrap the database
-
-```bash
-az containerapp job create -g rg-dijione-dev -n bootstrap-dev \
-  --environment cae-dijione-dev --image <registry>/dijione/platform-api:latest \
-  --trigger-type Manual --replica-timeout 600 \
-  --env-vars DATABASE_URL=secretref:db-url JWT_DEV_SECRET=secretref:jwt-dev-secret \
-             INTERNAL_SERVICE_SECRET=secretref:internal-secret INTEGRATIONS_MODE=mock \
-  --command "/bin/sh" --args "-c" "cd /app && ./scripts/bootstrap-dev.sh"
-az containerapp job start -g rg-dijione-dev -n bootstrap-dev
-```
-
-(Or `az containerapp exec` into a running api container and run
-`./scripts/bootstrap-dev.sh` once.)
-
-## 6. Entra gate + HTTPS
-
-- Note shell-web's URL: `az containerapp show -g rg-dijione-dev -n shell-web --query properties.configuration.ingress.fqdn -o tsv` → `https://<fqdn>`.
-- Add `https://<fqdn>/api/auth/callback` as a redirect URI on the app registration
-  (needed now for Easy Auth; also for Wave 4b in-app SSO).
-- Enable Container Apps built-in auth on shell-web (Microsoft provider,
-  `Require authentication`, single-tenant):
-
-```bash
+FQDN=$(az containerapp show -g rg-dijione-dev -n shell-web --query properties.configuration.ingress.fqdn -o tsv)
+# add https://$FQDN/api/auth/callback as a redirect URI on the app registration, then:
 az containerapp auth microsoft update -g rg-dijione-dev -n shell-web \
-  --client-id <app-client-id> --client-secret <app-client-secret> \
-  --tenant-id <tenant-id> --yes
+  --client-id <app-client-id> --client-secret <app-client-secret> --tenant-id <tenant-id> --yes
 az containerapp auth update -g rg-dijione-dev -n shell-web \
   --unauthenticated-client-action RedirectToLoginPage --redirect-provider azureactivedirectory
 ```
 
-Container Apps default hostnames get a **free managed TLS cert** — no DNS work
-for the meeting DEV. A custom domain (`dev.dijione.<domain>`) is a later add.
+The two external portals (`talentflow-portal-web`, `birthday-supplier-web`)
+get their **own** FQDNs and are **not** gated by Easy Auth — their own
+magic-link / supplier-token flow is the gate.
 
-## 7. Smoke test
+## Data — MIGRATE / IDENTITY / never-business
 
-```bash
-for s in platform-api admin-api talent-api recruitment-api people-api commercial-api birthday-api; do
-  az containerapp exec -g rg-dijione-dev -n $s --command "curl -s localhost:8000/health/deep"; done
-```
-
-Then walk the local E2E acceptance checklist against `https://<fqdn>` instead of
-`localhost:3000` (see `docs/platform/local-development.md` and the most recent
-completion report for the checklist) — **no automated Playwright/e2e suite
-exists yet** (a real, tracked gap; do not assume an `e2e/` directory exists).
-
-## Teardown
+`deploy.sh` runs `migrate-<svc>` jobs (schema + catalog/reference only).
+It does **not** seed. Optionally, for a demoable DEV:
 
 ```bash
-az group delete -g rg-dijione-dev --yes --no-wait
+# staff dev personas + RBAC only — no clients, no business data
+az containerapp job start -g rg-dijione-dev -n migrate-platform-api   # already run by deploy.sh
+az containerapp exec -g rg-dijione-dev -n platform-api --command \
+  "python scripts/seed.py --identity-only"
 ```
 
-## Cost control
+Full detail and the open "canonical Client master set" question:
+`docs/platform/hosted-dev-data.md`.
 
-Stop PostgreSQL between demos:
+## PostgreSQL networking comparison (Amendment 2)
+
+`postgres.bicep` takes `networkMode`:
+
+| | **A. `public`** (DEV default) | **B. `private`** (UAT/PROD target) |
+|---|---|---|
+| Extra Azure resources | none | a VNet + a subnet delegated to `Microsoft.DBforPostgreSQL/flexibleServers`, a Private DNS zone (`*.private.postgres.database.azure.com`), the ACA environment created **with** VNet integration (an `infrastructureSubnetId`), and a DNS-zone link |
+| Monthly DEV cost delta | **$0** | VNet/subnet/Private DNS are free; the real cost is the ACA environment's **workload-profile / dedicated infra** requirement for VNet integration — a Consumption-only environment on the *default* (non-VNet) infra can't reach a VNet-only PG. Expect **+$0–?** on Consumption profiles where VNet is supported, or a workload-profile environment (~$0 idle, per-vCPU-hour when active) otherwise |
+| ACA networking complexity | trivial | the environment must be created on a `/23`+ subnet up front (can't be added later); one more thing that can misconfigure |
+| DNS requirements | none (public FQDN + `sslmode=require`) | the Private DNS zone must be linked to the environment's VNet or name resolution fails |
+| UAT/PROD parity | **weaker** — DEV differs from prod on the one axis that matters for a DB | **strong** — identical shape |
+| Operational overhead | `az postgres flexible-server stop/start` for cost; a `sslmode=require` firewall rule for "Azure services" | subnet/zone lifecycle; no public endpoint to fat-finger |
+| Security | public endpoint (mitigated: `publicNetworkAccess=Enabled` + **only** an "Allow Azure services" rule — **no** `0.0.0.0–255.255.255.255`; TLS required; creds in Key Vault) | no public endpoint at all |
+
+**Recommendation:** DEV stays **`public`** (materially simpler and free;
+the exposure is minimised — TLS-required, Key-Vault creds, no broad
+firewall rule). **UAT/PROD move to `private`** — the Bicep already takes
+the params (`pgNetworkMode=private` + `pgDelegatedSubnetId` +
+`pgPrivateDnsZoneId`); the remaining work is the VNet + delegated subnet +
+Private DNS zone module and creating `cae-dijione-<env>` with VNet
+integration. Tracked as a UAT prerequisite, not a DEV blocker. This is
+**not** silently locking DijiOne to public PostgreSQL.
+
+## Migration job design (Amendment 4)
+
+Migration-execution ownership stays with the schema owner. `main.bicep`
+creates **one `migrate-<svc>` Job per DB-owning service**, each on **that
+service's own image**, running `python -m alembic upgrade head` against
+that service's own alembic tree, with only its own `DATABASE_URL` secret.
+`deploy.sh` starts them in order (`platform-api` first). There is no single
+image that "knows" every service's migrations.
+
+## Teardown / cost control
 
 ```bash
-az postgres flexible-server stop  -g rg-dijione-dev -n psql-dijione-dev
-az postgres flexible-server start -g rg-dijione-dev -n psql-dijione-dev
+az postgres flexible-server stop  -g rg-dijione-dev -n psql-dijione-dev   # storage-only ~$4-6/mo
+az group delete -g rg-dijione-dev --yes --no-wait                          # full teardown
 ```
 
-Container Apps scale to zero on their own when idle.
+## Wave 4b — in-app Entra SSO (after the first DEV works)
 
----
-
-## Wave 4b — in-app Entra SSO (after the meeting)
-
-Set on `platform-api`: `AUTH_MODE=entra`, `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`,
-`ENTRA_CLIENT_SECRET` (secret), `ENTRA_REDIRECT_URI=https://<fqdn>/api/auth/callback`,
-`PUBLIC_BASE_URL=https://<fqdn>`. Optionally drop the Easy Auth gate. Activate the
-demo users in the Admin Center. Re-run smoke with the real login flow.
+Set on `platform-api`: `AUTH_MODE=entra`, `ENTRA_TENANT_ID`,
+`ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` (Key Vault),
+`ENTRA_REDIRECT_URI=https://<fqdn>/api/auth/callback`,
+`PUBLIC_BASE_URL=https://<fqdn>`. Optionally drop the Easy Auth gate.
+`docs/platform/authentication.md` has the full flow.

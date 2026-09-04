@@ -5,9 +5,16 @@ DEV, consolidated in one place for whoever owns the Azure subscription and
 Entra tenant. This document **names** resources, env vars, and secrets — it
 does not create or configure any of them; nothing here has been provisioned.
 Full step-by-step commands live in `deploy/README.md`; full topology detail
-lives in `docs/platform/deployment-topology.md`; full ownership/dependency
-detail lives in `docs/platform/data-ownership.md`. This document is the
-index + checklist, not a fourth copy of the same content.
+lives in `docs/platform/deployment-topology.md`; hosted-DEV data policy in
+`docs/platform/hosted-dev-data.md`; full ownership/dependency detail in
+`docs/platform/data-ownership.md`. This document is the index + checklist.
+
+> **Provisioning tooling:** the DijiOne IaC of record is **Bicep**
+> (`deploy/bicep/` — `main.bicep` + modules + `main.<env>.bicepparam`),
+> driven by `deploy/deploy.sh`. `deploy/provision.sh` and
+> `deploy/build-push.sh` are **superseded** (kept only for reference until
+> the Bicep path is verified). The approved DijiOne DEV region is
+> **`southeastasia`**.
 
 ## 1. Azure resource inventory (none provisioned yet)
 
@@ -27,7 +34,8 @@ index + checklist, not a fourth copy of the same content.
 
 | Service | Ingress | Target port | Min/Max replicas | Database |
 |---|---|---|---|---|
-| `shell-web` | **external** | 3000 | 1 / 3 | — |
+| `shell-web` | **external** (DijiOne gateway) | 3000 | 1 / 3 | — |
+| `talentflow-portal-web` | **external** (separate hostname) | 3000 | 0 / 2 | — |
 | `birthday-supplier-web` | **external** (separate hostname) | 3000 | 0 / 2 | — |
 | `admin-web` | internal | 3000 | 0 / 2 | — |
 | `talent-web` | internal | 3000 | 0 / 2 | — |
@@ -37,8 +45,8 @@ index + checklist, not a fourth copy of the same content.
 | `talent-api` | internal | 8000 | 1 / 3 | `talent_dev` |
 | `recruitment-api` | internal | 8000 | 0 / 2 | `recruitment_dev` |
 | `people-api` | internal | 8000 | 0 / 2 | `people_dev` |
-| `commercial-api` | internal | 8000 | 0 / 1 | `commercial_dev` (skeleton) |
 | `birthday-api` | internal | 8000 | 0 / 2 | `birthday_dev` |
+| `commercial-api` | **not deployed** to the first DEV (skeleton) | — | — | `commercial_dev` (later) |
 | `spark-api` | **not deployed** (skeleton — deliberate, see `deploy/README.md`) | — | — | — |
 
 `platform-api`/`talent-api` keep `min-replicas=1` — a cold start on the
@@ -162,7 +170,7 @@ downgrade`.
 
 1. `for s in platform-api admin-api talent-api recruitment-api people-api commercial-api birthday-api; do curl .../health/deep; done` — every DB-owning service reports DB + migration-head + integration mode; `admin-api`/`spark-api` report liveness only.
 2. Open `https://<shell-web-fqdn>` → Dev Identity Mode persona picker loads.
-3. Sign in as `madushanka` (TA Member) → DijiOne Home renders, module cards show correct health badges.
+3. Sign in as the `madushanka-ta` persona (TA Member) → DijiOne Home renders, module cards show correct health badges.
 4. Open DijiTalentFlow → TA Operations Dashboard loads with seeded data.
 5. Open Admin Center → Users list renders with real client names (proves the platform-owned canonical Client identity path).
 6. Trigger `recruitment-sync-job` manually once → `SUCCEEDED`, postings visible via `talent-web` `/postings`.

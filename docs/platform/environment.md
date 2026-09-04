@@ -23,13 +23,26 @@ the *contract* — what may be committed, what may not, and why.
 
 ## Services and their configuration
 
-| Service | Port | DB | Real-secret keys (only ever in `.env`) | Notes |
+Provider credentials moved to the source domains in the Wave A–F extraction
+(`docs/platform/service-architecture.md`, CLAUDE.md Data Ownership contract):
+Lever → `recruitment-api` only, BambooHR → `people-api` only, HubSpot →
+`commercial-api` only. `talent-api` / `birthday-api` hold **no** provider
+credential — they consume the source domain over HTTP.
+
+| Service | Port | DB | Real-secret keys (only ever in `.env` / Key Vault) | Notes |
 |---|---|---|---|---|
-| `platform-api` | 8000 | SQLite | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | Owns identity, authz, module registry, audit, notifications |
-| `admin-api` | 8001 | none | — | Stateless gateway; forwards to platform-api + talent-api |
-| `talent-api` | 8002 | SQLite | `LEVER_API_KEY`, `LEVER_WEBHOOK_SIGNING_SECRET`, `HUBSPOT_ACCESS_TOKEN`, `AZURE_STORAGE_CONNECTION_STRING` | `INTEGRATIONS_MODE=mock` locally; Lever is **read-only** (CLAUDE.md §60) |
-| `birthday-api` | 8003 | SQLite | `BAMBOOHR_API_KEY`, `BAMBOOHR_SUBDOMAIN`, `GRAPH_*` | `INTEGRATIONS_MODE` and `EMAIL_SENDING_MODE` are independent; both default `mock` |
-| `spark-api` | 8004 | none | — | Skeleton |
+| `platform-api` | 8000 | SQLite / `platform_dev` | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`, `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET` | Owns identity, authz, module registry, audit, notifications, canonical Client identity |
+| `admin-api` | 8001 | none | `INTERNAL_SERVICE_SECRET` | Zero-DB BFF; forwards the caller's bearer to platform-api, enriches from talent-api |
+| `talent-api` | 8002 | SQLite / `talent_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `EXTERNAL_SESSION_JWT_SECRET`, `AZURE_STORAGE_CONNECTION_STRING` (reserved, unused) | `INTEGRATIONS_MODE=mock` locally; **no Lever/HubSpot credential** — consumes `recruitment-api` |
+| `recruitment-api` | 8005 | SQLite / `recruitment_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `LEVER_API_KEY`, `LEVER_WEBHOOK_SIGNING_SECRET` | Sole Lever owner; Lever is **GET-only** (CLAUDE.md §60); internal ingress |
+| `people-api` | 8006 | SQLite / `people_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `BAMBOOHR_API_KEY`, `BAMBOOHR_SUBDOMAIN` | Sole BambooHR owner; never writes to BambooHR; internal ingress |
+| `birthday-api` | 8003 | SQLite / `birthday_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `GRAPH_CLIENT_SECRET` (+ `GRAPH_TENANT_ID`/`CLIENT_ID`) | `INTEGRATIONS_MODE` and `EMAIL_SENDING_MODE` independent, both default `mock`; **no BambooHR credential** — consumes `people-api`; mints its own supplier-portal tokens |
+| `commercial-api` | 8007 | `commercial_dev` (skeleton) | `HUBSPOT_ACCESS_TOKEN`, `HUBSPOT_WEBHOOK_SECRET` (blank — no live client yet) | Future sole HubSpot owner; not deployed to the first DEV |
+| `spark-api` | 8004 | none | — | Skeleton — **not deployed** |
+
+The 6 web apps have no `.env` file — they read upstream URLs from the host
+environment at server start (`next.config.ts` rewrites) and never carry a
+`NEXT_PUBLIC_*` secret.
 
 ## Shared trust anchors (committed placeholders, must be overridden in real deploys)
 
@@ -41,14 +54,19 @@ Present in every backend `.env.example` and as defaults in `config.py`:
 | `INTERNAL_SERVICE_SECRET` | `dev-only-internal-secret-change-me` | **Identical** across every backend — service-to-service trust |
 
 In any deployed environment both must be replaced with real, high-entropy values
-delivered through the host's secret store.
+delivered through the host's secret store. **Fail-closed:** every backend calls
+`auth_client_py.assert_trust_anchors_safe()` at startup — if `APP_ENV` is not a
+development-class value and a trust anchor is still unset, still the shipped
+default, or shorter than 24 chars, the process refuses to start. talent-api also
+checks `EXTERNAL_SESSION_JWT_SECRET`.
 
 ## Integration mode switches
 
 | Var | Services | Values | Default |
 |---|---|---|---|
-| `INTEGRATIONS_MODE` | talent-api, birthday-api | `mock` \| `live` | `mock` |
+| `INTEGRATIONS_MODE` | recruitment-api, people-api, talent-api, birthday-api | `mock` \| `live` | `mock` |
 | `EMAIL_SENDING_MODE` | birthday-api | `mock` \| `live` | `mock` |
+| `APP_ENV` | every backend | `development` \| other | `development` |
 
 `live` requires the corresponding real credentials to be set or the client raises
 a `*NotConfiguredError`. CI forces both to `mock` so no test can reach an
