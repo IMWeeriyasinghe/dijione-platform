@@ -12,8 +12,8 @@ param image string
 
 param managedEnvironmentId string
 param acrLoginServer string
-param acrName string
 param keyVaultName string
+param workloadProfileName string = 'Consumption'
 param location string = resourceGroup().location
 param tags object = {}
 
@@ -78,6 +78,7 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
   }
   properties: {
     environmentId: managedEnvironmentId
+    workloadProfileName: workloadProfileName
     configuration: union(
       {
         triggerType: triggerType
@@ -111,26 +112,15 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
   }
 }
 
-// --- least-privilege role assignments for this job's identity ---
-var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+// --- Key Vault Secrets User for this job's identity (KV is in this RG) ---
+// AcrPull is granted separately by modules/acr-pull.bicep, scoped to the
+// registry's resource group.
 var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 
-resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' existing = {
-  name: acrName
-}
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, name, acrPullRoleId, 'job')
-  scope: acr
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
-    principalId: job.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
 resource kvSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(kv.id, name, kvSecretsUserRoleId, 'job')
   scope: kv

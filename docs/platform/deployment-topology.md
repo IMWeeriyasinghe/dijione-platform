@@ -1,57 +1,88 @@
 # DijiOne Deployment Topology (Azure Container Apps)
 
-> Target topology for the shared DEV / production-like environment
-> (Architecture Completion Plan Wave D). **Nothing here is provisioned yet** —
-> `deploy/provision.sh` creates it; this document is the reference the
-> provisioning script and the pre-cloud handoff (`deploy/README.md`) follow.
-> Cost envelope: ~USD 50–150/month on Burstable compute + PostgreSQL B1ms.
+> Target topology for DEV / UAT / PROD. **Nothing here is provisioned yet** —
+> **Bicep** (`deploy/bicep/foundation.bicep` + `main.bicep`) is the IaC of
+> record (`deploy/provision.sh` is superseded); this document is the reference
+> the templates and the pre-cloud handoff (`deploy/README.md`) follow.
+> Cost envelope (lean baseline, Amendment 8): DEV ≈ $20–27/mo running
+> (≈ $12–16 with PostgreSQL parked), initial PROD ≈ $71–116/mo.
+>
+> Networking: **private PostgreSQL via VNet integration** from DEV onward — the
+> ACA environment is a workload-profiles environment (Consumption profile, no
+> fixed fee) on a delegated subnet; the Flexible Server sits on its own
+> delegated subnet with `publicNetworkAccess = Disabled` and an Azure Private
+> DNS zone `psql-dijione-<env>.private.postgres.database.azure.com`. This is
+> *Private access / VNet integration*, not Private Link (no `privatelink.*`
+> zone, no `privateEndpoints` resource). Details: `deploy/README.md`.
+>
+> Registries: `crdijionenonprod` (in `rg-dijione-shared`) is shared by DEV+UAT;
+> `crdijioneprod` (in `rg-dijione-prod`) is isolated. Images are built once and
+> promoted by immutable `sha256:` digest — PROD via `az acr import` + digest
+> verification, never a rebuild (`docs/platform/release-pipeline.md`).
 
 ## Services
 
-| Service | Kind | Ingress | Target port | Min/Max replicas | Database |
+Min/Max replicas below are **DEV/UAT (lean) → PROD (initial)**. In DEV/UAT
+**every** service scales to zero; in initial PROD only the JWT issuer and the
+entry point are pinned. All values are `.bicepparam` parameters
+(`minReplicas`, `maxReplicasDefault`, `maxReplicasOverrides`) — see Amendment 8
+in the plan.
+
+| Service | Kind | Ingress | Target port | Min/Max (DEV/UAT → PROD) | Database |
 |---|---|---|---|---|---|
-| `shell-web` | Next.js (standalone) | **external** (the DijiOne gateway) | 3000 | 1 / 3 | — |
-| `talentflow-portal-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0 / 2 | — |
-| `birthday-supplier-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0 / 2 | — |
-| `admin-web` | Next.js | internal | 3000 | 0 / 2 | — |
-| `talent-web` | Next.js | internal | 3000 | 0 / 2 | — |
-| `birthday-web` | Next.js | internal | 3000 | 0 / 2 | — |
-| `platform-api` | FastAPI | internal | 8000 | 1 / 3 | `platform_dev` |
-| `admin-api` | FastAPI (zero-DB BFF) | internal | 8000 | 0 / 2 | — |
-| `talent-api` | FastAPI | internal | 8000 | 1 / 3 | `talent_dev` |
-| `recruitment-api` | FastAPI (source domain — Lever) | internal | 8000 | 0 / 2 | `recruitment_dev` |
-| `people-api` | FastAPI (source domain — BambooHR) | internal | 8000 | 0 / 2 | `people_dev` |
-| `birthday-api` | FastAPI | internal | 8000 | 0 / 2 | `birthday_dev` |
+| `shell-web` | Next.js (standalone) | **external** (the DijiOne gateway) | 3000 | 0/1 → **1**/3 | — |
+| `talentflow-portal-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0/1 → 0/2 | — |
+| `birthday-supplier-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0/1 → 0/2 | — |
+| `admin-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
+| `talent-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
+| `birthday-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
+| `platform-api` | FastAPI | internal | 8000 | 0/1 → **1**/3 | `platform_dev` |
+| `admin-api` | FastAPI (zero-DB BFF) | internal | 8000 | 0/1 → 0/2 | — |
+| `talent-api` | FastAPI | internal | 8000 | 0/1 → 0/2 (→ 1 if TalentFlow is the primary daily surface) | `talent_dev` |
+| `recruitment-api` | FastAPI (source domain — Lever) | internal | 8000 | 0/1 → 0/2 | `recruitment_dev` |
+| `people-api` | FastAPI (source domain — BambooHR) | internal | 8000 | 0/1 → 0/2 | `people_dev` |
+| `birthday-api` | FastAPI | internal | 8000 | 0/1 → 0/2 | `birthday_dev` |
 | `commercial-api` | FastAPI skeleton (HubSpot, deferred) | — | 8000 | — | `commercial_dev` (later) — **not deployed to the first DEV** |
 | `spark-api` | FastAPI skeleton | — | 8000 | — | — **not deployed** (deliberate) |
 
 Three apps take public ingress: `shell-web` (the gateway), `talentflow-portal-web`
 (external Client Talent Review Workspace, magic-link auth), and
 `birthday-supplier-web` (external supplier portal). Neither external portal is
-proxied through `shell-web`. `platform-api` / `talent-api` keep
-`min-replicas = 1` because a cold start on the authorization / workspace path is
-user-visible; every other backend scales to zero. `commercial-api` and
-`spark-api` are skeletons and are **not** provisioned until they carry real
-business logic.
+proxied through `shell-web`. **Every service is scale-to-zero-safe** (stateless
+request/response, no in-process schedulers/threads — all cron is Jobs); DEV/UAT
+run them all at `minReplicas = 0` and accept the cold start. Initial PROD pins
+only `platform-api` (every request path crosses the JWT issuer) and `shell-web`
+(the entry point); raise the rest per the scaling-trigger table, not
+preemptively. `commercial-api` and `spark-api` are skeletons and are **not**
+provisioned until they carry real business logic.
 
 ## External vs internal ingress
 
 **`shell-web`** (the DijiOne gateway), **`talentflow-portal-web`** (external
 client portal), and **`birthday-supplier-web`** (external supplier portal) accept
 public traffic — the two portals on their own separate hostnames, never proxied
-through `shell-web`. Everything else is `--ingress internal` and reachable only
-from inside the Container Apps environment. DEV uses the free
-`*.<region>.azurecontainerapps.io` hostnames (free managed TLS); a custom domain
-(`dijione.<env>.dijitalteam.com` + the two portal subdomains) is a UAT/PROD add.
-Front Door / API Management is **not** used for DEV — `shell-web`'s Next.js
-rewrites already do the path fan-out, and ACA ingress already terminates TLS;
-add Front Door only when a WAF or custom multi-origin domain requires it
-(`docs/platform/service-contracts.md` "Gateway / routing").
+through `shell-web`. Everything else is internal ingress and reachable only from
+inside the Container Apps environment. The environment is **VNet-integrated**
+(`internal: false`, so external apps still get public FQDNs; internal apps stay
+private). DEV uses the free `*.<region>.azurecontainerapps.io` hostnames (free
+managed TLS); a custom domain (`dijione.<env>.dijitalteam.com` + the two portal
+subdomains) is a UAT/PROD add. Front Door / API Management is **not** used for
+DEV, UAT, or initial PROD — `shell-web`'s Next.js rewrites already do the path
+fan-out and ACA ingress terminates TLS; add Front Door Standard only when a WAF,
+edge cache, or multi-region failover requires it (still no APIM — there is no
+partner API program).
 
-## Databases (one per domain, PostgreSQL Flexible Server B1ms)
+## Databases (one per domain, PostgreSQL Flexible Server, private VNet integration)
 
 `platform_dev` · `talent_dev` · `recruitment_dev` · `people_dev` ·
 `birthday_dev` · `commercial_dev` (when Commercial/CRM is built).
+
+One Flexible Server per environment (`psql-dijione-<env>`), Burstable **B1ms**,
+32 GiB (DEV/UAT) / 64 GiB (initial PROD), 7-day (DEV/UAT) / 14-day (PROD) backup,
+**HA off** initially. On its own delegated subnet, `publicNetworkAccess =
+Disabled`, reached via the per-env Private DNS zone. DEV/UAT are stopped
+(`deploy/park-dev.sh`) outside working/test windows — storage-only billing.
+Raise the SKU or enable ZoneRedundant HA only on a measured trigger.
 
 `admin-api`, `spark-api` own no database. No service connects to another
 service's database — cross-domain reads go over HTTP contracts.

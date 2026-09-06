@@ -18,7 +18,7 @@ for hosting. Local development is unaffected — keep using
 DEVELOPMENT ONLY** and carries a header saying so. Do not run it, or any
 bare `scripts/seed.py` without `--identity-only`, in a hosted environment.
 
-## Open architecture question — canonical Client master set in hosted DEV
+## DECIDED 2026-09-04 — canonical Client master set in hosted environments (Option A, final)
 
 `MIGRATE` runs `alembic upgrade head`, which includes platform-api's
 migration **`h8i9j0k1l2m3_real_dev_client_reconciliation`**. That migration
@@ -26,31 +26,20 @@ migration **`h8i9j0k1l2m3_real_dev_client_reconciliation`**. That migration
 — real DTC-tagged names captured from a real GET-only Lever discovery run,
 2026-09-01).
 
-- The **data-ownership contract §2a** treats the canonical Client /
-  Organisation set as *permanently platform-owned master data*, seeded by
-  *one migration, no interim registry*. By that reading the 28 rows are
-  **reference data** and belong in `MIGRATE`.
-- **Amendment 3** ("no fictional TalentFlow business data in Azure DEV";
-  clients should originate from the controlled Lever sync + canonical org
-  reconciliation) can be read as wanting hosted DEV's canonical Client set
-  to **start empty** and be built by that flow.
+**Resolution — Option A (accepted by the platform owner):** the 28 canonical
+Client / Organisation rows are **permanently platform-owned master / reference
+data** (data-ownership contract §2a), seeded by that one migration in **every**
+hosted environment — DEV, UAT and PROD. They are **not** fictional TalentFlow
+business records; the names are real.
 
-These pull in opposite directions and this is an **architecture decision
-for the platform owner**, not something Phase 0 resolved:
+Still prohibited as seed data in any hosted environment (unchanged): `TalentRequest`,
+`Candidate`, `Application`, `Interview`, `Message`, `Document`, and any
+fabricated provider-derived record. Those originate only from the controlled
+Recruitment Source / Lever GET-only sync + canonical-organisation reconciliation.
+`scripts/dev-identity-bootstrap.sh` still adds **no** clients and **no** business
+data.
 
-- **Option A — accept the migration seed.** The 28 canonical Client rows
-  are platform-owned master/reference data (contract §2a). Hosted DEV gets
-  them from `alembic upgrade head`. `dev-identity-bootstrap.sh` still adds
-  no clients; `BUSINESS DATA` is still never seeded. Simplest; matches the
-  established contract; the names are real, not invented.
-- **Option B — gate the seed.** Add a parameter / env flag to
-  `h8i9j0k1l2m3` (and a matching guard in `seed_canonical_clients`) so
-  hosted DEV can run `alembic upgrade head` **without** the 28-row insert,
-  and build the canonical set later via controlled Lever discovery + a
-  canonical-organisation reconciliation step. Larger change; touches an
-  already-applied migration's behaviour; needs a reconciliation path that
-  does not exist yet.
-
-Until this is decided, `scripts/db-migrate.sh` runs the migration **as-is
-(Option A)** and says so in a comment. Flag this in the next planning
-review.
+`scripts/db-migrate.sh` runs this migration as part of `alembic upgrade head`
+and states the decision in its header. Option B (gating the seed behind a flag)
+was considered and **rejected** — it would alter an already-applied migration's
+behaviour and needs a reconciliation path that does not exist.

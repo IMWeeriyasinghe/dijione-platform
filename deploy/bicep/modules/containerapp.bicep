@@ -14,11 +14,11 @@ param managedEnvironmentId string
 @description('ACR login server, e.g. crdijionedev.azurecr.io')
 param acrLoginServer string
 
-@description('ACR resource name — for the AcrPull role assignment on this app\'s identity.')
-param acrName string
-
-@description('Key Vault name — for the Key Vault Secrets User role assignment on this app\'s identity.')
+@description('Key Vault name — for the Key Vault Secrets User role assignment on this app\'s identity (same RG as this deployment).')
 param keyVaultName string
+
+@description('Workload profile to run on. Consumption on every DijiOne env.')
+param workloadProfileName string = 'Consumption'
 
 @description('8000 for APIs, 3000 for web apps.')
 param targetPort int
@@ -63,6 +63,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
   }
   properties: {
     managedEnvironmentId: managedEnvironmentId
+    workloadProfileName: workloadProfileName
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
@@ -124,26 +125,15 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// --- least-privilege role assignments for this app's identity ---
-var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+// --- Key Vault Secrets User for this app's identity (KV is in this RG) ---
+// AcrPull is granted separately by modules/acr-pull.bicep, scoped to the
+// registry's resource group (it may be the shared rg-dijione-shared).
 var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 
-resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' existing = {
-  name: acrName
-}
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, name, acrPullRoleId)
-  scope: acr
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
-    principalId: app.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
 resource kvSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(kv.id, name, kvSecretsUserRoleId)
   scope: kv

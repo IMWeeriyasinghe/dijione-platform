@@ -17,7 +17,13 @@
 # Migration ownership is preserved: platform-api's migration
 # (h8i9j0k1l2m3) seeds the platform-owned canonical Client master set per
 # the data-ownership contract §2a — that is platform-owned *reference*
-# master data, distinct from TalentFlow *business* records. See
+# master data, distinct from TalentFlow *business* records.
+#
+# DECIDED 2026-09-04 (Option A — final): the 28 real DTC-verified
+# Client/Organisation rows are kept as platform-owned canonical master data
+# and ship via this migration in hosted DEV/UAT/PROD. They are NOT fictional
+# business records. Fictional TalentRequests / candidates / applications /
+# interviews / messages / documents remain prohibited as seed data. See
 # docs/platform/hosted-dev-data.md.
 #
 # Usage (each service's env — DATABASE_URL etc. — already set):

@@ -28,6 +28,10 @@ param skuTier string = 'Burstable'
 param storageSizeGB int = 32
 param backupRetentionDays int = 7
 
+@description('High availability. DEV/UAT = Disabled; PROD flips to ZoneRedundant on a measured RTO/RPO trigger (Amendment 8).')
+@allowed([ 'Disabled', 'ZoneRedundant', 'SameZone' ])
+param haMode string = 'Disabled'
+
 @description('Logical databases to create, one per DB-owning domain.')
 param databases array = [
   'platform_dev'
@@ -64,7 +68,7 @@ resource pg 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' = {
       geoRedundantBackup: 'Disabled'
     }
     highAvailability: {
-      mode: 'Disabled'
+      mode: haMode
     }
     network: networkMode == 'private'
       ? {

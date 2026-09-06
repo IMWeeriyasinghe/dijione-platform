@@ -1,24 +1,27 @@
 using './main.bicep'
 
-// DijiOne DEV. `imageTag` and `pgAdminPassword` are supplied at deploy time
-// (deploy/deploy.sh) — never committed here.
+// DijiOne DEV workloads. Run AFTER foundation.dev + init-secrets.sh.
+// `imageDigests` is injected at deploy time from the build record; `imageTag`
+// is only for a first bring-up before the pipeline records digests.
 param environmentName = 'dev'
 param location = 'southeastasia'
-param imageTag = 'REPLACED_AT_DEPLOY'
-param pgAdminPassword = ''
 
-// Full platform incl. DijiBirthday for the first DEV (confirmed).
+// Shared non-prod registry (DEV + UAT), lives in rg-dijione-shared.
+param imageRegistryLoginServer = 'crdijionenonprod.azurecr.io'
+param imageRegistryName = 'crdijionenonprod'
+param imageRegistryResourceGroup = 'rg-dijione-shared'
+
+// Digest-first. Leave empty + pass imageTag for the very first bring-up.
+param imageDigests = {}
+param imageTag = 'REPLACED_AT_DEPLOY'
+
 param deployBirthday = true
 param deployCommercial = false
 
-// DEV exception: public PostgreSQL endpoint + "Allow Azure services" +
-// sslmode=require. NO wide internet rule. UAT/PROD flip to 'private' and
-// supply pgDelegatedSubnetId / pgPrivateDnsZoneId. See deploy/README.md.
-param pgNetworkMode = 'public'
-
-// talent-api min-1 for DEV acceptance responsiveness (cost lever: 0 later).
-param minReplicas = {
-  'shell-web': 1
-  'platform-api': 1
-  'talent-api': 1
-}
+// Lean DEV (Amendment 8): smallest container size; EVERY service scales to
+// zero (minReplicas empty => 0); ceiling of 1. Cold start is acceptable in DEV.
+param containerCpu = '0.25'
+param containerMemory = '0.5Gi'
+param minReplicas = {}
+param maxReplicasDefault = 1
+param maxReplicasOverrides = {}

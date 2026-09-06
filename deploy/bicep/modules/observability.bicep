@@ -7,12 +7,12 @@ param name string
 param location string = resourceGroup().location
 param tags object = {}
 
-@description('Cap daily ingest (GB) to keep DEV cost proportional. -1 = no cap.')
-param dailyQuotaGb int = 1
+@description('Cap daily ingest (GB) to keep cost proportional. "-1" = no cap. String so a fractional cap (e.g. "0.3" for DEV) is expressible — Bicep has no float literal.')
+param dailyQuotaGb string = '1'
 
 param retentionInDays int = 30
 
-var capping = dailyQuotaGb == -1 ? {} : { workspaceCapping: { dailyQuotaGb: dailyQuotaGb } }
+var capping = dailyQuotaGb == '-1' ? {} : { workspaceCapping: { dailyQuotaGb: json(dailyQuotaGb) } }
 
 resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: name
