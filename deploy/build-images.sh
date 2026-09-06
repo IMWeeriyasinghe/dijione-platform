@@ -35,7 +35,20 @@ fi
 
 : > "$OUT"
 
-digest_of() { az acr repository show -n "$ACR" --image "dijione/$1:$GITSHA" --query digest -o tsv 2>/dev/null || true; }
+# Resolve the immutable digest of dijione/<svc>:<GITSHA>, or empty if the tag
+# is absent. `az acr repository show --image` is intermittently flaky under
+# rapid calls, so confirm the tag via show-tags first and retry the digest.
+digest_of() {
+  local svc="$1" i d
+  az acr repository show-tags -n "$ACR" --repository "dijione/$svc" -o tsv 2>/dev/null \
+    | grep -qx "$GITSHA" || return 0
+  for i in 1 2 3; do
+    d="$(az acr repository show -n "$ACR" --image "dijione/$svc:$GITSHA" --query digest -o tsv 2>/dev/null || true)"
+    [ -n "$d" ] && { printf '%s' "$d"; return 0; }
+    sleep 2
+  done
+  return 0
+}
 
 build_one() {  # $1 service  $2 dockerfile  $3 build-arg name
   local svc="$1" dockerfile="$2" arg="$3" d
