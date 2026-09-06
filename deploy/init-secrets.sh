@@ -14,8 +14,13 @@
 #   * writes one `database-url-<domain>` per DB-owning service, built from the
 #     foundation's PostgreSQL FQDN output + the admin password you enter now.
 #
-# A secret value is NEVER echoed, NEVER written to a file on disk, NEVER passed
-# on a command line (process-substitution FIFO only).
+# A secret value is NEVER echoed and NEVER passed on a command line. Values go
+# to `az keyvault secret set` through a private (umask 077) temp file that is
+# shredded immediately — process substitution is not portable to Git Bash on
+# Windows, where `az` (a Windows exe) cannot open an MSYS /proc/<pid>/fd path.
+#
+# The PostgreSQL admin password is taken from $PGADMIN_PASSWORD if set,
+# otherwise prompted (hidden). It is never written to disk by this script.
 #
 # NOTHING here runs during planning. Phase 1+ runbook only.
 
@@ -43,12 +48,20 @@ if [ -z "$PG_FQDN" ]; then
 fi
 echo "   $PG_FQDN"
 
-read -r -s -p "PostgreSQL admin password for $PG (input hidden): " PG_PW
-echo
-[ -n "$PG_PW" ] || { echo "!! empty password" >&2; exit 1; }
+PG_PW="${PGADMIN_PASSWORD:-}"
+if [ -z "$PG_PW" ]; then
+  read -r -s -p "PostgreSQL admin password for $PG (input hidden): " PG_PW
+  echo
+fi
+[ -n "$PG_PW" ] || { echo "!! empty password (set PGADMIN_PASSWORD or enter one)" >&2; exit 1; }
 
-set_secret() {  # $1 = name, $2 = value  (value via FIFO, never argv/disk)
-  az keyvault secret set --vault-name "$KV" -n "$1" --file <(printf '%s' "$2") -o none
+set_secret() {  # $1 = name, $2 = value  (value via private temp file, shredded)
+  local tf
+  tf="$(mktemp)"
+  printf '%s' "$2" > "$tf"
+  az keyvault secret set --vault-name "$KV" -n "$1" --file "$tf" -o none
+  dd if=/dev/urandom of="$tf" bs=1 count="$(wc -c < "$tf")" conv=notrunc status=none 2>/dev/null || true
+  rm -f "$tf"
 }
 secret_missing() {  # $1 = name -> 0 if absent or the old placeholder
   local v
