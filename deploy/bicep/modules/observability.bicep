@@ -32,3 +32,8 @@ resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 output id string = law.id
 output customerId string = law.properties.customerId
 output name string = law.name
+// Consumed by the ACA environment. Exposed as a module output (rather than a
+// caller-side `existing` + listKeys) so the consumer gets a real dependency on
+// this module and cannot race ahead of workspace creation.
+@secure()
+output primarySharedKey string = law.listKeys().primarySharedKey

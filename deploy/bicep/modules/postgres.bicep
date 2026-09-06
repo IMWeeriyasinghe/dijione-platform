@@ -82,13 +82,17 @@ resource pg 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' = {
   }
 }
 
-// PgBouncer (transaction mode) — free, prevents B1ms's ~50-connection ceiling
-// being exhausted by uvicorn workers x replicas.
-resource pgbouncer 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2023-12-01-preview' = {
+// The built-in PgBouncer server parameter is NOT supported on the Burstable
+// tier (ServerParameterToCMSPgBouncerNotSupportedForBurstable). Instead raise
+// max_connections above the B1ms default of 50 so uvicorn pool connections x
+// replicas do not exhaust the ceiling. Moving to General Purpose (which does
+// support built-in PgBouncer) is the documented trigger once connections
+// approach the ceiling — see the scaling-trigger table.
+resource maxConnections 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2023-12-01-preview' = {
   parent: pg
-  name: 'pgbouncer.enabled'
+  name: 'max_connections'
   properties: {
-    value: 'true'
+    value: '100'
     source: 'user-override'
   }
 }

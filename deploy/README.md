@@ -30,7 +30,7 @@ deploy/
       observability.bicep        Log Analytics + retention + daily ingest cap
       acr.bicep                  Container Registry (Basic) — deployed once per registry
       keyvault.bicep             Key Vault (RBAC). NO secret values, not even placeholders.
-      postgres.bicep             Flexible Server + databases[] + PgBouncer + public|private + HA mode
+      postgres.bicep             Flexible Server + databases[] + max_connections + public|private + HA mode
       containerapp-env.bicep     the workload-profiles ACA environment (Consumption profile, VNet-integrated)
       containerapp.bicep         ONE reusable Container App + its Key Vault Secrets User grant
       job.bicep                  ONE reusable Job (Schedule|Manual) + its Key Vault Secrets User grant

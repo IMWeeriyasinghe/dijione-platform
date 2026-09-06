@@ -113,10 +113,6 @@ module observability 'modules/observability.bicep' = {
   }
 }
 
-resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
-  name: lawName
-}
-
 // ---- key vault (empty — no secret values) ---------------------------
 module keyvault 'modules/keyvault.bicep' = {
   name: 'keyvault'
@@ -151,7 +147,7 @@ module cae 'modules/containerapp-env.bicep' = {
     location: location
     tags: tags
     logAnalyticsCustomerId: observability.outputs.customerId
-    logAnalyticsSharedKey: law.listKeys().primarySharedKey
+    logAnalyticsSharedKey: observability.outputs.primarySharedKey
     infrastructureSubnetId: pgNetworkMode == 'private' ? network!.outputs.acaSubnetId : ''
   }
 }
