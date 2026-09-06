@@ -66,21 +66,11 @@ az deployment group create -g "$RG" -n "dijione-foundation-${GITSHA}" \
   -o none
 
 echo "== 2. BUILD ONCE into $ACR + record digests =="
-DIGESTS="{"
-sep=""
-build_one() {  # $1 = service, $2 = dockerfile, $3 = build-arg name
-  az acr build -r "$ACR" -f "deploy/$2" --build-arg "$3=$1" \
-    -t "dijione/$1:$GITSHA" "$REPO_ROOT" -o none
-  local d
-  d="$(az acr repository show -n "$ACR" --image "dijione/$1:$GITSHA" --query digest -o tsv)"
-  [ -n "$d" ] || { echo "!! no digest for dijione/$1:$GITSHA" >&2; exit 1; }
-  DIGESTS="${DIGESTS}${sep}\"$1\":\"$d\""
-  sep=","
-  echo "   dijione/$1  $d"
-}
-for svc in "${API_SERVICES[@]}"; do build_one "$svc" Dockerfile.api SERVICE; done
-for app in "${WEB_APPS[@]}"; do build_one "$app" Dockerfile.web APP; done
-DIGESTS="${DIGESTS}}"
+# Build stage lives in deploy/build-images.sh so it can be run in isolation.
+_DIGEST_TSV="$(mktemp)"
+"$(dirname "${BASH_SOURCE[0]}")/build-images.sh" "$ACR" "$GITSHA" "$_DIGEST_TSV"
+DIGESTS="$(python -c "import sys,json;print(json.dumps({r.split(chr(9))[0]:r.split(chr(9))[2] for r in open(sys.argv[1]).read().splitlines() if r.strip()}))" "$_DIGEST_TSV")"
+rm -f "$_DIGEST_TSV"
 
 echo "== 3. assert Key Vault secrets are set (init-secrets.sh writes them) =="
 mapfile -t EXPECTED < <(az deployment group show -g "$RG" -n "dijione-foundation-${GITSHA}" \
