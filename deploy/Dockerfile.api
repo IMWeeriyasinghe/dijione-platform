@@ -10,9 +10,10 @@
 # package, drops the build toolchain, and runs as a non-root user.
 #
 # Every *-api requirements.txt installs `packages/auth-client-py` editable
-# via `-e ../../packages/auth-client-py`, so that path must exist at the
-# SAME location (`/app/packages/auth-client-py`) in both stages — hence the
-# repo-relative layout below.
+# via `-e ../../packages/auth-client-py`. pip resolves that path relative to
+# the CWD, so the install MUST run from /app/apps/${SERVICE} for it to land on
+# /app/packages/auth-client-py — which is copied to the SAME absolute path in
+# both stages so the editable link keeps resolving at runtime.
 #
 # The same image also backs the scheduled Container Apps Jobs (deploy/),
 # whose command is a `curl` to an internal endpoint — hence curl is
@@ -24,7 +25,8 @@ ARG PYTHON_VERSION=3.12
 FROM python:${PYTHON_VERSION}-slim AS build
 ARG SERVICE
 ENV PIP_NO_CACHE_DIR=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    SERVICE=${SERVICE}
 WORKDIR /app
 
 RUN python -m venv /opt/venv
@@ -33,10 +35,24 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # Shared editable package first (referenced by ../../packages/auth-client-py).
 COPY packages/auth-client-py ./packages/auth-client-py
 
-# Dependencies (cached layer — only re-runs when requirements.txt changes).
+# Dependencies. Run pip FROM the service directory so the requirements file's
+# `-e ../../packages/auth-client-py` resolves to /app/packages/auth-client-py.
+# A failure here MUST fail the build (no `|| true`, no cleanup on the same line).
 COPY apps/${SERVICE}/requirements.txt ./apps/${SERVICE}/requirements.txt
-RUN pip install -r apps/${SERVICE}/requirements.txt \
-    && pip uninstall -y pytest pytest-asyncio pytest-cov coverage ruff mypy 2>/dev/null || true
+RUN cd apps/${SERVICE} && pip install -r requirements.txt
+
+# Drop dev-only tooling. Best-effort ONLY — must never be able to mask the
+# dependency install above.
+RUN pip uninstall -y pytest pytest-asyncio pytest-cov coverage ruff mypy 2>/dev/null || true
+
+# Build-time proof the runtime environment is complete. Phase 2A shipped a
+# technically-successful but empty venv; this makes that impossible.
+RUN python -c "import fastapi, uvicorn, pydantic, pydantic_settings, httpx, auth_client_py; print('core runtime deps OK for ${SERVICE}')" \
+ && if grep -qE '^alembic' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import sqlalchemy, alembic, psycopg; print('db runtime deps OK for ${SERVICE}')"; \
+    else \
+        echo "no db runtime deps expected for ${SERVICE}"; \
+    fi
 
 # ---- run ----------------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS run
