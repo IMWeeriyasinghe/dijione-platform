@@ -64,6 +64,7 @@ var tags = {
 
 var kvName = 'kv-dijione-${environmentName}'
 var caeName = 'cae-dijione-${environmentName}'
+var uamiName = 'id-dijione-${environmentName}'
 
 resource cae 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: caeName
@@ -72,6 +73,30 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: kvName
 }
 var kvUri = kv.properties.vaultUri
+
+// ---- bootstrap resource-access identity (breaks the ACA first-revision
+// deadlock — see modules/identity.bicep). Created, and granted BOTH data-plane
+// roles, before any Container App / Job.
+module identity 'modules/identity.bicep' = {
+  name: 'identity'
+  params: {
+    name: uamiName
+    location: location
+    tags: tags
+    keyVaultName: kvName
+  }
+}
+
+// The single AcrPull grant for that identity, in the registry's resource group.
+module uamiAcrPull 'modules/acr-pull.bicep' = {
+  name: 'acrpull-${uamiName}'
+  scope: resourceGroup(imageRegistryResourceGroup)
+  params: {
+    acrName: imageRegistryName
+    granteeName: uamiName
+    principalId: identity.outputs.principalId
+  }
+}
 
 // ---- service catalogue ---------------------------------------------------
 var coreServices = [
@@ -137,12 +162,15 @@ func _apiSecretRefs(svc string, db string, uri string) array => concat(
 module apps 'modules/containerapp.bicep' = [
   for s in services: {
     name: 'app-${s.name}'
+    // identity dependency is implied by identity.outputs.id; the AcrPull grant
+    // must also be in place before the first revision pulls the image.
+    dependsOn: [ uamiAcrPull ]
     params: {
       name: s.name
       image: imageRef(s.name, imageRegistryLoginServer, imageDigests, imageTag)
       managedEnvironmentId: cae.id
       acrLoginServer: imageRegistryLoginServer
-      keyVaultName: kvName
+      userAssignedIdentityId: identity.outputs.id
       targetPort: s.kind == 'api' ? 8000 : 3000
       external: s.external
       minReplicas: minReplicas[?s.name] ?? 0
@@ -153,20 +181,6 @@ module apps 'modules/containerapp.bicep' = [
       tags: tags
       envVars: s.kind == 'api' ? commonApiEnv : []
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri) : []
-    }
-  }
-]
-
-// AcrPull for each app identity, scoped to the registry's resource group
-// (crdijionenonprod lives in rg-dijione-shared for DEV+UAT).
-module appAcrPull 'modules/acr-pull.bicep' = [
-  for (s, i) in services: {
-    name: 'acrpull-${s.name}'
-    scope: resourceGroup(imageRegistryResourceGroup)
-    params: {
-      acrName: imageRegistryName
-      granteeName: '${environmentName}-${s.name}'
-      principalId: apps[i].outputs.principalId
     }
   }
 ]
@@ -189,12 +203,13 @@ func _dbFor(svc string) string =>
 module migrateJobs 'modules/job.bicep' = [
   for t in migrateTargets: {
     name: 'job-migrate-${t}'
+    dependsOn: [ uamiAcrPull ]
     params: {
       name: 'migrate-${t}'
       image: imageRef(t, imageRegistryLoginServer, imageDigests, imageTag)
       managedEnvironmentId: cae.id
       acrLoginServer: imageRegistryLoginServer
-      keyVaultName: kvName
+      userAssignedIdentityId: identity.outputs.id
       triggerType: 'Manual'
       replicaTimeout: 900
       location: location
@@ -209,18 +224,6 @@ module migrateJobs 'modules/job.bicep' = [
           envName: 'DATABASE_URL'
         }
       ]
-    }
-  }
-]
-
-module migrateAcrPull 'modules/acr-pull.bicep' = [
-  for (t, i) in migrateTargets: {
-    name: 'acrpull-migrate-${t}'
-    scope: resourceGroup(imageRegistryResourceGroup)
-    params: {
-      acrName: imageRegistryName
-      granteeName: '${environmentName}-migrate-${t}'
-      principalId: migrateJobs[i].outputs.principalId
     }
   }
 ]
@@ -240,12 +243,13 @@ var scheduledJobs = concat(
 module syncJobs 'modules/job.bicep' = [
   for j in scheduledJobs: {
     name: 'job-${j.name}'
+    dependsOn: [ uamiAcrPull ]
     params: {
       name: j.name
       image: imageRef(j.image, imageRegistryLoginServer, imageDigests, imageTag)
       managedEnvironmentId: cae.id
       acrLoginServer: imageRegistryLoginServer
-      keyVaultName: kvName
+      userAssignedIdentityId: identity.outputs.id
       triggerType: 'Schedule'
       cronExpression: j.cron
       replicaTimeout: j.timeout
@@ -256,18 +260,6 @@ module syncJobs 'modules/job.bicep' = [
       secretRefs: [
         { name: 'internal-service-secret', keyVaultUrl: '${kvUri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
       ]
-    }
-  }
-]
-
-module syncAcrPull 'modules/acr-pull.bicep' = [
-  for (j, i) in scheduledJobs: {
-    name: 'acrpull-${j.name}'
-    scope: resourceGroup(imageRegistryResourceGroup)
-    params: {
-      acrName: imageRegistryName
-      granteeName: '${environmentName}-${j.name}'
-      principalId: syncJobs[i].outputs.principalId
     }
   }
 ]

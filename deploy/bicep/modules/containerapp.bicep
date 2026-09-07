@@ -1,6 +1,11 @@
 // One DijiOne Container App (API or web). Loop this from main.bicep over the
-// service definition array. System-assigned identity for ACR pull + Key
-// Vault secret read (the role assignments are made in main.bicep).
+// service definition array.
+//
+// Identity model: the app keeps a SYSTEM-assigned identity (for future
+// per-service grants) AND attaches the shared USER-assigned identity
+// `id-dijione-dev` which carries AcrPull + Key Vault Secrets User. Image pull
+// and secret resolution use the UAMI, so the first revision can provision
+// without waiting on a per-app role assignment (which would deadlock).
 
 @description('Container App name — also the internal DNS hostname (http://<name>).')
 param name string
@@ -14,8 +19,8 @@ param managedEnvironmentId string
 @description('ACR login server, e.g. crdijionedev.azurecr.io')
 param acrLoginServer string
 
-@description('Key Vault name — for the Key Vault Secrets User role assignment on this app\'s identity (same RG as this deployment).')
-param keyVaultName string
+@description('Resource id of the shared user-assigned identity (id-dijione-<env>) used for ACR pull + Key Vault secret resolution.')
+param userAssignedIdentityId string
 
 @description('Workload profile to run on. Consumption on every DijiOne env.')
 param workloadProfileName string = 'Consumption'
@@ -44,7 +49,7 @@ var acaSecrets = [
   for s in secretRefs: {
     name: s.name
     keyVaultUrl: s.keyVaultUrl
-    identity: 'system'
+    identity: userAssignedIdentityId
   }
 ]
 var secretEnv = [
@@ -59,7 +64,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
   location: location
   tags: tags
   identity: {
-    type: 'SystemAssigned'
+    type: 'SystemAssigned, UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityId}': {}
+    }
   }
   properties: {
     managedEnvironmentId: managedEnvironmentId
@@ -75,7 +83,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: acrLoginServer
-          identity: 'system'
+          identity: userAssignedIdentityId
         }
       ]
       secrets: acaSecrets
@@ -125,25 +133,11 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// --- Key Vault Secrets User for this app's identity (KV is in this RG) ---
-// AcrPull is granted separately by modules/acr-pull.bicep, scoped to the
-// registry's resource group (it may be the shared rg-dijione-shared).
-var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+// ACR pull + Key Vault secret access come from the shared UAMI
+// (userAssignedIdentityId), granted before this module runs. The
+// system-assigned identity is retained for future per-service grants but
+// carries no role assignment here.
 
-resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
-  name: keyVaultName
-}
-
-resource kvSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(kv.id, name, kvSecretsUserRoleId)
-  scope: kv
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
-    principalId: app.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-output principalId string = app.identity.principalId
+output systemPrincipalId string = app.identity.principalId
 output fqdn string = external ? app.properties.configuration.ingress.fqdn : ''
 output name string = app.name

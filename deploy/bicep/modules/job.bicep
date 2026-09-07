@@ -12,7 +12,10 @@ param image string
 
 param managedEnvironmentId string
 param acrLoginServer string
-param keyVaultName string
+
+@description('Resource id of the shared user-assigned identity (id-dijione-<env>) used for ACR pull + Key Vault secret resolution.')
+param userAssignedIdentityId string
+
 param workloadProfileName string = 'Consumption'
 param location string = resourceGroup().location
 param tags object = {}
@@ -44,7 +47,7 @@ var acaSecrets = [
   for s in secretRefs: {
     name: s.name
     keyVaultUrl: s.keyVaultUrl
-    identity: 'system'
+    identity: userAssignedIdentityId
   }
 ]
 var secretEnv = [
@@ -74,7 +77,10 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
   location: location
   tags: tags
   identity: {
-    type: 'SystemAssigned'
+    type: 'SystemAssigned, UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityId}': {}
+    }
   }
   properties: {
     environmentId: managedEnvironmentId
@@ -87,7 +93,7 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
         registries: [
           {
             server: acrLoginServer
-            identity: 'system'
+            identity: userAssignedIdentityId
           }
         ]
         secrets: acaSecrets
@@ -112,24 +118,10 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
   }
 }
 
-// --- Key Vault Secrets User for this job's identity (KV is in this RG) ---
-// AcrPull is granted separately by modules/acr-pull.bicep, scoped to the
-// registry's resource group.
-var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+// ACR pull + Key Vault secret access come from the shared UAMI
+// (userAssignedIdentityId), granted before this module runs. The
+// system-assigned identity is retained for future per-service grants but
+// carries no role assignment here.
 
-resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
-  name: keyVaultName
-}
-
-resource kvSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(kv.id, name, kvSecretsUserRoleId, 'job')
-  scope: kv
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
-    principalId: job.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-output principalId string = job.identity.principalId
+output systemPrincipalId string = job.identity.principalId
 output name string = job.name
