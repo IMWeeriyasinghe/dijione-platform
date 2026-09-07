@@ -25,11 +25,14 @@ class Posting(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     lever_posting_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
 
-    title: Mapped[str] = mapped_column(String(255), default="")
+    # Free-form Lever text — real postings exceed 255 chars (long location
+    # strings, verbose team/department paths). Unbounded Text; a consumer
+    # must never use these as an authorization signal anyway.
+    title: Mapped[str] = mapped_column(Text, default="")
     state: Mapped[str] = mapped_column(String(32), default="")
-    team: Mapped[str] = mapped_column(String(255), default="")
-    department: Mapped[str] = mapped_column(String(255), default="")
-    location: Mapped[str] = mapped_column(String(255), default="")
+    team: Mapped[str] = mapped_column(Text, default="")
+    department: Mapped[str] = mapped_column(Text, default="")
+    location: Mapped[str] = mapped_column(Text, default="")
     owner_user_id: Mapped[str] = mapped_column(String(128), default="")
     hiring_manager_user_id: Mapped[str] = mapped_column(String(128), default="")
     confidentiality: Mapped[str] = mapped_column(String(32), default="")

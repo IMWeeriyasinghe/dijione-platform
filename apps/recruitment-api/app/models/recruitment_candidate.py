@@ -25,9 +25,10 @@ class RecruitmentCandidate(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     lever_contact_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
 
-    full_name: Mapped[str] = mapped_column(String(255), default="")
-    email: Mapped[str] = mapped_column(String(255), default="", index=True)
-    headline: Mapped[str] = mapped_column(String(255), default="")
+    # Free-form Lever text — real candidate names/headlines exceed 255.
+    full_name: Mapped[str] = mapped_column(Text, default="")
+    email: Mapped[str] = mapped_column(String(320), default="", index=True)
+    headline: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[str] = mapped_column(Text, default="")  # JSON-encoded list[str]
     sources: Mapped[str] = mapped_column(Text, default="")  # JSON-encoded list[str]
 
