@@ -90,32 +90,10 @@ az deployment group create -g "$RG" -n "dijione-workloads-${GITSHA}" \
   -p imageDigests="$DIGESTS" \
   -o none
 
-echo "== 5. per-service env (internal URLs, modes) =="
-az containerapp update -g "$RG" -n shell-web --set-env-vars \
-  ADMIN_WEB_URL=http://admin-web TALENT_WEB_URL=http://talent-web BIRTHDAY_WEB_URL=http://birthday-web \
-  PLATFORM_API_URL=http://platform-api ADMIN_API_URL=http://admin-api TALENT_API_URL=http://talent-api \
-  BIRTHDAY_API_URL=http://birthday-api SPARK_API_URL=http://spark-api -o none
-az containerapp update -g "$RG" -n admin-api --set-env-vars \
-  PLATFORM_API_URL=http://platform-api TALENT_API_URL=http://talent-api -o none
-az containerapp update -g "$RG" -n platform-api --set-env-vars \
-  AUTH_MODE=dev DEV_IDENTITY_MODE=true TALENT_API_URL=http://talent-api -o none
-az containerapp update -g "$RG" -n talent-api --set-env-vars \
-  PLATFORM_API_URL=http://platform-api RECRUITMENT_API_URL=http://recruitment-api -o none
-az containerapp update -g "$RG" -n recruitment-api --set-env-vars \
-  PLATFORM_API_URL=http://platform-api OPPORTUNITY_SYNC_LIMIT=200 -o none
-if [ "$DEPLOY_BIRTHDAY" = "true" ]; then
-  az containerapp update -g "$RG" -n people-api --set-env-vars PLATFORM_API_URL=http://platform-api -o none
-  az containerapp update -g "$RG" -n birthday-api --set-env-vars \
-    PLATFORM_API_URL=http://platform-api PEOPLE_API_URL=http://people-api -o none
-  az containerapp update -g "$RG" -n birthday-web --set-env-vars \
-    PLATFORM_API_URL=http://platform-api BIRTHDAY_API_URL=http://birthday-api -o none
-fi
-az containerapp update -g "$RG" -n admin-web --set-env-vars \
-  PLATFORM_API_URL=http://platform-api ADMIN_API_URL=http://admin-api -o none
-az containerapp update -g "$RG" -n talent-web --set-env-vars \
-  PLATFORM_API_URL=http://platform-api TALENT_API_URL=http://talent-api -o none
-az containerapp update -g "$RG" -n talentflow-portal-web --set-env-vars \
-  TALENT_API_URL=http://talent-api -o none
+echo "== 5. per-service env — now DECLARATIVE in main.bicep (_perServiceEnv) =="
+# Internal service URLs (http://<name>) + AUTH_MODE/DEV_IDENTITY_MODE +
+# per-service extras are set by main.bicep so a redeploy never wipes them.
+# Nothing to do here.
 
 echo "== 6. run the per-service migrate jobs (schema owner runs its own) =="
 for t in "${MIGRATE_TARGETS[@]}"; do

@@ -143,6 +143,62 @@ var commonApiEnv = [
   { name: 'API_CORS_ORIGINS', value: corsOrigins }
 ]
 
+// Per-service configuration — internal service URLs (ACA internal DNS is
+// http://<app-name>) + module modes. Declarative here so a redeploy does not
+// wipe them (Bicep env is desired-state, not a merge). `AUTH_MODE=dev` on
+// platform-api = the dev-login identity provider (no real Entra in DEV).
+func _perServiceEnv(svc string) array =>
+  svc == 'shell-web' ? [
+    { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+    { name: 'ADMIN_API_URL', value: 'http://admin-api' }
+    { name: 'TALENT_API_URL', value: 'http://talent-api' }
+    { name: 'BIRTHDAY_API_URL', value: 'http://birthday-api' }
+    { name: 'SPARK_API_URL', value: 'http://spark-api' }
+    { name: 'ADMIN_WEB_URL', value: 'http://admin-web' }
+    { name: 'TALENT_WEB_URL', value: 'http://talent-web' }
+    { name: 'BIRTHDAY_WEB_URL', value: 'http://birthday-web' }
+  ]
+  : svc == 'platform-api' ? [
+      { name: 'AUTH_MODE', value: 'dev' }
+      { name: 'DEV_IDENTITY_MODE', value: 'true' }
+      { name: 'TALENT_API_URL', value: 'http://talent-api' }
+    ]
+  : svc == 'admin-api' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'TALENT_API_URL', value: 'http://talent-api' }
+    ]
+  : svc == 'talent-api' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'RECRUITMENT_API_URL', value: 'http://recruitment-api' }
+    ]
+  : svc == 'recruitment-api' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'OPPORTUNITY_SYNC_LIMIT', value: '200' }
+    ]
+  : svc == 'people-api' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+    ]
+  : svc == 'birthday-api' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'PEOPLE_API_URL', value: 'http://people-api' }
+    ]
+  : svc == 'admin-web' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'ADMIN_API_URL', value: 'http://admin-api' }
+    ]
+  : svc == 'talent-web' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'TALENT_API_URL', value: 'http://talent-api' }
+    ]
+  : svc == 'birthday-web' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'BIRTHDAY_API_URL', value: 'http://birthday-api' }
+    ]
+  : svc == 'talentflow-portal-web' ? [
+      { name: 'TALENT_API_URL', value: 'http://talent-api' }
+    ]
+  : []
+
 // KV secret wiring per API: shared trust anchors + this service's own db url.
 func _apiSecretRefs(svc string, db string, uri string) array => concat(
   [
@@ -180,7 +236,7 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: s.kind == 'api' ? commonApiEnv : []
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri) : []
     }
   }
