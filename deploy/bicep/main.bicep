@@ -172,6 +172,7 @@ module apps 'modules/containerapp.bicep' = [
       acrLoginServer: imageRegistryLoginServer
       userAssignedIdentityId: identity.outputs.id
       targetPort: s.kind == 'api' ? 8000 : 3000
+      isApi: s.kind == 'api'
       external: s.external
       minReplicas: minReplicas[?s.name] ?? 0
       maxReplicas: maxReplicasOverrides[?s.name] ?? maxReplicasDefault

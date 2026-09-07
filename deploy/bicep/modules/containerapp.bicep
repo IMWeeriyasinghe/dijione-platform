@@ -28,6 +28,9 @@ param workloadProfileName string = 'Consumption'
 @description('8000 for APIs, 3000 for web apps.')
 param targetPort int
 
+@description('true = FastAPI service with a GET /health route (gets HTTP probes). false = Next.js web app (no /health; uses the platform default TCP probe).')
+param isApi bool = true
+
 @description('true = public ingress (shell-web + the two external portals only).')
 param external bool = false
 
@@ -58,6 +61,27 @@ var secretEnv = [
     secretRef: s.name
   }
 ]
+
+// FastAPI services expose GET /health; Next.js web apps do not. Empty = ACA's
+// default TCP probe on the target port (correct for a plain HTTP server).
+var httpProbes = isApi ? [
+  {
+    type: 'Liveness'
+    httpGet: { path: '/health', port: targetPort }
+    initialDelaySeconds: 5
+    periodSeconds: 15
+    failureThreshold: 4
+  }
+  {
+    // readiness on /health — NOT /health/deep, which 200s when degraded and
+    // never checks the migration head (/health/deep stays a smoke diagnostic).
+    type: 'Readiness'
+    httpGet: { path: '/health', port: targetPort }
+    initialDelaySeconds: 5
+    periodSeconds: 15
+    failureThreshold: 6
+  }
+] : []
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -98,31 +122,11 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             memory: memory
           }
           env: concat(envVars, secretEnv)
-          probes: [
-            {
-              type: 'Liveness'
-              httpGet: {
-                path: '/health'
-                port: targetPort
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 15
-              failureThreshold: 4
-            }
-            {
-              // DEV: readiness also points at /health — NOT /health/deep,
-              // which returns 200 even when degraded and never checks the
-              // migration head. /health/deep stays a diagnostic (smoke).
-              type: 'Readiness'
-              httpGet: {
-                path: '/health'
-                port: targetPort
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 15
-              failureThreshold: 6
-            }
-          ]
+          // HTTP probes only for FastAPI services (they expose GET /health).
+          // Next.js web apps have no /health route — an HTTP probe there 404s
+          // and the replica never goes Ready; they use the platform default
+          // TCP probe on the target port instead (probes: []).
+          probes: httpProbes
         }
       ]
       scale: {
