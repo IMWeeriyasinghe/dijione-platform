@@ -158,3 +158,36 @@ def test_token_exchange_code_rejected_401(api_client, db, entra_mode, monkeypatc
         json={"code": "abc", "state": state, "flow_token": flow_token},
     )
     assert resp.status_code == 401
+
+
+# --- request-path session-token validation in entra mode ------------------
+# Regression: get_current_user must validate the DijiOne HS256 session token
+# regardless of AUTH_MODE. It previously delegated to get_auth_provider(),
+# which returns EntraAuthProvider in entra mode, whose decode_token() raised
+# NotImplementedError -> every authenticated request 500'd (including right
+# after a successful Entra login). See app/core/security.decode_session_token.
+
+def test_entra_mode_session_token_authorizes_protected_endpoint(
+    api_client, db, entra_mode, monkeypatch
+):
+    db.add(User(email="known2@example.com", full_name="Known2", platform_role="PLATFORM_USER",
+                persona_key="k2", is_active=True))
+    db.commit()
+
+    flow_token, state = _login_url(api_client)
+    _mock_code_exchange(monkeypatch)
+    _mock_verify(monkeypatch, {"oid": "oid-2", "email": "known2@example.com", "name": "Known2", "tid": "test-tenant"})
+    token = api_client.post(
+        "/api/auth/entra/token",
+        json={"code": "abc", "state": state, "flow_token": flow_token},
+    ).json()["access_token"]
+
+    me = api_client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200, me.text
+    assert me.json()["email"] == "known2@example.com"
+
+
+def test_entra_mode_bad_bearer_is_401_not_500(api_client, db, entra_mode):
+    for bad in ("not.a.jwt", "Bearer", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.wrongsig"):
+        resp = api_client.get("/api/auth/me", headers={"Authorization": f"Bearer {bad}"})
+        assert resp.status_code == 401, f"{bad!r} -> {resp.status_code}"

@@ -4,7 +4,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.security import InvalidTokenError, get_auth_provider
+from app.core.security import InvalidTokenError, decode_session_token
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
@@ -20,7 +20,7 @@ def get_current_user(
     if credentials is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
     try:
-        payload = get_auth_provider().decode_token(credentials.credentials)
+        payload = decode_session_token(credentials.credentials)
     except InvalidTokenError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
 

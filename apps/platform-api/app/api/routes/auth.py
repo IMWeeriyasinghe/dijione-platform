@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
-from app.core.security import get_auth_provider
+from app.core.security import issue_session_token
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
@@ -78,7 +78,7 @@ def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> TokenR
     # Phase 2.5: the token carries signed authorization claims so
     # talent-api/birthday-api/spark-api can authorize requests without a
     # synchronous call back to Platform Core — see claims_service.py.
-    token = get_auth_provider().issue_token(user.id, **build_claims(user, db))
+    token = issue_session_token(user.id, **build_claims(user, db))
     return TokenResponse(access_token=token, user=_to_current_user_out(user, repo, db))
 
 

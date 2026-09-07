@@ -75,24 +75,28 @@ class DevAuthProvider(AuthProvider):
 
 
 class EntraAuthProvider(AuthProvider):
-    """Production seam — validates Microsoft Entra ID issued tokens.
+    """Production seam kept for symmetry with ``AuthProvider``.
 
-    Not implemented in this MVP phase: no tenant/client credentials are
-    available. Wiring this in later must not require changes to route or
-    service code, only to ``get_auth_provider``.
+    DijiOne never validates a raw Entra token on a normal request path: the
+    Entra id_token is verified exactly once, inside ``/api/auth/entra/token``
+    (see :class:`EntraTokenVerifier`), and a DijiOne HS256 *session* token is
+    issued from it. Every authenticated request — in ``dev`` or ``entra``
+    mode — then carries that session token, which
+    :func:`decode_session_token` validates. So this class must never be the
+    thing that decodes a request's bearer token; if it somehow is, it raises
+    :class:`InvalidTokenError` (a 401), never an unhandled 500.
     """
 
     def issue_token(self, user_id: int, **claims: object) -> str:
         raise NotImplementedError(
-            "EntraAuthProvider does not issue tokens; Entra ID issues them. "
-            "Configure ENTRA_TENANT_ID / ENTRA_CLIENT_ID and implement JWKS "
-            "validation before disabling DEV_IDENTITY_MODE."
+            "EntraAuthProvider does not issue tokens; Entra ID issues them, and "
+            "DijiOne then mints its own session token via issue_session_token()."
         )
 
     def decode_token(self, token: str) -> dict:
-        raise NotImplementedError(
-            "Entra ID token validation is not configured. Set "
-            "DEV_IDENTITY_MODE=true during local development."
+        raise InvalidTokenError(
+            "EntraAuthProvider cannot validate a DijiOne session token; "
+            "decode_session_token() is the request-path validator."
         )
 
 
@@ -104,6 +108,13 @@ def get_auth_provider() -> AuthProvider:
     return EntraAuthProvider()
 
 
+# The DijiOne session token is always HS256 with issuer ``dijione-dev-identity``
+# regardless of AUTH_MODE (see issue_session_token). ``DevAuthProvider`` holds
+# exactly that HS256/issuer logic, so both the issuer and validator delegate to
+# it — the names are historical.
+_session_provider = DevAuthProvider()
+
+
 def issue_session_token(user_id: int, **claims: object) -> str:
     """Mint the *DijiOne* session token every service consumes (HS256, signed
     authorization claims, issuer ``dijione-dev-identity``). This is issued by
@@ -111,7 +122,17 @@ def issue_session_token(user_id: int, **claims: object) -> str:
     id_token is verified, then this DijiOne token is issued from it, so
     talent-api/birthday-api/spark-api and packages/auth-client-py need no
     change. (The name kept for the issuer string is historical.)"""
-    return DevAuthProvider().issue_token(user_id, **claims)
+    return _session_provider.issue_token(user_id, **claims)
+
+
+def decode_session_token(token: str) -> dict:
+    """Validate a DijiOne session token and return its payload. Raises
+    :class:`InvalidTokenError` for a missing/garbage/expired/wrong-issuer
+    token. This is the request-path validator used by ``get_current_user``
+    in **every** auth mode — the session token format never changes when
+    AUTH_MODE flips to ``entra`` (only how the user first proved identity
+    does)."""
+    return _session_provider.decode_token(token)
 
 
 class EntraTokenVerifier:
