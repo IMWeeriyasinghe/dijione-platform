@@ -44,10 +44,12 @@ SERVICES=(platform-api talent-api recruitment-api)
 [ "$DEPLOY_BIRTHDAY" = "true" ] && SERVICES+=(people-api birthday-api)
 [ "$DEPLOY_COMMERCIAL" = "true" ] && SERVICES+=(commercial-api)
 
+ALEMBIC="${ALEMBIC:-alembic}"   # console script; `python -m alembic` is NOT runnable
+
 for svc in "${SERVICES[@]}"; do
   if [ -d "$REPO_ROOT/apps/$svc/alembic" ]; then
     echo "==> [$svc] alembic upgrade head"
-    ( cd "$REPO_ROOT/apps/$svc" && "$PYTHON" -m alembic upgrade head )
+    ( cd "$REPO_ROOT/apps/$svc" && "$ALEMBIC" upgrade head )
   else
     echo "==> [$svc] no alembic tree — skipping"
   fi

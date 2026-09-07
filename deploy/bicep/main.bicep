@@ -215,7 +215,9 @@ module migrateJobs 'modules/job.bicep' = [
       location: location
       tags: tags
       command: [ '/bin/sh', '-c' ]
-      args: [ 'python -m alembic upgrade head' ]
+      // `alembic` console script — `python -m alembic` is NOT runnable (the
+      // package has no __main__). /opt/venv/bin is on PATH in the image.
+      args: [ 'alembic upgrade head' ]
       envVars: [ { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName } ]
       secretRefs: [
         {
