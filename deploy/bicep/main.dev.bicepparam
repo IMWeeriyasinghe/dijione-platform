@@ -25,3 +25,4 @@ param containerMemory = '0.5Gi'
 param minReplicas = {}
 param maxReplicasDefault = 1
 param maxReplicasOverrides = {}
+param seedDevIdentities = true

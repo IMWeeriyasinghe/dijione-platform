@@ -56,6 +56,9 @@ param minReplicas object = {}
 param maxReplicasDefault int = 1
 param maxReplicasOverrides object = {}
 
+@description('DEV only: create a Manual bootstrap-identity job that seeds the 5 staff dev-login personas (no business data). UAT/PROD create real users via the Admin Center.')
+param seedDevIdentities bool = false
+
 var tags = {
   platform: 'dijione'
   env: environmentName
@@ -286,6 +289,33 @@ module migrateJobs 'modules/job.bicep' = [
     }
   }
 ]
+
+// ---- DEV identity bootstrap (Manual) ------------------------------------
+// Seeds the 5 staff dev-login personas + their platform/module role
+// assignments (platform-api/scripts/seed.py --identity-only). NO business
+// data, NO canonical Client set (that is migration-owned). DEV only — UAT/PROD
+// create real users via the Admin Center. Run once after migrate-platform-api.
+module bootstrapIdentityJob 'modules/job.bicep' = if (seedDevIdentities) {
+  name: 'job-bootstrap-identity'
+  dependsOn: [ uamiAcrPull ]
+  params: {
+    name: 'bootstrap-identity'
+    image: imageRef('platform-api', imageRegistryLoginServer, imageDigests, imageTag)
+    managedEnvironmentId: cae.id
+    acrLoginServer: imageRegistryLoginServer
+    userAssignedIdentityId: identity.outputs.id
+    triggerType: 'Manual'
+    replicaTimeout: 600
+    location: location
+    tags: tags
+    command: [ '/bin/sh', '-c' ]
+    args: [ 'python scripts/seed.py --identity-only' ]
+    envVars: [ { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName } ]
+    secretRefs: [
+      { name: 'database-url-platform', keyVaultUrl: '${kvUri}secrets/database-url-platform', envName: 'DATABASE_URL' }
+    ]
+  }
+}
 
 // ---- scheduled source-sync jobs (cron -> authenticated internal POST) ----
 var scheduledJobs = concat(
