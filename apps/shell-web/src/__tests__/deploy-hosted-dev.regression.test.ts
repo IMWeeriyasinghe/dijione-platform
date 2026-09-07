@@ -71,3 +71,63 @@ describe("DEV identity bootstrap is reproducible from IaC (P0)", () => {
     expect(devParams).toMatch(/param seedDevIdentities\s*=\s*true/);
   });
 });
+
+describe("Phase 4 — real Entra internal auth wiring (IaC)", () => {
+  // platform-api's Entra OIDC path (auth_entra.py + core/security.py) is
+  // gated on AUTH_MODE=entra + the four ENTRA_* settings. The Bicep must be
+  // able to deliver all of them, with the client secret coming from Key
+  // Vault (never a param value), and the persona switcher off when entra.
+  const mainBicep = read("deploy/bicep/main.bicep");
+  const devParams = read("deploy/bicep/main.dev.bicepparam");
+
+  it("main.bicep parameterises authMode with an allowed set and Entra values", () => {
+    expect(mainBicep).toMatch(/@allowed\(\s*\[\s*'dev',\s*'entra'\s*\]\s*\)\s*\nparam authMode string/);
+    expect(mainBicep).toMatch(/param entraTenantId string/);
+    expect(mainBicep).toMatch(/param entraClientId string/);
+    expect(mainBicep).toMatch(/param publicBaseUrl string/);
+  });
+
+  it("platform-api gets ENTRA_* env only when authMode == entra", () => {
+    expect(mainBicep).toMatch(/authMode == 'entra' \? \[\s*\n\s*{ name: 'ENTRA_TENANT_ID'/);
+    expect(mainBicep).toMatch(/ENTRA_REDIRECT_URI', value: '\$\{publicBaseUrl\}\/api\/auth\/callback'/);
+  });
+
+  it("the Entra client secret is a Key Vault ref, never a param", () => {
+    expect(mainBicep).toMatch(/entra-client-secret-\$\{env\}'[\s\S]*envName: 'ENTRA_CLIENT_SECRET'/);
+    expect(devParams).not.toMatch(/client.?secret\s*=/i);
+  });
+
+  it("DEV enables authMode = entra", () => {
+    expect(devParams).toMatch(/param authMode\s*=\s*'entra'/);
+  });
+});
+
+describe("Phase 4 — controlled read-only provider activation wiring (IaC)", () => {
+  // recruitment-api (Lever) and people-api (BambooHR) can each be flipped
+  // to a live, read-only provider independently; every other API stays
+  // mock. Provider keys come from Key Vault and attach only in live mode.
+  const mainBicep = read("deploy/bicep/main.bicep");
+  const devParams = read("deploy/bicep/main.dev.bicepparam");
+
+  it("per-service INTEGRATIONS_MODE params exist with mock defaults", () => {
+    expect(mainBicep).toMatch(/param recruitmentIntegrationsMode string = 'mock'/);
+    expect(mainBicep).toMatch(/param peopleIntegrationsMode string = 'mock'/);
+  });
+
+  it("INTEGRATIONS_MODE is no longer a single platform-wide value", () => {
+    const commonBlock = mainBicep.match(/var commonApiEnv = \[[^\]]*\]/)?.[0] ?? "";
+    expect(commonBlock).not.toMatch(/INTEGRATIONS_MODE/);
+    expect(mainBicep).toMatch(/name: 'INTEGRATIONS_MODE', value: recruitmentMode/);
+    expect(mainBicep).toMatch(/name: 'INTEGRATIONS_MODE', value: peopleMode/);
+  });
+
+  it("provider API keys attach only in live mode, from Key Vault", () => {
+    expect(mainBicep).toMatch(/recruitmentMode == 'live'\) \? \[\s*\n\s*{ name: 'lever-api-key-\$\{env\}'/);
+    expect(mainBicep).toMatch(/peopleMode == 'live'\) \? \[\s*\n\s*{ name: 'bamboohr-api-key-\$\{env\}'/);
+  });
+
+  it("DEV defaults keep both providers mock until credentials are provisioned", () => {
+    expect(devParams).toMatch(/param recruitmentIntegrationsMode\s*=\s*'mock'/);
+    expect(devParams).toMatch(/param peopleIntegrationsMode\s*=\s*'mock'/);
+  });
+});

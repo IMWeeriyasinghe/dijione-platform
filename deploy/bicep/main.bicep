@@ -59,6 +59,30 @@ param maxReplicasOverrides object = {}
 @description('DEV only: create a Manual bootstrap-identity job that seeds the 5 staff dev-login personas (no business data). UAT/PROD create real users via the Admin Center.')
 param seedDevIdentities bool = false
 
+@description('Internal identity mode for platform-api. "dev" = the passwordless persona switcher; "entra" = real Microsoft Entra ID OIDC (Authorization Code + PKCE). "entra" also requires entraTenantId, entraClientId, publicBaseUrl, and the entra-client-secret-<env> Key Vault secret.')
+@allowed([ 'dev', 'entra' ])
+param authMode string = 'dev'
+
+@description('Entra directory (tenant) id. Only used when authMode == entra.')
+param entraTenantId string = ''
+
+@description('Application (client) id of the per-environment DijiOne Entra app registration. Only used when authMode == entra.')
+param entraClientId string = ''
+
+@description('Public HTTPS origin of shell-web for this environment, e.g. https://shell-web.<env-domain>. Backs the Entra redirect URI and the front-channel logout redirect.')
+param publicBaseUrl string = ''
+
+@description('recruitment-api provider mode. "mock" = MockLeverClient; "live" = the GET-only LiveLeverClient, which also needs the lever-api-key-<env> Key Vault secret. Lever is READ-ONLY by construction (CLAUDE.md §60).')
+@allowed([ 'mock', 'live' ])
+param recruitmentIntegrationsMode string = 'mock'
+
+@description('people-api provider mode. "mock" = MockBambooHrClient; "live" = the read-only live client, which also needs the bamboohr-api-key-<env> Key Vault secret and bamboohrSubdomain. Never writes to BambooHR.')
+@allowed([ 'mock', 'live' ])
+param peopleIntegrationsMode string = 'mock'
+
+@description('BambooHR company subdomain (the <sub> in api.bamboohr.com/api/gateway.php/<sub>/v1). Only used when peopleIntegrationsMode == live.')
+param bamboohrSubdomain string = ''
+
 var tags = {
   platform: 'dijione'
   env: environmentName
@@ -139,9 +163,11 @@ var corsOrigins = join([
   deployBirthday ? 'https://birthday-supplier-web.${envDomain}' : ''
 ], ',')
 
+// INTEGRATIONS_MODE is per-service (see _perServiceEnv): recruitment-api and
+// people-api can be flipped to "live" independently; every other API stays
+// "mock". EMAIL_SENDING_MODE stays mock platform-wide for Phase 4.
 var commonApiEnv = [
   { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName }
-  { name: 'INTEGRATIONS_MODE', value: 'mock' }
   { name: 'EMAIL_SENDING_MODE', value: 'mock' }
   { name: 'API_CORS_ORIGINS', value: corsOrigins }
 ]
@@ -150,7 +176,7 @@ var commonApiEnv = [
 // http://<app-name>) + module modes. Declarative here so a redeploy does not
 // wipe them (Bicep env is desired-state, not a merge). `AUTH_MODE=dev` on
 // platform-api = the dev-login identity provider (no real Entra in DEV).
-func _perServiceEnv(svc string) array =>
+func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string) array =>
   svc == 'shell-web' ? [
     { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
     { name: 'ADMIN_API_URL', value: 'http://admin-api' }
@@ -160,28 +186,49 @@ func _perServiceEnv(svc string) array =>
     { name: 'ADMIN_WEB_URL', value: 'http://admin-web' }
     { name: 'TALENT_WEB_URL', value: 'http://talent-web' }
     { name: 'BIRTHDAY_WEB_URL', value: 'http://birthday-web' }
+    { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
   ]
-  : svc == 'platform-api' ? [
-      { name: 'AUTH_MODE', value: 'dev' }
-      { name: 'DEV_IDENTITY_MODE', value: 'true' }
-      { name: 'TALENT_API_URL', value: 'http://talent-api' }
-    ]
+  : svc == 'platform-api' ? concat(
+      [
+        { name: 'INTEGRATIONS_MODE', value: 'mock' }
+        { name: 'AUTH_MODE', value: authMode }
+        { name: 'TALENT_API_URL', value: 'http://talent-api' }
+      ],
+      authMode == 'entra' ? [
+        { name: 'ENTRA_TENANT_ID', value: entraTenantId }
+        { name: 'ENTRA_CLIENT_ID', value: entraClientId }
+        { name: 'ENTRA_REDIRECT_URI', value: '${publicBaseUrl}/api/auth/callback' }
+        { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
+      ] : [
+        { name: 'DEV_IDENTITY_MODE', value: 'true' }
+      ]
+    )
   : svc == 'admin-api' ? [
+      { name: 'INTEGRATIONS_MODE', value: 'mock' }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'TALENT_API_URL', value: 'http://talent-api' }
     ]
   : svc == 'talent-api' ? [
+      { name: 'INTEGRATIONS_MODE', value: 'mock' }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'RECRUITMENT_API_URL', value: 'http://recruitment-api' }
     ]
   : svc == 'recruitment-api' ? [
+      { name: 'INTEGRATIONS_MODE', value: recruitmentMode }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'OPPORTUNITY_SYNC_LIMIT', value: '200' }
     ]
-  : svc == 'people-api' ? [
-      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
-    ]
+  : svc == 'people-api' ? concat(
+      [
+        { name: 'INTEGRATIONS_MODE', value: peopleMode }
+        { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      ],
+      peopleMode == 'live' && !empty(bamboohrSubdomain) ? [
+        { name: 'BAMBOOHR_SUBDOMAIN', value: bamboohrSubdomain }
+      ] : []
+    )
   : svc == 'birthday-api' ? [
+      { name: 'INTEGRATIONS_MODE', value: 'mock' }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'PEOPLE_API_URL', value: 'http://people-api' }
     ]
@@ -203,13 +250,22 @@ func _perServiceEnv(svc string) array =>
   : []
 
 // KV secret wiring per API: shared trust anchors + this service's own db url.
-func _apiSecretRefs(svc string, db string, uri string) array => concat(
+func _apiSecretRefs(svc string, db string, uri string, authMode string, env string, recruitmentMode string, peopleMode string) array => concat(
   [
     { name: 'jwt-dev-secret', keyVaultUrl: '${uri}secrets/jwt-dev-secret', envName: 'JWT_DEV_SECRET' }
     { name: 'internal-service-secret', keyVaultUrl: '${uri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
   ],
   svc == 'talent-api' ? [
     { name: 'external-session-jwt-secret', keyVaultUrl: '${uri}secrets/external-session-jwt-secret', envName: 'EXTERNAL_SESSION_JWT_SECRET' }
+  ] : [],
+  (svc == 'platform-api' && authMode == 'entra') ? [
+    { name: 'entra-client-secret-${env}', keyVaultUrl: '${uri}secrets/entra-client-secret-${env}', envName: 'ENTRA_CLIENT_SECRET' }
+  ] : [],
+  (svc == 'recruitment-api' && recruitmentMode == 'live') ? [
+    { name: 'lever-api-key-${env}', keyVaultUrl: '${uri}secrets/lever-api-key-${env}', envName: 'LEVER_API_KEY' }
+  ] : [],
+  (svc == 'people-api' && peopleMode == 'live') ? [
+    { name: 'bamboohr-api-key-${env}', keyVaultUrl: '${uri}secrets/bamboohr-api-key-${env}', envName: 'BAMBOOHR_API_KEY' }
   ] : [],
   db == '' ? [] : [
     { name: 'database-url-${replace(db, '_dev', '')}', keyVaultUrl: '${uri}secrets/database-url-${replace(db, '_dev', '')}', envName: 'DATABASE_URL' }
@@ -239,8 +295,10 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name))
-      secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri) : []
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain))
+      secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode) : []
+      // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
+      //   matching *IntegrationsMode == 'live'
     }
   }
 ]
