@@ -44,6 +44,6 @@ param publicBaseUrl = 'https://shell-web.livelypebble-890e141a.southeastasia.azu
 //   recruitment-api  -> lever-api-key-dev        (Lever, GET-only)
 //   people-api       -> bamboohr-api-key-dev  + bamboohrSubdomain (read-only)
 // Left 'mock' until the DEV provider credentials are provisioned.
-param recruitmentIntegrationsMode = 'mock'
-param peopleIntegrationsMode = 'mock'
-param bamboohrSubdomain = ''
+param recruitmentIntegrationsMode = 'live'
+param peopleIntegrationsMode = 'live'
+param bamboohrSubdomain = 'dijitalteam'
