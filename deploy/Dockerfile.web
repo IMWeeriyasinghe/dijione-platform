@@ -23,6 +23,30 @@ ARG APP
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /repo
 
+# Next.js evaluates next.config.ts `rewrites()` at BUILD time and bakes the
+# resolved destinations into .next/routes-manifest.json — the standalone
+# server does NOT re-read process.env at runtime. So the upstream URLs must be
+# present here. Defaults are the ACA internal DNS names, which are identical in
+# every DijiOne environment (dev/uat/prod each has its own `platform-api` at
+# http://platform-api), so the image stays immutable / promotable. Override
+# with --build-arg only for a genuinely different topology (e.g. Front Door).
+ARG PLATFORM_API_URL=http://platform-api
+ARG ADMIN_API_URL=http://admin-api
+ARG TALENT_API_URL=http://talent-api
+ARG BIRTHDAY_API_URL=http://birthday-api
+ARG SPARK_API_URL=http://spark-api
+ARG ADMIN_WEB_URL=http://admin-web
+ARG TALENT_WEB_URL=http://talent-web
+ARG BIRTHDAY_WEB_URL=http://birthday-web
+ENV PLATFORM_API_URL=${PLATFORM_API_URL} \
+    ADMIN_API_URL=${ADMIN_API_URL} \
+    TALENT_API_URL=${TALENT_API_URL} \
+    BIRTHDAY_API_URL=${BIRTHDAY_API_URL} \
+    SPARK_API_URL=${SPARK_API_URL} \
+    ADMIN_WEB_URL=${ADMIN_WEB_URL} \
+    TALENT_WEB_URL=${TALENT_WEB_URL} \
+    BIRTHDAY_WEB_URL=${BIRTHDAY_WEB_URL}
+
 COPY package.json package-lock.json .nvmrc ./
 COPY packages ./packages
 COPY apps ./apps
