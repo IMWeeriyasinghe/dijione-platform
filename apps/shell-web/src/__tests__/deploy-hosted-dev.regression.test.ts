@@ -126,8 +126,14 @@ describe("Phase 4 — controlled read-only provider activation wiring (IaC)", ()
     expect(mainBicep).toMatch(/peopleMode == 'live'\) \? \[\s*\n\s*{ name: 'bamboohr-api-key-\$\{env\}'/);
   });
 
-  it("DEV defaults keep both providers mock until credentials are provisioned", () => {
-    expect(devParams).toMatch(/param recruitmentIntegrationsMode\s*=\s*'mock'/);
-    expect(devParams).toMatch(/param peopleIntegrationsMode\s*=\s*'mock'/);
+  it("DEV provider modes are one of the allowed values", () => {
+    // Phase 4 activated both (KV secrets lever-api-key-dev / bamboohr-api-key-dev
+    // are the real gate). The param must still only ever be 'mock' or 'live'.
+    expect(devParams).toMatch(/param recruitmentIntegrationsMode\s*=\s*'(mock|live)'/);
+    expect(devParams).toMatch(/param peopleIntegrationsMode\s*=\s*'(mock|live)'/);
+    // when a provider is live its subdomain/secret contract must hold:
+    if (/param peopleIntegrationsMode\s*=\s*'live'/.test(devParams)) {
+      expect(devParams).toMatch(/param bamboohrSubdomain\s*=\s*'[a-z0-9-]+'/);
+    }
   });
 });
