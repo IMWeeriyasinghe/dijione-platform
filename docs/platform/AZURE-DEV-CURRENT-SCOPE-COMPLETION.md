@@ -296,6 +296,43 @@ ACA environment / dedicated profile / paid monitoring. The two new Manual Jobs
 (`bootstrap-talent-clients`, and the migrate jobs used for cleanup) add no
 recurring cost. No purchase or cost decision arose.
 
+## 21b. Post-completion DEV improvement — Birthday Supplier Portal Entra B2B
+
+Approved extension to DEV current scope; does **not** change the meaning of
+the completion checkpoint. Detail: `docs/platform/birthday-supplier-authentication.md`.
+
+- The Birthday Supplier Portal hosted DEV auth path is now real **Microsoft
+  Entra ID B2B guest** sign-in (Authorization Code + PKCE), not the seeded
+  persona picker. `SUPPLIER_AUTH_MODE=entra` on `birthday-api`; the dev
+  persona routes (`/api/birthday/internal/dev/supplier-*`) **404** in hosted
+  DEV.
+- Separate app registration `dijione-birthday-supplier-dev`
+  (appId `30e36193-…`) in the existing Dijital Team tenant; client secret in
+  `kv-dijione-dev/birthday-supplier-entra-secret-dev`.
+- **Entra authenticates; an ACTIVE Birthday `SupplierUser` authorizes.** A
+  valid Microsoft/guest identity with no registered supplier → generic 403,
+  no access. `SupplierUser` is never auto-created.
+- New immutable images: `birthday-api` `610ed61`
+  (`sha256:aed4bf05e3b8c26a5e8e971c69e6d4ec93c6674c35e0d8e5e45a8dc24bc0d588`),
+  `birthday-supplier-web` `610ed61`
+  (`sha256:78aac8960fcb52741f2076262bf1a2d9331cb5e47b368f1710476d7ec15b8998`).
+- Tests: birthday-api 195 passed (incl. 20 new supplier-Entra),
+  birthday-supplier-web 6 passed (incl. 3 new auth-mode).
+- Hosted DEV verified: portal 200; `/api/birthday/supplier/auth/config` →
+  `entra`; persona routes → 404; `/login` → correct Microsoft authorize
+  redirect (client_id `30e36193-…`, PKCE S256); birthday-api `/health/deep`
+  healthy; `EMAIL_SENDING_MODE=mock`; no BambooHR secret on birthday-api;
+  Birthday still consumes People via people-api only; scheduled jobs
+  untouched.
+- **Human-only step remaining:** invite the supplier contact's email as a
+  B2B guest in the Dijital Team tenant (or use a `@dijitalteam.com`
+  account), then complete one interactive Microsoft sign-in to confirm the
+  end-to-end flow. The "Test Supplier" SupplierUser currently carries a
+  personal Gmail address; either invite it as a guest or repoint it to a
+  work account.
+- **Not** changed: TalentFlow external magic-link auth, internal DijiOne
+  staff Entra auth, real email (stays mock).
+
 ## 22. GitHub remote-freeze confirmation
 
 No `git push`, no new PR, no modification of PR #71, no Actions rerun, no
