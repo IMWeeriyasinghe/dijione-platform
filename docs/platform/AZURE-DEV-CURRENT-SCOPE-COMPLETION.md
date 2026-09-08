@@ -4,7 +4,7 @@ Consolidated status of the hosted Azure DEV environment against the approved
 current product scope. This is **not** a UAT/PROD task — DEV is now the
 environment for continued business-process testing.
 
-Date: 2026-09-08 · Branch `local/azure-dev-prep` · HEAD `69f1e16`
+Date: 2026-09-09 · Branch `local/azure-dev-prep` · HEAD `3982034`
 
 ---
 
@@ -30,7 +30,8 @@ cross-service DB access, no provider write capability. One business decision
 - Branch: `local/azure-dev-prep` (local only — GitHub remote freeze in force).
 - HEAD: `69f1e16` `fix(dev): /health/deep must report the authoritative AUTH_MODE`.
 - New local commits this pass: `6e7a9bb` (mock-data cleanup migrations),
-  `69f1e16` (health auth_mode fix). Prior Phase-4 commits `b2e8d58 … 8c2b800`
+  `69f1e16` (health auth_mode fix), `f985cad` (these docs), `3982034`
+  (Entra sign-in screen). Prior Phase-4 commits `b2e8d58 … 8c2b800`
   unchanged.
 
 ## 3. Azure DEV deployment state
@@ -59,11 +60,11 @@ cross-service DB access, no provider write capability. One business decision
 | people-api | `6e7a9bb` | `sha256:953a438de650c2191ede5ec802110c34d8bedc5319b4792e5fbe399a8f488795` |
 | birthday-api | `6e7a9bb` | `sha256:0e1fccc1e6eebd5d6a90a1b067ffaf85b96825bff1aee70b88d1362dae14c464` |
 | admin-api | `2baa15d` | `sha256:2f82f743c28aaba97124ee757bebf9d4b77dd1c92a864ae201dee28d2f6b3d14` |
-| shell-web | `fc1bac8` | `sha256:b72cf5ecf889c786a4168ae77c861bf06fc38be26e1bf618dcc161b661082ee9` |
-| admin-web | `fc1bac8` | `sha256:ecc639fbc47283022f1f1908243b2b006b760f86853f42435bc8007bece6fa28` |
-| talent-web | `fc1bac8` | `sha256:87466d6b7727bec33afc7850bab57b6b31b8ca6ae1abf9a96004191c4c670a95` |
+| shell-web | `3982034` | `sha256:6f62fd3d2290d67dca7fae429f961c7e9762a8c358875dd96cfa4d418ca77bef` |
+| admin-web | `3982034` | `sha256:5b31482e5886e2d60b98b4ccb94296f3e0181472e40f2f04c2ee5ca91878197d` |
+| talent-web | `3982034` | `sha256:9b107aec33a57445153cb82c6d486b742e5330fb3ebaa2972213d6209bdc72ac` |
 | talentflow-portal-web | `fc1bac8` | `sha256:497b43ff676feb03448ac20bd7d6388f507371ebe1530319a63cb83c75b4773f` |
-| birthday-web | `fc1bac8` | `sha256:ea1ad77060522898688443fe754177ba638209e4a836a0e4e6cf41308edd70e7` |
+| birthday-web | `3982034` | `sha256:b555b230973ef8ab28b95ebc10071e232696cc22064c979645c62bec379f3b75` |
 | birthday-supplier-web | `fc1bac8` | `sha256:0230aa165ecf0784e90cd03939074824c694f348b0685d7a6c5dcab274f287ee` |
 
 Map: `scratchpad/imagedigests-phase4.json`.
@@ -228,6 +229,7 @@ cleanups (Postgres-only, count-capped, no-op on SQLite/CI).
 | P2 | `platform-api /health/deep` misreported `auth_mode:"dev"` under `AUTH_MODE=entra` | `69f1e16` — report `settings.auth_mode`; add `dev_login_enabled`; regression test |
 | P2 | 10 Phase-3 mock employees + 8 mock birthday orders polluting live People/Birthday data | `6e7a9bb` — guarded data migrations `people-api 0002` + `birthday-api c4f6a8b0d2e4` |
 | P3 | Bootstrap SUPER_ADMIN had no module roles → empty app launcher, modules not exercisable by a real user | DEV bootstrap grant (talent-flow TA_MANAGER + birthday BIRTHDAY_ADMIN) |
+| P1 | Hosted login screen showed the broken Dev Identity Mode persona switcher (404 "Could not load personas") under AUTH_MODE=entra — no way to sign in | `3982034` — `AuthGate` reads `/api/auth/config` and renders an `EntraSignIn` ("Sign in with Microsoft") card in entra mode; 4 web images rebuilt; regression tests |
 
 (Phase-4 P0/P1 fixes — Entra session-token 500, two `varchar(255)` truncations
 — are in `AZURE-PHASE-4-REPORT.md`.)
@@ -242,8 +244,8 @@ cleanups (Postgres-only, count-capped, no-op on SQLite/CI).
 | recruitment-api pytest | 51 passed |
 | people-api pytest | 18 passed |
 | birthday-api pytest | 175 passed |
-| shell-web / admin-web / talent-web / birthday-web / talentflow-portal-web / birthday-supplier-web vitest | 23 / 2 / 42 / 2 / 16 / 3 = 88 passed |
-| **Total** | **567 passed, 0 failed** |
+| shell-web / admin-web / talent-web / birthday-web / talentflow-portal-web / birthday-supplier-web vitest | 26 / 2 / 42 / 2 / 16 / 3 = 91 passed |
+| **Total** | **570 passed, 0 failed** |
 | Architecture guards (no-direct-Lever, no-direct-BambooHR, Lever-safety) | pass |
 | `az bicep build` / `lint` / `build-params` | clean |
 | ruff (changed apps) | clean |
@@ -298,7 +300,7 @@ recurring cost. No purchase or cost decision arose.
 
 No `git push`, no new PR, no modification of PR #71, no Actions rerun, no
 remote merge, no remote branch manipulation, Dependabot PR #72 untouched. All
-work is local commits on `local/azure-dev-prep` (`… → 6e7a9bb → 69f1e16`).
+work is local commits on `local/azure-dev-prep` (`… → 6e7a9bb → 69f1e16 → f985cad → 3982034`).
 
 ## 23. Final DEV completion checklist
 
@@ -324,7 +326,7 @@ work is local commits on `local/azure-dev-prep` (`… → 6e7a9bb → 69f1e16`).
 - [x] no known P0/P1 current-scope defect (3 found this pass — all fixed)
 - [x] no unresolved current-scope security defect
 - [x] no unresolved current-scope data-integrity defect (mock data cleaned; idempotency proven)
-- [x] automated regression clean (567 passed, 0 failed)
+- [x] automated regression clean (570 passed, 0 failed)
 - [x] hosted DEV smoke / regression clean
 - [x] known business decisions / gaps documented (`DEV-BUSINESS-PROCESS-GAPS.md`)
 - [x] DEV can be repeatedly used for continued business-process testing (real data; module-entitled admin; scheduled syncs keep it fresh)
