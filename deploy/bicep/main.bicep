@@ -59,6 +59,9 @@ param maxReplicasOverrides object = {}
 @description('DEV only: create a Manual bootstrap-identity job that seeds the 5 staff dev-login personas (no business data). UAT/PROD create real users via the Admin Center.')
 param seedDevIdentities bool = false
 
+@description('Create a Manual bootstrap-talent-clients job that runs talent-api/scripts/seed.py — it pulls the canonical client directory from platform-api (GET /api/platform/internal/clients) and creates ONLY the talent_dev.clients extension rows (platform_client_id + name), idempotent, no business data. Needed for the governed DTC tag -> Client resolution.')
+param seedTalentClientExtensions bool = false
+
 @description('Internal identity mode for platform-api. "dev" = the passwordless persona switcher; "entra" = real Microsoft Entra ID OIDC (Authorization Code + PKCE). "entra" also requires entraTenantId, entraClientId, publicBaseUrl, and the entra-client-secret-<env> Key Vault secret.')
 @allowed([ 'dev', 'entra' ])
 param authMode string = 'dev'
@@ -371,6 +374,40 @@ module bootstrapIdentityJob 'modules/job.bicep' = if (seedDevIdentities) {
     envVars: [ { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName } ]
     secretRefs: [
       { name: 'database-url-platform', keyVaultUrl: '${kvUri}secrets/database-url-platform', envName: 'DATABASE_URL' }
+    ]
+  }
+}
+
+// ---- TalentFlow client-extension bootstrap (Manual) -------------------
+// Runs talent-api/scripts/seed.py: fetches the canonical client directory
+// from platform-api and creates ONLY the talent_dev.clients extension rows
+// (platform_client_id + name). Idempotent, no TalentRequest/Candidate/etc.
+// Enables the governed `DTC - <name>` tag to resolve to a Client
+// (PostingClientMapping VERIFIED). Run after migrate-talent-api +
+// bootstrap-identity/migrations have populated platform_dev.client.
+module bootstrapTalentClientsJob 'modules/job.bicep' = if (seedTalentClientExtensions) {
+  name: 'job-bootstrap-talent-clients'
+  dependsOn: [ uamiAcrPull ]
+  params: {
+    name: 'bootstrap-talent-clients'
+    image: imageRef('talent-api', imageRegistryLoginServer, imageDigests, imageTag)
+    managedEnvironmentId: cae.id
+    acrLoginServer: imageRegistryLoginServer
+    userAssignedIdentityId: identity.outputs.id
+    triggerType: 'Manual'
+    replicaTimeout: 600
+    location: location
+    tags: tags
+    command: [ '/bin/sh', '-c' ]
+    args: [ 'python scripts/seed.py' ]
+    envVars: [
+      { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName }
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+    ]
+    secretRefs: [
+      { name: 'database-url-talent', keyVaultUrl: '${kvUri}secrets/database-url-talent', envName: 'DATABASE_URL' }
+      { name: 'internal-service-secret', keyVaultUrl: '${kvUri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
+      { name: 'jwt-dev-secret', keyVaultUrl: '${kvUri}secrets/jwt-dev-secret', envName: 'JWT_DEV_SECRET' }
     ]
   }
 }

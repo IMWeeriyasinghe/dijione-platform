@@ -26,6 +26,9 @@ param minReplicas = {}
 param maxReplicasDefault = 1
 param maxReplicasOverrides = {}
 param seedDevIdentities = true
+// Populate talent_dev.clients extension rows from the canonical directory so
+// the governed DTC tags resolve (PostingClientMapping VERIFIED).
+param seedTalentClientExtensions = true
 
 // Phase 4: real Microsoft Entra ID internal authentication for hosted DEV.
 // authMode=entra disables the passwordless persona switcher (platform-api
