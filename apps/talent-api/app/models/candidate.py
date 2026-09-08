@@ -28,10 +28,12 @@ class Candidate(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    full_name: Mapped[str] = mapped_column(String(255))
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # full_name / professional_title are projected from Lever (upsert_from_source);
+    # real candidate names and headlines exceed 255 chars, so keep them unbounded.
+    full_name: Mapped[str] = mapped_column(Text)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
     phone: Mapped[str] = mapped_column(String(64), default="")
-    professional_title: Mapped[str] = mapped_column(String(255), default="")
+    professional_title: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[str] = mapped_column(Text, default="")
     location: Mapped[str] = mapped_column(String(255), default="")
     availability_status: Mapped[str] = mapped_column(

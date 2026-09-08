@@ -64,7 +64,7 @@ class Application(TimestampMixin, Base):
     # Raw Lever archive-reason text — internal/staff diagnostic only, never
     # returned in a client-safe DTO. `status` (ApplicationStatus) carries
     # the collapsed canonical outcome (HIRED / WITHDRAWN / REJECTED).
-    lever_archive_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lever_archive_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Minimal offer-lifecycle signal only — never compensation, documents,
     # or other sensitive offer fields (CLAUDE.md §60 discovery findings).
