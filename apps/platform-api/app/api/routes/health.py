@@ -54,7 +54,11 @@ def health_deep(db: Session = Depends(get_db)) -> dict:
         checks["migration"] = {"current": "unknown", "head": "unknown", "up_to_date": None}
 
     # --- auth mode ---
-    checks["auth_mode"] = "dev" if settings.dev_identity_mode else "entra"
+    # Report the authoritative AUTH_MODE (same value /api/auth/config returns),
+    # not the legacy dev_identity_mode flag: an env that sets AUTH_MODE=entra
+    # never sets DEV_IDENTITY_MODE, so the old expression always said "dev".
+    checks["auth_mode"] = settings.auth_mode
+    checks["dev_login_enabled"] = settings.dev_auth_enabled
 
     # --- client-scope integrity (local join, platform-owned clients) ---
     try:

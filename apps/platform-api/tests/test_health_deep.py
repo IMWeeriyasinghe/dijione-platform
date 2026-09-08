@@ -37,7 +37,24 @@ def test_health_deep_ok(api_client, db):
     assert body["status"] == "healthy"
     assert body["checks"]["database"] == "ok"
     assert body["checks"]["auth_mode"] == "dev"
+    assert body["checks"]["dev_login_enabled"] is True
     assert body["checks"]["client_scope_integrity"] == "ok"  # no scope rows yet
+
+
+def test_health_deep_reports_entra_auth_mode(api_client, db, monkeypatch):
+    # Regression: /health/deep used to derive auth_mode from the legacy
+    # dev_identity_mode flag, which an AUTH_MODE=entra env never sets, so it
+    # always misreported "dev". It must echo the authoritative AUTH_MODE.
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("AUTH_MODE", "entra")
+    get_settings.cache_clear()
+    try:
+        checks = api_client.get("/health/deep").json()["checks"]
+        assert checks["auth_mode"] == "entra"
+        assert checks["dev_login_enabled"] is False
+    finally:
+        get_settings.cache_clear()
 
 
 def test_health_deep_ok_with_valid_scope(api_client, db):
