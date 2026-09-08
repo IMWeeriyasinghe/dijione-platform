@@ -17,9 +17,9 @@ read-only integrations with scheduled syncs firing automatically and
 idempotently; the full governed **canonical org → TalentFlow client extension →
 Lever `DTC -` tag → Recruitment Source posting → PostingClientMapping →
 TalentRequest → Candidate/Application** chain resolves against real data
-(33 VERIFIED, fail-closed for the rest). Three current-scope defects were found
-and fixed in this pass; Phase-3 mock data was cleaned via controlled
-migrations. 567 automated tests pass. No unintended public ingress, no
+(33 VERIFIED, fail-closed for the rest). Four current-scope defects were found
+and fixed in this pass (including the broken hosted login screen); Phase-3
+mock data was cleaned via controlled migrations. 570 automated tests pass. No unintended public ingress, no
 cross-service DB access, no provider write capability. One business decision
 (National Tech) is documented and safely unresolved.
 
@@ -28,7 +28,7 @@ cross-service DB access, no provider write capability. One business decision
 ## 2. Exact branch / commit
 
 - Branch: `local/azure-dev-prep` (local only — GitHub remote freeze in force).
-- HEAD: `69f1e16` `fix(dev): /health/deep must report the authoritative AUTH_MODE`.
+- HEAD: `67d147f` (docs) — code HEAD `3982034` `fix(dev): show the Microsoft sign-in view when AUTH_MODE=entra`.
 - New local commits this pass: `6e7a9bb` (mock-data cleanup migrations),
   `69f1e16` (health auth_mode fix), `f985cad` (these docs), `3982034`
   (Entra sign-in screen). Prior Phase-4 commits `b2e8d58 … 8c2b800`
