@@ -86,6 +86,19 @@ param peopleIntegrationsMode string = 'mock'
 @description('BambooHR company subdomain (the <sub> in api.bamboohr.com/api/gateway.php/<sub>/v1). Only used when peopleIntegrationsMode == live.')
 param bamboohrSubdomain string = ''
 
+@description('Birthday Supplier Portal auth. "dev" = the seeded SupplierUser persona picker; "entra" = real Microsoft Entra ID B2B guest sign-in (Auth Code + PKCE) via birthday-api, which also needs the birthday-supplier-entra-secret-<env> Key Vault secret. Independent of the internal DijiOne authMode.')
+@allowed([ 'dev', 'entra' ])
+param supplierAuthMode string = 'dev'
+
+@description('Entra directory (tenant) id for supplier B2B guest sign-in. Only used when supplierAuthMode == entra. Same directory as the internal tenant.')
+param supplierEntraTenantId string = ''
+
+@description('Application (client) id of the per-environment dijione-birthday-supplier Entra app registration. Only used when supplierAuthMode == entra.')
+param supplierEntraClientId string = ''
+
+@description('Public HTTPS origin of birthday-supplier-web, e.g. https://birthday-supplier-web.<env-domain>. Backs the supplier Entra redirect URI.')
+param supplierPublicBaseUrl string = ''
+
 var tags = {
   platform: 'dijione'
   env: environmentName
@@ -179,7 +192,7 @@ var commonApiEnv = [
 // http://<app-name>) + module modes. Declarative here so a redeploy does not
 // wipe them (Bicep env is desired-state, not a merge). `AUTH_MODE=dev` on
 // platform-api = the dev-login identity provider (no real Entra in DEV).
-func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string) array =>
+func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string) array =>
   svc == 'shell-web' ? [
     { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
     { name: 'ADMIN_API_URL', value: 'http://admin-api' }
@@ -230,11 +243,20 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         { name: 'BAMBOOHR_SUBDOMAIN', value: bamboohrSubdomain }
       ] : []
     )
-  : svc == 'birthday-api' ? [
-      { name: 'INTEGRATIONS_MODE', value: 'mock' }
-      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
-      { name: 'PEOPLE_API_URL', value: 'http://people-api' }
-    ]
+  : svc == 'birthday-api' ? concat(
+      [
+        { name: 'INTEGRATIONS_MODE', value: 'mock' }
+        { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+        { name: 'PEOPLE_API_URL', value: 'http://people-api' }
+        { name: 'SUPPLIER_AUTH_MODE', value: supplierAuthMode }
+      ],
+      supplierAuthMode == 'entra' ? [
+        { name: 'SUPPLIER_ENTRA_TENANT_ID', value: supplierEntraTenantId }
+        { name: 'SUPPLIER_ENTRA_CLIENT_ID', value: supplierEntraClientId }
+        { name: 'SUPPLIER_ENTRA_REDIRECT_URI', value: '${supplierPublicBaseUrl}/api/auth/callback' }
+        { name: 'SUPPLIER_PUBLIC_BASE_URL', value: supplierPublicBaseUrl }
+      ] : []
+    )
   : svc == 'admin-web' ? [
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'ADMIN_API_URL', value: 'http://admin-api' }
@@ -247,13 +269,17 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'BIRTHDAY_API_URL', value: 'http://birthday-api' }
     ]
+  : svc == 'birthday-supplier-web' ? [
+      { name: 'BIRTHDAY_API_URL', value: 'http://birthday-api' }
+      { name: 'SUPPLIER_PUBLIC_BASE_URL', value: supplierPublicBaseUrl }
+    ]
   : svc == 'talentflow-portal-web' ? [
       { name: 'TALENT_API_URL', value: 'http://talent-api' }
     ]
   : []
 
 // KV secret wiring per API: shared trust anchors + this service's own db url.
-func _apiSecretRefs(svc string, db string, uri string, authMode string, env string, recruitmentMode string, peopleMode string) array => concat(
+func _apiSecretRefs(svc string, db string, uri string, authMode string, env string, recruitmentMode string, peopleMode string, supplierAuthMode string) array => concat(
   [
     { name: 'jwt-dev-secret', keyVaultUrl: '${uri}secrets/jwt-dev-secret', envName: 'JWT_DEV_SECRET' }
     { name: 'internal-service-secret', keyVaultUrl: '${uri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
@@ -269,6 +295,9 @@ func _apiSecretRefs(svc string, db string, uri string, authMode string, env stri
   ] : [],
   (svc == 'people-api' && peopleMode == 'live') ? [
     { name: 'bamboohr-api-key-${env}', keyVaultUrl: '${uri}secrets/bamboohr-api-key-${env}', envName: 'BAMBOOHR_API_KEY' }
+  ] : [],
+  (svc == 'birthday-api' && supplierAuthMode == 'entra') ? [
+    { name: 'birthday-supplier-entra-secret-${env}', keyVaultUrl: '${uri}secrets/birthday-supplier-entra-secret-${env}', envName: 'SUPPLIER_ENTRA_CLIENT_SECRET' }
   ] : [],
   db == '' ? [] : [
     { name: 'database-url-${replace(db, '_dev', '')}', keyVaultUrl: '${uri}secrets/database-url-${replace(db, '_dev', '')}', envName: 'DATABASE_URL' }
@@ -298,8 +327,8 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain))
-      secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode) : []
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl))
+      secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
       //   matching *IntegrationsMode == 'live'
     }

@@ -1,43 +1,36 @@
-"""Dev-only supplier persona provider (Phase-Next §5/§6) — the local/dry-run
+"""Dev-only supplier persona provider (Phase-Next §5/§6) — the local
 stand-in for Microsoft Entra ID B2B guest auth in the supplier portal.
 
-Hard-disabled outside development, mirroring the existing internal
-DEV IDENTITY MODE persona switcher (CLAUDE.md §13): callers pick a seeded
-``SupplierUser`` row and receive a token whose ``supplier`` claim is
-resolved server-side from that row's own ``supplier_id`` — a caller can
-select *which persona* to become, never *which supplier_id* to claim.
-This keeps the authorization/isolation layer (``SupplierScope``,
-repository-level ``supplier_id`` scoping) completely decoupled from the
-identity source: swapping this for real Entra B2B later is a
-token-issuance change only, no change to any downstream authorization
-code.
+Reachable only when ``SUPPLIER_AUTH_MODE=dev`` (NOT keyed off app_env any
+more): a hosted DEV that has switched to ``SUPPLIER_AUTH_MODE=entra``
+404s these routes. Callers pick a seeded ``SupplierUser`` row and receive
+a token whose ``supplier`` claim is resolved server-side from that row's
+own ``supplier_id`` — a caller can select *which persona* to become,
+never *which supplier_id* to claim. Both this path and the Entra flow end
+at :func:`mint_supplier_session_token`, so the authorization/isolation
+layer (``SupplierScope``, repository-level ``supplier_id`` scoping) is
+identical regardless of how identity was proven.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
 from fastapi import APIRouter, HTTPException, status
-from jose import jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.core.constants import MODULE_BIRTHDAY, BirthdayRole
 from app.db.session import SessionLocal
 from app.models.supplier_user import SupplierUser
+from app.services.supplier_auth import mint_supplier_session_token
 
 router = APIRouter(prefix="/api/birthday/internal/dev", tags=["birthday-dev-auth"])
 
-_SUPPLIER_PORTAL_PERMISSIONS = ["birthday.portal.access", "birthday.portal.respond"]
-
 
 def _require_dev_mode() -> None:
-    settings = get_settings()
-    if settings.app_env == "production":
+    if not get_settings().dev_supplier_auth_enabled:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "Not found"
-        )  # 404, not 403 — this route must not even be discoverable in production
+        )  # 404, not 403 — this route must not even be discoverable when SUPPLIER_AUTH_MODE=entra
 
 
 class DevSupplierPersona(BaseModel):
@@ -84,11 +77,10 @@ def list_dev_supplier_personas() -> list[DevSupplierPersona]:
 
 @router.post("/supplier-login", response_model=DevSupplierLoginResponse)
 def dev_supplier_login(payload: DevSupplierLoginRequest) -> DevSupplierLoginResponse:
-    """Mints a dev-signed token carrying the caller-chosen persona's own
-    supplier_id — resolved from the SupplierUser row, never accepted
-    directly from the request body."""
+    """Mints the shared supplier session token for the caller-chosen
+    persona — supplier_id resolved from the SupplierUser row, never
+    accepted from the request body."""
     _require_dev_mode()
-    settings = get_settings()
     db = SessionLocal()
     try:
         supplier_user = db.get(SupplierUser, payload.supplier_user_id)
@@ -96,32 +88,6 @@ def dev_supplier_login(payload: DevSupplierLoginRequest) -> DevSupplierLoginResp
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Supplier user not found")
         if supplier_user.status != "ACTIVE":
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Supplier user is inactive")
-
-        now = datetime.now(UTC)
-        claims = {
-            "sub": str(supplier_user.id),
-            "iat": now,
-            "exp": now + timedelta(hours=8),
-            "iss": "dijione-dev-identity",
-            "is_active": True,
-            "full_name": supplier_user.full_name or supplier_user.email,
-            "email": supplier_user.email,
-            "platform_role": "PLATFORM_USER",
-            "platform_permissions": [],
-            "module_roles": {
-                MODULE_BIRTHDAY: {
-                    "role": BirthdayRole.BIRTHDAY_SUPPLIER.value,
-                    "client_id": None,
-                    "client_ids": None,
-                    "permissions": _SUPPLIER_PORTAL_PERMISSIONS,
-                }
-            },
-            "supplier": {
-                "supplier_id": supplier_user.supplier_id,
-                "supplier_user_id": supplier_user.id,
-            },
-        }
-        token = jwt.encode(claims, settings.jwt_dev_secret, algorithm=settings.jwt_algorithm)
-        return DevSupplierLoginResponse(access_token=token)
+        return DevSupplierLoginResponse(access_token=mint_supplier_session_token(supplier_user))
     finally:
         db.close()

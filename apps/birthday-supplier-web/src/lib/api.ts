@@ -41,6 +41,15 @@ async function request<T>(path: string, token: string | null, init?: RequestInit
   return res.json() as Promise<T>;
 }
 
+// --- Supplier auth mode (drives which sign-in UI to render) -----------
+export type SupplierAuthMode = "dev" | "entra";
+
+export const getSupplierAuthConfig = () =>
+  request<{ supplier_auth_mode: SupplierAuthMode }>(
+    "/api/birthday/supplier/auth/config",
+    null,
+  );
+
 // --- Dev-only persona auth (see lib/supplier-auth.tsx) -----------------
 export type DevSupplierPersona = {
   supplier_user_id: number;

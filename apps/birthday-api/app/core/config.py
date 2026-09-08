@@ -34,6 +34,22 @@ class Settings(BaseSettings):
     # Must match platform-api's INTERNAL_SERVICE_SECRET.
     internal_service_secret: str = "dev-only-internal-secret-change-me"
 
+    # --- Supplier Portal authentication ---------------------------------
+    # "dev"   -> the seeded SupplierUser persona picker
+    #            (/api/birthday/internal/dev/supplier-*), local/dry-run only.
+    # "entra" -> real Microsoft Entra ID B2B guest sign-in (Authorization
+    #            Code + PKCE). The persona routes 404 in this mode. Requires
+    #            supplier_entra_{tenant_id,client_id,client_secret,redirect_uri}
+    #            + supplier_public_base_url. Independent of the internal
+    #            DijiOne staff AUTH_MODE — a separate app registration and a
+    #            separate trust boundary.
+    supplier_auth_mode: str = "dev"
+    supplier_entra_tenant_id: str = ""
+    supplier_entra_client_id: str = ""
+    supplier_entra_client_secret: str = ""
+    supplier_entra_redirect_uri: str = ""
+    supplier_public_base_url: str = ""
+
     # Microsoft Graph email adapter (plan §9) — client-credentials flow.
     # Unset until the user completes Graph app registration; GraphEmailClient
     # raises GraphNotConfiguredError until all four are set.
@@ -50,6 +66,25 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
+
+    @property
+    def dev_supplier_auth_enabled(self) -> bool:
+        """The seeded-persona supplier login path is reachable only in
+        explicit dev mode — NOT keyed off app_env, so a hosted DEV with
+        supplier_auth_mode=entra correctly 404s it."""
+        return self.supplier_auth_mode == "dev"
+
+    @property
+    def supplier_entra_authority(self) -> str:
+        return f"https://login.microsoftonline.com/{self.supplier_entra_tenant_id}"
+
+    @property
+    def supplier_entra_issuer(self) -> str:
+        return f"https://login.microsoftonline.com/{self.supplier_entra_tenant_id}/v2.0"
+
+    @property
+    def supplier_entra_jwks_uri(self) -> str:
+        return f"{self.supplier_entra_authority}/discovery/v2.0/keys"
 
 
 @lru_cache

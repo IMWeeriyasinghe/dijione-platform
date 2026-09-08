@@ -13,6 +13,7 @@ from app.api.routes import (
     internal,
     orders,
     portal,
+    supplier_auth_entra,
     suppliers,
 )
 from app.core.config import get_settings
@@ -61,4 +62,5 @@ app.include_router(suppliers.router)
 app.include_router(employees.router)
 app.include_router(portal.router)
 app.include_router(dev_auth.router)
+app.include_router(supplier_auth_entra.router)
 app.include_router(admin.router)

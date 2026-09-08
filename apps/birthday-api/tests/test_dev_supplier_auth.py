@@ -35,11 +35,13 @@ def test_dev_supplier_login_unknown_persona_404s(api_client, db):
     assert resp.status_code == 404
 
 
-def test_dev_supplier_endpoints_disabled_in_production(api_client, db, monkeypatch):
+def test_dev_supplier_endpoints_disabled_when_supplier_auth_mode_entra(api_client, db, monkeypatch):
+    """The authoritative control is SUPPLIER_AUTH_MODE, not APP_ENV: a
+    hosted DEV that switched to Entra B2B must 404 the persona routes."""
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SUPPLIER_AUTH_MODE", "entra")
     get_settings.cache_clear()
     try:
         resp = api_client.post(
@@ -49,5 +51,12 @@ def test_dev_supplier_endpoints_disabled_in_production(api_client, db, monkeypat
         resp2 = api_client.get("/api/birthday/internal/dev/supplier-users")
         assert resp2.status_code == 404
     finally:
-        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.delenv("SUPPLIER_AUTH_MODE", raising=False)
         get_settings.cache_clear()
+
+
+def test_dev_supplier_endpoints_available_when_supplier_auth_mode_dev(api_client, db):
+    """Default (SUPPLIER_AUTH_MODE=dev) keeps the local persona picker
+    working — even under APP_ENV=production, which no longer gates it."""
+    resp = api_client.get("/api/birthday/internal/dev/supplier-users")
+    assert resp.status_code == 200

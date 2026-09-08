@@ -50,3 +50,15 @@ param publicBaseUrl = 'https://shell-web.livelypebble-890e141a.southeastasia.azu
 param recruitmentIntegrationsMode = 'live'
 param peopleIntegrationsMode = 'live'
 param bamboohrSubdomain = 'dijitalteam'
+
+// Post-completion DEV improvement: real Microsoft Entra ID B2B guest sign-in
+// for the Birthday Supplier Portal. supplierAuthMode=entra 404s the
+// dev persona routes (/api/birthday/internal/dev/supplier-*). Requires the
+// `birthday-supplier-entra-secret-dev` Key Vault secret (client secret of
+// the `dijione-birthday-supplier-dev` app registration, appId below). A
+// verified guest still gets NO access without an ACTIVE Birthday
+// SupplierUser. Flip back to 'dev' + redeploy to restore the persona picker.
+param supplierAuthMode = 'entra'
+param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
+param supplierEntraClientId = '30e36193-f0e4-40d5-875b-db1ef6a3f2b0'
+param supplierPublicBaseUrl = 'https://birthday-supplier-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io'

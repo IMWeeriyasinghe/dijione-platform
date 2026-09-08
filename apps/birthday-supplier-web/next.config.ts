@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
     return [
       { source: "/api/birthday/portal/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/portal/:path*` },
       { source: "/api/birthday/internal/dev/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/internal/dev/:path*` },
+      // Supplier Entra sign-in config + the code exchange. The /login and
+      // /api/auth/callback routes are handled by this app's own route.ts
+      // (filesystem routes win over rewrites).
+      { source: "/api/birthday/supplier/auth/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/supplier/auth/:path*` },
     ];
   },
 };
