@@ -1,10 +1,18 @@
 # Hosted DEV — Phase 4 activation runbook
 
+> **Status: ACTIVE (2026-09-08).** All three integrations are live in
+> `rg-dijione-dev`: `AUTH_MODE=entra`, `recruitmentIntegrationsMode=live`
+> (Lever), `peopleIntegrationsMode=live` (BambooHR). The Key Vault secrets
+> `entra-client-secret-dev` / `lever-api-key-dev` / `bamboohr-api-key-dev`
+> exist. Deployed images: `platform-api@sha256:fd8621ad…` (`8ba0613`),
+> `recruitment-api@sha256:51c933eb…` (`b1ac89f`); the rest are the Phase 3
+> digests. The section-2 commands below are kept for reproducibility /
+> a UAT rebuild; sections 4–6 are the current verification + rollback.
+
 Real internal Microsoft Entra authentication + controlled read-only Lever /
 BambooHR integrations for the hosted Azure DEV environment
 (`rg-dijione-dev`). This describes the **actual wired state** after the
-Phase 4 IaC change; the three items marked **PENDING CREDENTIAL** are all
-that stand between "wired" and "live".
+Phase 4 IaC change.
 
 Companion docs: `authentication.md` (the Entra OIDC design),
 `bamboohr-live-discovery.md` (the BambooHR field survey),
