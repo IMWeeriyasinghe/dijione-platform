@@ -17,6 +17,7 @@ export * from "./ui/Timeline";
 export * from "./shell/AppShell";
 export * from "./shell/AuthGate";
 export * from "./shell/DevPersonaSwitcher";
+export * from "./shell/EntraSignIn";
 export * from "./shell/NotificationsPanel";
 export * from "./shell/Sidebar";
 export * from "./shell/TopNav";
