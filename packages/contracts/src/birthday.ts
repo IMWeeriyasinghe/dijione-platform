@@ -323,6 +323,14 @@ export type OrderIssueCreateInput = {
   detail: string;
 };
 
+export type DetectionHealth = {
+  last_scan_at: string | null;
+  last_status: string | null;
+  consecutive_deferrals: number;
+  stale: boolean;
+  healthy: boolean;
+};
+
 export type BirthdayDashboardSummary = {
   total_orders: number;
   by_status: Record<string, number>;
@@ -334,6 +342,11 @@ export type BirthdayDashboardSummary = {
   requires_review_count: number;
   supplier_not_accepted_count: number;
   deliveries_today_at_risk_count: number;
+  on_hold_count: number;
+  overdue_delivery_count: number;
+  open_issues_count: number;
+  unmatched_emails_count: number;
+  detection_health: DetectionHealth | Record<string, never>;
 };
 
 export type BirthdayUpcomingResponse = {

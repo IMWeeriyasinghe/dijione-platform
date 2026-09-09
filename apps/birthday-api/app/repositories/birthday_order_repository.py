@@ -204,6 +204,25 @@ class BirthdayOrderRepository:
         )
         return self.db.execute(stmt).scalar_one()
 
+    def count_on_hold(self) -> int:
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.status == OrderStatus.ON_HOLD.value
+        )
+        return self.db.execute(stmt).scalar_one()
+
+    def count_overdue_delivery(self, *, today: date | None = None) -> int:
+        today = today or date.today()
+        terminal = (
+            OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value,
+            OrderStatus.CANCELLED.value, OrderStatus.UNABLE_TO_FULFIL.value,
+        )
+        stmt = select(func.count()).select_from(BirthdayOrder).where(
+            BirthdayOrder.delivery_date.is_not(None),
+            BirthdayOrder.delivery_date < today,
+            BirthdayOrder.status.notin_(terminal),
+        )
+        return self.db.execute(stmt).scalar_one()
+
     def count_supplier_not_accepted(self, *, older_than: datetime) -> int:
         stmt = select(func.count()).select_from(BirthdayOrder).where(
             BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value,

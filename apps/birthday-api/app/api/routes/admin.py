@@ -15,6 +15,7 @@ from app.api.routes.internal import _scan_run_to_dict
 from app.db.session import get_db
 from app.integrations.factory import get_employee_source
 from app.models.scan_run import ScanRun
+from app.services import attention_service
 from app.services.detection_service import run_daily_scan
 
 router = APIRouter(prefix="/api/birthday/admin", tags=["birthday-admin"])
@@ -28,6 +29,16 @@ def run_detection(
     config = get_or_create_config(db)
     client = get_employee_source()
     return run_daily_scan(db, client, config, trigger="MANUAL")
+
+
+@router.post("/run-attention")
+def run_attention(
+    db: Session = Depends(get_db),
+    _scope: BirthdayScope = Depends(require_birthday_permission("birthday.config.manage")),
+) -> dict:
+    """Auth-gated attention/detection-health sweep for UAT/ops — same
+    service ``birthday-attention-job`` calls."""
+    return attention_service.run_attention_sweep(db)
 
 
 @router.get("/scan-runs")

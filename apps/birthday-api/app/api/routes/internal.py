@@ -19,7 +19,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.integrations.factory import get_employee_source
 from app.models.scan_run import ScanRun
-from app.services import inbound_email_service, order_email_service
+from app.services import attention_service, inbound_email_service, order_email_service
 from app.services.detection_service import run_daily_scan
 
 router = APIRouter(prefix="/api/birthday/internal", tags=["birthday-internal"])
@@ -48,6 +48,16 @@ def run_comms_endpoint(
         "email_retry": order_email_service.retry_failed_outbound(db),
         "inbound_email": inbound_email_service.poll(db),
     }
+
+
+@router.post("/run-attention")
+def run_attention_endpoint(
+    db: Session = Depends(get_db), _service: None = Depends(require_internal_service)
+) -> dict:
+    """Driven by ``birthday-attention-job`` (daily): the SLA / attention /
+    detection-health sweep (§O). Emits digest notifications to
+    BIRTHDAY_ADMIN; scan success stays silent."""
+    return attention_service.run_attention_sweep(db)
 
 
 class _DevInboundEmail(BaseModel):

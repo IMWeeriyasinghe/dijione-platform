@@ -18,6 +18,12 @@ class DashboardSummary(BaseModel):
     requires_review_count: int
     supplier_not_accepted_count: int
     deliveries_today_at_risk_count: int
+    # Phase 1 §1.2 — attention + detection health.
+    on_hold_count: int = 0
+    overdue_delivery_count: int = 0
+    open_issues_count: int = 0
+    unmatched_emails_count: int = 0
+    detection_health: dict = {}
 
 
 class UpcomingOrdersResponse(BaseModel):
