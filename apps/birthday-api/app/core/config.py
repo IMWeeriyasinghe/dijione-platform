@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     graph_client_id: str = ""
     graph_client_secret: str = ""
     graph_sender_mailbox: str = ""
+    # Shared mailbox polled for supplier email replies (Phase 1 §1.5).
+    # Same Graph app registration as outbound + the Mail.Read permission.
+    graph_inbox_mailbox: str = ""
     graph_base_url: str = "https://graph.microsoft.com/v1.0"
 
     @property

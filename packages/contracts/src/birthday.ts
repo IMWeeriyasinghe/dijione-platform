@@ -259,6 +259,26 @@ export type OrderMessageCreateInput = {
   also_email?: boolean; // internal only
 };
 
+// --- Inbound supplier email — "Unmatched" queue (Phase 1 §1.5) --------
+export type InboundEmailOut = {
+  id: number;
+  from_address: string;
+  subject: string;
+  body_preview: string;
+  received_at: string | null;
+  attachment_count: number;
+  status: "UNMATCHED" | "LINKED" | "DISMISSED";
+  reason: string;
+  linked_order_id: number | null;
+  created_at: string;
+};
+
+export type InboundEmailLinkInput = {
+  order_id: number;
+  raise_issue?: boolean;
+  issue_type?: OrderIssueType;
+};
+
 export type BirthdayOrderListResponse = {
   items: BirthdayOrderSummary[];
   total: number;

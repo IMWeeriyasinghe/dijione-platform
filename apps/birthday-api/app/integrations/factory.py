@@ -32,3 +32,18 @@ def get_email_client() -> EmailClient:
     from app.integrations.graph_email.graph_client import GraphEmailClient
 
     return GraphEmailClient()
+
+
+@lru_cache
+def get_inbound_mail_client():
+    """Inbound supplier-mail poll transport (Phase 1 §1.5). Gated by
+    ``email_sending_mode`` like the outbound client — DEV stays mock (the
+    dev inject endpoint drives the pipeline)."""
+    settings = get_settings()
+    if settings.email_sending_mode == "mock":
+        from app.integrations.inbound_mail.mock_client import MockInboundMailClient
+
+        return MockInboundMailClient()
+    from app.integrations.inbound_mail.graph_client import GraphInboundMailClient
+
+    return GraphInboundMailClient()

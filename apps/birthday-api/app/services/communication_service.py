@@ -32,13 +32,16 @@ from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 
 _MAX_MESSAGE_CHARS = 8000
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
 def sanitise_message_body(raw: str) -> str:
-    """Strip any markup and clamp length. Portal messages are plain text;
-    inbound email HTML is reduced to text upstream, this is the backstop."""
-    text = _TAG_RE.sub(" ", raw or "")
+    """Strip any markup (including the *content* of <script>/<style>) and
+    clamp length. Portal messages are plain text; inbound email HTML is
+    reduced to text here."""
+    text = _SCRIPT_STYLE_RE.sub(" ", raw or "")
+    text = _TAG_RE.sub(" ", text)
     text = re.sub(r"[ \t]+", " ", text).strip()
     return text[:_MAX_MESSAGE_CHARS]
 

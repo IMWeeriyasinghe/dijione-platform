@@ -10,6 +10,7 @@ from app.api.routes import (
     dev_auth,
     employees,
     health,
+    inbound_email,
     internal,
     orders,
     portal,
@@ -64,3 +65,4 @@ app.include_router(portal.router)
 app.include_router(dev_auth.router)
 app.include_router(supplier_auth_entra.router)
 app.include_router(admin.router)
+app.include_router(inbound_email.router)
