@@ -1,0 +1,90 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "dev"
+    },
+    "location": {
+      "value": "southeastasia"
+    },
+    "imageRegistryLoginServer": {
+      "value": "crdijionenonprod.azurecr.io"
+    },
+    "imageRegistryName": {
+      "value": "crdijionenonprod"
+    },
+    "imageRegistryResourceGroup": {
+      "value": "rg-dijione-shared"
+    },
+    "imageDigests": {
+      "value": {}
+    },
+    "imageTag": {
+      "value": "REPLACED_AT_DEPLOY"
+    },
+    "deployBirthday": {
+      "value": true
+    },
+    "deployCommercial": {
+      "value": false
+    },
+    "containerCpu": {
+      "value": "0.25"
+    },
+    "containerMemory": {
+      "value": "0.5Gi"
+    },
+    "minReplicas": {
+      "value": {}
+    },
+    "maxReplicasDefault": {
+      "value": 1
+    },
+    "maxReplicasOverrides": {
+      "value": {}
+    },
+    "seedDevIdentities": {
+      "value": true
+    },
+    "seedTalentClientExtensions": {
+      "value": true
+    },
+    "authMode": {
+      "value": "entra"
+    },
+    "entraTenantId": {
+      "value": "2abce006-6ea2-4675-b39d-33e0a54c46c7"
+    },
+    "entraClientId": {
+      "value": "2ea7f6b8-d3c2-4dda-b806-32549efeadb6"
+    },
+    "publicBaseUrl": {
+      "value": "https://shell-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io"
+    },
+    "recruitmentIntegrationsMode": {
+      "value": "live"
+    },
+    "peopleIntegrationsMode": {
+      "value": "live"
+    },
+    "birthdayIntegrationsMode": {
+      "value": "live"
+    },
+    "bamboohrSubdomain": {
+      "value": "dijitalteam"
+    },
+    "supplierAuthMode": {
+      "value": "entra"
+    },
+    "supplierEntraTenantId": {
+      "value": "2abce006-6ea2-4675-b39d-33e0a54c46c7"
+    },
+    "supplierEntraClientId": {
+      "value": "30e36193-f0e4-40d5-875b-db1ef6a3f2b0"
+    },
+    "supplierPublicBaseUrl": {
+      "value": "https://birthday-supplier-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io"
+    }
+  }
+}

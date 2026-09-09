@@ -1,0 +1,1937 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.46.1.21595",
+      "templateHash": "1385328851001919488"
+    }
+  },
+  "functions": [
+    {
+      "namespace": "__bicep",
+      "members": {
+        "imageRef": {
+          "parameters": [
+            {
+              "type": "string",
+              "name": "svc"
+            },
+            {
+              "type": "string",
+              "name": "registry"
+            },
+            {
+              "type": "object",
+              "name": "digests"
+            },
+            {
+              "type": "string",
+              "name": "tag"
+            }
+          ],
+          "output": {
+            "type": "string",
+            "value": "[if(empty(parameters('digests')), format('{0}/dijione/{1}:{2}', parameters('registry'), parameters('svc'), parameters('tag')), format('{0}/dijione/{1}@{2}', parameters('registry'), parameters('svc'), parameters('digests')[parameters('svc')]))]"
+          }
+        },
+        "_perServiceEnv": {
+          "parameters": [
+            {
+              "type": "string",
+              "name": "svc"
+            },
+            {
+              "type": "string",
+              "name": "authMode"
+            },
+            {
+              "type": "string",
+              "name": "entraTenantId"
+            },
+            {
+              "type": "string",
+              "name": "entraClientId"
+            },
+            {
+              "type": "string",
+              "name": "publicBaseUrl"
+            },
+            {
+              "type": "string",
+              "name": "recruitmentMode"
+            },
+            {
+              "type": "string",
+              "name": "peopleMode"
+            },
+            {
+              "type": "string",
+              "name": "bamboohrSubdomain"
+            },
+            {
+              "type": "string",
+              "name": "supplierAuthMode"
+            },
+            {
+              "type": "string",
+              "name": "supplierEntraTenantId"
+            },
+            {
+              "type": "string",
+              "name": "supplierEntraClientId"
+            },
+            {
+              "type": "string",
+              "name": "supplierPublicBaseUrl"
+            },
+            {
+              "type": "string",
+              "name": "birthdayMode"
+            }
+          ],
+          "output": {
+            "type": "array",
+            "value": "[if(equals(parameters('svc'), 'shell-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ADMIN_API_URL', 'value', 'http://admin-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api'), createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api'), createObject('name', 'SPARK_API_URL', 'value', 'http://spark-api'), createObject('name', 'ADMIN_WEB_URL', 'value', 'http://admin-web'), createObject('name', 'TALENT_WEB_URL', 'value', 'http://talent-web'), createObject('name', 'BIRTHDAY_WEB_URL', 'value', 'http://birthday-web'), createObject('name', 'PUBLIC_BASE_URL', 'value', parameters('publicBaseUrl'))), if(equals(parameters('svc'), 'platform-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'AUTH_MODE', 'value', parameters('authMode')), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('authMode'), 'entra'), createArray(createObject('name', 'ENTRA_TENANT_ID', 'value', parameters('entraTenantId')), createObject('name', 'ENTRA_CLIENT_ID', 'value', parameters('entraClientId')), createObject('name', 'ENTRA_REDIRECT_URI', 'value', format('{0}/api/auth/callback', parameters('publicBaseUrl'))), createObject('name', 'PUBLIC_BASE_URL', 'value', parameters('publicBaseUrl'))), createArray(createObject('name', 'DEV_IDENTITY_MODE', 'value', 'true')))), if(equals(parameters('svc'), 'admin-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('svc'), 'talent-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'RECRUITMENT_API_URL', 'value', 'http://recruitment-api')), if(equals(parameters('svc'), 'recruitment-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('recruitmentMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'OPPORTUNITY_SYNC_LIMIT', 'value', '200')), if(equals(parameters('svc'), 'people-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('peopleMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api')), if(and(equals(parameters('peopleMode'), 'live'), not(empty(parameters('bamboohrSubdomain')))), createArray(createObject('name', 'BAMBOOHR_SUBDOMAIN', 'value', parameters('bamboohrSubdomain'))), createArray())), if(equals(parameters('svc'), 'birthday-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('birthdayMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'PEOPLE_API_URL', 'value', 'http://people-api'), createObject('name', 'SUPPLIER_AUTH_MODE', 'value', parameters('supplierAuthMode'))), if(equals(parameters('supplierAuthMode'), 'entra'), createArray(createObject('name', 'SUPPLIER_ENTRA_TENANT_ID', 'value', parameters('supplierEntraTenantId')), createObject('name', 'SUPPLIER_ENTRA_CLIENT_ID', 'value', parameters('supplierEntraClientId')), createObject('name', 'SUPPLIER_ENTRA_REDIRECT_URI', 'value', format('{0}/api/auth/callback', parameters('supplierPublicBaseUrl'))), createObject('name', 'SUPPLIER_PUBLIC_BASE_URL', 'value', parameters('supplierPublicBaseUrl'))), createArray())), if(equals(parameters('svc'), 'admin-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ADMIN_API_URL', 'value', 'http://admin-api')), if(equals(parameters('svc'), 'talent-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('svc'), 'birthday-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api')), if(equals(parameters('svc'), 'birthday-supplier-web'), createArray(createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api'), createObject('name', 'SUPPLIER_PUBLIC_BASE_URL', 'value', parameters('supplierPublicBaseUrl'))), if(equals(parameters('svc'), 'talentflow-portal-web'), createArray(createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), createArray()))))))))))))]"
+          }
+        },
+        "_apiSecretRefs": {
+          "parameters": [
+            {
+              "type": "string",
+              "name": "svc"
+            },
+            {
+              "type": "string",
+              "name": "db"
+            },
+            {
+              "type": "string",
+              "name": "uri"
+            },
+            {
+              "type": "string",
+              "name": "authMode"
+            },
+            {
+              "type": "string",
+              "name": "env"
+            },
+            {
+              "type": "string",
+              "name": "recruitmentMode"
+            },
+            {
+              "type": "string",
+              "name": "peopleMode"
+            },
+            {
+              "type": "string",
+              "name": "supplierAuthMode"
+            }
+          ],
+          "output": {
+            "type": "array",
+            "value": "[concat(createArray(createObject('name', 'jwt-dev-secret', 'keyVaultUrl', format('{0}secrets/jwt-dev-secret', parameters('uri')), 'envName', 'JWT_DEV_SECRET'), createObject('name', 'internal-service-secret', 'keyVaultUrl', format('{0}secrets/internal-service-secret', parameters('uri')), 'envName', 'INTERNAL_SERVICE_SECRET')), if(equals(parameters('svc'), 'talent-api'), createArray(createObject('name', 'external-session-jwt-secret', 'keyVaultUrl', format('{0}secrets/external-session-jwt-secret', parameters('uri')), 'envName', 'EXTERNAL_SESSION_JWT_SECRET')), createArray()), if(and(equals(parameters('svc'), 'platform-api'), equals(parameters('authMode'), 'entra')), createArray(createObject('name', format('entra-client-secret-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/entra-client-secret-{1}', parameters('uri'), parameters('env')), 'envName', 'ENTRA_CLIENT_SECRET')), createArray()), if(and(equals(parameters('svc'), 'recruitment-api'), equals(parameters('recruitmentMode'), 'live')), createArray(createObject('name', format('lever-api-key-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/lever-api-key-{1}', parameters('uri'), parameters('env')), 'envName', 'LEVER_API_KEY')), createArray()), if(and(equals(parameters('svc'), 'people-api'), equals(parameters('peopleMode'), 'live')), createArray(createObject('name', format('bamboohr-api-key-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/bamboohr-api-key-{1}', parameters('uri'), parameters('env')), 'envName', 'BAMBOOHR_API_KEY')), createArray()), if(and(equals(parameters('svc'), 'birthday-api'), equals(parameters('supplierAuthMode'), 'entra')), createArray(createObject('name', format('birthday-supplier-entra-secret-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/birthday-supplier-entra-secret-{1}', parameters('uri'), parameters('env')), 'envName', 'SUPPLIER_ENTRA_CLIENT_SECRET')), createArray()), if(equals(parameters('db'), ''), createArray(), createArray(createObject('name', format('database-url-{0}', replace(parameters('db'), '_dev', '')), 'keyVaultUrl', format('{0}secrets/database-url-{1}', parameters('uri'), replace(parameters('db'), '_dev', '')), 'envName', 'DATABASE_URL'))))]"
+          }
+        },
+        "_dbFor": {
+          "parameters": [
+            {
+              "type": "string",
+              "name": "svc"
+            }
+          ],
+          "output": {
+            "type": "string",
+            "value": "[if(equals(parameters('svc'), 'platform-api'), 'platform_dev', if(equals(parameters('svc'), 'talent-api'), 'talent_dev', if(equals(parameters('svc'), 'recruitment-api'), 'recruitment_dev', if(equals(parameters('svc'), 'people-api'), 'people_dev', if(equals(parameters('svc'), 'birthday-api'), 'birthday_dev', 'commercial_dev')))))]"
+          }
+        }
+      }
+    }
+  ],
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": {
+        "description": "dev | uat | prod."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "southeastasia",
+      "metadata": {
+        "description": "Azure region."
+      }
+    },
+    "imageRegistryLoginServer": {
+      "type": "string",
+      "metadata": {
+        "description": "Registry login server for THIS environment, e.g. crdijionenonprod.azurecr.io (dev/uat) or crdijioneprod.azurecr.io (prod)."
+      }
+    },
+    "imageRegistryName": {
+      "type": "string",
+      "metadata": {
+        "description": "Registry name, e.g. crdijionenonprod."
+      }
+    },
+    "imageRegistryResourceGroup": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource group the registry lives in (rg-dijione-shared for dev/uat; rg-dijione-prod for prod)."
+      }
+    },
+    "imageDigests": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "service -> sha256 digest, e.g. { \"platform-api\": \"sha256:abc...\" }. When set it MUST cover every deployed service."
+      }
+    },
+    "imageTag": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Fallback tag for a first bring-up only, when imageDigests is empty. A git SHA."
+      }
+    },
+    "deployBirthday": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy DijiBirthday (people-api, birthday-api, birthday-web, birthday-supplier-web + 2 jobs)."
+      }
+    },
+    "deployCommercial": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy the commercial-api skeleton."
+      }
+    },
+    "containerCpu": {
+      "type": "string",
+      "defaultValue": "0.25",
+      "metadata": {
+        "description": "Container size — lean floor by default (Amendment 8)."
+      }
+    },
+    "containerMemory": {
+      "type": "string",
+      "defaultValue": "0.5Gi"
+    },
+    "minReplicas": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Per-service replica floor. Empty = every service scales to zero (DEV/UAT). PROD sets platform-api + shell-web to 1."
+      }
+    },
+    "maxReplicasDefault": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Default replica ceiling and per-service overrides."
+      }
+    },
+    "maxReplicasOverrides": {
+      "type": "object",
+      "defaultValue": {}
+    },
+    "seedDevIdentities": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "DEV only: create a Manual bootstrap-identity job that seeds the 5 staff dev-login personas (no business data). UAT/PROD create real users via the Admin Center."
+      }
+    },
+    "seedTalentClientExtensions": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Create a Manual bootstrap-talent-clients job that runs talent-api/scripts/seed.py — it pulls the canonical client directory from platform-api (GET /api/platform/internal/clients) and creates ONLY the talent_dev.clients extension rows (platform_client_id + name), idempotent, no business data. Needed for the governed DTC tag -> Client resolution."
+      }
+    },
+    "authMode": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [
+        "dev",
+        "entra"
+      ],
+      "metadata": {
+        "description": "Internal identity mode for platform-api. \"dev\" = the passwordless persona switcher; \"entra\" = real Microsoft Entra ID OIDC (Authorization Code + PKCE). \"entra\" also requires entraTenantId, entraClientId, publicBaseUrl, and the entra-client-secret-<env> Key Vault secret."
+      }
+    },
+    "entraTenantId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Entra directory (tenant) id. Only used when authMode == entra."
+      }
+    },
+    "entraClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Application (client) id of the per-environment DijiOne Entra app registration. Only used when authMode == entra."
+      }
+    },
+    "publicBaseUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Public HTTPS origin of shell-web for this environment, e.g. https://shell-web.<env-domain>. Backs the Entra redirect URI and the front-channel logout redirect."
+      }
+    },
+    "recruitmentIntegrationsMode": {
+      "type": "string",
+      "defaultValue": "mock",
+      "allowedValues": [
+        "mock",
+        "live"
+      ],
+      "metadata": {
+        "description": "recruitment-api provider mode. \"mock\" = MockLeverClient; \"live\" = the GET-only LiveLeverClient, which also needs the lever-api-key-<env> Key Vault secret. Lever is READ-ONLY by construction (CLAUDE.md §60)."
+      }
+    },
+    "peopleIntegrationsMode": {
+      "type": "string",
+      "defaultValue": "mock",
+      "allowedValues": [
+        "mock",
+        "live"
+      ],
+      "metadata": {
+        "description": "people-api provider mode. \"mock\" = MockBambooHrClient; \"live\" = the read-only live client, which also needs the bamboohr-api-key-<env> Key Vault secret and bamboohrSubdomain. Never writes to BambooHR."
+      }
+    },
+    "bamboohrSubdomain": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "BambooHR company subdomain (the <sub> in api.bamboohr.com/api/gateway.php/<sub>/v1). Only used when peopleIntegrationsMode == live."
+      }
+    },
+    "birthdayIntegrationsMode": {
+      "type": "string",
+      "defaultValue": "mock",
+      "allowedValues": [
+        "mock",
+        "live"
+      ],
+      "metadata": {
+        "description": "birthday-api People-source mode. \"mock\" = MockEmployeeSource; \"live\" = PeopleApiEmployeeSource (consumes people-api over HTTP; birthday-api still holds NO BambooHR credential and no employee mirror). EMAIL_SENDING_MODE stays mock regardless (Phase 1 §1.9)."
+      }
+    },
+    "supplierAuthMode": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [
+        "dev",
+        "entra"
+      ],
+      "metadata": {
+        "description": "Birthday Supplier Portal auth. \"dev\" = the seeded SupplierUser persona picker; \"entra\" = real Microsoft Entra ID B2B guest sign-in (Auth Code + PKCE) via birthday-api, which also needs the birthday-supplier-entra-secret-<env> Key Vault secret. Independent of the internal DijiOne authMode."
+      }
+    },
+    "supplierEntraTenantId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Entra directory (tenant) id for supplier B2B guest sign-in. Only used when supplierAuthMode == entra. Same directory as the internal tenant."
+      }
+    },
+    "supplierEntraClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Application (client) id of the per-environment dijione-birthday-supplier Entra app registration. Only used when supplierAuthMode == entra."
+      }
+    },
+    "supplierPublicBaseUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Public HTTPS origin of birthday-supplier-web, e.g. https://birthday-supplier-web.<env-domain>. Backs the supplier Entra redirect URI."
+      }
+    }
+  },
+  "variables": {
+    "tags": {
+      "platform": "dijione",
+      "env": "[parameters('environmentName')]",
+      "managedBy": "bicep"
+    },
+    "kvName": "[format('kv-dijione-{0}', parameters('environmentName'))]",
+    "caeName": "[format('cae-dijione-{0}', parameters('environmentName'))]",
+    "uamiName": "[format('id-dijione-{0}', parameters('environmentName'))]",
+    "coreServices": [
+      {
+        "name": "platform-api",
+        "kind": "api",
+        "db": "platform_dev",
+        "external": false
+      },
+      {
+        "name": "admin-api",
+        "kind": "api",
+        "db": "",
+        "external": false
+      },
+      {
+        "name": "talent-api",
+        "kind": "api",
+        "db": "talent_dev",
+        "external": false
+      },
+      {
+        "name": "recruitment-api",
+        "kind": "api",
+        "db": "recruitment_dev",
+        "external": false
+      },
+      {
+        "name": "shell-web",
+        "kind": "web",
+        "db": "",
+        "external": true
+      },
+      {
+        "name": "admin-web",
+        "kind": "web",
+        "db": "",
+        "external": false
+      },
+      {
+        "name": "talent-web",
+        "kind": "web",
+        "db": "",
+        "external": false
+      },
+      {
+        "name": "talentflow-portal-web",
+        "kind": "web",
+        "db": "",
+        "external": true
+      }
+    ],
+    "birthdayServices": [
+      {
+        "name": "people-api",
+        "kind": "api",
+        "db": "people_dev",
+        "external": false
+      },
+      {
+        "name": "birthday-api",
+        "kind": "api",
+        "db": "birthday_dev",
+        "external": false
+      },
+      {
+        "name": "birthday-web",
+        "kind": "web",
+        "db": "",
+        "external": false
+      },
+      {
+        "name": "birthday-supplier-web",
+        "kind": "web",
+        "db": "",
+        "external": true
+      }
+    ],
+    "commercialServices": [
+      {
+        "name": "commercial-api",
+        "kind": "api",
+        "db": "commercial_dev",
+        "external": false
+      }
+    ],
+    "services": "[concat(variables('coreServices'), if(parameters('deployBirthday'), variables('birthdayServices'), createArray()), if(parameters('deployCommercial'), variables('commercialServices'), createArray()))]",
+    "migrateTargets": "[concat(createArray('platform-api', 'talent-api', 'recruitment-api'), if(parameters('deployBirthday'), createArray('people-api', 'birthday-api'), createArray()), if(parameters('deployCommercial'), createArray('commercial-api'), createArray()))]",
+    "scheduledJobs": "[concat(createArray(createObject('name', 'recruitment-sync-job', 'image', 'recruitment-api', 'cron', '0 */6 * * *', 'url', 'http://recruitment-api/api/recruitment/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'talent-reconcile-job', 'image', 'talent-api', 'cron', '15 */6 * * *', 'url', 'http://talent-api/api/talent/internal/recruitment/reconcile', 'timeout', 900)), if(parameters('deployBirthday'), createArray(createObject('name', 'people-sync-job', 'image', 'people-api', 'cron', '0 5 * * *', 'url', 'http://people-api/api/people/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'birthday-scan-job', 'image', 'birthday-api', 'cron', '30 5 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-daily-scan', 'timeout', 900), createObject('name', 'birthday-attention-job', 'image', 'birthday-api', 'cron', '0 6 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-attention', 'timeout', 600), createObject('name', 'birthday-comms-job', 'image', 'birthday-api', 'cron', '*/10 * * * *', 'url', 'http://birthday-api/api/birthday/internal/run-comms', 'timeout', 600)), createArray()))]"
+  },
+  "resources": {
+    "cae": {
+      "existing": true,
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('caeName')]"
+    },
+    "kv": {
+      "existing": true,
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('kvName')]"
+    },
+    "identity": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "identity",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('uamiName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "keyVaultName": {
+            "value": "[variables('kvName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "14222176492384674482"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "UAMI name, e.g. id-dijione-dev."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault name (same RG) — this identity receives Key Vault Secrets User on it."
+              }
+            }
+          },
+          "variables": {
+            "kvSecretsUserRoleId": "4633458b-17de-408a-b874-0445c86b69e6"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), variables('kvSecretsUserRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('kvSecretsUserRoleId'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name'))]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), '2023-01-31').principalId]"
+            },
+            "clientId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), '2023-01-31').clientId]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      }
+    },
+    "uamiAcrPull": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('acrpull-{0}', variables('uamiName'))]",
+      "resourceGroup": "[parameters('imageRegistryResourceGroup')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "acrName": {
+            "value": "[parameters('imageRegistryName')]"
+          },
+          "granteeName": {
+            "value": "[variables('uamiName')]"
+          },
+          "principalId": {
+            "value": "[reference('identity').outputs.principalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "3660136379277234820"
+            }
+          },
+          "parameters": {
+            "acrName": {
+              "type": "string",
+              "metadata": {
+                "description": "Registry name, e.g. crdijionenonprod. Must exist in this module's resource group."
+              }
+            },
+            "granteeName": {
+              "type": "string",
+              "metadata": {
+                "description": "Stable identifier for the grantee (the app/job name) — only used to make the assignment name unique."
+              }
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "The Container App / Job system-assigned identity principalId."
+              }
+            }
+          },
+          "variables": {
+            "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), parameters('granteeName'), variables('acrPullRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "identity"
+      ]
+    },
+    "apps": {
+      "copy": {
+        "name": "apps",
+        "count": "[length(variables('services'))]",
+        "mode": "serial",
+        "batchSize": 4
+      },
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('app-{0}', variables('services')[copyIndex()].name)]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('services')[copyIndex()].name]"
+          },
+          "image": {
+            "value": "[__bicep.imageRef(variables('services')[copyIndex()].name, parameters('imageRegistryLoginServer'), parameters('imageDigests'), parameters('imageTag'))]"
+          },
+          "managedEnvironmentId": {
+            "value": "[resourceId('Microsoft.App/managedEnvironments', variables('caeName'))]"
+          },
+          "acrLoginServer": {
+            "value": "[parameters('imageRegistryLoginServer')]"
+          },
+          "userAssignedIdentityId": {
+            "value": "[reference('identity').outputs.id.value]"
+          },
+          "targetPort": "[if(equals(variables('services')[copyIndex()].kind, 'api'), createObject('value', 8000), createObject('value', 3000))]",
+          "isApi": {
+            "value": "[equals(variables('services')[copyIndex()].kind, 'api')]"
+          },
+          "external": {
+            "value": "[variables('services')[copyIndex()].external]"
+          },
+          "minReplicas": {
+            "value": "[coalesce(tryGet(parameters('minReplicas'), variables('services')[copyIndex()].name), 0)]"
+          },
+          "maxReplicas": {
+            "value": "[coalesce(tryGet(parameters('maxReplicasOverrides'), variables('services')[copyIndex()].name), parameters('maxReplicasDefault'))]"
+          },
+          "cpu": {
+            "value": "[parameters('containerCpu')]"
+          },
+          "memory": {
+            "value": "[parameters('containerMemory')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "envVars": {
+            "value": "[concat(if(equals(variables('services')[copyIndex()].kind, 'api'), createArray(createObject('name', 'APP_ENV', 'value', if(equals(parameters('environmentName'), 'dev'), 'development', parameters('environmentName'))), createObject('name', 'EMAIL_SENDING_MODE', 'value', 'mock'), createObject('name', 'API_CORS_ORIGINS', 'value', join(createArray(format('https://shell-web.{0}', reference('cae').defaultDomain), format('https://talentflow-portal-web.{0}', reference('cae').defaultDomain), if(parameters('deployBirthday'), format('https://birthday-supplier-web.{0}', reference('cae').defaultDomain), '')), ','))), createArray()), __bicep._perServiceEnv(variables('services')[copyIndex()].name, parameters('authMode'), parameters('entraTenantId'), parameters('entraClientId'), parameters('publicBaseUrl'), parameters('recruitmentIntegrationsMode'), parameters('peopleIntegrationsMode'), parameters('bamboohrSubdomain'), parameters('supplierAuthMode'), parameters('supplierEntraTenantId'), parameters('supplierEntraClientId'), parameters('supplierPublicBaseUrl'), parameters('birthdayIntegrationsMode')))]"
+          },
+          "secretRefs": "[if(equals(variables('services')[copyIndex()].kind, 'api'), createObject('value', __bicep._apiSecretRefs(variables('services')[copyIndex()].name, variables('services')[copyIndex()].db, reference('kv').vaultUri, parameters('authMode'), parameters('environmentName'), parameters('recruitmentIntegrationsMode'), parameters('peopleIntegrationsMode'), parameters('supplierAuthMode'))), createObject('value', createArray()))]"
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "13272718894302306785"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Container App name — also the internal DNS hostname (http://<name>)."
+              }
+            },
+            "image": {
+              "type": "string",
+              "metadata": {
+                "description": "Full image reference, e.g. crdijionedev.azurecr.io/dijione/platform-api:<gitsha>"
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string",
+              "metadata": {
+                "description": "ACA managed environment resource id."
+              }
+            },
+            "acrLoginServer": {
+              "type": "string",
+              "metadata": {
+                "description": "ACR login server, e.g. crdijionedev.azurecr.io"
+              }
+            },
+            "userAssignedIdentityId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource id of the shared user-assigned identity (id-dijione-<env>) used for ACR pull + Key Vault secret resolution."
+              }
+            },
+            "workloadProfileName": {
+              "type": "string",
+              "defaultValue": "Consumption",
+              "metadata": {
+                "description": "Workload profile to run on. Consumption on every DijiOne env."
+              }
+            },
+            "targetPort": {
+              "type": "int",
+              "metadata": {
+                "description": "8000 for APIs, 3000 for web apps."
+              }
+            },
+            "isApi": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "true = FastAPI service with a GET /health route (gets HTTP probes). false = Next.js web app (no /health; uses the platform default TCP probe)."
+              }
+            },
+            "external": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "true = public ingress (shell-web + the two external portals only)."
+              }
+            },
+            "minReplicas": {
+              "type": "int",
+              "defaultValue": 0
+            },
+            "maxReplicas": {
+              "type": "int",
+              "defaultValue": 2
+            },
+            "cpu": {
+              "type": "string",
+              "defaultValue": "0.25"
+            },
+            "memory": {
+              "type": "string",
+              "defaultValue": "0.5Gi"
+            },
+            "envVars": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Plain (non-secret) env vars: [{ name, value }]."
+              }
+            },
+            "secretRefs": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Key Vault-backed secrets: [{ name, keyVaultUrl }]. Each becomes an ACA secret (read via managed identity) and an env var <NAME_UPPER> = secretRef(name)."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "acaSecrets",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('acaSecrets')].name]",
+                  "keyVaultUrl": "[parameters('secretRefs')[copyIndex('acaSecrets')].keyVaultUrl]",
+                  "identity": "[parameters('userAssignedIdentityId')]"
+                }
+              },
+              {
+                "name": "secretEnv",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('secretEnv')].envName]",
+                  "secretRef": "[parameters('secretRefs')[copyIndex('secretEnv')].name]"
+                }
+              }
+            ],
+            "httpProbes": "[if(parameters('isApi'), createArray(createObject('type', 'Liveness', 'httpGet', createObject('path', '/health', 'port', parameters('targetPort')), 'initialDelaySeconds', 5, 'periodSeconds', 15, 'failureThreshold', 4), createObject('type', 'Readiness', 'httpGet', createObject('path', '/health', 'port', parameters('targetPort')), 'initialDelaySeconds', 5, 'periodSeconds', 15, 'failureThreshold', 6)), createArray())]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned, UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+                }
+              },
+              "properties": {
+                "managedEnvironmentId": "[parameters('managedEnvironmentId')]",
+                "workloadProfileName": "[parameters('workloadProfileName')]",
+                "configuration": {
+                  "activeRevisionsMode": "Single",
+                  "ingress": {
+                    "external": "[parameters('external')]",
+                    "targetPort": "[parameters('targetPort')]",
+                    "transport": "auto",
+                    "allowInsecure": false
+                  },
+                  "registries": [
+                    {
+                      "server": "[parameters('acrLoginServer')]",
+                      "identity": "[parameters('userAssignedIdentityId')]"
+                    }
+                  ],
+                  "secrets": "[variables('acaSecrets')]"
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "[parameters('name')]",
+                      "image": "[parameters('image')]",
+                      "resources": {
+                        "cpu": "[json(parameters('cpu'))]",
+                        "memory": "[parameters('memory')]"
+                      },
+                      "env": "[concat(parameters('envVars'), variables('secretEnv'))]",
+                      "probes": "[variables('httpProbes')]"
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": "[parameters('minReplicas')]",
+                    "maxReplicas": "[parameters('maxReplicas')]"
+                  }
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "systemPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('name')), '2024-03-01', 'full').identity.principalId]"
+            },
+            "fqdn": {
+              "type": "string",
+              "value": "[if(parameters('external'), reference(resourceId('Microsoft.App/containerApps', parameters('name')), '2024-03-01').configuration.ingress.fqdn, '')]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "cae",
+        "identity",
+        "kv",
+        "uamiAcrPull"
+      ]
+    },
+    "migrateJobs": {
+      "copy": {
+        "name": "migrateJobs",
+        "count": "[length(variables('migrateTargets'))]"
+      },
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('job-migrate-{0}', variables('migrateTargets')[copyIndex()])]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('migrate-{0}', variables('migrateTargets')[copyIndex()])]"
+          },
+          "image": {
+            "value": "[__bicep.imageRef(variables('migrateTargets')[copyIndex()], parameters('imageRegistryLoginServer'), parameters('imageDigests'), parameters('imageTag'))]"
+          },
+          "managedEnvironmentId": {
+            "value": "[resourceId('Microsoft.App/managedEnvironments', variables('caeName'))]"
+          },
+          "acrLoginServer": {
+            "value": "[parameters('imageRegistryLoginServer')]"
+          },
+          "userAssignedIdentityId": {
+            "value": "[reference('identity').outputs.id.value]"
+          },
+          "triggerType": {
+            "value": "Manual"
+          },
+          "replicaTimeout": {
+            "value": 900
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "command": {
+            "value": [
+              "/bin/sh",
+              "-c"
+            ]
+          },
+          "args": {
+            "value": [
+              "alembic upgrade head"
+            ]
+          },
+          "envVars": {
+            "value": [
+              {
+                "name": "APP_ENV",
+                "value": "[if(equals(parameters('environmentName'), 'dev'), 'development', parameters('environmentName'))]"
+              }
+            ]
+          },
+          "secretRefs": {
+            "value": [
+              {
+                "name": "[format('database-url-{0}', replace(__bicep._dbFor(variables('migrateTargets')[copyIndex()]), '_dev', ''))]",
+                "keyVaultUrl": "[format('{0}secrets/database-url-{1}', reference('kv').vaultUri, replace(__bicep._dbFor(variables('migrateTargets')[copyIndex()]), '_dev', ''))]",
+                "envName": "DATABASE_URL"
+              }
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "15536014598024239761"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Job name, e.g. recruitment-sync-job or migrate-talent-api."
+              }
+            },
+            "image": {
+              "type": "string",
+              "metadata": {
+                "description": "Image to run — the OWNING service's image for a migrate job."
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string"
+            },
+            "acrLoginServer": {
+              "type": "string"
+            },
+            "userAssignedIdentityId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource id of the shared user-assigned identity (id-dijione-<env>) used for ACR pull + Key Vault secret resolution."
+              }
+            },
+            "workloadProfileName": {
+              "type": "string",
+              "defaultValue": "Consumption"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "triggerType": {
+              "type": "string",
+              "defaultValue": "Manual",
+              "allowedValues": [
+                "Schedule",
+                "Manual"
+              ],
+              "metadata": {
+                "description": "Schedule | Manual"
+              }
+            },
+            "cronExpression": {
+              "type": "string",
+              "defaultValue": "0 0 * * *",
+              "metadata": {
+                "description": "Cron (UTC), only used when triggerType == Schedule."
+              }
+            },
+            "replicaTimeout": {
+              "type": "int",
+              "defaultValue": 900
+            },
+            "cpu": {
+              "type": "string",
+              "defaultValue": "0.25"
+            },
+            "memory": {
+              "type": "string",
+              "defaultValue": "0.5Gi"
+            },
+            "command": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container command, e.g. [ \"/bin/sh\" ]."
+              }
+            },
+            "args": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container args."
+              }
+            },
+            "envVars": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Plain env vars [{ name, value }]."
+              }
+            },
+            "secretRefs": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Key Vault-backed secrets [{ name, keyVaultUrl, envName }]."
+              }
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "acaSecrets",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('acaSecrets')].name]",
+                  "keyVaultUrl": "[parameters('secretRefs')[copyIndex('acaSecrets')].keyVaultUrl]",
+                  "identity": "[parameters('userAssignedIdentityId')]"
+                }
+              },
+              {
+                "name": "secretEnv",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('secretEnv')].envName]",
+                  "secretRef": "[parameters('secretRefs')[copyIndex('secretEnv')].name]"
+                }
+              }
+            ],
+            "scheduleConfig": "[if(equals(parameters('triggerType'), 'Schedule'), createObject('scheduleTriggerConfig', createObject('cronExpression', parameters('cronExpression'), 'parallelism', 1, 'replicaCompletionCount', 1)), createObject('manualTriggerConfig', createObject('parallelism', 1, 'replicaCompletionCount', 1)))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/jobs",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned, UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('managedEnvironmentId')]",
+                "workloadProfileName": "[parameters('workloadProfileName')]",
+                "configuration": "[union(createObject('triggerType', parameters('triggerType'), 'replicaTimeout', parameters('replicaTimeout'), 'replicaRetryLimit', 1, 'registries', createArray(createObject('server', parameters('acrLoginServer'), 'identity', parameters('userAssignedIdentityId'))), 'secrets', variables('acaSecrets')), variables('scheduleConfig'))]",
+                "template": {
+                  "containers": [
+                    {
+                      "name": "[parameters('name')]",
+                      "image": "[parameters('image')]",
+                      "command": "[if(empty(parameters('command')), null(), parameters('command'))]",
+                      "args": "[if(empty(parameters('args')), null(), parameters('args'))]",
+                      "resources": {
+                        "cpu": "[json(parameters('cpu'))]",
+                        "memory": "[parameters('memory')]"
+                      },
+                      "env": "[concat(parameters('envVars'), variables('secretEnv'))]"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "systemPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/jobs', parameters('name')), '2024-03-01', 'full').identity.principalId]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "identity",
+        "kv",
+        "uamiAcrPull"
+      ]
+    },
+    "bootstrapIdentityJob": {
+      "condition": "[parameters('seedDevIdentities')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "job-bootstrap-identity",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "bootstrap-identity"
+          },
+          "image": {
+            "value": "[__bicep.imageRef('platform-api', parameters('imageRegistryLoginServer'), parameters('imageDigests'), parameters('imageTag'))]"
+          },
+          "managedEnvironmentId": {
+            "value": "[resourceId('Microsoft.App/managedEnvironments', variables('caeName'))]"
+          },
+          "acrLoginServer": {
+            "value": "[parameters('imageRegistryLoginServer')]"
+          },
+          "userAssignedIdentityId": {
+            "value": "[reference('identity').outputs.id.value]"
+          },
+          "triggerType": {
+            "value": "Manual"
+          },
+          "replicaTimeout": {
+            "value": 600
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "command": {
+            "value": [
+              "/bin/sh",
+              "-c"
+            ]
+          },
+          "args": {
+            "value": [
+              "python scripts/seed.py --identity-only"
+            ]
+          },
+          "envVars": {
+            "value": [
+              {
+                "name": "APP_ENV",
+                "value": "[if(equals(parameters('environmentName'), 'dev'), 'development', parameters('environmentName'))]"
+              }
+            ]
+          },
+          "secretRefs": {
+            "value": [
+              {
+                "name": "database-url-platform",
+                "keyVaultUrl": "[format('{0}secrets/database-url-platform', reference('kv').vaultUri)]",
+                "envName": "DATABASE_URL"
+              }
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "15536014598024239761"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Job name, e.g. recruitment-sync-job or migrate-talent-api."
+              }
+            },
+            "image": {
+              "type": "string",
+              "metadata": {
+                "description": "Image to run — the OWNING service's image for a migrate job."
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string"
+            },
+            "acrLoginServer": {
+              "type": "string"
+            },
+            "userAssignedIdentityId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource id of the shared user-assigned identity (id-dijione-<env>) used for ACR pull + Key Vault secret resolution."
+              }
+            },
+            "workloadProfileName": {
+              "type": "string",
+              "defaultValue": "Consumption"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "triggerType": {
+              "type": "string",
+              "defaultValue": "Manual",
+              "allowedValues": [
+                "Schedule",
+                "Manual"
+              ],
+              "metadata": {
+                "description": "Schedule | Manual"
+              }
+            },
+            "cronExpression": {
+              "type": "string",
+              "defaultValue": "0 0 * * *",
+              "metadata": {
+                "description": "Cron (UTC), only used when triggerType == Schedule."
+              }
+            },
+            "replicaTimeout": {
+              "type": "int",
+              "defaultValue": 900
+            },
+            "cpu": {
+              "type": "string",
+              "defaultValue": "0.25"
+            },
+            "memory": {
+              "type": "string",
+              "defaultValue": "0.5Gi"
+            },
+            "command": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container command, e.g. [ \"/bin/sh\" ]."
+              }
+            },
+            "args": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container args."
+              }
+            },
+            "envVars": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Plain env vars [{ name, value }]."
+              }
+            },
+            "secretRefs": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Key Vault-backed secrets [{ name, keyVaultUrl, envName }]."
+              }
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "acaSecrets",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('acaSecrets')].name]",
+                  "keyVaultUrl": "[parameters('secretRefs')[copyIndex('acaSecrets')].keyVaultUrl]",
+                  "identity": "[parameters('userAssignedIdentityId')]"
+                }
+              },
+              {
+                "name": "secretEnv",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('secretEnv')].envName]",
+                  "secretRef": "[parameters('secretRefs')[copyIndex('secretEnv')].name]"
+                }
+              }
+            ],
+            "scheduleConfig": "[if(equals(parameters('triggerType'), 'Schedule'), createObject('scheduleTriggerConfig', createObject('cronExpression', parameters('cronExpression'), 'parallelism', 1, 'replicaCompletionCount', 1)), createObject('manualTriggerConfig', createObject('parallelism', 1, 'replicaCompletionCount', 1)))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/jobs",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned, UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('managedEnvironmentId')]",
+                "workloadProfileName": "[parameters('workloadProfileName')]",
+                "configuration": "[union(createObject('triggerType', parameters('triggerType'), 'replicaTimeout', parameters('replicaTimeout'), 'replicaRetryLimit', 1, 'registries', createArray(createObject('server', parameters('acrLoginServer'), 'identity', parameters('userAssignedIdentityId'))), 'secrets', variables('acaSecrets')), variables('scheduleConfig'))]",
+                "template": {
+                  "containers": [
+                    {
+                      "name": "[parameters('name')]",
+                      "image": "[parameters('image')]",
+                      "command": "[if(empty(parameters('command')), null(), parameters('command'))]",
+                      "args": "[if(empty(parameters('args')), null(), parameters('args'))]",
+                      "resources": {
+                        "cpu": "[json(parameters('cpu'))]",
+                        "memory": "[parameters('memory')]"
+                      },
+                      "env": "[concat(parameters('envVars'), variables('secretEnv'))]"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "systemPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/jobs', parameters('name')), '2024-03-01', 'full').identity.principalId]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "identity",
+        "kv",
+        "uamiAcrPull"
+      ]
+    },
+    "bootstrapTalentClientsJob": {
+      "condition": "[parameters('seedTalentClientExtensions')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "job-bootstrap-talent-clients",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "bootstrap-talent-clients"
+          },
+          "image": {
+            "value": "[__bicep.imageRef('talent-api', parameters('imageRegistryLoginServer'), parameters('imageDigests'), parameters('imageTag'))]"
+          },
+          "managedEnvironmentId": {
+            "value": "[resourceId('Microsoft.App/managedEnvironments', variables('caeName'))]"
+          },
+          "acrLoginServer": {
+            "value": "[parameters('imageRegistryLoginServer')]"
+          },
+          "userAssignedIdentityId": {
+            "value": "[reference('identity').outputs.id.value]"
+          },
+          "triggerType": {
+            "value": "Manual"
+          },
+          "replicaTimeout": {
+            "value": 600
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "command": {
+            "value": [
+              "/bin/sh",
+              "-c"
+            ]
+          },
+          "args": {
+            "value": [
+              "python scripts/seed.py"
+            ]
+          },
+          "envVars": {
+            "value": [
+              {
+                "name": "APP_ENV",
+                "value": "[if(equals(parameters('environmentName'), 'dev'), 'development', parameters('environmentName'))]"
+              },
+              {
+                "name": "PLATFORM_API_URL",
+                "value": "http://platform-api"
+              }
+            ]
+          },
+          "secretRefs": {
+            "value": [
+              {
+                "name": "database-url-talent",
+                "keyVaultUrl": "[format('{0}secrets/database-url-talent', reference('kv').vaultUri)]",
+                "envName": "DATABASE_URL"
+              },
+              {
+                "name": "internal-service-secret",
+                "keyVaultUrl": "[format('{0}secrets/internal-service-secret', reference('kv').vaultUri)]",
+                "envName": "INTERNAL_SERVICE_SECRET"
+              },
+              {
+                "name": "jwt-dev-secret",
+                "keyVaultUrl": "[format('{0}secrets/jwt-dev-secret', reference('kv').vaultUri)]",
+                "envName": "JWT_DEV_SECRET"
+              }
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "15536014598024239761"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Job name, e.g. recruitment-sync-job or migrate-talent-api."
+              }
+            },
+            "image": {
+              "type": "string",
+              "metadata": {
+                "description": "Image to run — the OWNING service's image for a migrate job."
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string"
+            },
+            "acrLoginServer": {
+              "type": "string"
+            },
+            "userAssignedIdentityId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource id of the shared user-assigned identity (id-dijione-<env>) used for ACR pull + Key Vault secret resolution."
+              }
+            },
+            "workloadProfileName": {
+              "type": "string",
+              "defaultValue": "Consumption"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "triggerType": {
+              "type": "string",
+              "defaultValue": "Manual",
+              "allowedValues": [
+                "Schedule",
+                "Manual"
+              ],
+              "metadata": {
+                "description": "Schedule | Manual"
+              }
+            },
+            "cronExpression": {
+              "type": "string",
+              "defaultValue": "0 0 * * *",
+              "metadata": {
+                "description": "Cron (UTC), only used when triggerType == Schedule."
+              }
+            },
+            "replicaTimeout": {
+              "type": "int",
+              "defaultValue": 900
+            },
+            "cpu": {
+              "type": "string",
+              "defaultValue": "0.25"
+            },
+            "memory": {
+              "type": "string",
+              "defaultValue": "0.5Gi"
+            },
+            "command": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container command, e.g. [ \"/bin/sh\" ]."
+              }
+            },
+            "args": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container args."
+              }
+            },
+            "envVars": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Plain env vars [{ name, value }]."
+              }
+            },
+            "secretRefs": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Key Vault-backed secrets [{ name, keyVaultUrl, envName }]."
+              }
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "acaSecrets",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('acaSecrets')].name]",
+                  "keyVaultUrl": "[parameters('secretRefs')[copyIndex('acaSecrets')].keyVaultUrl]",
+                  "identity": "[parameters('userAssignedIdentityId')]"
+                }
+              },
+              {
+                "name": "secretEnv",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('secretEnv')].envName]",
+                  "secretRef": "[parameters('secretRefs')[copyIndex('secretEnv')].name]"
+                }
+              }
+            ],
+            "scheduleConfig": "[if(equals(parameters('triggerType'), 'Schedule'), createObject('scheduleTriggerConfig', createObject('cronExpression', parameters('cronExpression'), 'parallelism', 1, 'replicaCompletionCount', 1)), createObject('manualTriggerConfig', createObject('parallelism', 1, 'replicaCompletionCount', 1)))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/jobs",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned, UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('managedEnvironmentId')]",
+                "workloadProfileName": "[parameters('workloadProfileName')]",
+                "configuration": "[union(createObject('triggerType', parameters('triggerType'), 'replicaTimeout', parameters('replicaTimeout'), 'replicaRetryLimit', 1, 'registries', createArray(createObject('server', parameters('acrLoginServer'), 'identity', parameters('userAssignedIdentityId'))), 'secrets', variables('acaSecrets')), variables('scheduleConfig'))]",
+                "template": {
+                  "containers": [
+                    {
+                      "name": "[parameters('name')]",
+                      "image": "[parameters('image')]",
+                      "command": "[if(empty(parameters('command')), null(), parameters('command'))]",
+                      "args": "[if(empty(parameters('args')), null(), parameters('args'))]",
+                      "resources": {
+                        "cpu": "[json(parameters('cpu'))]",
+                        "memory": "[parameters('memory')]"
+                      },
+                      "env": "[concat(parameters('envVars'), variables('secretEnv'))]"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "systemPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/jobs', parameters('name')), '2024-03-01', 'full').identity.principalId]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "identity",
+        "kv",
+        "uamiAcrPull"
+      ]
+    },
+    "syncJobs": {
+      "copy": {
+        "name": "syncJobs",
+        "count": "[length(variables('scheduledJobs'))]"
+      },
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('job-{0}', variables('scheduledJobs')[copyIndex()].name)]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('scheduledJobs')[copyIndex()].name]"
+          },
+          "image": {
+            "value": "[__bicep.imageRef(variables('scheduledJobs')[copyIndex()].image, parameters('imageRegistryLoginServer'), parameters('imageDigests'), parameters('imageTag'))]"
+          },
+          "managedEnvironmentId": {
+            "value": "[resourceId('Microsoft.App/managedEnvironments', variables('caeName'))]"
+          },
+          "acrLoginServer": {
+            "value": "[parameters('imageRegistryLoginServer')]"
+          },
+          "userAssignedIdentityId": {
+            "value": "[reference('identity').outputs.id.value]"
+          },
+          "triggerType": {
+            "value": "Schedule"
+          },
+          "cronExpression": {
+            "value": "[variables('scheduledJobs')[copyIndex()].cron]"
+          },
+          "replicaTimeout": {
+            "value": "[variables('scheduledJobs')[copyIndex()].timeout]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "command": {
+            "value": [
+              "/bin/sh",
+              "-c"
+            ]
+          },
+          "args": {
+            "value": [
+              "[format('curl -fsS -X POST -H \"X-Internal-Token: $INTERNAL_SERVICE_SECRET\" -H \"X-Internal-Caller: {0}\" {1}', variables('scheduledJobs')[copyIndex()].name, variables('scheduledJobs')[copyIndex()].url)]"
+            ]
+          },
+          "secretRefs": {
+            "value": [
+              {
+                "name": "internal-service-secret",
+                "keyVaultUrl": "[format('{0}secrets/internal-service-secret', reference('kv').vaultUri)]",
+                "envName": "INTERNAL_SERVICE_SECRET"
+              }
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "15536014598024239761"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Job name, e.g. recruitment-sync-job or migrate-talent-api."
+              }
+            },
+            "image": {
+              "type": "string",
+              "metadata": {
+                "description": "Image to run — the OWNING service's image for a migrate job."
+              }
+            },
+            "managedEnvironmentId": {
+              "type": "string"
+            },
+            "acrLoginServer": {
+              "type": "string"
+            },
+            "userAssignedIdentityId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource id of the shared user-assigned identity (id-dijione-<env>) used for ACR pull + Key Vault secret resolution."
+              }
+            },
+            "workloadProfileName": {
+              "type": "string",
+              "defaultValue": "Consumption"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "triggerType": {
+              "type": "string",
+              "defaultValue": "Manual",
+              "allowedValues": [
+                "Schedule",
+                "Manual"
+              ],
+              "metadata": {
+                "description": "Schedule | Manual"
+              }
+            },
+            "cronExpression": {
+              "type": "string",
+              "defaultValue": "0 0 * * *",
+              "metadata": {
+                "description": "Cron (UTC), only used when triggerType == Schedule."
+              }
+            },
+            "replicaTimeout": {
+              "type": "int",
+              "defaultValue": 900
+            },
+            "cpu": {
+              "type": "string",
+              "defaultValue": "0.25"
+            },
+            "memory": {
+              "type": "string",
+              "defaultValue": "0.5Gi"
+            },
+            "command": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container command, e.g. [ \"/bin/sh\" ]."
+              }
+            },
+            "args": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Container args."
+              }
+            },
+            "envVars": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Plain env vars [{ name, value }]."
+              }
+            },
+            "secretRefs": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Key Vault-backed secrets [{ name, keyVaultUrl, envName }]."
+              }
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "acaSecrets",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('acaSecrets')].name]",
+                  "keyVaultUrl": "[parameters('secretRefs')[copyIndex('acaSecrets')].keyVaultUrl]",
+                  "identity": "[parameters('userAssignedIdentityId')]"
+                }
+              },
+              {
+                "name": "secretEnv",
+                "count": "[length(parameters('secretRefs'))]",
+                "input": {
+                  "name": "[parameters('secretRefs')[copyIndex('secretEnv')].envName]",
+                  "secretRef": "[parameters('secretRefs')[copyIndex('secretEnv')].name]"
+                }
+              }
+            ],
+            "scheduleConfig": "[if(equals(parameters('triggerType'), 'Schedule'), createObject('scheduleTriggerConfig', createObject('cronExpression', parameters('cronExpression'), 'parallelism', 1, 'replicaCompletionCount', 1)), createObject('manualTriggerConfig', createObject('parallelism', 1, 'replicaCompletionCount', 1)))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/jobs",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned, UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('managedEnvironmentId')]",
+                "workloadProfileName": "[parameters('workloadProfileName')]",
+                "configuration": "[union(createObject('triggerType', parameters('triggerType'), 'replicaTimeout', parameters('replicaTimeout'), 'replicaRetryLimit', 1, 'registries', createArray(createObject('server', parameters('acrLoginServer'), 'identity', parameters('userAssignedIdentityId'))), 'secrets', variables('acaSecrets')), variables('scheduleConfig'))]",
+                "template": {
+                  "containers": [
+                    {
+                      "name": "[parameters('name')]",
+                      "image": "[parameters('image')]",
+                      "command": "[if(empty(parameters('command')), null(), parameters('command'))]",
+                      "args": "[if(empty(parameters('args')), null(), parameters('args'))]",
+                      "resources": {
+                        "cpu": "[json(parameters('cpu'))]",
+                        "memory": "[parameters('memory')]"
+                      },
+                      "env": "[concat(parameters('envVars'), variables('secretEnv'))]"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "systemPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/jobs', parameters('name')), '2024-03-01', 'full').identity.principalId]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "identity",
+        "kv",
+        "uamiAcrPull"
+      ]
+    }
+  },
+  "outputs": {
+    "shellWebFqdn": {
+      "type": "string",
+      "value": "[format('https://shell-web.{0}', reference('cae').defaultDomain)]"
+    },
+    "talentPortalFqdn": {
+      "type": "string",
+      "value": "[format('https://talentflow-portal-web.{0}', reference('cae').defaultDomain)]"
+    },
+    "supplierPortalFqdn": {
+      "type": "string",
+      "value": "[if(parameters('deployBirthday'), format('https://birthday-supplier-web.{0}', reference('cae').defaultDomain), '')]"
+    }
+  }
+}

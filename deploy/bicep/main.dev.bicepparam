@@ -49,6 +49,9 @@ param publicBaseUrl = 'https://shell-web.livelypebble-890e141a.southeastasia.azu
 // Left 'mock' until the DEV provider credentials are provisioned.
 param recruitmentIntegrationsMode = 'live'
 param peopleIntegrationsMode = 'live'
+// Phase 1 §1.9: birthday-api consumes live People data (via people-api) in DEV.
+// EMAIL_SENDING_MODE stays mock — real Graph email is a UAT gate.
+param birthdayIntegrationsMode = 'live'
 param bamboohrSubdomain = 'dijitalteam'
 
 // Post-completion DEV improvement: real Microsoft Entra ID B2B guest sign-in

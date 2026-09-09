@@ -86,6 +86,10 @@ param peopleIntegrationsMode string = 'mock'
 @description('BambooHR company subdomain (the <sub> in api.bamboohr.com/api/gateway.php/<sub>/v1). Only used when peopleIntegrationsMode == live.')
 param bamboohrSubdomain string = ''
 
+@description('birthday-api People-source mode. "mock" = MockEmployeeSource; "live" = PeopleApiEmployeeSource (consumes people-api over HTTP; birthday-api still holds NO BambooHR credential and no employee mirror). EMAIL_SENDING_MODE stays mock regardless (Phase 1 §1.9).')
+@allowed([ 'mock', 'live' ])
+param birthdayIntegrationsMode string = 'mock'
+
 @description('Birthday Supplier Portal auth. "dev" = the seeded SupplierUser persona picker; "entra" = real Microsoft Entra ID B2B guest sign-in (Auth Code + PKCE) via birthday-api, which also needs the birthday-supplier-entra-secret-<env> Key Vault secret. Independent of the internal DijiOne authMode.')
 @allowed([ 'dev', 'entra' ])
 param supplierAuthMode string = 'dev'
@@ -192,7 +196,7 @@ var commonApiEnv = [
 // http://<app-name>) + module modes. Declarative here so a redeploy does not
 // wipe them (Bicep env is desired-state, not a merge). `AUTH_MODE=dev` on
 // platform-api = the dev-login identity provider (no real Entra in DEV).
-func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string) array =>
+func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string, birthdayMode string) array =>
   svc == 'shell-web' ? [
     { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
     { name: 'ADMIN_API_URL', value: 'http://admin-api' }
@@ -245,7 +249,7 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
     )
   : svc == 'birthday-api' ? concat(
       [
-        { name: 'INTEGRATIONS_MODE', value: 'mock' }
+        { name: 'INTEGRATIONS_MODE', value: birthdayMode }
         { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
         { name: 'PEOPLE_API_URL', value: 'http://people-api' }
         { name: 'SUPPLIER_AUTH_MODE', value: supplierAuthMode }
@@ -327,7 +331,7 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl))
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
       //   matching *IntegrationsMode == 'live'
@@ -450,6 +454,10 @@ var scheduledJobs = concat(
   deployBirthday ? [
     { name: 'people-sync-job', image: 'people-api', cron: '0 5 * * *', url: 'http://people-api/api/people/internal/scheduled-sync', timeout: 1800 }
     { name: 'birthday-scan-job', image: 'birthday-api', cron: '30 5 * * *', url: 'http://birthday-api/api/birthday/internal/run-daily-scan', timeout: 900 }
+    // Phase 1 §1.2/§1.3/§1.5: attention/SLA + detection-health digest (daily),
+    // and outbound-email backoff retry + inbound supplier-email poll (~10 min).
+    { name: 'birthday-attention-job', image: 'birthday-api', cron: '0 6 * * *', url: 'http://birthday-api/api/birthday/internal/run-attention', timeout: 600 }
+    { name: 'birthday-comms-job', image: 'birthday-api', cron: '*/10 * * * *', url: 'http://birthday-api/api/birthday/internal/run-comms', timeout: 600 }
   ] : []
 )
 
