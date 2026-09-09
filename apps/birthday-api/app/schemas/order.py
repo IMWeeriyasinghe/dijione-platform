@@ -210,6 +210,34 @@ class ReadinessCheckResponse(BaseModel):
     missing: list[str] = []
 
 
+class OrderMessageCreate(BaseModel):
+    """A Portal message on an order (Phase 1 §G flows 1 & 2)."""
+
+    body: str
+    issue_id: int | None = None
+    # Internal only: also send an email copy so the supplier is nudged to
+    # check the portal (the portal has no push in Phase 1).
+    also_email: bool = False
+
+
+class TimelineEntryOut(BaseModel):
+    at: datetime | None
+    kind: str
+    channel: str | None = None
+    direction: str | None = None
+    author_type: str | None = None
+    author_id: int | None = None
+    title: str
+    body: str | None = None
+    meta: dict = {}
+
+
+class OrderTimelineResponse(BaseModel):
+    order_id: int
+    order_reference: str
+    entries: list[TimelineEntryOut] = []
+
+
 class BirthdayOrderListResponse(BaseModel):
     """Stable paginated envelope (Phase-Next §4) — replaces the old bare
     list response so the frontend can render real page controls instead of

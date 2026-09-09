@@ -37,11 +37,14 @@ from app.repositories.birthday_order_repository import BirthdayOrderRepository
 from app.schemas.order import (
     OrderIssueCreate,
     OrderIssueRead,
+    OrderMessageCreate,
+    OrderTimelineResponse,
     SupplierOrderListResponse,
     SupplierOrderView,
     SupplierStatusUpdateRequest,
+    TimelineEntryOut,
 )
-from app.services import order_status_service
+from app.services import communication_service, order_status_service
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.services.order_service import to_supplier_view
@@ -290,3 +293,49 @@ def list_supplier_order_issues(
 ) -> list[OrderIssue]:
     order = _get_supplier_order_or_404(db, order_id, scope)
     return list(order.issues)
+
+
+@router.get("/orders/{order_id}/timeline", response_model=OrderTimelineResponse)
+def get_supplier_order_timeline(
+    order_id: int,
+    db: Session = Depends(get_db),
+    scope: SupplierScope = Depends(require_supplier_permission("birthday.portal.access")),
+) -> OrderTimelineResponse:
+    """The Unified Timeline (§G), supplier-filtered — the conversation +
+    lifecycle only, no internal notes / audit / detection events."""
+    order = _get_supplier_order_or_404(db, order_id, scope)
+    entries = communication_service.build_timeline(db, order, audience="supplier")
+    return OrderTimelineResponse(
+        order_id=order.id, order_reference=order.order_reference,
+        entries=[TimelineEntryOut(**e.__dict__) for e in entries],
+    )
+
+
+@router.post(
+    "/orders/{order_id}/messages", response_model=OrderTimelineResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_supplier_order_message(
+    order_id: int,
+    payload: OrderMessageCreate,
+    db: Session = Depends(get_db),
+    scope: SupplierScope = Depends(require_supplier_permission("birthday.portal.respond")),
+) -> OrderTimelineResponse:
+    """Flow 1 (§G): the supplier posts a Portal message on this order.
+    Plain conversation — it does NOT create an issue or change status."""
+    order = _get_supplier_order_or_404(db, order_id, scope)
+    issue_id = payload.issue_id
+    if issue_id is not None and not any(i.id == issue_id for i in order.issues):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Issue not found on this order")
+    try:
+        communication_service.post_portal_message(
+            db, order, author_type=ActorType.SUPPLIER, author_id=scope.supplier_user_id,
+            body=payload.body, issue_id=issue_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    entries = communication_service.build_timeline(db, order, audience="supplier")
+    return OrderTimelineResponse(
+        order_id=order.id, order_reference=order.order_reference,
+        entries=[TimelineEntryOut(**e.__dict__) for e in entries],
+    )

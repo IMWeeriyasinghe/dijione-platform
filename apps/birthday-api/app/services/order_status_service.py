@@ -62,13 +62,14 @@ ALLOWED_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
     OrderStatus.COMPLETED: set(),
 }
 
-# The subset of transitions a supplier-portal user may drive directly.
-# Derived from ALLOWED_TRANSITIONS (never a hand-mirrored second table) so
-# the portal frontend imports this instead of re-typing it.
+# The subset of transitions a supplier-portal user may drive directly — the
+# forward fulfilment progression only. "I need a change" and "I can't fulfil
+# this" are NOT status buttons any more (Phase 1 §V.1): both go through the
+# structured "Report a problem" action, which creates a typed OrderIssue;
+# only CANNOT_FULFIL then also moves the order (-> UNABLE_TO_FULFIL, handled
+# in the portal issues route, not here). One path per intent.
 SUPPLIER_DRIVABLE: dict[OrderStatus, set[OrderStatus]] = {
-    OrderStatus.SENT_TO_SUPPLIER: {
-        OrderStatus.CONFIRMED, OrderStatus.CHANGE_REQUESTED, OrderStatus.UNABLE_TO_FULFIL,
-    },
+    OrderStatus.SENT_TO_SUPPLIER: {OrderStatus.CONFIRMED},
     OrderStatus.CONFIRMED: {OrderStatus.PREPARING},
     OrderStatus.PREPARING: {OrderStatus.OUT_FOR_DELIVERY},
     OrderStatus.OUT_FOR_DELIVERY: {OrderStatus.DELIVERED},

@@ -414,6 +414,7 @@ def test_exception_supplier_unable_to_fulfil(api_client, db):
     admin = headers_for(240, role="BIRTHDAY_ADMIN")
     payload = {
         "employee_id": "exc-unable",
+        "employee_number": "2400",
         "employee_name": "Unable Fulfil",
         "employee_email": "unable@example.com",
         "birthday_date": str(date.today() + timedelta(days=20)),
@@ -430,11 +431,14 @@ def test_exception_supplier_unable_to_fulfil(api_client, db):
     assert verified.json()["order"]["status"] == "SENT_TO_SUPPLIER"
 
     supplier_hdrs = supplier_headers_for(db, supplier)
-    # A supplier may decline before accepting — no need to Accept first.
-    unable = api_client.patch(
-        f"/api/birthday/portal/orders/{order_id}/status",
-        json={"status": "UNABLE_TO_FULFIL"},
+    # "Can't fulfil" is now the single structured path (§V.1): a typed
+    # OrderIssue that also moves the order to UNABLE_TO_FULFIL. There is no
+    # PATCH /status → UNABLE_TO_FULFIL any more.
+    unable = api_client.post(
+        f"/api/birthday/portal/orders/{order_id}/issues",
+        json={"type": "CANNOT_FULFIL", "detail": "Oven down all week"},
         headers=supplier_hdrs,
     )
-    assert unable.status_code == 200
-    assert unable.json()["status"] == "UNABLE_TO_FULFIL"
+    assert unable.status_code == 201
+    detail = api_client.get(f"/api/birthday/portal/orders/{order_id}", headers=supplier_hdrs)
+    assert detail.json()["status"] == "UNABLE_TO_FULFIL"

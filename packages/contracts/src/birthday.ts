@@ -36,14 +36,19 @@ export const ORDER_STATUSES = [
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-// Derived from the backend's order_status_service.SUPPLIER_DRIVABLE —
-// kept here, imported by the supplier portal, rather than re-typed there.
+// Derived from the backend's order_status_service.SUPPLIER_DRIVABLE — the
+// forward fulfilment progression only. "Request a change" and "Can't
+// fulfil" are NOT status buttons (Phase 1 §V.1): both go through the
+// structured "Report a problem" action (OrderIssue).
 export const SUPPLIER_DRIVABLE_TARGETS: Record<string, OrderStatus[]> = {
-  SENT_TO_SUPPLIER: ["CONFIRMED", "CHANGE_REQUESTED", "UNABLE_TO_FULFIL"],
+  SENT_TO_SUPPLIER: ["CONFIRMED"],
   CONFIRMED: ["PREPARING"],
   PREPARING: ["OUT_FOR_DELIVERY"],
   OUT_FOR_DELIVERY: ["DELIVERED"],
 };
+
+export const COMMUNICATION_CHANNELS = ["EMAIL", "PORTAL", "SYSTEM", "TEAMS"] as const;
+export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[number];
 
 export const ADDRESS_VERIFICATION_STATUSES = [
   "NOT_CHECKED",
@@ -224,6 +229,34 @@ export type BirthdayOrderUpdateInput = {
   supplier_id?: number | null;
   delivery_date?: string | null;
   catalogue_item_id?: number | null;
+  employee_number?: string | null;
+};
+
+// --- Unified Timeline / communication (Phase 1 §G) --------------------
+// One store (SupplierCommunication) + OrderEvent + OrderIssue markers,
+// merged and audience-filtered by the backend.
+export type TimelineEntryOut = {
+  at: string | null;
+  kind: "message" | "email" | "event" | "issue";
+  channel: string | null;
+  direction: "OUTBOUND" | "INBOUND" | null;
+  author_type: "USER" | "SUPPLIER" | "SYSTEM" | null;
+  author_id: number | null;
+  title: string;
+  body: string | null;
+  meta: Record<string, unknown>;
+};
+
+export type OrderTimelineResponse = {
+  order_id: number;
+  order_reference: string;
+  entries: TimelineEntryOut[];
+};
+
+export type OrderMessageCreateInput = {
+  body: string;
+  issue_id?: number | null;
+  also_email?: boolean; // internal only
 };
 
 export type BirthdayOrderListResponse = {

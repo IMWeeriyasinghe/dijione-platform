@@ -274,3 +274,42 @@ def resend_order_to_supplier(db: Session, order: BirthdayOrder, *, actor_id: int
     """Manual retry for orders already SENT_TO_SUPPLIER/REQUIRES_ATTENTION
     after a prior failure — same order_reference, never a second order."""
     return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)
+
+
+def send_ad_hoc_message(
+    db: Session, order: BirthdayOrder, *, body: str, actor_id: int | None
+) -> SupplierCommunication:
+    """Flow 2/3 (§G): an internal-authored email to the supplier that is not
+    an order-release — a message nudge, a change note, etc. Records a
+    ``SupplierCommunication(channel=EMAIL, direction=OUTBOUND)`` and never
+    changes order status. Best-effort: a send failure is recorded on the
+    row (picked up by the retry sweep) but does not raise."""
+    if order.supplier is None or not order.supplier.primary_contact_email:
+        return _record_communication(
+            db, order, subject="", body=body, status=CommunicationStatus.FAILED.value,
+            message_id=None, last_error="No supplier contact email", retry_count=0,
+        )
+    subject = f"[{order.order_reference}] Update — {order.employee_name}"
+    full_body = (
+        f"Order Reference: {order.order_reference}\n\n{body}\n\n"
+        f"Open the DijiBirthday Supplier Portal to view and respond to this order."
+    )
+    try:
+        result = get_email_client().send(
+            to=order.supplier.primary_contact_email, subject=subject, body=full_body,
+            order_reference=order.order_reference,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _record_communication(
+            db, order, subject=subject, body=full_body, status=CommunicationStatus.FAILED.value,
+            message_id=None, last_error=str(exc), retry_count=0,
+        )
+    comm = _record_communication(
+        db, order, subject=subject, body=full_body,
+        status=CommunicationStatus.SENT.value if result.sent else CommunicationStatus.FAILED.value,
+        message_id=result.message_id, last_error=None if result.sent else "sent=False", retry_count=0,
+    )
+    comm.author_type = ActorType.USER.value if actor_id is not None else ActorType.SYSTEM.value
+    comm.author_id = actor_id
+    db.commit()
+    return comm

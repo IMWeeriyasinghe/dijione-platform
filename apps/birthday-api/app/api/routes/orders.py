@@ -40,15 +40,19 @@ from app.schemas.order import (
     OrderIssueCreate,
     OrderIssueRead,
     OrderIssueResolve,
+    OrderMessageCreate,
+    OrderTimelineResponse,
     ReadinessCheckResponse,
     ReleaseRequest,
     SpecialRequirementCreate,
     SpecialRequirementRead,
+    TimelineEntryOut,
     VerifyAddressRequest,
     VerifyAddressResponse,
 )
 from app.services import (
     address_verification_service,
+    communication_service,
     delivery_date_service,
     detection_service,
     order_email_service,
@@ -483,6 +487,51 @@ def add_special_requirement(
     db.commit()
     db.refresh(requirement)
     return requirement
+
+
+@router.get("/{order_id}/timeline", response_model=OrderTimelineResponse)
+def get_order_timeline(
+    order_id: int,
+    db: Session = Depends(get_db),
+    _scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.read")),
+) -> OrderTimelineResponse:
+    """The Unified Timeline (§G) — comms (both channels/directions) + events
+    + issue markers, merged. Internal audience: everything."""
+    order = _get_order_or_404(db, order_id)
+    entries = communication_service.build_timeline(db, order, audience="internal")
+    return OrderTimelineResponse(
+        order_id=order.id, order_reference=order.order_reference,
+        entries=[TimelineEntryOut(**e.__dict__) for e in entries],
+    )
+
+
+@router.post("/{order_id}/messages", response_model=OrderTimelineResponse, status_code=status.HTTP_201_CREATED)
+def post_order_message(
+    order_id: int,
+    payload: OrderMessageCreate,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.update")),
+) -> OrderTimelineResponse:
+    """Flow 2 (§G): internal staff post a Portal message the supplier sees
+    on this order. ``also_email`` additionally sends an email copy as a
+    nudge (the portal has no push in Phase 1)."""
+    order = _get_order_or_404(db, order_id)
+    try:
+        communication_service.post_portal_message(
+            db, order, author_type=ActorType.USER, author_id=scope.user.id,
+            body=payload.body, issue_id=payload.issue_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    if payload.also_email:
+        order_email_service.send_ad_hoc_message(
+            db, order, body=payload.body, actor_id=scope.user.id
+        )
+    entries = communication_service.build_timeline(db, order, audience="internal")
+    return OrderTimelineResponse(
+        order_id=order.id, order_reference=order.order_reference,
+        entries=[TimelineEntryOut(**e.__dict__) for e in entries],
+    )
 
 
 @router.get("/{order_id}/issues", response_model=list[OrderIssueRead])
