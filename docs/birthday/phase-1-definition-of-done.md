@@ -66,8 +66,10 @@ Plan `C:\Users\Dell\.claude\plans\dijione-dijitalentflow-rippling-cascade.md`.
 | G | Supplier dashboard three-band regroup + filtered deep-links; supplier orders table sort + status filter + due filter + whole-row click | ✅ | `test_orders_due_filter.py` |
 | H1–H5 | Dead-end fixes: Team Member ID input · NO_SUPPLIER/NO_DEFAULT_CAKE auto-clear on PATCH · ON_HOLD guided panel · link inbound email by reference · Resolve-&-notify-supplier | ✅ | `test_orders_exception_recovery.py`, `test_inbound_email.py` |
 | I | `docs/birthday/test-scenarios.md` manual catalog + regression tests | ✅ | birthday-api 268 pass; webs 9 + 10 pass |
-| — | Build + deploy `birthday-api` / `birthday-web` / `birthday-supplier-web` to hosted DEV | 🔄 | commit `f69cba8`; no migration (all changes column-free) |
-| — | `/health/deep` smoke + confirm `people-sync-job` cron `30 18 * * *` | ⏳ | after deploy |
+| — | Build + deploy `birthday-api` / `birthday-web` / `birthday-supplier-web` to hosted DEV | ✅ | commit `34f2bfd`; digests `birthday-api@sha256:581e0fef…`, `birthday-web@sha256:a3384e5e…`, `birthday-supplier-web@sha256:bb0d4a50…`; no migration (all Phase 1.5 changes column-free — head stays `f3a5b7c9d1e4`) |
+| — | `/health/deep` smoke | ✅ | `status: healthy`, `database: ok`, `migration up_to_date: true`, `integrations_mode: live`, `email_sending_mode: mock`, `people_source: ok` (warm) |
+| — | Cron reschedule applied (Asia/Colombo midnight-ish) | ✅ | `people-sync-job` `30 18 * * *`, `birthday-scan-job` `0 19 * * *`, `birthday-attention-job` `30 20 * * *`, `birthday-comms-job` `*/10 * * * *` |
+| — | Web surfaces serving | ✅ | `shell-web/birthday` 200; `birthday-supplier-web/` 200, `/login` → Entra authorize, `/impersonate` route present (405 on GET, POST-only) |
 
 ## UAT entry (blocked until)
 - All P0 merged (done) + the 1.9 ⏳ validation steps executed and PASS
