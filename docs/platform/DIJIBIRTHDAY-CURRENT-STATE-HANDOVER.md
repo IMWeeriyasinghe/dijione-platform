@@ -22,7 +22,7 @@
 DijiBirthday is the DijiOne platform's birthday-cake workflow-automation module. It is built, deployed to hosted Azure DEV, and passing its full automated test suite (203 tests across three apps). All of the intended DEV scope exists in code and is reachable in the hosted environment:
 
 - a **birthday-detection engine** that reads staff from People/Workforce (`people-api`, BambooHR-backed) and idempotently creates one `BirthdayOrder` per employee per birthday-year;
-- a **14-state order lifecycle** enforced by a transition table, with every transition writing an `OrderEvent` and an audit entry;
+- a **13-state order lifecycle** enforced by a transition table, with every transition writing an `OrderEvent` and an audit entry;
 - an **internal Birthday application** (`birthday-web`, 6 pages) for the Dijital Team ops user: dashboard, upcoming birthdays + manual detection, cake-order register + per-order workflow, supplier management (locations, catalogue, supplier users);
 - a **Supplier Portal** (`birthday-supplier-web`) where an external cake supplier accepts orders, drives fulfilment status, and raises problems — now fronted by **real Microsoft Entra ID B2B guest sign-in** in hosted DEV, gated by a second application-level authorization check against an ACTIVE `SupplierUser` row;
 - **mock email** and **mock-free People integration** (People is live via `people-api`; Birthday email is deliberately still mocked).
@@ -66,7 +66,7 @@ DijiBirthday is two frontends + one API, inside the DijiOne Domain-Driven Distri
                 ▼                         ▼
         ┌───────────────────────────────────────────────┐
         │            birthday-api  (internal only)       │
-        │  • detection engine   • 14-state machine       │
+        │  • detection engine   • 13-state machine       │
         │  • supplier domain    • dev + Entra supplier   │
         │  • order email (MOCK)    auth, both mint the    │
         │                          same session token    │
@@ -585,7 +585,7 @@ Subscription **"Dijital Team IT Production"**, RG `rg-dijione-dev`, ACA env `liv
 ## PART 18 — What Is Complete
 
 - Full birthday-detection engine with idempotency, eligibility ladder, lead-time classification, supplier/cake resolution, exception typing, and graceful source-outage deferral + self-heal.
-- 14-state order lifecycle with a transition table, `OrderEvent` history, and audit logging on every edge.
+- 13-state order lifecycle with a transition table, `OrderEvent` history, and audit logging on every edge.
 - "Verification is the approval" model — one routine human checkpoint, auto-release for standard orders, `REQUIRES_REVIEW` routing for flagged ones.
 - Internal Birthday app: dashboard, live upcoming-birthday directory + manual detection trigger, order register + full per-order workflow UI, supplier management incl. locations, catalogue, and supplier-user administration.
 - Supplier Portal: fulfilment-only dashboard, supplier-scoped order list + detail, merged accept, supplier-drivable status progression (from a single shared allow-list), problem reporting.
