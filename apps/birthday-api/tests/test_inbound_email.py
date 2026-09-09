@@ -197,6 +197,51 @@ def test_manual_link_and_dismiss(api_client, db):
     assert api_client.get("/api/birthday/inbound-emails", headers=admin).json() == []
 
 
+def test_manual_link_by_order_reference(api_client, db):
+    """§H4 — an operator knows the order *reference*, not its numeric id.
+    The link endpoint resolves a reference to the order."""
+    oid, ref, supplier, admin = _released_order(api_client, db)
+    _ingest(db, from_address="random@x.example.com", subject="no ref", body_text="hello")
+    q = api_client.get("/api/birthday/inbound-emails", headers=admin).json()
+
+    linked = api_client.post(
+        f"/api/birthday/inbound-emails/{q[0]['id']}/link",
+        json={"order_reference": ref}, headers=admin,
+    )
+    assert linked.status_code == 200
+    assert linked.json()["status"] == "LINKED"
+    assert linked.json()["linked_order_id"] == oid
+
+    from app.models.supplier_communication import SupplierCommunication
+
+    assert db.query(SupplierCommunication).filter_by(order_id=oid, direction="INBOUND").count() == 1
+    # No issue was raised (raise_issue defaulted false).
+    assert api_client.get(f"/api/birthday/orders/{oid}/issues", headers=admin).json() == []
+
+
+def test_manual_link_unknown_reference_is_404(api_client, db):
+    oid, ref, supplier, admin = _released_order(api_client, db)
+    _ingest(db, from_address="random@x.example.com", subject="no ref", body_text="hello")
+    q = api_client.get("/api/birthday/inbound-emails", headers=admin).json()
+
+    resp = api_client.post(
+        f"/api/birthday/inbound-emails/{q[0]['id']}/link",
+        json={"order_reference": "BDAY-EMP000-1999-99999"}, headers=admin,
+    )
+    assert resp.status_code == 404
+
+
+def test_manual_link_requires_order_id_or_reference(api_client, db):
+    oid, ref, supplier, admin = _released_order(api_client, db)
+    _ingest(db, from_address="random@x.example.com", subject="no ref", body_text="hello")
+    q = api_client.get("/api/birthday/inbound-emails", headers=admin).json()
+
+    resp = api_client.post(
+        f"/api/birthday/inbound-emails/{q[0]['id']}/link", json={}, headers=admin,
+    )
+    assert resp.status_code == 422
+
+
 def test_poll_advances_watermark(api_client, db):
     from app.services.inbound_email_service import poll
 

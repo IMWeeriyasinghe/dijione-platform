@@ -21,6 +21,9 @@ const { getPortalOrderTimeline, postPortalOrderMessage } = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => ({ getPortalOrderTimeline, postPortalOrderMessage }));
 vi.mock("@/lib/supplier-auth", () => ({ useSupplierAuth: () => ({ token: "t" }) }));
 
+const { usePortalMe } = vi.hoisted(() => ({ usePortalMe: vi.fn(() => undefined) }));
+vi.mock("@/lib/portal-me", () => ({ usePortalMe }));
+
 import { OrderTimeline } from "../order-timeline";
 
 function wrap(ui: ReactNode) {
@@ -51,5 +54,14 @@ describe("supplier OrderTimeline", () => {
     });
     fireEvent.click(screen.getByText("Send"));
     await waitFor(() => expect(postPortalOrderMessage).toHaveBeenCalledWith("t", 5, "will do"));
+  });
+
+  it("hides the reply box in a read-only impersonation preview (§C)", async () => {
+    usePortalMe.mockReturnValue({ supplier_name: "S", user_name: "U", read_only: true });
+    wrap(<OrderTimeline orderId={5} />);
+    expect(await screen.findByText("Internal · Portal message")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Send a message to Dijital Team/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Send")).not.toBeInTheDocument();
+    usePortalMe.mockReturnValue(undefined);
   });
 });

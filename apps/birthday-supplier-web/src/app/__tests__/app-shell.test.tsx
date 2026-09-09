@@ -24,14 +24,18 @@ vi.mock("@/lib/supplier-auth", () => ({
   SupplierAuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("@/lib/portal-me", () => ({ usePortalMe: vi.fn() }));
+
 vi.mock("../login-screen", () => ({
   LoginScreen: () => <div data-testid="login-screen">Sign in to the supplier portal</div>,
 }));
 
 import { useSupplierAuth } from "@/lib/supplier-auth";
+import { usePortalMe } from "@/lib/portal-me";
 import { AppShell } from "../app-shell";
 
 const mockedUseSupplierAuth = vi.mocked(useSupplierAuth);
+const mockedUsePortalMe = vi.mocked(usePortalMe);
 
 describe("AppShell (supplier portal)", () => {
   it("renders the login screen when no supplier token is present", () => {
@@ -52,6 +56,33 @@ describe("AppShell (supplier portal)", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Orders")).toBeInTheDocument();
     expect(screen.getByText("portal content")).toBeInTheDocument();
+  });
+
+  it("shows a read-only preview banner during impersonation (§C)", () => {
+    mockedUseSupplierAuth.mockReturnValue({ token: "tok-123", setToken: vi.fn(), ready: true });
+    mockedUsePortalMe.mockReturnValue({
+      supplier_name: "Acme Bakery",
+      user_name: "Jane Baker",
+      read_only: true,
+    });
+
+    render(<AppShell>portal content</AppShell>);
+
+    expect(screen.getByText(/read-only internal preview/i)).toBeInTheDocument();
+    expect(screen.getByText(/Jane Baker/)).toBeInTheDocument();
+  });
+
+  it("shows no banner for a normal (non-read-only) session", () => {
+    mockedUseSupplierAuth.mockReturnValue({ token: "tok-123", setToken: vi.fn(), ready: true });
+    mockedUsePortalMe.mockReturnValue({
+      supplier_name: "Acme Bakery",
+      user_name: "Jane Baker",
+      read_only: false,
+    });
+
+    render(<AppShell>portal content</AppShell>);
+
+    expect(screen.queryByText(/read-only internal preview/i)).not.toBeInTheDocument();
   });
 
   it("clears the token when Sign out is clicked", async () => {

@@ -47,17 +47,35 @@ describe("UnmatchedEmailsPage", () => {
     dismissUnmatchedEmail.mockResolvedValue({ ...ROW, status: "DISMISSED" });
   });
 
-  it("lists a quarantined email and links it to an order", async () => {
+  it("links by a numeric order id", async () => {
     wrap(<UnmatchedEmailsPage />);
     expect(await screen.findByText("Re: order")).toBeInTheDocument();
     expect(screen.getByText("van broke down")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Link to an order"));
-    fireEvent.change(screen.getByPlaceholderText("e.g. 42"), { target: { value: "42" } });
+    fireEvent.change(screen.getByPlaceholderText("e.g. BDAY-EMP239-2026-00001"), {
+      target: { value: "42" },
+    });
     fireEvent.click(screen.getByText("Link"));
 
     await waitFor(() =>
       expect(linkUnmatchedEmail).toHaveBeenCalledWith(7, { order_id: 42, raise_issue: false }),
+    );
+  });
+
+  it("links by an order reference (§H4 — operators know the reference, not the id)", async () => {
+    wrap(<UnmatchedEmailsPage />);
+    fireEvent.click(await screen.findByText("Link to an order"));
+    fireEvent.change(screen.getByPlaceholderText("e.g. BDAY-EMP239-2026-00001"), {
+      target: { value: "BDAY-EMP239-2026-00001" },
+    });
+    fireEvent.click(screen.getByText("Link"));
+
+    await waitFor(() =>
+      expect(linkUnmatchedEmail).toHaveBeenCalledWith(7, {
+        order_reference: "BDAY-EMP239-2026-00001",
+        raise_issue: false,
+      }),
     );
   });
 
