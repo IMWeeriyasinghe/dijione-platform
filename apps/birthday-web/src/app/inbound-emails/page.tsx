@@ -36,7 +36,10 @@ export default function UnmatchedEmailsPage() {
       invalidate();
     },
   });
-  const dismissMut = useMutation({ mutationFn: dismissUnmatchedEmail, onSuccess: invalidate });
+  const dismissMut = useMutation({
+    mutationFn: (id: number) => dismissUnmatchedEmail(id),
+    onSuccess: invalidate,
+  });
 
   if (isLoading) return <LoadingState label="Loading unmatched emails…" />;
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
