@@ -21,6 +21,7 @@ import {
 import { SUPPLIER_DRIVABLE_TARGETS, type OrderIssueType } from "@dijione/contracts";
 import { acceptPortalOrder, getPortalOrder, raisePortalIssue, updatePortalOrderStatus } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
+import { OrderTimeline } from "@/app/order-timeline";
 
 // Labels for the transitions a supplier may set directly. The allow-list
 // itself is imported from @dijione/contracts — derived from the backend's
@@ -204,6 +205,8 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
           )}
         </CardContent>
       </Card>
+
+      <OrderTimeline orderId={orderId} />
 
       <Modal open={issueOpen} onClose={() => setIssueOpen(false)} title="Report a Problem">
         <div className="flex flex-col gap-4">

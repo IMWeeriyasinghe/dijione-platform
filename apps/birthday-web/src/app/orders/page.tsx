@@ -39,6 +39,17 @@ const ADDRESS_STATUS_OPTIONS = ADDRESS_VERIFICATION_STATUSES;
 
 const PAGE_SIZE = 20;
 
+const SAVED_VIEWS: { label: string; filter: string }[] = [
+  { label: "All", filter: "" },
+  { label: "Needs attention", filter: "REQUIRES_ATTENTION,ON_HOLD" },
+  { label: "Awaiting verification", filter: "PENDING_VERIFICATION" },
+  { label: "In review", filter: "REQUIRES_REVIEW" },
+  { label: "With supplier", filter: "SENT_TO_SUPPLIER,CONFIRMED,PREPARING" },
+  { label: "Delivery in progress", filter: "OUT_FOR_DELIVERY" },
+  { label: "Completed", filter: "COMPLETED" },
+  { label: "Cancelled / unfulfilled", filter: "CANCELLED,UNABLE_TO_FULFIL" },
+];
+
 export default function OrdersPage() {
   // Dashboard attention cards deep-link here with a pre-set filter (plan
   // §M/§36 — "avoid static KPI cards with no action") — read it once on
@@ -84,6 +95,24 @@ export default function OrdersPage() {
   return (
     <div>
       <PageHeader title="Cake Orders" description="Register of every cake order tracked by DijiBirthday." />
+
+      {/* Saved views (Phase 1 §1.7) — each is a status_filter preset. */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {SAVED_VIEWS.map((v) => (
+          <button
+            key={v.label}
+            onClick={() => resetAndSet(setStatusFilter, v.filter)}
+            className={
+              "rounded-full border px-3 py-1 text-xs font-medium transition " +
+              (statusFilter === v.filter
+                ? "border-dt-burnt-orange bg-dt-burnt-orange text-white"
+                : "border-dt-border bg-dt-surface text-dt-text-secondary hover:border-dt-burnt-orange")
+            }
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
 
       <div className="mb-4 space-y-3">
         <SearchInput

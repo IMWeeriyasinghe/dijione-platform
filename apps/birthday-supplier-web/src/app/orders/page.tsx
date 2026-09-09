@@ -84,7 +84,16 @@ export default function SupplierOrdersPage() {
                     </Link>
                   </Td>
                   <Td>{order.employee_name}</Td>
-                  <Td>{order.delivery_date ?? "—"}</Td>
+                  <Td>
+                    {order.delivery_date ?? "—"}
+                    {order.delivery_date &&
+                      order.delivery_date < new Date().toISOString().slice(0, 10) &&
+                      !["DELIVERED", "COMPLETED", "CANCELLED", "UNABLE_TO_FULFIL"].includes(order.status) && (
+                        <span className="ml-2 rounded-full bg-dt-danger/10 px-2 py-0.5 text-[11px] font-medium text-dt-danger">
+                          Overdue
+                        </span>
+                      )}
+                  </Td>
                   <Td>{order.office_location}</Td>
                   <Td>{order.catalogue_item_name ?? "—"}</Td>
                   <Td>{order.quantity}</Td>

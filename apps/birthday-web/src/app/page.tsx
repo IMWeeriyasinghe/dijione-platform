@@ -59,9 +59,57 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <MetricCard label="Upcoming (14 days)" value={summary.upcoming_count} icon={CakeSlice} tone="brand" />
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Link href="/orders?status_filter=ON_HOLD" className="block">
+          <MetricCard label="On hold — needs a decision" value={summary.on_hold_count} icon={Clock3} />
+        </Link>
         <MetricCard label="Deliveries today at risk" value={summary.deliveries_today_at_risk_count} icon={AlertTriangle} />
+        <MetricCard label="Overdue deliveries" value={summary.overdue_delivery_count} icon={AlertTriangle} />
+        <Link href="/inbound-emails" className="block">
+          <MetricCard label="Open issues / unmatched emails" value={summary.open_issues_count + summary.unmatched_emails_count} icon={AlertTriangle} />
+        </Link>
+      </div>
+
+      {/* Detection & integration health (plan §1.2) */}
+      <div className="mt-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Detection health</CardTitle>
+            <span
+              className={
+                "rounded-full px-2.5 py-0.5 text-xs font-medium " +
+                (summary.detection_health?.healthy
+                  ? "bg-dt-success/10 text-dt-success"
+                  : "bg-dt-danger/10 text-dt-danger")
+              }
+            >
+              {summary.detection_health?.healthy ? "Healthy" : "Attention"}
+            </span>
+          </CardHeader>
+          <CardContent className="text-sm text-dt-text-secondary">
+            <p>
+              Last scan:{" "}
+              <span className="text-dt-text-primary">
+                {summary.detection_health?.last_scan_at
+                  ? new Date(summary.detection_health.last_scan_at).toLocaleString()
+                  : "never"}
+              </span>{" "}
+              ({summary.detection_health?.last_status ?? "—"})
+            </p>
+            {(summary.detection_health?.consecutive_deferrals ?? 0) > 0 && (
+              <p className="mt-1 text-dt-danger">
+                {summary.detection_health.consecutive_deferrals} consecutive deferred scan(s) — People source unavailable.
+              </p>
+            )}
+            {summary.detection_health?.stale && (
+              <p className="mt-1 text-dt-danger">No successful scan in the last 26 hours.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-4">
+        <MetricCard label="Upcoming (14 days)" value={summary.upcoming_count} icon={CakeSlice} tone="brand" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">

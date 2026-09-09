@@ -1,6 +1,7 @@
 import type {
   OrderIssueOut,
   OrderIssueType,
+  OrderTimelineResponse,
   SupplierOrderListResponse,
   SupplierOrderView,
 } from "@dijione/contracts";
@@ -97,6 +98,23 @@ export const raisePortalIssue = (token: string, id: number, type: OrderIssueType
 
 export const listPortalOrderIssues = (token: string, id: number) =>
   request<OrderIssueOut[]>(`/api/birthday/portal/orders/${id}/issues`, token);
+
+// Unified Timeline (§G), supplier-filtered — the conversation + lifecycle.
+export const getPortalOrderTimeline = (token: string, id: number) =>
+  request<OrderTimelineResponse>(`/api/birthday/portal/orders/${id}/timeline`, token);
+
+// Flow 1 (§G): the supplier posts a Portal message on this order. Plain
+// conversation — it does NOT create an issue or change status.
+export const postPortalOrderMessage = (
+  token: string,
+  id: number,
+  body: string,
+  issue_id?: number | null,
+) =>
+  request<OrderTimelineResponse>(`/api/birthday/portal/orders/${id}/messages`, token, {
+    method: "POST",
+    body: JSON.stringify({ body, issue_id: issue_id ?? null }),
+  });
 
 export type SupplierDashboardSummary = {
   new_orders: number;

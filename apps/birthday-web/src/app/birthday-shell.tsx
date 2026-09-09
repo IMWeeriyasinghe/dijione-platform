@@ -3,7 +3,7 @@
 import { AppShell, AuthGate, EmptyState } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useBirthdayScope } from "@dijione/auth-client";
-import { CakeSlice, LayoutDashboard, ListOrdered, Truck } from "lucide-react";
+import { CakeSlice, LayoutDashboard, ListOrdered, Mail, Truck } from "lucide-react";
 
 function BirthdayContent({ children }: { children: React.ReactNode }) {
   const scope = useBirthdayScope();
@@ -35,6 +35,7 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
         { label: "Upcoming Birthdays", href: "/upcoming", icon: CakeSlice },
         { label: "Cake Orders", href: "/orders", icon: ListOrdered },
         { label: "Suppliers", href: "/suppliers", icon: Truck },
+        { label: "Unmatched Email", href: "/inbound-emails", icon: Mail },
       ],
     },
   ];

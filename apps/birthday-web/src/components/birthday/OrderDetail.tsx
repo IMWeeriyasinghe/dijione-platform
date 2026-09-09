@@ -46,6 +46,7 @@ import {
   verifyAddress,
 } from "@/lib/api";
 import type { BirthdayOrderOut, DeliveryAddressUpdateInput, SupplierOut } from "@dijione/contracts";
+import { OrderTimeline } from "@/components/birthday/OrderTimeline";
 
 type ActionKind = "hold" | "release" | "cancel" | null;
 
@@ -648,34 +649,18 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Supplier Communications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* birthday-api's BirthdayOrderRead does not yet include a
-                  `communications` field, so there is nothing to list here
-                  today. Send/Resend actions above still work — this card
-                  will start rendering entries automatically once the
-                  backend response includes them, no frontend change
-                  required beyond adding the field to BirthdayOrderOut. */}
-              <p className="text-sm text-dt-text-secondary">
-                Supplier communication history is not yet exposed by the order API. Use Order History
-                below to see send/resend events in the meantime.
-              </p>
-            </CardContent>
-          </Card>
+          <OrderTimeline orderId={orderId} />
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Order History</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <details className="rounded-2xl border border-dt-border bg-dt-surface">
+          <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-dt-text-primary">
+            Raw event log ({order.events.length})
+          </summary>
+          <div className="px-5 pb-4">
             {order.events.length === 0 ? (
               <p className="text-sm text-dt-text-secondary">No events recorded.</p>
             ) : (
-              <ol className="flex flex-col gap-4">
+              <ol className="flex flex-col gap-3">
                 {order.events.map((event) => (
                   <li key={event.id} className="border-l-2 border-dt-border pl-3">
                     <p className="text-sm font-medium text-dt-text-primary">
@@ -694,8 +679,8 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                 ))}
               </ol>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </details>
       </div>
 
       <Modal

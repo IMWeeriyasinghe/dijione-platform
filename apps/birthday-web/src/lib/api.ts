@@ -273,3 +273,49 @@ export const getConfig = () => request<DetectionConfig>("/api/birthday/config");
 
 export const updateConfig = (payload: Partial<DetectionConfig>) =>
   request<DetectionConfig>("/api/birthday/config", { method: "PATCH", body: JSON.stringify(payload) });
+
+// --- Unified Timeline + messaging (Phase 1 §G) ----------------------
+export const getOrderTimeline = (id: number) =>
+  request<import("@dijione/contracts").OrderTimelineResponse>(`/api/birthday/orders/${id}/timeline`);
+
+export const postOrderMessage = (
+  id: number,
+  body: string,
+  opts: { issue_id?: number | null; also_email?: boolean } = {},
+) =>
+  request<import("@dijione/contracts").OrderTimelineResponse>(`/api/birthday/orders/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body, issue_id: opts.issue_id ?? null, also_email: opts.also_email ?? false }),
+  });
+
+// --- Unmatched supplier email queue (Phase 1 §1.5) -----------------
+export const listUnmatchedEmails = (include_resolved = false) =>
+  request<import("@dijione/contracts").InboundEmailOut[]>(
+    `/api/birthday/inbound-emails${qs({ include_resolved: include_resolved || undefined })}`,
+  );
+
+export const linkUnmatchedEmail = (
+  id: number,
+  payload: import("@dijione/contracts").InboundEmailLinkInput,
+) =>
+  request<import("@dijione/contracts").InboundEmailOut>(`/api/birthday/inbound-emails/${id}/link`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const dismissUnmatchedEmail = (id: number) =>
+  request<import("@dijione/contracts").InboundEmailOut>(`/api/birthday/inbound-emails/${id}/dismiss`, {
+    method: "POST",
+  });
+
+// --- Supplier setup readiness (Phase 1 §1.6) ----------------------
+export const getSupplierReadiness = (supplierId: number) =>
+  request<import("@dijione/contracts").SupplierSetupReadiness>(
+    `/api/birthday/suppliers/${supplierId}/readiness`,
+  );
+
+export const markSupplierUserInvited = (supplierId: number, userId: number) =>
+  request<import("@dijione/contracts").SupplierUserOut>(
+    `/api/birthday/suppliers/${supplierId}/users/${userId}`,
+    { method: "PATCH", body: JSON.stringify({ mark_invited: true }) },
+  );

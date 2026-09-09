@@ -60,7 +60,13 @@ class BirthdayOrderRepository:
     ):
         stmt = select(BirthdayOrder)
         if status is not None:
-            stmt = stmt.where(BirthdayOrder.status == status)
+            # Comma-separated statuses supported for the Cake Orders saved
+            # views (Phase 1 §1.7) — a single value still works unchanged.
+            wanted = [s.strip() for s in status.split(",") if s.strip()]
+            if len(wanted) == 1:
+                stmt = stmt.where(BirthdayOrder.status == wanted[0])
+            elif wanted:
+                stmt = stmt.where(BirthdayOrder.status.in_(wanted))
         if lead_time_class is not None:
             stmt = stmt.where(BirthdayOrder.lead_time_class == lead_time_class)
         if office_location is not None:

@@ -120,7 +120,9 @@ def get_supplier_dashboard(
 def list_supplier_orders(
     search: str | None = None,
     sort_by: str | None = None,
-    sort_direction: str = "desc",
+    # Soonest delivery first by default (Phase 1 §1.7) — the supplier's
+    # worklist is ordered by what is due next.
+    sort_direction: str = "asc",
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),

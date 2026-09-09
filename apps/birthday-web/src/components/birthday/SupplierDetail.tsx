@@ -25,9 +25,11 @@ import {
   addSupplierLocation,
   createSupplierUser,
   getSupplier,
+  getSupplierReadiness,
   listSupplierCatalogue,
   listSupplierLocations,
   listSupplierUsers,
+  markSupplierUserInvited,
   updateSupplier,
   updateSupplierCatalogueItem,
   updateSupplierUser,
@@ -68,6 +70,16 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
     isError,
     refetch,
   } = useQuery({ queryKey: ["birthday-supplier", supplierId], queryFn: () => getSupplier(supplierId) });
+
+  const { data: readiness } = useQuery({
+    queryKey: ["birthday-supplier-readiness", supplierId],
+    queryFn: () => getSupplierReadiness(supplierId),
+  });
+
+  const markInvited = useMutation({
+    mutationFn: (userId: number) => markSupplierUserInvited(supplierId, userId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["birthday-supplier-users", supplierId] }),
+  });
 
   const { data: locations, refetch: refetchLocations } = useQuery({
     queryKey: ["birthday-supplier-locations", supplierId],
@@ -352,6 +364,25 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
             </CardContent>
           </Card>
 
+          {readiness && !readiness.ready && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Setup readiness</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-sm text-dt-text-secondary">
+                  This supplier is not fully set up — detection may route orders here that then land in
+                  Requires Attention:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-dt-danger">
+                  {readiness.missing.map((m) => (
+                    <li key={m}>{m}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Supplier Users</CardTitle>
@@ -382,10 +413,23 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
                         </p>
                         <p className="text-xs text-dt-text-secondary">
                           {user.email} · {user.role.replace(/_/g, " ")}
-                          {!user.entra_object_id && " · Entra guest not yet linked"}
+                          {user.last_login_at &&
+                            ` · last sign-in ${new Date(user.last_login_at).toLocaleDateString()}`}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
+                        <span className="rounded-full bg-dt-surface-warm px-2 py-0.5 text-[11px] font-medium text-dt-text-secondary">
+                          {user.onboarding_state.replace(/_/g, " ")}
+                        </span>
+                        {scope?.isAdmin && user.onboarding_state === "NOT_INVITED" && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => markInvited.mutate(user.id)}
+                          >
+                            Mark invited
+                          </Button>
+                        )}
                         <StatusBadge status={user.status} />
                         {scope?.isAdmin && (
                           <>
