@@ -14,8 +14,9 @@ attempt number is this" per row.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
@@ -96,21 +97,50 @@ def render_supplier_email(order: BirthdayOrder) -> tuple[str, str]:
     return subject, body
 
 
+_RETRY_BASE_MINUTES = 5
+_RETRY_CAP_MINUTES = 240
+
+
+def _backoff_minutes(attempt: int) -> int:
+    """Exponential backoff: 5, 10, 20, 40 … capped at 240 minutes."""
+    return min(_RETRY_BASE_MINUTES * (2 ** max(attempt, 0)), _RETRY_CAP_MINUTES)
+
+
+def _release_subject(order: BirthdayOrder) -> str:
+    return f"[{order.order_reference}] Birthday Cake Order — {order.employee_name}"
+
+
+def _has_successful_release(db: Session, order: BirthdayOrder) -> bool:
+    """A SENT outbound EMAIL for this order carrying the order-release
+    subject — used to guard against sending the release twice."""
+    stmt = select(SupplierCommunication.id).where(
+        SupplierCommunication.order_id == order.id,
+        SupplierCommunication.channel == CommunicationChannel.EMAIL.value,
+        SupplierCommunication.direction == CommunicationDirection.OUTBOUND.value,
+        SupplierCommunication.status == CommunicationStatus.SENT.value,
+        SupplierCommunication.subject == _release_subject(order),
+    )
+    return db.execute(stmt).first() is not None
+
+
 def _record_communication(
     db: Session, order: BirthdayOrder, *, subject: str, body: str, status: str,
     message_id: str | None, last_error: str | None, retry_count: int,
+    next_retry_at: datetime | None = None,
 ) -> SupplierCommunication:
     communication = SupplierCommunication(
         order_id=order.id,
         supplier_id=order.supplier_id,
         direction=CommunicationDirection.OUTBOUND.value,
         channel=CommunicationChannel.EMAIL.value,
+        author_type=ActorType.SYSTEM.value,
         subject=subject,
         body=body,
         sent_at=datetime.now(UTC) if status == CommunicationStatus.SENT.value else None,
         message_id=message_id,
         status=status,
         retry_count=retry_count,
+        next_retry_at=next_retry_at,
         last_error=last_error,
     )
     db.add(communication)
@@ -120,9 +150,12 @@ def _record_communication(
 
 def _handle_failure(
     db: Session, order: BirthdayOrder, *, error_detail: str, actor_id: int | None,
+    notify: bool = True,
 ) -> BirthdayOrder:
     """Records the failure and moves the order into the admin exception
-    queue. Never lets the failure disappear silently."""
+    queue. ``notify=False`` while automatic retries remain — the
+    BIRTHDAY_ADMIN notification is deferred until the retry sweep exhausts
+    ``max_attempts`` (Phase 1 §1.3)."""
     order.last_failure_reason = error_detail
     order.retry_count = (order.retry_count or 0) + 1
 
@@ -133,10 +166,6 @@ def _handle_failure(
             actor_id=actor_id, actor_type=ActorType.SYSTEM, detail=error_detail,
         )
 
-    # transition() (when it ran) already wrote a STATUS_CHANGE OrderEvent;
-    # the EMAIL_FAILED event is added separately so the failure reason is
-    # distinguishable from a generic status change in the timeline, and is
-    # still recorded even on a repeat failure that doesn't change status.
     db.add(
         OrderEvent(
             order_id=order.id,
@@ -151,28 +180,35 @@ def _handle_failure(
     db.commit()
     db.refresh(order)
 
-    try:
-        NotificationService().notify_module_role(
-            module_key="birthday",
-            role="BIRTHDAY_ADMIN",
-            type="birthday.email_failed",
-            title=f"Supplier email failed for {order.order_reference}",
-            body=error_detail,
-            related_entity_type="birthday_order",
-            related_entity_id=order.id,
-        )
-    except Exception:  # noqa: BLE001 - best-effort, never fails the flow
-        pass
+    if notify:
+        try:
+            NotificationService().notify_module_role(
+                module_key="birthday",
+                role="BIRTHDAY_ADMIN",
+                type="birthday.email_failed",
+                title=f"Supplier email failed for {order.order_reference}",
+                body=error_detail,
+                related_entity_type="birthday_order",
+                related_entity_id=order.id,
+            )
+        except Exception:  # noqa: BLE001 - best-effort, never fails the flow
+            pass
 
     return order
 
 
 def _send(
     db: Session, order: BirthdayOrder, *, actor_id: int | None, target_status: OrderStatus,
-    released_by: int | None = None,
+    released_by: int | None = None, guard_duplicate: bool = False,
 ) -> BirthdayOrder:
     if order.supplier is None:
         raise NoSupplierAssignedError(f"Order {order.order_reference} has no supplier assigned")
+    # Duplicate-send guard (Phase 1 §1.3): a release path (auto-release,
+    # manual send, confirm-release) is a no-op if the release email already
+    # went out for this order. An explicit resend / the retry sweep pass
+    # guard_duplicate=False.
+    if guard_duplicate and _has_successful_release(db, order):
+        return order
     # "Verification is the approval" (decision A): there is no separate
     # approval gate. The only status check is reachability — a standard
     # order auto-releases from PENDING_VERIFICATION, a flagged order
@@ -199,6 +235,9 @@ def _send(
     subject, body = render_supplier_email(order)
     retry_count = (order.retry_count or 0) + 1 if order.status == OrderStatus.REQUIRES_ATTENTION.value else 0
 
+    # First automatic retry is scheduled ~5 min out; the sweep escalates.
+    _first_retry_at = datetime.now(UTC) + timedelta(minutes=_backoff_minutes(0))
+
     try:
         result = get_email_client().send(
             to=order.supplier.primary_contact_email,
@@ -210,16 +249,18 @@ def _send(
         _record_communication(
             db, order, subject=subject, body=body, status=CommunicationStatus.FAILED.value,
             message_id=None, last_error=str(exc), retry_count=retry_count,
+            next_retry_at=_first_retry_at,
         )
-        return _handle_failure(db, order, error_detail=str(exc), actor_id=actor_id)
+        return _handle_failure(db, order, error_detail=str(exc), actor_id=actor_id, notify=False)
 
     if not result.sent:
         error_detail = "Email send reported failure (sent=False)"
         _record_communication(
             db, order, subject=subject, body=body, status=CommunicationStatus.FAILED.value,
             message_id=result.message_id, last_error=error_detail, retry_count=retry_count,
+            next_retry_at=_first_retry_at,
         )
-        return _handle_failure(db, order, error_detail=error_detail, actor_id=actor_id)
+        return _handle_failure(db, order, error_detail=error_detail, actor_id=actor_id, notify=False)
 
     _record_communication(
         db, order, subject=subject, body=body, status=CommunicationStatus.SENT.value,
@@ -252,14 +293,20 @@ def _send(
 def send_order_to_supplier(db: Session, order: BirthdayOrder, *, actor_id: int | None) -> BirthdayOrder:
     """Manual release — used for held orders and one-off ad hoc sends.
     Recorded as human-released (released_by=actor_id)."""
-    return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)
+    return _send(
+        db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER,
+        released_by=actor_id, guard_duplicate=True,
+    )
 
 
 def auto_release_order(db: Session, order: BirthdayOrder) -> BirthdayOrder:
     """The standard-order path (plan §F step 10): triggered by
     address_verification_service the instant a standard order is marked
     VERIFIED. released_by stays NULL — this is a SYSTEM action."""
-    return _send(db, order, actor_id=None, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=None)
+    return _send(
+        db, order, actor_id=None, target_status=OrderStatus.SENT_TO_SUPPLIER,
+        released_by=None, guard_duplicate=True,
+    )
 
 
 def confirm_release_order(db: Session, order: BirthdayOrder, *, actor_id: int) -> BirthdayOrder:
@@ -267,13 +314,135 @@ def confirm_release_order(db: Session, order: BirthdayOrder, *, actor_id: int) -
     (REQUIRES_REVIEW) order — the exception-only approval (plan §K)."""
     order.review_confirmed_at = datetime.now(UTC)
     order.review_confirmed_by = actor_id
-    return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)
+    return _send(
+        db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER,
+        released_by=actor_id, guard_duplicate=True,
+    )
 
 
 def resend_order_to_supplier(db: Session, order: BirthdayOrder, *, actor_id: int | None) -> BirthdayOrder:
     """Manual retry for orders already SENT_TO_SUPPLIER/REQUIRES_ATTENTION
-    after a prior failure — same order_reference, never a second order."""
+    after a prior failure — same order_reference, never a second order.
+    Explicit, so the duplicate guard does not apply."""
     return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)
+
+
+def retry_failed_outbound(db: Session, *, now: datetime | None = None) -> dict:
+    """Automatic backoff retry for FAILED outbound emails (Phase 1 §1.3),
+    driven by ``birthday-comms-job``. Re-sends each due row; on success the
+    row flips to SENT and, if the order is parked in REQUIRES_ATTENTION for
+    this send, it advances to SENT_TO_SUPPLIER. When ``max_attempts`` is
+    exhausted the BIRTHDAY_ADMIN notification finally fires and the order
+    stays in the exception queue for a human."""
+    now = now or datetime.now(UTC)
+    rows = db.execute(
+        select(SupplierCommunication).where(
+            SupplierCommunication.channel == CommunicationChannel.EMAIL.value,
+            SupplierCommunication.direction == CommunicationDirection.OUTBOUND.value,
+            SupplierCommunication.status == CommunicationStatus.FAILED.value,
+            SupplierCommunication.retry_count < SupplierCommunication.max_attempts,
+            or_(
+                SupplierCommunication.next_retry_at.is_(None),
+                SupplierCommunication.next_retry_at <= now,
+            ),
+        )
+    ).scalars().all()
+
+    retried = succeeded = exhausted = 0
+    for comm in rows:
+        order = db.get(BirthdayOrder, comm.order_id)
+        if order is None:
+            comm.next_retry_at = None
+            comm.retry_count = comm.max_attempts
+            continue
+        if order.supplier is None or not order.supplier.primary_contact_email:
+            # Nothing to retry against — treat as exhausted so a human is told.
+            comm.next_retry_at = None
+            comm.retry_count = comm.max_attempts
+            comm.last_error = "No supplier contact email"
+            exhausted += 1
+            db.add(
+                OrderEvent(
+                    order_id=order.id, event_type="EMAIL_RETRY_EXHAUSTED",
+                    actor_type=ActorType.SYSTEM.value,
+                    detail="No supplier contact email — cannot send",
+                )
+            )
+            try:
+                NotificationService().notify_module_role(
+                    module_key="birthday", role="BIRTHDAY_ADMIN",
+                    type="birthday.email_failed",
+                    title=f"Supplier email cannot be sent for {order.order_reference}",
+                    body="The assigned supplier has no contact email.",
+                    related_entity_type="birthday_order", related_entity_id=order.id,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            continue
+        retried += 1
+        try:
+            result = get_email_client().send(
+                to=order.supplier.primary_contact_email, subject=comm.subject,
+                body=comm.body, order_reference=order.order_reference,
+            )
+            ok = bool(result.sent)
+            err = None if ok else "sent=False"
+            msg_id = result.message_id
+        except Exception as exc:  # noqa: BLE001
+            ok, err, msg_id = False, str(exc), None
+
+        comm.retry_count += 1
+        if ok:
+            comm.status = CommunicationStatus.SENT.value
+            comm.sent_at = now
+            comm.next_retry_at = None
+            comm.last_error = None
+            comm.message_id = msg_id or comm.message_id
+            succeeded += 1
+            if order.status == OrderStatus.REQUIRES_ATTENTION.value:
+                try:
+                    order = order_status_service.transition(
+                        db, order, OrderStatus.SENT_TO_SUPPLIER,
+                        actor_id=None, actor_type=ActorType.SYSTEM,
+                        detail="Supplier email delivered on automatic retry",
+                    )
+                    order.released_at = order.released_at or now
+                except order_status_service.InvalidTransitionError:
+                    pass
+            db.add(
+                OrderEvent(
+                    order_id=order.id, event_type="EMAIL_SENT", to_status=order.status,
+                    actor_type=ActorType.SYSTEM.value,
+                    detail=f"retry #{comm.retry_count} succeeded",
+                )
+            )
+        else:
+            comm.last_error = err
+            if comm.retry_count >= comm.max_attempts:
+                comm.next_retry_at = None
+                exhausted += 1
+                db.add(
+                    OrderEvent(
+                        order_id=order.id, event_type="EMAIL_RETRY_EXHAUSTED",
+                        actor_type=ActorType.SYSTEM.value,
+                        detail=f"{comm.retry_count} attempts failed: {err}",
+                    )
+                )
+                try:
+                    NotificationService().notify_module_role(
+                        module_key="birthday", role="BIRTHDAY_ADMIN",
+                        type="birthday.email_failed",
+                        title=f"Supplier email failed for {order.order_reference} after {comm.retry_count} attempts",
+                        body=err or "unknown error",
+                        related_entity_type="birthday_order", related_entity_id=order.id,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                comm.next_retry_at = now + timedelta(minutes=_backoff_minutes(comm.retry_count))
+
+    db.commit()
+    return {"due": len(rows), "retried": retried, "succeeded": succeeded, "exhausted": exhausted}
 
 
 def send_ad_hoc_message(

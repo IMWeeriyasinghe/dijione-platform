@@ -15,6 +15,7 @@ from app.api.routes.config import get_or_create_config
 from app.db.session import get_db
 from app.integrations.factory import get_employee_source
 from app.models.scan_run import ScanRun
+from app.services import order_email_service
 from app.services.detection_service import run_daily_scan
 
 router = APIRouter(prefix="/api/birthday/internal", tags=["birthday-internal"])
@@ -31,6 +32,22 @@ def run_daily_scan_endpoint(
     config = get_or_create_config(db)
     client = get_employee_source()
     return run_daily_scan(db, client, config, trigger="SCHEDULED")
+
+
+@router.post("/run-comms")
+def run_comms_endpoint(
+    db: Session = Depends(get_db), _service: None = Depends(require_internal_service)
+) -> dict:
+    """Driven by ``birthday-comms-job`` (~10 min): automatic outbound-email
+    backoff retry, and (Phase 1 §1.5) inbound supplier-email polling."""
+    result: dict = {"email_retry": order_email_service.retry_failed_outbound(db)}
+    try:
+        from app.services import inbound_email_service
+
+        result["inbound_email"] = inbound_email_service.poll(db)
+    except ImportError:
+        result["inbound_email"] = {"skipped": "not configured"}
+    return result
 
 
 def _scan_run_to_dict(run: ScanRun) -> dict:

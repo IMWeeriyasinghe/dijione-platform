@@ -110,15 +110,31 @@ def test_send_order_to_supplier_failure_moves_to_requires_attention(db):
     assert "EMAIL_FAILED" in event_types
 
 
-def test_send_order_to_supplier_failure_notifies_admin(db, platform_calls):
-    from app.services.order_email_service import send_order_to_supplier
+def test_send_order_to_supplier_failure_defers_notification_until_retries_exhausted(db, platform_calls):
+    """Phase 1 §1.3: the first failure parks the order and schedules a
+    backoff retry — the BIRTHDAY_ADMIN notification is deferred until the
+    retry sweep exhausts max_attempts."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.supplier_communication import SupplierCommunication
+    from app.services.order_email_service import retry_failed_outbound, send_order_to_supplier
 
     order = _make_order(db, supplier_contact_email="")
     send_order_to_supplier(db, order, actor_id=1)
 
-    assert len(platform_calls["broadcasts"]) == 1
-    broadcast = platform_calls["broadcasts"][0]
-    assert broadcast["role"] == "BIRTHDAY_ADMIN"
+    assert order.status == "REQUIRES_ATTENTION"
+    comm = db.query(SupplierCommunication).filter_by(order_id=order.id).one()
+    assert comm.status == "FAILED" and comm.next_retry_at is not None
+    assert platform_calls["broadcasts"] == []  # not yet
+
+    comm.max_attempts = 2
+    db.commit()
+    now = datetime.now(UTC)
+    for _ in range(4):
+        now += timedelta(hours=6)
+        retry_failed_outbound(db, now=now)
+
+    assert any(b["role"] == "BIRTHDAY_ADMIN" for b in platform_calls["broadcasts"])
 
 
 def test_send_order_to_supplier_no_supplier_raises(db):

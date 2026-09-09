@@ -282,28 +282,34 @@ def update_order(
                 detail=f"Supplier reassigned to supplier_id={updates.get('supplier_id')}",
             )
         )
+    change_detail = None
     if (supplier_reassigned or date_changed) and was_supplier_visible:
+        change_detail = (
+            f"delivery date changed to {updates.get('delivery_date')}"
+            if date_changed
+            else "the assigned supplier changed"
+        )
         db.add(
             OrderEvent(
                 order_id=order.id,
                 event_type="ORDER_CHANGED_POST_RELEASE",
                 actor_id=scope.user.id,
                 actor_type="USER",
-                detail=(
-                    f"delivery_date changed to {updates.get('delivery_date')}"
-                    if date_changed else f"supplier reassigned to supplier_id={updates.get('supplier_id')}"
-                ),
+                detail=change_detail,
             )
         )
-        # NOTE: no supplier-facing push notification here — there is no
-        # per-supplier notification channel yet (notify_module_role
-        # broadcasts to every supplier, which would leak this order's
-        # existence to unrelated suppliers). The OrderEvent above is
-        # visible to the affected supplier the next time they load the
-        # order; real supplier notifications are a deferred item pending
-        # the Entra B2B / per-supplier notification work (see plan §U).
     db.commit()
     db.refresh(order)
+
+    # Post-release changes must not be silent to the supplier (plan §Y):
+    # email the currently-assigned supplier a nudge to re-check the portal.
+    if change_detail and order.supplier_id is not None:
+        order_email_service.send_ad_hoc_message(
+            db, order,
+            body=f"Order {order.order_reference} has been updated — {change_detail}. "
+                 "Please review the current details in the DijiBirthday Supplier Portal.",
+            actor_id=scope.user.id,
+        )
 
     try:
         AuditService().log(
@@ -453,18 +459,25 @@ def cancel_order(
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.cancel")),
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
-    was_supplier_visible = order.status in order_status_service.SUPPLIER_VISIBLE_STATUSES
+    # A supplier had this order in progress -> tell them it is cancelled
+    # (plan §Y). CANCELLED also stays in SUPPLIER_VISIBLE_STATUSES so the
+    # portal shows a tombstone with the reason instead of a silent 404.
+    notify_supplier = (
+        order.status in order_status_service.SUPPLIER_VISIBLE_STATUSES
+        and order.supplier_id is not None
+    )
     try:
         order = order_status_service.cancel(db, order, actor_id=scope.user.id, reason=payload.reason)
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    # NOTE: CANCELLED stays in SUPPLIER_VISIBLE_STATUSES (see
-    # order_status_service.SUPPLIER_VISIBLE_STATUSES) so the portal shows a
-    # tombstone with the cancellation reason instead of a silent 404 — the
-    # fix for plan §Y's "internal->supplier changes must not be silent".
-    # A push notification to just this supplier is deferred pending a
-    # per-supplier notification channel (see note in update_order above).
-    _ = was_supplier_visible
+    if notify_supplier:
+        reason = payload.reason or "no reason given"
+        order_email_service.send_ad_hoc_message(
+            db, order,
+            body=f"Order {order.order_reference} has been CANCELLED ({reason}). "
+                 "No delivery is required. You can see the cancelled order in the portal.",
+            actor_id=scope.user.id,
+        )
     return order
 
 
