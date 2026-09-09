@@ -23,6 +23,7 @@ from app.schemas.supplier import (
     SupplierLocationCreate,
     SupplierLocationRead,
     SupplierRead,
+    SupplierSetupReadiness,
     SupplierUpdate,
     SupplierUserCreate,
     SupplierUserRead,
@@ -233,6 +234,43 @@ _VALID_ROLES = {"SUPPLIER_USER", "SUPPLIER_ADMIN"}
 _VALID_USER_STATUSES = {"ACTIVE", "INACTIVE"}
 
 
+@router.get("/{supplier_id}/readiness", response_model=SupplierSetupReadiness)
+def get_supplier_readiness(
+    supplier_id: int,
+    db: Session = Depends(get_db),
+    _scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.read")),
+) -> SupplierSetupReadiness:
+    """Setup-readiness panel (Phase 1 §1.6) — catches a skeleton supplier
+    before detection routes orders to it and they all land in
+    REQUIRES_ATTENTION."""
+    supplier = _get_supplier_or_404(db, supplier_id)
+    has_location = bool(supplier.locations)
+    active_items = [i for i in supplier.catalogue_items if i.is_active]
+    has_default_cake = (
+        not active_items  # "Cake" alone is valid — no items is fine
+        or len([i for i in active_items if i.is_default]) == 1
+        or len(active_items) == 1
+    )
+    has_active_linked_user = any(
+        u.status == "ACTIVE" and (u.entra_object_id or u.last_login_at) for u in supplier.users
+    )
+    missing: list[str] = []
+    if not has_location:
+        missing.append("no service location")
+    if not has_default_cake:
+        missing.append("catalogue items but no single default cake")
+    if not has_active_linked_user:
+        missing.append("no active Entra-linked supplier user")
+    return SupplierSetupReadiness(
+        supplier_id=supplier.id,
+        has_location=has_location,
+        has_default_cake=has_default_cake,
+        has_active_linked_user=has_active_linked_user,
+        ready=not missing,
+        missing=missing,
+    )
+
+
 @router.get("/{supplier_id}/users", response_model=list[SupplierUserRead])
 def list_supplier_users(
     supplier_id: int,
@@ -291,6 +329,11 @@ def update_supplier_user(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Supplier user not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    mark_invited = updates.pop("mark_invited", False)
+    if mark_invited and user.invited_at is None:
+        from datetime import UTC, datetime
+
+        user.invited_at = datetime.now(UTC)
     if "role" in updates and updates["role"] not in _VALID_ROLES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid role: {updates['role']!r}")
     if "status" in updates and updates["status"] not in _VALID_USER_STATUSES:
@@ -318,6 +361,10 @@ def update_supplier_user(
             )
 
     repo.update_user(user, updates)
+    if entra_link_changed and updates.get("entra_object_id") and user.linked_at is None:
+        from datetime import UTC, datetime
+
+        user.linked_at = datetime.now(UTC)
     db.commit()
     db.refresh(user)
     # Audit the identity link separately from routine profile edits — it is

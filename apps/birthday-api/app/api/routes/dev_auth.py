@@ -21,7 +21,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.supplier_user import SupplierUser
-from app.services.supplier_auth import mint_supplier_session_token
+from app.services.supplier_auth import mint_supplier_session_token, record_supplier_login
 
 router = APIRouter(prefix="/api/birthday/internal/dev", tags=["birthday-dev-auth"])
 
@@ -88,6 +88,8 @@ def dev_supplier_login(payload: DevSupplierLoginRequest) -> DevSupplierLoginResp
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Supplier user not found")
         if supplier_user.status != "ACTIVE":
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Supplier user is inactive")
-        return DevSupplierLoginResponse(access_token=mint_supplier_session_token(supplier_user))
+        token = mint_supplier_session_token(supplier_user)
+        record_supplier_login(db, supplier_user)
+        return DevSupplierLoginResponse(access_token=token)
     finally:
         db.close()

@@ -501,6 +501,13 @@ export type SupplierCatalogueItemUpdateInput = {
   is_default?: boolean;
 };
 
+export type SupplierUserOnboardingState =
+  | "NOT_INVITED"
+  | "INVITED"
+  | "LINKED"
+  | "ACTIVE"
+  | "INACTIVE";
+
 export type SupplierUserOut = {
   id: number;
   supplier_id: number;
@@ -509,6 +516,10 @@ export type SupplierUserOut = {
   role: string;
   status: string;
   entra_object_id: string | null;
+  invited_at: string | null;
+  linked_at: string | null;
+  last_login_at: string | null;
+  onboarding_state: SupplierUserOnboardingState;
   created_at: string;
   updated_at: string;
 };
@@ -526,5 +537,15 @@ export type SupplierUserUpdateInput = {
   role?: string;
   status?: string;
   entra_object_id?: string | null;
+  mark_invited?: boolean;
+};
+
+export type SupplierSetupReadiness = {
+  supplier_id: number;
+  has_location: boolean;
+  has_default_cake: boolean;
+  has_active_linked_user: boolean;
+  ready: boolean;
+  missing: string[];
 };
 

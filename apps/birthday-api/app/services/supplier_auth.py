@@ -88,11 +88,21 @@ def resolve_supplier_user(db: Session, claims: dict) -> SupplierUser:
             raise SupplierAccessRefusedError()
         if row.entra_object_id is None:
             row.entra_object_id = oid
+            row.linked_at = datetime.now(UTC)
             db.commit()
 
     if row.status != "ACTIVE":
         raise SupplierAccessRefusedError()
     return row
+
+
+def record_supplier_login(db: Session, supplier_user: SupplierUser) -> None:
+    """Stamp ``last_login_at`` on a successful session mint (Phase 1 §1.6)
+    — used by both the Entra flow and the dev persona picker."""
+    supplier_user.last_login_at = datetime.now(UTC)
+    if supplier_user.linked_at is None and supplier_user.entra_object_id is not None:
+        supplier_user.linked_at = supplier_user.last_login_at
+    db.commit()
 
 
 def mint_supplier_session_token(supplier_user: SupplierUser) -> str:

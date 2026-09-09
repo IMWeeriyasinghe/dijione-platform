@@ -33,6 +33,7 @@ from app.db.session import get_db
 from app.services.supplier_auth import (
     SupplierAccessRefusedError,
     mint_supplier_session_token,
+    record_supplier_login,
     resolve_supplier_user,
 )
 
@@ -200,4 +201,6 @@ def exchange_code(payload: SupplierTokenExchangeIn, db: Session = Depends(get_db
         # ACTIVE SupplierUser must not learn why it was refused.
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
-    return SupplierTokenOut(access_token=mint_supplier_session_token(supplier_user))
+    token = mint_supplier_session_token(supplier_user)
+    record_supplier_login(db, supplier_user)
+    return SupplierTokenOut(access_token=token)
