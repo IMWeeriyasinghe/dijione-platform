@@ -35,11 +35,14 @@ Legend: ✅ done · 🔄 automated + deploying · ⏳ pending a human validation
 | Step | State | Note |
 |---|---|---|
 | Bicep: `birthdayIntegrationsMode=live` param + `birthday-attention-job` + `birthday-comms-job` | ✅ | `az bicep build` clean |
-| Build + deploy `birthday-api` / `birthday-web` / `birthday-supplier-web` to hosted DEV | 🔄 | see deploy log |
-| `birthday-api` `INTEGRATIONS_MODE=live` (consumes live People via people-api) | 🔄 | `EMAIL_SENDING_MODE` stays `mock` |
-| `migrate-birthday-api` (applies the 3 new migrations) | 🔄 | |
-| `/health/deep` smoke: `integrations_mode: live`, `people_source: ok`, migration up-to-date | 🔄 | |
-| Realistic DEV supplier (location + default cake + working days + real `SupplierUser`) | ⏳ | internal-admin action via `/birthday/suppliers` |
+| Build + deploy `birthday-api` / `birthday-web` / `birthday-supplier-web` to hosted DEV | ✅ | commit `97fb35a`; digests `birthday-api@sha256:608571cc…`, `birthday-web@sha256:1a3ea949…`, `birthday-supplier-web@sha256:9cf14a34…`. (Built via `git archive` → clean 11 MB context — the raw-worktree `az acr build` upload hangs on Windows.) |
+| `birthday-api` `INTEGRATIONS_MODE=live` (consumes live People via people-api) | ✅ | `EMAIL_SENDING_MODE` stays `mock`; `SUPPLIER_AUTH_MODE=entra` |
+| `migrate-birthday-api` (applies `d1e3f5a7b9c2`, `e2f4a6b8c0d2`, `f3a5b7c9d1e4`) | ✅ | execution `Succeeded` |
+| `/health/deep` smoke | ✅ | `status: healthy`, `database: ok`, `migration up_to_date: true` (`f3a5b7c9d1e4`), `integrations_mode: live`, `email_sending_mode: mock`, `people_source: ok` (when people-api warm) |
+| `birthday-attention-job` + `birthday-comms-job` execute cleanly | ✅ | both `Succeeded` on the deployed image |
+| Real detection scan on live data | ✅ | `birthday-scan-job` `Succeeded` → **27 orders created** (`birthday_dev` was 0), 8 exceptions (expected: skeleton "Test Supplier" has no location/catalogue → NO_SUPPLIER/NO_DEFAULT_CAKE) |
+| Web surfaces serving | ✅ | `shell-web/birthday` 200, `birthday-supplier-web` login + `login-url` 200 |
+| Realistic DEV supplier (location + default cake + working days + real `SupplierUser`) | ⏳ | internal-admin action via `/birthday/suppliers` — this is what clears the 8 detection exceptions |
 | **Interactive human Entra B2B sign-in** + the §N checklist (auth → match → oid → session → portal → isolation → logout → persona-404) | ⏳ | requires a person at a browser |
 | Run detection on live data; inspect every order (eligibility, exceptions, defaulting, address snapshot, weekend shift) | ⏳ | `POST /admin/run-detection` |
 | Drive 3 orders end-to-end by hand; read the Unified Timeline | ⏳ | |
