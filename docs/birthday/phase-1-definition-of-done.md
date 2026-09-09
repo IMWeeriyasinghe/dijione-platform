@@ -50,6 +50,25 @@ Legend: ✅ done · 🔄 automated + deploying · ⏳ pending a human validation
 | Failure injection (people-api cold → deferred; email fail → retry → exhaust; deactivate user/supplier; cross-supplier 404) | ⏳ | |
 | Log defects; triage P0 fixed / rest P1–P2 | ⏳ | |
 
+## Phase 1.5 — UX polish, workflow hardening, test catalog
+
+Plan `C:\Users\Dell\.claude\plans\dijione-dijitalentflow-rippling-cascade.md`.
+
+| § | Item | State | Note |
+|---|---|---|---|
+| A | Shared `TopNav` "DijiOne Home" cross-zone link (every module) | ✅ | plain `<a href="/">`, icon + label |
+| B | BambooHR sync rescheduled to Colombo midnight (`people-sync-job` `30 18 * * *`, `birthday-scan-job` `0 19 * * *`, `birthday-attention-job` `30 20 * * *`) | ✅ | Bicep-only |
+| B | `GET /api/birthday/people/freshness` + `POST /api/birthday/people/refresh` + Upcoming Birthdays "auto-refreshes daily / last refreshed / Refresh now" | ✅ | mock mode → `available:false` / `409` |
+| C | Read-only supplier impersonation (reduced-permission 30-min token, POST-form handoff, sticky banner, actions hidden + server 403) | ✅ | `test_supplier_impersonation.py` |
+| D | Every internal dashboard tile + Upcoming-Birthdays rows clickable | ✅ | `dashboard-tiles.test.tsx` |
+| E | Upcoming Birthdays: sort Birthday & Cake Order Status, cake-status filter, order-ref search, whole-row click | ✅ | `test_directory_sort_filter.py` |
+| F | Cake Orders `due=today\|tomorrow\|overdue` filter + saved views | ✅ | `test_orders_due_filter.py` |
+| G | Supplier dashboard three-band regroup + filtered deep-links; supplier orders table sort + status filter + due filter + whole-row click | ✅ | `test_orders_due_filter.py` |
+| H1–H5 | Dead-end fixes: Team Member ID input · NO_SUPPLIER/NO_DEFAULT_CAKE auto-clear on PATCH · ON_HOLD guided panel · link inbound email by reference · Resolve-&-notify-supplier | ✅ | `test_orders_exception_recovery.py`, `test_inbound_email.py` |
+| I | `docs/birthday/test-scenarios.md` manual catalog + regression tests | ✅ | birthday-api 268 pass; webs 9 + 10 pass |
+| — | Build + deploy `birthday-api` / `birthday-web` / `birthday-supplier-web` to hosted DEV | 🔄 | commit `f69cba8`; no migration (all changes column-free) |
+| — | `/health/deep` smoke + confirm `people-sync-job` cron `30 18 * * *` | ⏳ | after deploy |
+
 ## UAT entry (blocked until)
 - All P0 merged (done) + the 1.9 ⏳ validation steps executed and PASS
 - Browser E2E (deferred item) resolved or explicitly accepted

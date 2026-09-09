@@ -21,7 +21,11 @@ const { getPortalOrderTimeline, postPortalOrderMessage } = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => ({ getPortalOrderTimeline, postPortalOrderMessage }));
 vi.mock("@/lib/supplier-auth", () => ({ useSupplierAuth: () => ({ token: "t" }) }));
 
-const { usePortalMe } = vi.hoisted(() => ({ usePortalMe: vi.fn(() => undefined) }));
+import type { PortalMe } from "@/lib/api";
+
+const { usePortalMe } = vi.hoisted(() => ({
+  usePortalMe: vi.fn<() => PortalMe | undefined>(() => undefined),
+}));
 vi.mock("@/lib/portal-me", () => ({ usePortalMe }));
 
 import { OrderTimeline } from "../order-timeline";
