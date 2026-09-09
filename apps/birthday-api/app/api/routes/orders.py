@@ -49,6 +49,7 @@ from app.schemas.order import (
 )
 from app.services import (
     address_verification_service,
+    delivery_date_service,
     detection_service,
     order_email_service,
     order_status_service,
@@ -155,6 +156,12 @@ def create_order(
     # Deterministic supplier default (§5/§6): sole ACTIVE supplier ->
     # office-location rule -> is_default. Still fully editable afterwards.
     default_supplier = detection_service.resolve_supplier_for_office(payload.office_location, db)
+    if payload.delivery_date is not None:
+        delivery_date = payload.delivery_date
+    else:
+        delivery_date, _shifted = delivery_date_service.resolve_delivery_date(
+            payload.birthday_date, default_supplier.working_days if default_supplier else None
+        )
     order, _created = create_or_get_order(
         db,
         employee_id=payload.employee_id,
@@ -164,8 +171,9 @@ def create_order(
         order_reference=order_reference,
         birthday_date=payload.birthday_date,
         birthday_year=birthday_year,
-        # §8: delivery date defaults to the birthday occurrence.
-        delivery_date=payload.delivery_date or payload.birthday_date,
+        # §8/§1.1: delivery date defaults to the birthday occurrence, shifted
+        # off a supplier non-working day.
+        delivery_date=delivery_date,
         office_location=payload.office_location,
         lead_time_days=(payload.birthday_date - date.today()).days,
         lead_time_class="NORMAL",

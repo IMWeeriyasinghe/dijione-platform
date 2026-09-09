@@ -12,14 +12,23 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.constants import EligibilityReason, ExceptionReason, LeadTimeClass, OrderStatus, ScanRunStatus
+from app.core.constants import (
+    ActorType,
+    EligibilityReason,
+    ExceptionReason,
+    LeadTimeClass,
+    OrderStatus,
+    ScanRunStatus,
+)
 from app.integrations.people_source.client import EmployeeSourceClient, EmployeeSourceUnavailableError
 from app.integrations.people_source.mapper import map_employee
 from app.models.detection_config import BirthdayDetectionConfig
+from app.models.order_event import OrderEvent
 from app.models.scan_run import ScanRun
 from app.models.supplier import Supplier
 from app.models.supplier_catalogue_item import SupplierCatalogueItem
 from app.repositories.supplier_repository import SupplierRepository
+from app.services import delivery_date_service
 from app.services.eligibility_service import compute_eligibility
 from app.services.order_sequence_service import next_order_reference
 from app.services.order_service import create_or_get_order
@@ -258,6 +267,13 @@ def run_daily_scan(
                 db, team_member_id, occurrence_year, provisional=not has_employee_number
             )
 
+            # Working-day-aware default delivery date (§1.1): shift a
+            # weekend / supplier-non-working-day birthday to the nearest
+            # prior working day. Soft flag (OrderEvent), operator can override.
+            delivery_date, date_shifted = delivery_date_service.resolve_delivery_date(
+                occurrence_date, supplier.working_days if supplier else None
+            )
+
             _order, created = create_or_get_order(
                 db,
                 employee_id=employee["employee_id"],
@@ -267,9 +283,10 @@ def run_daily_scan(
                 order_reference=order_reference,
                 birthday_date=occurrence_date,
                 birthday_year=occurrence_year,
-                # Default delivery date = the birthday occurrence (§8) —
-                # editable later in Fulfilment Assignment.
-                delivery_date=occurrence_date,
+                # Default delivery date = the birthday occurrence, shifted to
+                # the nearest prior working day if that falls on a supplier
+                # non-working day (§1.1) — editable later in Fulfilment Assignment.
+                delivery_date=delivery_date,
                 office_location=employee["office_location"],
                 lead_time_days=days_remaining,
                 lead_time_class=lead_time_class.value,
@@ -292,6 +309,19 @@ def run_daily_scan(
                 orders_created += 1
                 if status in (OrderStatus.REQUIRES_ATTENTION, OrderStatus.ON_HOLD):
                     exceptions += 1
+                if date_shifted:
+                    db.add(
+                        OrderEvent(
+                            order_id=_order.id,
+                            event_type="DELIVERY_DATE_ADJUSTED",
+                            actor_type=ActorType.SYSTEM.value,
+                            detail=(
+                                f"Birthday {occurrence_date.isoformat()} falls on a supplier "
+                                f"non-working day; default delivery date set to "
+                                f"{delivery_date.isoformat()}. Override in Fulfilment Assignment."
+                            ),
+                        )
+                    )
                 # No auto-promotion step here any more: a freshly-detected
                 # order's address is always NOT_CHECKED, so there is never
                 # anything to promote at detection time. Auto-release

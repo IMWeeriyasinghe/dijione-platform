@@ -29,6 +29,7 @@ from app.schemas.supplier import (
     SupplierUserUpdate,
 )
 from app.services.audit_service import AuditService
+from app.services.delivery_date_service import canonicalise_working_days
 
 router = APIRouter(prefix="/api/birthday/suppliers", tags=["birthday-suppliers"])
 
@@ -80,7 +81,10 @@ def create_supplier(
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
 ) -> Supplier:
     repo = SupplierRepository(db)
-    supplier = repo.create(Supplier(**payload.model_dump()))
+    data = payload.model_dump()
+    if "working_days" in data:
+        data["working_days"] = canonicalise_working_days(data.get("working_days"))
+    supplier = repo.create(Supplier(**data))
     db.flush()
     if supplier.is_default:
         repo.clear_default_except(supplier.id)
@@ -108,6 +112,8 @@ def update_supplier(
 ) -> Supplier:
     supplier = _get_supplier_or_404(db, supplier_id)
     updates = payload.model_dump(exclude_unset=True)
+    if "working_days" in updates:
+        updates["working_days"] = canonicalise_working_days(updates["working_days"])
     repo = SupplierRepository(db)
     repo.update(supplier, updates)
     db.flush()
