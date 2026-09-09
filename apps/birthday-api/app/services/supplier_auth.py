@@ -105,16 +105,34 @@ def record_supplier_login(db: Session, supplier_user: SupplierUser) -> None:
     db.commit()
 
 
-def mint_supplier_session_token(supplier_user: SupplierUser) -> str:
+_IMPERSONATION_TTL = timedelta(minutes=30)
+
+
+def mint_supplier_session_token(
+    supplier_user: SupplierUser, *, read_only: bool = False, impersonated_by: int | None = None
+) -> str:
     """The DijiOne-format supplier session token — identical shape whether
     identity came from the dev persona picker or Entra. ``supplier`` is
-    taken from the row, never from any request input."""
+    taken from the row, never from any request input.
+
+    ``read_only=True`` (internal-admin impersonation, §C): the token carries
+    only ``birthday.portal.access`` — every mutating portal route, gated on
+    ``birthday.portal.respond``, 403s automatically — and a shorter TTL.
+    """
     settings = get_settings()
     now = datetime.now(UTC)
+    permissions = ["birthday.portal.access"] if read_only else list(_SUPPLIER_PORTAL_PERMISSIONS)
+    supplier_claim = {
+        "supplier_id": supplier_user.supplier_id,
+        "supplier_user_id": supplier_user.id,
+    }
+    if read_only:
+        supplier_claim["read_only"] = True
+        supplier_claim["impersonated_by"] = impersonated_by
     claims = {
         "sub": str(supplier_user.id),
         "iat": now,
-        "exp": now + _SESSION_TTL,
+        "exp": now + (_IMPERSONATION_TTL if read_only else _SESSION_TTL),
         "iss": "dijione-dev-identity",
         "is_active": True,
         "full_name": supplier_user.full_name or supplier_user.email,
@@ -126,12 +144,9 @@ def mint_supplier_session_token(supplier_user: SupplierUser) -> str:
                 "role": BirthdayRole.BIRTHDAY_SUPPLIER.value,
                 "client_id": None,
                 "client_ids": None,
-                "permissions": list(_SUPPLIER_PORTAL_PERMISSIONS),
+                "permissions": permissions,
             }
         },
-        "supplier": {
-            "supplier_id": supplier_user.supplier_id,
-            "supplier_user_id": supplier_user.id,
-        },
+        "supplier": supplier_claim,
     }
     return jwt.encode(claims, settings.jwt_dev_secret, algorithm=settings.jwt_algorithm)

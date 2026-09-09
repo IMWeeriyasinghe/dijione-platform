@@ -1,13 +1,23 @@
 "use client";
 
-import { Search, Sparkles } from "lucide-react";
+import { Home, Search, Sparkles } from "lucide-react";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { UserMenu } from "./UserMenu";
 
 export function TopNav({ title }: { title?: string }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-dt-border bg-dt-surface/90 px-4 backdrop-blur sm:px-6">
-      {/* Left: fixed title */}
+      {/* Left: DijiOne Home + fixed title. A plain <a>, not next/link — this
+          leaves the current module's Next.js zone entirely (back to the
+          shell root), so it must never carry a module basePath. */}
+      <a
+        href="/"
+        title="DijiOne Home"
+        className="flex shrink-0 items-center gap-1.5 rounded-full border border-dt-border bg-dt-surface-warm px-3 py-1.5 text-xs font-medium text-dt-text-secondary transition hover:border-dt-burnt-orange hover:text-dt-burnt-orange"
+      >
+        <Home className="size-3.5" />
+        <span className="hidden sm:inline">DijiOne Home</span>
+      </a>
       {title && <h2 className="hidden shrink-0 text-sm font-semibold text-dt-text-primary sm:block">{title}</h2>}
 
       {/* Center: flexible search area, grows to fill remaining space */}

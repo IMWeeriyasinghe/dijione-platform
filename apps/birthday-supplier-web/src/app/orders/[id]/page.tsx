@@ -21,6 +21,7 @@ import {
 import { SUPPLIER_DRIVABLE_TARGETS, type OrderIssueType } from "@dijione/contracts";
 import { acceptPortalOrder, getPortalOrder, raisePortalIssue, updatePortalOrderStatus } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
+import { usePortalMe } from "@/lib/portal-me";
 import { OrderTimeline } from "@/app/order-timeline";
 
 // Labels for the transitions a supplier may set directly. The allow-list
@@ -48,6 +49,7 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
   const { id } = use(params);
   const orderId = Number(id);
   const { token } = useSupplierAuth();
+  const readOnly = usePortalMe()?.read_only ?? false;
   const queryClient = useQueryClient();
   const [issueOpen, setIssueOpen] = useState(false);
   const [issueType, setIssueType] = useState<OrderIssueType>("OTHER");
@@ -111,29 +113,33 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
             {order.employee_name} · {order.office_location}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {canAccept && (
-            <Button size="sm" loading={acceptMutation.isPending} onClick={() => acceptMutation.mutate()}>
-              <CheckCircle2 className="size-4" />
-              Accept
+        {readOnly ? (
+          <p className="text-xs italic text-dt-text-secondary">Read-only preview — actions are disabled.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {canAccept && (
+              <Button size="sm" loading={acceptMutation.isPending} onClick={() => acceptMutation.mutate()}>
+                <CheckCircle2 className="size-4" />
+                Accept
+              </Button>
+            )}
+            {nextOptions.map((value) => (
+              <Button
+                key={value}
+                size="sm"
+                variant={value === "UNABLE_TO_FULFIL" ? "danger" : "secondary"}
+                loading={statusMutation.isPending}
+                onClick={() => statusMutation.mutate(value)}
+              >
+                {STATUS_LABELS[value] ?? value}
+              </Button>
+            ))}
+            <Button size="sm" variant="secondary" onClick={() => setIssueOpen(true)}>
+              <TriangleAlert className="size-4" />
+              Report a Problem
             </Button>
-          )}
-          {nextOptions.map((value) => (
-            <Button
-              key={value}
-              size="sm"
-              variant={value === "UNABLE_TO_FULFIL" ? "danger" : "secondary"}
-              loading={statusMutation.isPending}
-              onClick={() => statusMutation.mutate(value)}
-            >
-              {STATUS_LABELS[value] ?? value}
-            </Button>
-          ))}
-          <Button size="sm" variant="secondary" onClick={() => setIssueOpen(true)}>
-            <TriangleAlert className="size-4" />
-            Report a Problem
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
 
       <Card>

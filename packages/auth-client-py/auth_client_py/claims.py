@@ -51,6 +51,12 @@ class SupplierClaims:
 
     supplier_id: int
     supplier_user_id: int
+    # Internal-admin read-only impersonation (DijiBirthday §C): when True
+    # the token was minted for a staff member previewing the portal as this
+    # supplier user — it carries only ``birthday.portal.access``, so every
+    # mutating route 403s. ``impersonated_by`` is the staff user id.
+    read_only: bool = False
+    impersonated_by: int | None = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +129,8 @@ def decode_claims(
             SupplierClaims(
                 supplier_id=int(supplier_claim_raw["supplier_id"]),
                 supplier_user_id=int(supplier_claim_raw["supplier_user_id"]),
+                read_only=bool(supplier_claim_raw.get("read_only", False)),
+                impersonated_by=supplier_claim_raw.get("impersonated_by"),
             )
             if supplier_claim_raw
             else None

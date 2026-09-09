@@ -63,8 +63,12 @@ export default function DashboardPage() {
         <Link href="/orders?status_filter=ON_HOLD" className="block">
           <MetricCard label="On hold — needs a decision" value={summary.on_hold_count} icon={Clock3} />
         </Link>
-        <MetricCard label="Deliveries today at risk" value={summary.deliveries_today_at_risk_count} icon={AlertTriangle} />
-        <MetricCard label="Overdue deliveries" value={summary.overdue_delivery_count} icon={AlertTriangle} />
+        <Link href="/orders?due=today" className="block">
+          <MetricCard label="Deliveries today at risk" value={summary.deliveries_today_at_risk_count} icon={AlertTriangle} />
+        </Link>
+        <Link href="/orders?due=overdue" className="block">
+          <MetricCard label="Overdue deliveries" value={summary.overdue_delivery_count} icon={AlertTriangle} />
+        </Link>
         <Link href="/inbound-emails" className="block">
           <MetricCard label="Open issues / unmatched emails" value={summary.open_issues_count + summary.unmatched_emails_count} icon={AlertTriangle} />
         </Link>
@@ -109,7 +113,9 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-4">
-        <MetricCard label="Upcoming (14 days)" value={summary.upcoming_count} icon={CakeSlice} tone="brand" />
+        <Link href="/upcoming" className="block">
+          <MetricCard label="Upcoming (14 days)" value={summary.upcoming_count} icon={CakeSlice} tone="brand" />
+        </Link>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -164,11 +170,16 @@ export default function DashboardPage() {
             ) : (
               <ul className="flex flex-col divide-y divide-dt-border">
                 {upcoming.orders.slice(0, 8).map((order) => (
-                  <li key={order.id} className="flex items-center justify-between py-2.5 text-sm">
-                    <Link href={`/orders/${order.id}`} className="min-w-0 truncate hover:underline">
-                      {order.employee_name} · {order.birthday_date}
+                  <li key={order.id}>
+                    <Link
+                      href={`/orders/${order.id}`}
+                      className="-mx-2 flex items-center justify-between rounded-lg px-2 py-2.5 text-sm transition hover:bg-dt-surface-warm"
+                    >
+                      <span className="min-w-0 truncate text-dt-text-primary">
+                        {order.employee_name} · {order.birthday_date}
+                      </span>
+                      <StatusBadge status={order.status} />
                     </Link>
-                    <StatusBadge status={order.status} />
                   </li>
                 ))}
               </ul>

@@ -22,16 +22,24 @@ export default function UnmatchedEmailsPage() {
     queryFn: () => listUnmatchedEmails(),
   });
   const [linkFor, setLinkFor] = useState<number | null>(null);
-  const [orderId, setOrderId] = useState("");
+  const [orderRef, setOrderRef] = useState("");
   const [raiseIssue, setRaiseIssue] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["unmatched-emails"] });
   const linkMut = useMutation({
-    mutationFn: (id: number) =>
-      linkUnmatchedEmail(id, { order_id: Number(orderId), raise_issue: raiseIssue }),
+    mutationFn: (id: number) => {
+      const v = orderRef.trim();
+      const asNum = Number(v);
+      return linkUnmatchedEmail(id, {
+        ...(Number.isInteger(asNum) && String(asNum) === v
+          ? { order_id: asNum }
+          : { order_reference: v }),
+        raise_issue: raiseIssue,
+      });
+    },
     onSuccess: () => {
       setLinkFor(null);
-      setOrderId("");
+      setOrderRef("");
       setRaiseIssue(false);
       invalidate();
     },
@@ -68,13 +76,13 @@ export default function UnmatchedEmailsPage() {
                 <p className="text-xs text-dt-text-secondary">Reason: {e.reason}</p>
                 {linkFor === e.id ? (
                   <div className="mt-1 flex flex-wrap items-end gap-3 rounded-lg border border-dt-border bg-dt-surface-warm p-3">
-                    <FormField label="Order ID" htmlFor={`oid-${e.id}`}>
+                    <FormField label="Order reference or ID" htmlFor={`oref-${e.id}`}>
                       <Input
-                        id={`oid-${e.id}`}
-                        value={orderId}
-                        onChange={(ev) => setOrderId(ev.target.value)}
-                        placeholder="e.g. 42"
-                        className="w-28"
+                        id={`oref-${e.id}`}
+                        value={orderRef}
+                        onChange={(ev) => setOrderRef(ev.target.value)}
+                        placeholder="e.g. BDAY-EMP239-2026-00001"
+                        className="w-64"
                       />
                     </FormField>
                     <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
@@ -84,7 +92,7 @@ export default function UnmatchedEmailsPage() {
                     <Button
                       size="sm"
                       loading={linkMut.isPending}
-                      disabled={!orderId.trim()}
+                      disabled={!orderRef.trim()}
                       onClick={() => linkMut.mutate(e.id)}
                     >
                       Link

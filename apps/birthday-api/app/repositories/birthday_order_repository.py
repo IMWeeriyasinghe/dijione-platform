@@ -5,9 +5,45 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.constants import OrderStatus
+from app.core.constants import OrderIssueStatus, OrderStatus
 from app.models.birthday_order import BirthdayOrder
+from app.models.order_issue import OrderIssue
 from app.services.order_status_service import SUPPLIER_VISIBLE_STATUSES
+
+# Orders whose delivery is "settled" — excluded from due=today/tomorrow/overdue.
+_TERMINAL_STATUSES = (
+    OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value,
+    OrderStatus.CANCELLED.value, OrderStatus.UNABLE_TO_FULFIL.value,
+)
+
+
+def _apply_due(stmt, due: str | None, *, today: date | None = None):
+    """Delivery-window filter shared by the internal and supplier lists
+    (Phase 1.5 §F/§G): 'today' | 'tomorrow' | 'overdue', non-terminal only."""
+    if not due:
+        return stmt
+    today = today or date.today()
+    stmt = stmt.where(
+        BirthdayOrder.delivery_date.is_not(None),
+        BirthdayOrder.status.notin_(_TERMINAL_STATUSES),
+    )
+    if due == "today":
+        return stmt.where(BirthdayOrder.delivery_date == today)
+    if due == "tomorrow":
+        return stmt.where(BirthdayOrder.delivery_date == today + timedelta(days=1))
+    if due == "overdue":
+        return stmt.where(BirthdayOrder.delivery_date < today)
+    return stmt
+
+
+def _apply_has_open_issue(stmt, has_open_issue: bool | None):
+    if has_open_issue is None:
+        return stmt
+    sub = select(OrderIssue.order_id).where(OrderIssue.status == OrderIssueStatus.OPEN.value)
+    return stmt.where(
+        BirthdayOrder.id.in_(sub) if has_open_issue else BirthdayOrder.id.notin_(sub)
+    )
+
 
 _SORTABLE_COLUMNS = {
     "employee_number": BirthdayOrder.employee_number,
@@ -57,8 +93,12 @@ class BirthdayOrderRepository:
         supplier_id: int | None = None,
         search: str | None = None,
         address_verification_status: str | None = None,
+        due: str | None = None,
+        has_open_issue: bool | None = None,
     ):
         stmt = select(BirthdayOrder)
+        stmt = _apply_due(stmt, due)
+        stmt = _apply_has_open_issue(stmt, has_open_issue)
         if status is not None:
             # Comma-separated statuses supported for the Cake Orders saved
             # views (Phase 1 §1.7) — a single value still works unchanged.
@@ -96,6 +136,8 @@ class BirthdayOrderRepository:
         supplier_id: int | None = None,
         search: str | None = None,
         address_verification_status: str | None = None,
+        due: str | None = None,
+        has_open_issue: bool | None = None,
         sort_by: str | None = None,
         sort_direction: str = "desc",
         limit: int = 50,
@@ -105,6 +147,7 @@ class BirthdayOrderRepository:
             status=status, lead_time_class=lead_time_class,
             office_location=office_location, supplier_id=supplier_id,
             search=search, address_verification_status=address_verification_status,
+            due=due, has_open_issue=has_open_issue,
         )
         column = _SORTABLE_COLUMNS.get(sort_by or "", BirthdayOrder.created_at)
         stmt = stmt.order_by(column.desc() if sort_direction == "desc" else column.asc())
@@ -120,11 +163,14 @@ class BirthdayOrderRepository:
         supplier_id: int | None = None,
         search: str | None = None,
         address_verification_status: str | None = None,
+        due: str | None = None,
+        has_open_issue: bool | None = None,
     ) -> int:
         stmt = self._filtered_stmt(
             status=status, lead_time_class=lead_time_class,
             office_location=office_location, supplier_id=supplier_id,
             search=search, address_verification_status=address_verification_status,
+            due=due, has_open_issue=has_open_issue,
         )
         count_stmt = select(func.count()).select_from(stmt.subquery())
         return self.db.execute(count_stmt).scalar_one()
@@ -141,11 +187,21 @@ class BirthdayOrderRepository:
     # plan §Y "internal->supplier changes must not be silent".
     _SUPPLIER_VISIBLE_STATUSES = SUPPLIER_VISIBLE_STATUSES
 
-    def _supplier_scoped_stmt(self, *, supplier_id: int, search: str | None = None):
+    def _supplier_scoped_stmt(
+        self, *, supplier_id: int, search: str | None = None,
+        status_filter: str | None = None, due: str | None = None,
+    ):
         stmt = select(BirthdayOrder).where(
             BirthdayOrder.supplier_id == supplier_id,
             BirthdayOrder.status.in_(self._SUPPLIER_VISIBLE_STATUSES),
         )
+        if status_filter:
+            wanted = [s.strip() for s in status_filter.split(",") if s.strip()]
+            if len(wanted) == 1:
+                stmt = stmt.where(BirthdayOrder.status == wanted[0])
+            elif wanted:
+                stmt = stmt.where(BirthdayOrder.status.in_(wanted))
+        stmt = _apply_due(stmt, due)
         if search:
             like = f"%{search}%"
             stmt = stmt.where(
@@ -155,17 +211,25 @@ class BirthdayOrderRepository:
 
     def list_for_supplier(
         self, *, supplier_id: int, search: str | None = None,
+        status_filter: str | None = None, due: str | None = None,
         sort_by: str | None = None, sort_direction: str = "desc",
         limit: int = 20, offset: int = 0,
     ) -> list[BirthdayOrder]:
-        stmt = self._supplier_scoped_stmt(supplier_id=supplier_id, search=search)
+        stmt = self._supplier_scoped_stmt(
+            supplier_id=supplier_id, search=search, status_filter=status_filter, due=due,
+        )
         column = _SORTABLE_COLUMNS.get(sort_by or "", BirthdayOrder.delivery_date)
         stmt = stmt.order_by(column.desc() if sort_direction == "desc" else column.asc())
         stmt = stmt.limit(limit).offset(offset)
         return list(self.db.execute(stmt).scalars().all())
 
-    def count_for_supplier(self, *, supplier_id: int, search: str | None = None) -> int:
-        stmt = self._supplier_scoped_stmt(supplier_id=supplier_id, search=search)
+    def count_for_supplier(
+        self, *, supplier_id: int, search: str | None = None,
+        status_filter: str | None = None, due: str | None = None,
+    ) -> int:
+        stmt = self._supplier_scoped_stmt(
+            supplier_id=supplier_id, search=search, status_filter=status_filter, due=due,
+        )
         count_stmt = select(func.count()).select_from(stmt.subquery())
         return self.db.execute(count_stmt).scalar_one()
 

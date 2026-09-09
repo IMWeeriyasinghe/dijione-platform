@@ -39,13 +39,16 @@ const ADDRESS_STATUS_OPTIONS = ADDRESS_VERIFICATION_STATUSES;
 
 const PAGE_SIZE = 20;
 
-const SAVED_VIEWS: { label: string; filter: string }[] = [
+type SavedView = { label: string; filter?: string; due?: "today" | "tomorrow" | "overdue" };
+const SAVED_VIEWS: SavedView[] = [
   { label: "All", filter: "" },
   { label: "Needs attention", filter: "REQUIRES_ATTENTION,ON_HOLD" },
   { label: "Awaiting verification", filter: "PENDING_VERIFICATION" },
   { label: "In review", filter: "REQUIRES_REVIEW" },
   { label: "With supplier", filter: "SENT_TO_SUPPLIER,CONFIRMED,PREPARING" },
   { label: "Delivery in progress", filter: "OUT_FOR_DELIVERY" },
+  { label: "Due today", due: "today" },
+  { label: "Overdue delivery", due: "overdue" },
   { label: "Completed", filter: "COMPLETED" },
   { label: "Cancelled / unfulfilled", filter: "CANCELLED,UNABLE_TO_FULFIL" },
 ];
@@ -57,6 +60,7 @@ export default function OrdersPage() {
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status_filter") ?? "");
+  const [due, setDue] = useState(searchParams.get("due") ?? "");
   const [leadTimeClass, setLeadTimeClass] = useState("");
   const [officeLocation, setOfficeLocation] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -68,6 +72,7 @@ export default function OrdersPage() {
   const params = {
     search: search || undefined,
     status_filter: statusFilter || undefined,
+    due: (due || undefined) as "today" | "tomorrow" | "overdue" | undefined,
     lead_time_class: leadTimeClass || undefined,
     office_location: officeLocation || undefined,
     supplier_id: supplierId ? Number(supplierId) : undefined,
@@ -96,22 +101,29 @@ export default function OrdersPage() {
     <div>
       <PageHeader title="Cake Orders" description="Register of every cake order tracked by DijiBirthday." />
 
-      {/* Saved views (Phase 1 §1.7) — each is a status_filter preset. */}
+      {/* Saved views — each is a status_filter or due preset. */}
       <div className="mb-4 flex flex-wrap gap-2">
-        {SAVED_VIEWS.map((v) => (
-          <button
-            key={v.label}
-            onClick={() => resetAndSet(setStatusFilter, v.filter)}
-            className={
-              "rounded-full border px-3 py-1 text-xs font-medium transition " +
-              (statusFilter === v.filter
-                ? "border-dt-burnt-orange bg-dt-burnt-orange text-white"
-                : "border-dt-border bg-dt-surface text-dt-text-secondary hover:border-dt-burnt-orange")
-            }
-          >
-            {v.label}
-          </button>
-        ))}
+        {SAVED_VIEWS.map((v) => {
+          const active = v.due ? due === v.due : statusFilter === (v.filter ?? "") && !due;
+          return (
+            <button
+              key={v.label}
+              onClick={() => {
+                setPage(1);
+                setDue(v.due ?? "");
+                setStatusFilter(v.due ? "" : (v.filter ?? ""));
+              }}
+              className={
+                "rounded-full border px-3 py-1 text-xs font-medium transition " +
+                (active
+                  ? "border-dt-burnt-orange bg-dt-burnt-orange text-white"
+                  : "border-dt-border bg-dt-surface text-dt-text-secondary hover:border-dt-burnt-orange")
+              }
+            >
+              {v.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="mb-4 space-y-3">
@@ -184,6 +196,15 @@ export default function OrdersPage() {
               value={supplierId}
               onChange={(e) => resetAndSet(setSupplierId, e.target.value)}
             />
+          </FormField>
+
+          <FormField label="Delivery Due" htmlFor="due-filter">
+            <Select id="due-filter" value={due} onChange={(e) => resetAndSet(setDue, e.target.value)}>
+              <option value="">Any</option>
+              <option value="today">Today</option>
+              <option value="tomorrow">Tomorrow</option>
+              <option value="overdue">Overdue</option>
+            </Select>
           </FormField>
         </div>
       </div>

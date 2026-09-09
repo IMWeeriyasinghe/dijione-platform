@@ -54,3 +54,22 @@ class PeopleApiEmployeeSource(EmployeeSourceClient):
                 f"people-api unreachable — could not look up employee {employee_id}"
             ) from exc
         return _to_record(row) if row is not None else None
+
+    # --- People-source freshness / ad-hoc refresh (Phase 1.5 §B) --------
+    # Thin passthroughs to auth_client_py.EmployeeDirectoryClient — the
+    # daily people-sync-job is the primary refresh; these back the
+    # "last refreshed / Refresh now" affordance in birthday-web.
+
+    def freshness(self) -> dict:
+        try:
+            return self._client.get_freshness()
+        except httpx.HTTPError as exc:
+            raise EmployeeSourceUnavailableError("people-api unreachable — freshness unknown") from exc
+
+    def request_sync(self, *, requested_by_user_id: int | None = None) -> dict:
+        try:
+            return self._client.request_sync(
+                requested_by_user_id=requested_by_user_id, requested_by_application="birthday"
+            )
+        except httpx.HTTPError as exc:
+            raise EmployeeSourceUnavailableError("people-api unreachable — sync not requested") from exc

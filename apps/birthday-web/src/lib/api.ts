@@ -47,12 +47,25 @@ export const getUpcomingBirthdays = (params: {
   days?: number;
   search?: string;
   filter?: string;
+  cake_status_filter?: string;
   province?: string;
   sort_by?: string;
   sort_direction?: string;
   page?: number;
   page_size?: number;
 } = {}) => request<UpcomingBirthdaysResponse>(`/api/birthday/employees/upcoming-birthdays${qs(params)}`);
+
+// --- Team-member data freshness / manual refresh (Phase 1.5 §B) --------
+export type PeopleFreshness = {
+  available: boolean;
+  auto_refresh: string;
+  last_successful_sync_at?: string | null;
+  source?: string;
+  reason?: string;
+};
+export const getPeopleFreshness = () => request<PeopleFreshness>("/api/birthday/people/freshness");
+export const refreshPeople = () =>
+  request<{ run_id: string; status: string }>("/api/birthday/people/refresh", { method: "POST" });
 
 // --- Orders -------------------------------------------------
 export const listOrders = (params: {
@@ -62,6 +75,8 @@ export const listOrders = (params: {
   office_location?: string;
   supplier_id?: number;
   address_verification_status?: string;
+  due?: "today" | "tomorrow" | "overdue";
+  has_open_issue?: boolean;
   sort_by?: string;
   sort_direction?: string;
   page?: number;
@@ -318,4 +333,11 @@ export const markSupplierUserInvited = (supplierId: number, userId: number) =>
   request<import("@dijione/contracts").SupplierUserOut>(
     `/api/birthday/suppliers/${supplierId}/users/${userId}`,
     { method: "PATCH", body: JSON.stringify({ mark_invited: true }) },
+  );
+
+// Read-only supplier-portal impersonation (Phase 1.5 §C).
+export const impersonateSupplierUser = (supplierId: number, userId: number) =>
+  request<{ access_token: string; portal_url: string; expires_in: number }>(
+    `/api/birthday/suppliers/${supplierId}/users/${userId}/impersonate`,
+    { method: "POST" },
   );

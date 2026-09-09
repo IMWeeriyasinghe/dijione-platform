@@ -1,11 +1,17 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
-import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useBirthdayScope } from "@dijione/auth-client";
-import { getUpcomingBirthdays, runBirthdayDetection, type RunDetectionResult } from "@/lib/api";
-import type { UpcomingBirthdayItem } from "@dijione/contracts";
+import {
+  getPeopleFreshness,
+  getUpcomingBirthdays,
+  refreshPeople,
+  runBirthdayDetection,
+  type RunDetectionResult,
+} from "@/lib/api";
+import { ORDER_STATUSES, type UpcomingBirthdayItem } from "@dijione/contracts";
 import {
   Button,
   ErrorState,
@@ -94,8 +100,11 @@ const GROUP_FILTER_OPTIONS: Array<Group | "ALL"> = [
 // renders the result.
 export default function UpcomingPage() {
   const scope = useBirthdayScope();
+  const router = useRouter();
+  const qc = useQueryClient();
   const [days, setDays] = useState(30);
   const [groupFilter, setGroupFilter] = useState<Group | "ALL">("ALL");
+  const [cakeStatusFilter, setCakeStatusFilter] = useState("");
   const [province, setProvince] = useState("");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<string | null>(null);
@@ -107,6 +116,7 @@ export default function UpcomingPage() {
     days,
     search: search || undefined,
     filter: groupFilter !== "ALL" ? groupFilter : undefined,
+    cake_status_filter: cakeStatusFilter || undefined,
     province: province || undefined,
     sort_by: sortBy || undefined,
     sort_direction: sortDirection,
@@ -117,6 +127,19 @@ export default function UpcomingPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["birthday-upcoming-birthdays", params],
     queryFn: () => getUpcomingBirthdays(params),
+  });
+
+  const { data: freshness } = useQuery({
+    queryKey: ["people-freshness"],
+    queryFn: getPeopleFreshness,
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: () => refreshPeople(),
+    onSuccess: () => {
+      // People sync runs async; re-poll freshness shortly.
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["people-freshness"] }), 4000);
+    },
   });
 
   const runDetectionMutation = useMutation({
@@ -154,6 +177,19 @@ export default function UpcomingPage() {
                 </option>
               ))}
             </Select>
+            <Select
+              value={cakeStatusFilter}
+              onChange={(e) => resetAndSet(setCakeStatusFilter, e.target.value)}
+              className="w-auto"
+            >
+              <option value="">All cake order statuses</option>
+              <option value="NOT_CREATED">No order yet</option>
+              {ORDER_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s.replace(/_/g, " ")}
+                </option>
+              ))}
+            </Select>
             <Select value={province} onChange={(e) => resetAndSet(setProvince, e.target.value)} className="w-auto">
               <option value="">All provinces</option>
               {PROVINCE_OPTIONS.map((p) => (
@@ -175,13 +211,42 @@ export default function UpcomingPage() {
                 variant="secondary"
                 loading={runDetectionMutation.isPending}
                 onClick={() => runDetectionMutation.mutate()}
+                title="Re-scans the current team-member data for new/changed birthdays and creates cake orders."
               >
-                Run Birthday Detection
+                Run Detection
               </Button>
             )}
           </div>
         }
       />
+
+      {/* Team-member data freshness (Phase 1.5 §B). Detection ≠ refresh:
+          refresh pulls BambooHR; detection creates cake orders from it. */}
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-dt-border bg-dt-surface-warm/50 px-3 py-2 text-sm">
+        <span className="text-dt-text-secondary">
+          Team-member data auto-refreshes from BambooHR every day (~midnight).
+          {freshness?.last_successful_sync_at ? (
+            <> Last refreshed <span className="text-dt-text-primary">{new Date(freshness.last_successful_sync_at).toLocaleString()}</span>.</>
+          ) : freshness?.available === false ? (
+            <> ({freshness.reason ?? "freshness unavailable"})</>
+          ) : (
+            <> Loading…</>
+          )}
+        </span>
+        {scope?.isAdmin && freshness?.available !== false && (
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={refreshMutation.isPending}
+            onClick={() => refreshMutation.mutate()}
+          >
+            Refresh now
+          </Button>
+        )}
+        {refreshMutation.isSuccess && (
+          <span className="text-xs text-dt-success">Refresh started — this updates in a moment.</span>
+        )}
+      </div>
 
       {scanResult && (
         <div className="mb-4 rounded-xl border border-dt-border bg-dt-surface-warm/60 p-3 text-sm text-dt-text-primary">
@@ -206,7 +271,7 @@ export default function UpcomingPage() {
       <SearchInput
         value={search}
         onChange={(v) => resetAndSet(setSearch, v)}
-        placeholder="Search team member ID, name, or city…"
+        placeholder="Search name, team member ID, city, or order reference…"
         className="mb-4 max-w-md"
       />
 
@@ -231,7 +296,13 @@ export default function UpcomingPage() {
                   sortDirection={sortDirection}
                   onSort={toggleSort}
                 />
-                <Th>Birthday</Th>
+                <SortableTh
+                  label="Birthday"
+                  sortKey="birthday"
+                  activeSortBy={sortBy}
+                  sortDirection={sortDirection}
+                  onSort={toggleSort}
+                />
                 <SortableTh
                   label="Days Until"
                   sortKey="days_until_birthday"
@@ -255,15 +326,26 @@ export default function UpcomingPage() {
                   onSort={toggleSort}
                 />
                 <Th>Address Verification</Th>
-                <Th>Cake Order Status</Th>
+                <SortableTh
+                  label="Cake Order Status"
+                  sortKey="cake_order_status"
+                  activeSortBy={sortBy}
+                  sortDirection={sortDirection}
+                  onSort={toggleSort}
+                />
                 <Th>Order Reference</Th>
               </Tr>
             </Thead>
             <tbody>
               {birthdays.map((item) => {
                 const group = groupFor(item);
+                const clickable = item.order_id != null;
                 return (
-                  <Tr key={item.employee_id}>
+                  <Tr
+                    key={item.employee_id}
+                    className={clickable ? "cursor-pointer transition hover:bg-dt-surface-warm" : undefined}
+                    onClick={clickable ? () => router.push(`/orders/${item.order_id}`) : undefined}
+                  >
                     <Td>
                       <span className="font-medium text-dt-text-primary">{item.display_name}</span>{" "}
                       {item.employee_number ? (
@@ -291,20 +373,10 @@ export default function UpcomingPage() {
                     <Td>
                       {item.order_id == null ? (
                         <span className="text-dt-text-secondary">No order yet</span>
+                      ) : item.address_verification_status ? (
+                        <StatusBadge status={item.address_verification_status} />
                       ) : (
-                        <div className="flex items-center gap-2">
-                          {item.address_verification_status ? (
-                            <StatusBadge status={item.address_verification_status} />
-                          ) : (
-                            <span className="text-dt-text-secondary">—</span>
-                          )}
-                          <Link
-                            href={`/orders/${item.order_id}`}
-                            className="text-xs font-medium text-dt-burnt-orange hover:underline"
-                          >
-                            Verify address
-                          </Link>
-                        </div>
+                        <span className="text-dt-text-secondary">—</span>
                       )}
                     </Td>
                     <Td>
@@ -312,12 +384,7 @@ export default function UpcomingPage() {
                     </Td>
                     <Td>
                       {item.order_id != null && item.order_reference ? (
-                        <Link
-                          href={`/orders/${item.order_id}`}
-                          className="font-mono text-xs text-dt-burnt-orange hover:underline"
-                        >
-                          {item.order_reference}
-                        </Link>
+                        <span className="font-mono text-xs text-dt-burnt-orange">{item.order_reference}</span>
                       ) : (
                         <span className="text-dt-text-secondary">No order yet</span>
                       )}

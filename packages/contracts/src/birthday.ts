@@ -274,7 +274,8 @@ export type InboundEmailOut = {
 };
 
 export type InboundEmailLinkInput = {
-  order_id: number;
+  order_id?: number;
+  order_reference?: string;
   raise_issue?: boolean;
   issue_type?: OrderIssueType;
 };

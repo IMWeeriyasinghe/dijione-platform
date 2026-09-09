@@ -23,6 +23,7 @@ import {
   CardTitle,
   ErrorState,
   FormField,
+  Input,
   LoadingState,
   Modal,
   Select,
@@ -37,8 +38,10 @@ import {
   holdOrder,
   listSupplierCatalogue,
   listSuppliers,
+  postOrderMessage,
   releaseOrder,
   resendOrderToSupplier,
+  resolveOrderIssue,
   sendOrderToSupplier,
   updateAddressVerification,
   updateDeliveryAddress,
@@ -99,6 +102,9 @@ export function OrderDetail({ orderId }: { orderId: number }) {
   const router = useRouter();
   const [actionOpen, setActionOpen] = useState<ActionKind>(null);
   const [reasonText, setReasonText] = useState("");
+  const [teamMemberIdDraft, setTeamMemberIdDraft] = useState("");
+  const [resolveFor, setResolveFor] = useState<number | null>(null);
+  const [resolveText, setResolveText] = useState("");
   const [addressEditOpen, setAddressEditOpen] = useState(false);
   const [addressForm, setAddressForm] = useState<DeliveryAddressUpdateInput>({});
   // Fulfilment-assignment edits. Each field is `undefined` until the
@@ -214,6 +220,31 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     onSuccess: () => {
       invalidate();
       setFulfilmentEdit({});
+    },
+  });
+
+  // §H1 — recover a MISSING_EMPLOYEE_NUMBER order: supplying the real
+  // Team Member ID clears the exception + regenerates the reference.
+  const setTeamMemberIdMutation = useMutation({
+    mutationFn: (employee_number: string) => updateOrder(orderId, { employee_number }),
+    onSuccess: () => {
+      invalidate();
+      setTeamMemberIdDraft("");
+    },
+  });
+
+  // §H5 — resolve an OPEN issue AND tell the supplier what was done, in
+  // one action (composes the two existing endpoints).
+  const resolveIssueMutation = useMutation({
+    mutationFn: async ({ issueId, text }: { issueId: number; text: string }) => {
+      await resolveOrderIssue(orderId, issueId, text);
+      await postOrderMessage(orderId, text, { also_email: true });
+    },
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["order-timeline", orderId] });
+      setResolveFor(null);
+      setResolveText("");
     },
   });
 
@@ -397,6 +428,67 @@ export function OrderDetail({ orderId }: { orderId: number }) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
+          {scope?.isAdmin && order.exception_reason === "MISSING_EMPLOYEE_NUMBER" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Team Member ID needed</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-sm text-dt-text-secondary">
+                  This team member has no BambooHR employee number, so the order carries a
+                  provisional reference. Enter the real Team Member ID to clear the exception —
+                  the reference is regenerated and the order returns to verification.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Input
+                    placeholder="e.g. 239"
+                    value={teamMemberIdDraft}
+                    onChange={(e) => setTeamMemberIdDraft(e.target.value)}
+                    className="w-40"
+                  />
+                  <Button
+                    size="sm"
+                    loading={setTeamMemberIdMutation.isPending}
+                    disabled={teamMemberIdDraft.trim() === ""}
+                    onClick={() => setTeamMemberIdMutation.mutate(teamMemberIdDraft.trim())}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {scope?.isAdmin && order.status === "ON_HOLD" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>On hold — lead time is too short</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-sm text-dt-text-secondary">
+                  {order.hold_reason ?? "The supplier needs more notice than the days remaining."}{" "}
+                  Choose how to proceed:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    loading={releaseMutation.isPending}
+                    onClick={() => releaseMutation.mutate("")}
+                    title="Send it back into verification anyway — it will route through one-click review because of the short notice."
+                  >
+                    Expedite anyway
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setFulfilmentEdit({})}>
+                    Change delivery date
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => setActionOpen("cancel")}>
+                    Cancel order
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Order Details</CardTitle>
@@ -642,6 +734,67 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                         {req.kind === "SUPPLIER_INSTRUCTION" ? "Supplier instruction" : "Internal note"}
                       </span>
                       <p className="mt-1 text-sm text-dt-text-primary">{req.text}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Issues</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {order.issues.length === 0 ? (
+                <p className="text-sm text-dt-text-secondary">No issues raised on this order.</p>
+              ) : (
+                <ul className="flex flex-col gap-3">
+                  {order.issues.map((issue) => (
+                    <li key={issue.id} className="rounded-xl border border-dt-border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-dt-text-primary">
+                          {issue.type.replace(/_/g, " ")} · raised by {issue.raised_by_type.toLowerCase()}
+                        </span>
+                        <StatusBadge status={issue.status} />
+                      </div>
+                      <p className="mt-1 text-sm text-dt-text-secondary">{issue.detail}</p>
+                      {issue.resolution_detail && (
+                        <p className="mt-1 text-xs text-dt-success">Resolved: {issue.resolution_detail}</p>
+                      )}
+                      {scope?.isAdmin && issue.status === "OPEN" && (
+                        <div className="mt-2">
+                          {resolveFor === issue.id ? (
+                            <div className="flex flex-col gap-2">
+                              <Textarea
+                                value={resolveText}
+                                onChange={(e) => setResolveText(e.target.value)}
+                                placeholder="What was done? This is sent to the supplier and closes the issue."
+                                rows={2}
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  loading={resolveIssueMutation.isPending}
+                                  disabled={resolveText.trim() === ""}
+                                  onClick={() =>
+                                    resolveIssueMutation.mutate({ issueId: issue.id, text: resolveText.trim() })
+                                  }
+                                >
+                                  Resolve &amp; notify supplier
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={() => setResolveFor(null)}>
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button size="sm" variant="secondary" onClick={() => setResolveFor(issue.id)}>
+                              Resolve &amp; notify supplier
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

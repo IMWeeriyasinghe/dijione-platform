@@ -72,7 +72,15 @@ export const devSupplierLogin = (supplier_user_id: number) =>
 // --- Supplier portal ------------------------------------------------
 export const listPortalOrders = (
   token: string,
-  params: { search?: string; sort_by?: string; sort_direction?: string; page?: number; page_size?: number } = {}
+  params: {
+    search?: string;
+    status_filter?: string;
+    due?: "today" | "tomorrow" | "overdue";
+    sort_by?: string;
+    sort_direction?: string;
+    page?: number;
+    page_size?: number;
+  } = {}
 ) => request<SupplierOrderListResponse>(`/api/birthday/portal/orders${qs(params)}`, token);
 
 export const getPortalOrder = (token: string, id: number) =>
@@ -118,6 +126,8 @@ export const postPortalOrderMessage = (
 
 export type SupplierDashboardSummary = {
   new_orders: number;
+  awaiting_acceptance: number;
+  preparing: number;
   due_today: number;
   due_tomorrow: number;
   overdue: number;
@@ -128,3 +138,6 @@ export type SupplierDashboardSummary = {
 
 export const getPortalDashboard = (token: string) =>
   request<SupplierDashboardSummary>("/api/birthday/portal/dashboard", token);
+
+export type PortalMe = { supplier_name: string; user_name: string; read_only: boolean };
+export const getPortalMe = (token: string) => request<PortalMe>("/api/birthday/portal/me", token);

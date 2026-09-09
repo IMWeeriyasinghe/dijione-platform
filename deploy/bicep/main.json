@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "1385328851001919488"
+      "templateHash": "8601591788606087399"
     }
   },
   "functions": [
@@ -456,7 +456,7 @@
     ],
     "services": "[concat(variables('coreServices'), if(parameters('deployBirthday'), variables('birthdayServices'), createArray()), if(parameters('deployCommercial'), variables('commercialServices'), createArray()))]",
     "migrateTargets": "[concat(createArray('platform-api', 'talent-api', 'recruitment-api'), if(parameters('deployBirthday'), createArray('people-api', 'birthday-api'), createArray()), if(parameters('deployCommercial'), createArray('commercial-api'), createArray()))]",
-    "scheduledJobs": "[concat(createArray(createObject('name', 'recruitment-sync-job', 'image', 'recruitment-api', 'cron', '0 */6 * * *', 'url', 'http://recruitment-api/api/recruitment/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'talent-reconcile-job', 'image', 'talent-api', 'cron', '15 */6 * * *', 'url', 'http://talent-api/api/talent/internal/recruitment/reconcile', 'timeout', 900)), if(parameters('deployBirthday'), createArray(createObject('name', 'people-sync-job', 'image', 'people-api', 'cron', '0 5 * * *', 'url', 'http://people-api/api/people/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'birthday-scan-job', 'image', 'birthday-api', 'cron', '30 5 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-daily-scan', 'timeout', 900), createObject('name', 'birthday-attention-job', 'image', 'birthday-api', 'cron', '0 6 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-attention', 'timeout', 600), createObject('name', 'birthday-comms-job', 'image', 'birthday-api', 'cron', '*/10 * * * *', 'url', 'http://birthday-api/api/birthday/internal/run-comms', 'timeout', 600)), createArray()))]"
+    "scheduledJobs": "[concat(createArray(createObject('name', 'recruitment-sync-job', 'image', 'recruitment-api', 'cron', '0 */6 * * *', 'url', 'http://recruitment-api/api/recruitment/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'talent-reconcile-job', 'image', 'talent-api', 'cron', '15 */6 * * *', 'url', 'http://talent-api/api/talent/internal/recruitment/reconcile', 'timeout', 900)), if(parameters('deployBirthday'), createArray(createObject('name', 'people-sync-job', 'image', 'people-api', 'cron', '30 18 * * *', 'url', 'http://people-api/api/people/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'birthday-scan-job', 'image', 'birthday-api', 'cron', '0 19 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-daily-scan', 'timeout', 900), createObject('name', 'birthday-attention-job', 'image', 'birthday-api', 'cron', '30 20 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-attention', 'timeout', 600), createObject('name', 'birthday-comms-job', 'image', 'birthday-api', 'cron', '*/10 * * * *', 'url', 'http://birthday-api/api/birthday/internal/run-comms', 'timeout', 600)), createArray()))]"
   },
   "resources": {
     "cae": {

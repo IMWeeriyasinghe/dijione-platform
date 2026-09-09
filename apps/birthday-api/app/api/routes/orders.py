@@ -84,6 +84,8 @@ def list_orders(
     office_location: str | None = None,
     supplier_id: int | None = None,
     address_verification_status: str | None = None,
+    due: str | None = None,
+    has_open_issue: bool | None = None,
     sort_by: str | None = None,
     sort_direction: str = "desc",
     page: int = 1,
@@ -93,6 +95,8 @@ def list_orders(
 ) -> BirthdayOrderListResponse:
     if sort_direction not in _SORT_DIRECTIONS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "sort_direction must be 'asc' or 'desc'")
+    if due is not None and due not in ("today", "tomorrow", "overdue"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "due must be today, tomorrow, or overdue")
     page = max(page, 1)
     page_size = max(1, min(page_size, 200))
     repo = BirthdayOrderRepository(db)
@@ -100,6 +104,7 @@ def list_orders(
         status=status_filter, lead_time_class=lead_time_class,
         office_location=office_location, supplier_id=supplier_id,
         search=search, address_verification_status=address_verification_status,
+        due=due, has_open_issue=has_open_issue,
     )
     items = repo.list_filtered(
         **filters, sort_by=sort_by, sort_direction=sort_direction,
@@ -271,6 +276,35 @@ def update_order(
                 actor_id=scope.user.id, actor_type=ActorType.USER,
                 detail="Team Member ID supplied — MISSING_EMPLOYEE_NUMBER cleared",
             )
+
+    # §H2 — a NO_SUPPLIER / NO_DEFAULT_CAKE exception no longer applies once
+    # the operator has assigned a supplier / cake in Fulfilment Assignment.
+    # Clear the stale label so the order does not keep *looking* broken;
+    # move it back to PENDING_VERIFICATION if that was its only blocker.
+    _RECOVERABLE = {ExceptionReason.NO_SUPPLIER.value, ExceptionReason.NO_DEFAULT_CAKE.value}
+    if order.exception_reason in _RECOVERABLE and not recovered_missing_number:
+        cleared = (
+            order.exception_reason == ExceptionReason.NO_SUPPLIER.value and order.supplier_id is not None
+        ) or (
+            order.exception_reason == ExceptionReason.NO_DEFAULT_CAKE.value
+            and order.catalogue_item_id is not None
+        )
+        if cleared:
+            prev = order.exception_reason
+            order.exception_reason = None
+            db.add(
+                OrderEvent(
+                    order_id=order.id, event_type="EXCEPTION_CLEARED",
+                    actor_id=scope.user.id, actor_type="USER",
+                    detail=f"{prev} resolved via Fulfilment Assignment",
+                )
+            )
+            if order.status == OrderStatus.REQUIRES_ATTENTION.value:
+                order = order_status_service.transition(
+                    db, order, OrderStatus.PENDING_VERIFICATION,
+                    actor_id=scope.user.id, actor_type=ActorType.USER,
+                    detail=f"{prev} cleared — ready for verification",
+                )
 
     if supplier_reassigned:
         db.add(

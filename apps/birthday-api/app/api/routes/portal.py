@@ -72,6 +72,25 @@ def _get_supplier_order_or_404(db: Session, order_id: int, scope: SupplierScope)
     return order
 
 
+@router.get("/me")
+def get_portal_me(
+    db: Session = Depends(get_db),
+    scope: SupplierScope = Depends(require_supplier_permission("birthday.portal.access")),
+) -> dict:
+    """Who the portal session belongs to + whether it is a read-only
+    internal preview (§C) — drives the banner and client-side button hiding."""
+    from app.models.supplier import Supplier
+    from app.models.supplier_user import SupplierUser
+
+    su = db.get(SupplierUser, scope.supplier_user_id)
+    supplier = db.get(Supplier, scope.supplier_id)
+    return {
+        "supplier_name": supplier.name if supplier else "",
+        "user_name": (su.full_name or su.email) if su else "",
+        "read_only": scope.read_only,
+    }
+
+
 @router.get("/dashboard")
 def get_supplier_dashboard(
     db: Session = Depends(get_db),
@@ -91,6 +110,8 @@ def get_supplier_dashboard(
 
     return {
         "new_orders": _count(BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value),
+        "awaiting_acceptance": _count(BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value),
+        "preparing": _count(BirthdayOrder.status == OrderStatus.PREPARING.value),
         "due_today": _count(
             BirthdayOrder.delivery_date == today,
             BirthdayOrder.status.notin_([OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value, OrderStatus.CANCELLED.value]),
@@ -119,6 +140,8 @@ def get_supplier_dashboard(
 @router.get("/orders", response_model=SupplierOrderListResponse)
 def list_supplier_orders(
     search: str | None = None,
+    status_filter: str | None = None,
+    due: str | None = None,
     sort_by: str | None = None,
     # Soonest delivery first by default (Phase 1 §1.7) — the supplier's
     # worklist is ordered by what is due next.
@@ -130,14 +153,19 @@ def list_supplier_orders(
 ) -> SupplierOrderListResponse:
     if sort_direction not in ("asc", "desc"):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "sort_direction must be 'asc' or 'desc'")
+    if due is not None and due not in ("today", "tomorrow", "overdue"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "due must be today, tomorrow, or overdue")
     page = max(page, 1)
     page_size = max(1, min(page_size, 50))  # tightened from 200 — plan §U rate/volume hygiene
     repo = BirthdayOrderRepository(db)
     orders = repo.list_for_supplier(
-        supplier_id=scope.supplier_id, search=search, sort_by=sort_by, sort_direction=sort_direction,
+        supplier_id=scope.supplier_id, search=search, status_filter=status_filter, due=due,
+        sort_by=sort_by, sort_direction=sort_direction,
         limit=page_size, offset=(page - 1) * page_size,
     )
-    total = repo.count_for_supplier(supplier_id=scope.supplier_id, search=search)
+    total = repo.count_for_supplier(
+        supplier_id=scope.supplier_id, search=search, status_filter=status_filter, due=due,
+    )
     return SupplierOrderListResponse(
         items=[to_supplier_view(o) for o in orders], total=total, page=page, page_size=page_size,
     )

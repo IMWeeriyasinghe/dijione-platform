@@ -47,7 +47,10 @@ class InboundEmailOut(BaseModel):
 
 
 class LinkRequest(BaseModel):
-    order_id: int
+    # Accept either the numeric order id or the human order reference
+    # (BDAY-EMP…/BDAY-TMP…) — an operator only knows the reference (§H4).
+    order_id: int | None = None
+    order_reference: str | None = None
     raise_issue: bool = False
     issue_type: str = "OTHER"
 
@@ -81,7 +84,19 @@ def link_unmatched_email(
     row = _get_or_404(db, inbound_id)
     if row.status != "UNMATCHED":
         raise HTTPException(status.HTTP_409_CONFLICT, f"Already {row.status.lower()}")
-    order = db.get(BirthdayOrder, payload.order_id)
+    order: BirthdayOrder | None = None
+    if payload.order_id is not None:
+        order = db.get(BirthdayOrder, payload.order_id)
+    elif payload.order_reference:
+        ref = payload.order_reference.strip()
+        order = db.execute(
+            select(BirthdayOrder).where(BirthdayOrder.order_reference == ref)
+        ).scalars().first()
+        # tolerate a bare numeric string too
+        if order is None and ref.isdigit():
+            order = db.get(BirthdayOrder, int(ref))
+    else:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "order_id or order_reference required")
     if order is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
 

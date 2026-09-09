@@ -88,6 +88,8 @@ class SupplierScope:
     supplier_user_id: int
     supplier_id: int
     permissions: frozenset[str] = field(default_factory=frozenset)
+    read_only: bool = False
+    impersonated_by: int | None = None
 
     def has(self, permission_key: str) -> bool:
         return permission_key in self.permissions
@@ -114,6 +116,8 @@ def get_supplier_scope(
         supplier_user_id=supplier_user.id,
         supplier_id=supplier_user.supplier_id,
         permissions=module_claim.permissions,
+        read_only=claims.supplier.read_only,
+        impersonated_by=claims.supplier.impersonated_by,
     )
 
 

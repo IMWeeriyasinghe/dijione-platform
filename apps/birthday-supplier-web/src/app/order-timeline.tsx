@@ -6,9 +6,11 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Textarea } from "@dij
 import type { TimelineEntryOut } from "@dijione/contracts";
 import { getPortalOrderTimeline, postPortalOrderMessage } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
+import { usePortalMe } from "@/lib/portal-me";
 
 export function OrderTimeline({ orderId }: { orderId: number }) {
   const { token } = useSupplierAuth();
+  const readOnly = usePortalMe()?.read_only ?? false;
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["portal-order-timeline", orderId],
@@ -57,24 +59,26 @@ export function OrderTimeline({ orderId }: { orderId: number }) {
             ))}
           </ol>
         )}
-        <div className="mt-5 flex flex-col gap-2 border-t border-dt-border pt-4">
-          <Textarea
-            value={draft}
-            onChange={(ev) => setDraft(ev.target.value)}
-            placeholder="Send a message to Dijital Team about this order…"
-            rows={2}
-          />
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              loading={send.isPending}
-              disabled={draft.trim() === ""}
-              onClick={() => send.mutate()}
-            >
-              Send
-            </Button>
+        {!readOnly && (
+          <div className="mt-5 flex flex-col gap-2 border-t border-dt-border pt-4">
+            <Textarea
+              value={draft}
+              onChange={(ev) => setDraft(ev.target.value)}
+              placeholder="Send a message to Dijital Team about this order…"
+              rows={2}
+            />
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                loading={send.isPending}
+                disabled={draft.trim() === ""}
+                onClick={() => send.mutate()}
+              >
+                Send
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

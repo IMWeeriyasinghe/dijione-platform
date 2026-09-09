@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import BirthdayScope, require_birthday_permission
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.supplier import Supplier
 from app.models.supplier_catalogue_item import SupplierCatalogueItem
@@ -31,6 +32,7 @@ from app.schemas.supplier import (
 )
 from app.services.audit_service import AuditService
 from app.services.delivery_date_service import canonicalise_working_days
+from app.services.supplier_auth import mint_supplier_session_token
 
 router = APIRouter(prefix="/api/birthday/suppliers", tags=["birthday-suppliers"])
 
@@ -376,3 +378,34 @@ def update_supplier_user(
         )
     _audit(scope, "birthday.supplier.user_update", supplier_id, new_state=updates)
     return user
+
+
+@router.post("/{supplier_id}/users/{user_id}/impersonate")
+def impersonate_supplier_user(
+    supplier_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
+) -> dict:
+    """Read-only impersonation (§C): mint a 30-min supplier session token
+    that carries only ``birthday.portal.access`` — every mutating portal
+    route 403s — so an internal admin can preview the portal exactly as
+    this SupplierUser sees it. The caller opens ``portal_url/impersonate``
+    with the token (POST form) in a new tab."""
+    _get_supplier_or_404(db, supplier_id)
+    repo = SupplierRepository(db)
+    user = repo.get_user(supplier_id, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Supplier user not found")
+    if user.status != "ACTIVE":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Cannot impersonate an inactive supplier user")
+    token = mint_supplier_session_token(user, read_only=True, impersonated_by=scope.user.id)
+    _audit(
+        scope, "birthday.supplier.impersonate", supplier_id,
+        new_state={"supplier_user_id": user.id, "email": user.email},
+    )
+    return {
+        "access_token": token,
+        "portal_url": get_settings().supplier_public_base_url or "",
+        "expires_in": 1800,
+    }

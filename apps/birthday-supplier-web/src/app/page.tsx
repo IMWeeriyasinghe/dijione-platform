@@ -3,12 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, PackageCheck, TriangleAlert, Truck } from "lucide-react";
 import Link from "next/link";
-import {
-  Card,
-  ErrorState,
-  LoadingState,
-  MetricCard,
-} from "@dijione/design-system";
+import { ErrorState, LoadingState, MetricCard } from "@dijione/design-system";
 import { getPortalDashboard } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 
@@ -32,40 +27,45 @@ export default function SupplierDashboardPage() {
     <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-dt-text-primary">Dashboard</h2>
-        <p className="text-sm text-dt-text-secondary">Today&apos;s fulfilment work, at a glance.</p>
+        <p className="text-sm text-dt-text-secondary">
+          Start with <span className="font-medium text-dt-text-primary">Needs your attention</span>. Tap any tile to see those orders.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link href="/orders" className="block">
-          <MetricCard label="New orders to accept" value={data.new_orders} icon={CheckCircle2} tone="brand" />
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">Needs your attention</h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Link href="/orders?status_filter=SENT_TO_SUPPLIER" className="block">
+          <MetricCard label="New — accept these" value={data.new_orders} icon={CheckCircle2} tone="brand" />
         </Link>
-        <Link href="/orders" className="block">
+        <Link href="/orders?due=today" className="block">
           <MetricCard label="Due today" value={data.due_today} icon={CalendarClock} />
         </Link>
-        <Link href="/orders" className="block">
-          <MetricCard label="Due tomorrow" value={data.due_tomorrow} icon={CalendarDays} />
-        </Link>
-        <Link href="/orders" className="block">
+        <Link href="/orders?due=overdue" className="block">
           <MetricCard label="Overdue" value={data.overdue} icon={AlertTriangle} />
         </Link>
-        <Link href="/orders" className="block">
-          <MetricCard label="Out for delivery" value={data.out_for_delivery} icon={Truck} />
-        </Link>
-        <Link href="/orders" className="block">
+        <Link href="/orders?status_filter=CONFIRMED,PREPARING,OUT_FOR_DELIVERY" className="block">
           <MetricCard label="Open problems" value={data.open_issues} icon={TriangleAlert} />
         </Link>
       </div>
 
-      <div className="mt-6">
-        <Card className="p-5">
-          <div className="flex items-center gap-3">
-            <PackageCheck className="size-5 text-dt-burnt-orange" />
-            <div>
-              <p className="text-sm text-dt-text-secondary">Completed today</p>
-              <p className="text-2xl font-semibold text-dt-text-primary">{data.completed_today}</p>
-            </div>
-          </div>
-        </Card>
+      <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">In progress</h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Link href="/orders?due=tomorrow" className="block">
+          <MetricCard label="Due tomorrow" value={data.due_tomorrow} icon={CalendarDays} />
+        </Link>
+        <Link href="/orders?status_filter=PREPARING" className="block">
+          <MetricCard label="Preparing" value={data.preparing} icon={PackageCheck} />
+        </Link>
+        <Link href="/orders?status_filter=OUT_FOR_DELIVERY" className="block">
+          <MetricCard label="Out for delivery" value={data.out_for_delivery} icon={Truck} />
+        </Link>
+      </div>
+
+      <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">Done</h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Link href="/orders?status_filter=DELIVERED,COMPLETED" className="block">
+          <MetricCard label="Completed today" value={data.completed_today} icon={PackageCheck} tone="brand" />
+        </Link>
       </div>
 
       <div className="mt-6 text-sm">

@@ -26,6 +26,7 @@ import {
   createSupplierUser,
   getSupplier,
   getSupplierReadiness,
+  impersonateSupplierUser,
   listSupplierCatalogue,
   listSupplierLocations,
   listSupplierUsers,
@@ -79,6 +80,30 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
   const markInvited = useMutation({
     mutationFn: (userId: number) => markSupplierUserInvited(supplierId, userId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["birthday-supplier-users", supplierId] }),
+  });
+
+  // §C — open the real portal in a new tab as this user, read-only. POST
+  // the token via an auto-submitting form so the bearer never hits history.
+  const impersonate = useMutation({
+    mutationFn: (userId: number) => impersonateSupplierUser(supplierId, userId),
+    onSuccess: ({ access_token, portal_url }) => {
+      if (!portal_url) {
+        window.alert("Supplier portal URL is not configured for this environment.");
+        return;
+      }
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = `${portal_url.replace(/\/$/, "")}/impersonate`;
+      form.target = "_blank";
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "token";
+      input.value = access_token;
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+    },
   });
 
   const { data: locations, refetch: refetchLocations } = useQuery({
@@ -433,6 +458,17 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
                         <StatusBadge status={user.status} />
                         {scope?.isAdmin && (
                           <>
+                            {user.status === "ACTIVE" && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                loading={impersonate.isPending && impersonate.variables === user.id}
+                                onClick={() => impersonate.mutate(user.id)}
+                                title="Open the supplier portal in a new tab as this user — read-only preview."
+                              >
+                                View portal as
+                              </Button>
+                            )}
                             <Button size="sm" variant="secondary" onClick={() => openUserEdit(user)}>
                               Edit
                             </Button>

@@ -5,6 +5,7 @@ import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { SupplierAuthProvider, useSupplierAuth } from "@/lib/supplier-auth";
+import { usePortalMe } from "@/lib/portal-me";
 import { LoginScreen } from "./login-screen";
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -12,11 +13,17 @@ function Shell({ children }: { children: React.ReactNode }) {
   // server snapshot (null) to match SSR, then re-renders with the stored
   // token — so there is no hydration mismatch and no flash to guard against.
   const { token, setToken } = useSupplierAuth();
+  const me = usePortalMe();
 
   if (!token) return <LoginScreen />;
 
   return (
     <div className="flex min-h-screen flex-col">
+      {me?.read_only && (
+        <div className="sticky top-0 z-40 bg-dt-burnt-orange px-6 py-2 text-center text-sm font-medium text-white">
+          Viewing as {me.user_name || "supplier user"} — read-only internal preview. Sign out to exit.
+        </div>
+      )}
       <header className="flex items-center justify-between border-b border-dt-border bg-dt-surface px-6 py-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">

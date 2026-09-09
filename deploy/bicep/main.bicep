@@ -452,11 +452,14 @@ var scheduledJobs = concat(
     { name: 'talent-reconcile-job', image: 'talent-api', cron: '15 */6 * * *', url: 'http://talent-api/api/talent/internal/recruitment/reconcile', timeout: 900 }
   ],
   deployBirthday ? [
-    { name: 'people-sync-job', image: 'people-api', cron: '0 5 * * *', url: 'http://people-api/api/people/internal/scheduled-sync', timeout: 1800 }
-    { name: 'birthday-scan-job', image: 'birthday-api', cron: '30 5 * * *', url: 'http://birthday-api/api/birthday/internal/run-daily-scan', timeout: 900 }
+    // ACA Job cron is UTC. These are Asia/Colombo (UTC+5:30) — People
+    // refreshes ~00:00 Colombo, detection ~00:30 (right after), the
+    // attention digest ~02:00 (Phase 1.5 §B).
+    { name: 'people-sync-job', image: 'people-api', cron: '30 18 * * *', url: 'http://people-api/api/people/internal/scheduled-sync', timeout: 1800 }
+    { name: 'birthday-scan-job', image: 'birthday-api', cron: '0 19 * * *', url: 'http://birthday-api/api/birthday/internal/run-daily-scan', timeout: 900 }
     // Phase 1 §1.2/§1.3/§1.5: attention/SLA + detection-health digest (daily),
     // and outbound-email backoff retry + inbound supplier-email poll (~10 min).
-    { name: 'birthday-attention-job', image: 'birthday-api', cron: '0 6 * * *', url: 'http://birthday-api/api/birthday/internal/run-attention', timeout: 600 }
+    { name: 'birthday-attention-job', image: 'birthday-api', cron: '30 20 * * *', url: 'http://birthday-api/api/birthday/internal/run-attention', timeout: 600 }
     { name: 'birthday-comms-job', image: 'birthday-api', cron: '*/10 * * * *', url: 'http://birthday-api/api/birthday/internal/run-comms', timeout: 600 }
   ] : []
 )
