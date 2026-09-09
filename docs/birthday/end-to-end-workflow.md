@@ -1,135 +1,116 @@
 # DijiBirthday — End-to-End Workflow, Architecture & Operations
 
-Status: current as of 2026-08-29 (QA/QC hardening pass).
-
-This document is the single reference for how **DijiBirthday** (internal) and
-the **DijiBirthday Supplier Portal** (external B2B) work together, how they
-are authorized, and what remains a deployment/configuration task.
+Single reference for how **DijiBirthday** (internal) and the **DijiBirthday Supplier
+Portal** (external Entra B2B) work together, how they are authorized, and what remains a
+deployment task. Reflects the **shipped semi-automation model** — there is no
+`DRAFT`/`READY_FOR_APPROVAL`/`APPROVED` workflow and no universal approval step.
 
 ---
 
 ## A. Architecture
 
-DijiBirthday is a DijiOne module built as independently deployable services,
-consistent with `docs/platform/service-architecture.md`:
+| Component | Tech | Audience | Talks to |
+|---|---|---|---|
+| `apps/birthday-web` | Next.js | Internal staff (via `shell-web` `/birthday` zone) | `birthday-api` |
+| `apps/birthday-supplier-web` | Next.js | External supplier users | `birthday-api` (`/api/birthday/portal/*` + `/api/birthday/supplier/auth/*`) |
+| `apps/birthday-api` | FastAPI | both frontends + schedulers | `birthday_dev` (SQLite dev / PostgreSQL prod), `people-api` (employees, read-only), `platform-api` (JWT / audit / notifications), Microsoft Graph (email + inbound mail — **mock in DEV**) |
+| `apps/platform-api` | FastAPI | all modules | issues session tokens, stores audit log + notifications |
 
-| Component | Tech | Port (dev) | Audience | Talks to |
-|---|---|---|---|---|
-| `apps/birthday-web` | Next.js 16 | 3003 | Internal staff (via shell-web zone) | `birthday-api` |
-| `apps/birthday-supplier-web` | Next.js 16 | 3006 | External supplier users | `birthday-api` (`/api/birthday/portal/*` only) |
-| `apps/birthday-api` | FastAPI | 8003 | both frontends + schedulers | SQLite (dev) / PostgreSQL (prod), BambooHR (read-only), Microsoft Graph (email, mocked) |
-| `apps/platform-api` | FastAPI | 8000 | all modules | issues JWT claims, stores audit log + notifications |
+Principles:
 
-Principles preserved:
-
-- **No direct frontend → BambooHR access.** Only `birthday-api` calls BambooHR,
-  read-only, behind `app/integrations/bamboohr/`.
-- **No supplier frontend → internal frontend dependency.** `birthday-supplier-web`
-  is a standalone app with its own shell, its own auth context, and an API
-  client (`src/lib/api.ts`) that can only reach `/api/birthday/portal/*`.
-- **Service-owned business logic.** Eligibility, detection, readiness, status
-  transitions, address verification and the supplier DTO are all computed in
-  `birthday-api` services and never re-derived in a frontend.
-- **Database-enforced safeguards.** Idempotency (`uq_birthday_orders_employee_year`),
-  order-reference uniqueness, `supplier_users.entra_object_id` uniqueness.
+- **No direct frontend → BambooHR / People DB access.** Only `birthday-api` reaches People,
+  and only via `auth_client_py.EmployeeDirectoryClient` → `people-api` (read-only). Adapter:
+  `app/integrations/people_source/`. Static guard: `tests/test_no_direct_bamboohr_dependency.py`.
+- **No supplier frontend → internal frontend dependency.** `birthday-supplier-web` is
+  standalone with its own shell, auth context, and an API client that can only reach
+  `/api/birthday/portal/*` and `/api/birthday/supplier/auth/*`.
+- **Service-owned business logic.** Eligibility, detection, readiness, status transitions,
+  address verification, the supplier DTO, and communication correlation are computed in
+  `birthday-api` and never re-derived in a frontend.
+- **DB-enforced safeguards.** `UniqueConstraint(employee_id, birthday_year)`,
+  `order_reference` uniqueness, `supplier_users.entra_object_id` uniqueness.
 
 ---
 
-## B. Internal DijiBirthday workflow
+## B. Internal DijiBirthday workflow (`apps/birthday-web/src/app`)
 
-Pages (`apps/birthday-web/src/app`):
+| Route | Purpose |
+|---|---|
+| `/birthday` | Dashboard — actionable attention cards (verification required/overdue, in review, exceptions, supplier not accepted, deliveries at risk, on-hold, detection health) each deep-linking to a filtered order list |
+| `/birthday/upcoming` | Upcoming Birthdays — the forward-looking **people** view: who has a birthday coming up, eligibility, whether an order exists and its state; "Run detection" |
+| `/birthday/orders` | Cake Orders register — the order **lifecycle** worklist (saved views, search, filter, sort, paginate) |
+| `/birthday/orders/{id}` | Order detail — header + primary action, address verification, fulfilment assignment, **Unified Timeline** (comms + events + issues), advanced/raw log |
+| `/birthday/suppliers` | Suppliers register |
+| `/birthday/suppliers/{id}` | Supplier detail — profile, locations, catalogue (default cake), **Supplier Users** (Entra link + onboarding state), setup-readiness panel, internal notes |
 
-| Route | Purpose | Sidebar active |
-|---|---|---|
-| `/birthday` | Dashboard (counts, exceptions, upcoming) | Dashboard only |
-| `/birthday/upcoming` | Upcoming Birthdays — live BambooHR directory, eligibility, address & order status, Order Reference | Upcoming Birthdays only |
-| `/birthday/orders` | Cake Orders register (search / filter / sort / paginate) | Cake Orders only |
-| `/birthday/orders/{id}` | Order detail — timeline, address verification, supplier/product assignment, hold/release/cancel, submit-for-approval, approve/reject, send-to-supplier | Cake Orders only |
-| `/birthday/suppliers` | Suppliers register (row is a link to detail) | Suppliers only |
-| `/birthday/suppliers/{id}` | Supplier detail — profile, locations, catalogue, **Supplier Users** (incl. Entra Object ID link) | Suppliers only |
-
-The DijiBirthday / "by Dijital Team" brand in the shell header routes back to
-DijiOne Home (`homeHref="/"`, a plain cross-zone `<a>`).
-
-Terminology: the UI says **Team Member** for employee and **Team Member ID**
-for BambooHR `employeeNumber`. Backend/database identifiers
-(`employee_id`, `employee_number`) are deliberately unchanged.
+UI terminology: **Team Member** for employee, **Team Member ID** for BambooHR
+`employeeNumber`. DB identifiers (`employee_id`, `employee_number`) are unchanged.
 
 ---
 
-## C. Supplier Portal workflow
+## C. Supplier Portal workflow (`apps/birthday-supplier-web`)
 
-`apps/birthday-supplier-web` — external, deliberately not styled or
-structured like an internal DijiOne module (no DijiOne sidebar, no internal
-nav). Screens: login (Entra B2B in prod / dev persona picker locally),
-dashboard + order list, order detail with fulfilment actions, raise-issue,
-sign out. Loading / error / empty states on every data view. The order
-detail now shows the **verified delivery address** (only when
-`address_verified` is true).
+External, deliberately not styled like an internal DijiOne module. Screens: sign-in (Entra
+B2B in hosted DEV / persona picker only when `SUPPLIER_AUTH_MODE=dev`), fulfilment-only
+dashboard, order list (default-sorted by delivery date, overdue flagged), order detail with
+fulfilment actions + the supplier-filtered Unified Timeline + a Portal reply box, sign out.
+Loading / error / empty states on every data view. The delivery address is shown only once
+`address_verified` is true.
 
 ---
 
 ## D. Interaction between the two applications
 
 ```
-BambooHR (read-only)
+BambooHR (read-only) ──people-api──► birthday-api
    │  list_active_employees()
    ▼
-birthday-api  ──detection──►  BirthdayOrder (DRAFT, order_reference, address snapshot)
-   │                                   │
-   │  internal staff (birthday-web)    │  approve()  → approved_at / approved_by stamped
-   ▼                                   ▼
-address verified ─► READY_FOR_APPROVAL ─► APPROVED ─► send-to-supplier (email MOCKED)
-                                                          │  status = SENT_TO_SUPPLIER
-                                                          ▼
-                                       birthday-api  /api/birthday/portal/*  (supplier-scoped)
-                                                          ▲
-                                       birthday-supplier-web  (Entra B2B guest token)
-```
+detection ─► BirthdayOrder (PENDING_VERIFICATION | REQUIRES_ATTENTION | ON_HOLD,
+             order_reference, supplier + default cake auto-assigned,
+             delivery_date defaulted, address + employee facts snapshotted, verify_by)
+   │
+   │  internal staff (birthday-web): fix exceptions, then the ONE routine action —
+   │  "Verify address"  (POST /orders/{id}/verify)
+   ▼
+   standard order      → auto-release → SENT_TO_SUPPLIER  (outbound email, mock in DEV)
+   flagged order       → REQUIRES_REVIEW → one-click "Confirm & release" → SENT_TO_SUPPLIER
+   not ready           → REQUIRES_ATTENTION (typed)
+   ▼
+supplier (birthday-supplier-web, Entra B2B):
+   Accept → CONFIRMED → PREPARING → OUT_FOR_DELIVERY → DELIVERED
+   ▼
+system: DELIVERED → COMPLETED  (auto, no internal button)
 
-The two apps never call each other directly — they share only `birthday-api`
-and its database, through disjoint route groups (`/orders`, `/suppliers` vs
-`/portal`).
+Communication (either direction, either channel) is recorded as SupplierCommunication and
+rendered in the order's Unified Timeline on both sides.
+```
 
 ---
 
 ## E. Microsoft Entra ID B2B authentication (production supplier auth)
 
-The Supplier Portal authenticates **external supplier guest identities** via
-**Microsoft Entra ID B2B guest access**. There are no local supplier
-passwords, no username/password store, and no magic links.
-
-Production flow:
+The Supplier Portal authenticates external supplier identities via **Microsoft Entra ID B2B
+guest access** — no local passwords, no magic links. `SUPPLIER_AUTH_MODE` (`dev` | `entra`)
+is the authoritative switch (**not** `APP_ENV`); hosted DEV runs `entra`.
 
 ```
-External supplier user
-  → Microsoft Entra ID B2B guest sign-in (OIDC Authorization Code + PKCE)
-  → birthday-supplier-web receives an ID/access token
-  → token sent as Bearer to birthday-api
-  → birthday-api validates: signature (tenant JWKS), issuer, audience, expiry
-  → the token's object-id claim (`oid`) is read
-  → SupplierUser row looked up by entra_object_id
-  → SupplierUser.status == ACTIVE  AND  Supplier.status == ACTIVE
-  → supplier_id resolved SERVER-SIDE (from the row, never the request)
-  → every query constrained to that supplier_id
+external supplier user
+  → Entra B2B guest sign-in (OIDC Authorization Code + PKCE), separate app registration
+  → birthday-supplier-web server-side code exchange → id_token
+  → birthday-api core/supplier_entra.py: RS256/JWKS verify (iss, aud, tid, nonce, exp)
+  → resolve_supplier_user(): match entra_object_id (oid); else verified email
+    (a rewritten #EXT# UPN is NEVER treated as an email); stamp oid on first email match
+  → SupplierUser.status == ACTIVE  AND  Supplier.status == ACTIVE  (else generic 403)
+  → mint_supplier_session_token(): DijiOne HS256 session token, supplier claim + supplier_id
+  → every /portal/* query constrained to that supplier_id, re-checked each request
 ```
 
-**Token-validation decision:** the durable identity key is the Entra
-**object id** (`oid`) claim, not `email` (email can change; `oid` does not).
-`birthday-api` must validate the token against the configured tenant's JWKS
-and check `iss` / `aud` / `exp` — not merely decode it. The current
-`auth_client_py` seam decodes an HS256 dev JWT; wiring RS256 + JWKS + issuer
-/ audience validation for the B2B tenant is the **deployment task** in §Q.
-
-Local development uses `app/api/routes/dev_auth.py`
-(`/api/birthday/internal/dev/supplier-*`), which:
-
-- is **hard-disabled when `APP_ENV=production`** (returns 404, not 403 — the
-  route is not even discoverable);
-- lets a caller pick *which seeded `SupplierUser` to become*, never a
-  `supplier_id`;
-- resolves `supplier` claim → `SupplierUser` → `supplier_id` through the
-  **exact same** `SupplierScope` path production uses.
+**Entra authenticates; an ACTIVE `SupplierUser` authorizes.** Entra membership alone grants
+nothing. A `SupplierUser` is **never** auto-created from a sign-in. Config reference:
+`docs/platform/birthday-supplier-authentication.md`. When `SUPPLIER_AUTH_MODE=dev`,
+`app/api/routes/dev_auth.py` (`/api/birthday/internal/dev/supplier-*`) offers a seeded-persona
+picker resolving through the **same** `SupplierScope` path; those routes **404** under
+`entra`.
 
 ---
 
@@ -139,283 +120,190 @@ Local development uses `app/api/routes/dev_auth.py`
 
 | Field | Notes |
 |---|---|
-| `id` | PK |
 | `supplier_id` | FK → `suppliers.id`, the isolation boundary |
-| `full_name`, `email` | contact info; `email` is unique but **not** the identity key |
+| `email` | contact + email-match key on first sign-in; unique; not the durable identity key |
 | `role` | `SUPPLIER_USER` \| `SUPPLIER_ADMIN` (carried; both get the same portal claims today) |
 | `status` | `ACTIVE` \| `INACTIVE` — re-checked on **every** request in `get_supplier_scope` |
-| `entra_object_id` | Microsoft Entra B2B guest `oid`; nullable until linked; **unique**; authoritative once set |
-| `created_at`, `updated_at` | timestamps |
+| `entra_object_id` | Entra B2B guest `oid`; nullable until linked; unique; authoritative once set |
+| `invited_at` / `linked_at` / `last_login_at` | onboarding-state visibility for internal admins |
 
-Internal admin management: `POST/GET/PATCH /api/birthday/suppliers/{id}/users`.
-`PATCH` covers email/name/role, activate/deactivate, **and linking /
-updating `entra_object_id`** (added in the QA/QC pass — uniqueness enforced,
-`""` normalised to `NULL`, audited as `birthday.supplier.user_entra_linked`).
-SupplierUsers are never hard-deleted (deactivate only), so historical
-`OrderEvent.actor_id` references stay resolvable.
+Internal admin management: `GET/POST/PATCH /api/birthday/suppliers/{id}/users`. `PATCH`
+covers email/name/role, activate/deactivate, and `entra_object_id` linking (uniqueness
+enforced, `""`→`NULL`, audited `birthday.supplier.user_entra_linked`). Never hard-deleted.
 
 ---
 
 ## G. Supplier isolation (critical)
 
-Enforced entirely server-side in `birthday-api`:
-
-- `SupplierScope.supplier_id` comes **only** from the validated token claim →
-  DB row; never from a URL/query/body parameter.
-- Every `/portal/*` repository call filters on `scope.supplier_id`
-  (`BirthdayOrderRepository.list_for_supplier` / `count_for_supplier` /
-  `get_for_supplier`).
-- A manipulated order id belonging to another supplier returns **404**, not
-  403 — the caller learns nothing.
-- `get_for_supplier` also excludes orders not yet in a supplier-visible
-  status, so a DRAFT/READY/APPROVED order is invisible to the supplier until
-  it is actually sent.
-- Inactive `SupplierUser` → 403; inactive `Supplier` → the user's orders are
-  still row-scoped and the dev login refuses inactive personas.
-- `SupplierOrderView` is a **separate** Pydantic model — HR fields (hire
-  date, termination date, employment status, eligibility reason, internal
-  notes, `employee_id`, `employee_number`) are never selected into it.
-
-Regression coverage: `tests/test_supplier_portal.py`,
-`tests/test_supplier_admin.py::test_cross_supplier_isolation_*`.
+Server-side in `birthday-api`: `SupplierScope.supplier_id` comes only from the validated
+token → DB row, never a URL/query/body parameter; every `/portal/*` repository call filters
+on it; a manipulated order id belonging to another supplier **404s** (the caller learns
+nothing). `SupplierOrderView` is a separate Pydantic model — HR fields are never selected
+into it. Terminal statuses stay portal-visible so a cancellation shows as a tombstone.
 
 ---
 
-## H. User persona matrix
+## H. Birthday detection (`app/services/detection_service.py`)
 
-| Role | App | View | Create | Edit | Approve | Supplier actions | User admin |
-|---|---|---|---|---|---|---|---|
-| **INTERNAL ADMIN** (`BIRTHDAY_ADMIN`) | birthday-web | ✅ all | ✅ orders, suppliers, supplier-users | ✅ orders, suppliers | ✅ approve/reject | — | ✅ SupplierUser CRUD + Entra link |
-| **INTERNAL OPS / CS / P&C** (`BIRTHDAY_USER` + granted perms) | birthday-web | ✅ dashboard, orders, suppliers | ➖ (perm-gated) | ✅ address verification, supplier/product assignment | ➖ | — | ➖ |
-| **INTERNAL APPROVER** (`birthday.orders.approve`) | birthday-web | ✅ orders | ➖ | ➖ | ✅ approve/reject/hold | — | ➖ |
-| **SUPPLIER ADMIN** (`SUPPLIER_ADMIN`) | supplier-web | ✅ own supplier orders | — | — | — | ✅ acknowledge → delivered, issue/change | — |
-| **SUPPLIER USER** (`SUPPLIER_USER`) | supplier-web | ✅ own supplier orders | — | — | — | ✅ acknowledge → delivered, issue/change | — |
+`run_daily_scan` opens a `ScanRun`, fetches active employees via `people-api`, and per
+in-window employee:
 
-Permission keys are carried on the JWT `module_roles.birthday.permissions`
-claim (see `tests/conftest.py::BIRTHDAY_PERMISSIONS_BY_ROLE` for the dev set).
-`SUPPLIER_ADMIN` vs `SUPPLIER_USER` currently receive identical portal
-claims (`birthday.portal.access`, `birthday.portal.respond`); the role is
-stored for future finer-grained gating.
+- next occurrence (Feb 29 → Mar 1 off-leap); scan window `-lookback … +lookahead` days;
+- eligibility ladder (`eligibility_service`): `MISSING_BIRTHDAY` → `INVALID_EMPLOYEE_DATA`
+  → `INACTIVE_EMPLOYEE` → `MISSING_HIRE_DATE` → `FUTURE_STARTER` → `EMPLOYMENT_ENDED` →
+  `ELIGIBLE` (future starters don't count as exceptions);
+- lead-time class Normal / Short-Notice / Urgent vs `supplier.lead_time_days`;
+- deterministic supplier resolution: sole ACTIVE → office-location rule → `is_default` → none;
+- default cake: single default → single item → none → `NO_DEFAULT_CAKE`;
+- `verify_by = occurrence − (lead_time_days + verify_buffer_days)`;
+- **address + employee facts snapshotted onto the order** (never a live lookup later);
+- `create_or_get_order` — idempotent on `(employee_id, birthday_year)`, per-employee commit.
 
----
+**Source outage:** `EmployeeSourceUnavailableError` → `ScanRun.status =
+DEFERRED_SOURCE_UNAVAILABLE`, zero orders, nothing touched; the next scan recomputes each
+employee's next occurrence and catches up within the lookahead window — no duplicates.
 
-## I. Birthday detection
-
-`app/services/detection_service.py::run_daily_scan`:
-
-1. `bamboohr_client.list_active_employees()` (status=Active only).
-2. For each: compute next birthday occurrence (year-boundary safe; Feb 29 →
-   Mar 1 in non-leap years).
-3. Skip if outside the configured scan window
-   (`window_lookback_days … window_lookahead_days`).
-4. **Eligibility gate** (see §J) — ineligible employees never get a row.
-5. Resolve supplier by office location (ACTIVE suppliers only).
-6. Generate `order_reference` (`BDAY-EMP{employee_id}-{year}-{NNNNN}` from the
-   `order_sequences` counter table, retry-safe).
-7. `create_or_get_order` — insert inside a SAVEPOINT; on the
-   `(employee_id, birthday_year)` unique-constraint violation, return the
-   existing row untouched (**idempotent**, quantity never incremented).
-8. Copy the BambooHR address into the order snapshot,
-   `delivery_address_source = BAMBOOHR`, `address_verification_status =
-   NOT_CHECKED`.
-9. Commit per employee (one bad record cannot abort the run).
-
-Result summary: `employees_scanned`, `orders_created`, `orders_existing`,
-`exceptions`, `ineligible_skipped`, `errors[]`.
+Production detection = the external `birthday-scan-job` (`30 5 * * *`) hitting
+`POST /api/birthday/internal/run-daily-scan` (X-Internal-Token). `POST
+/api/birthday/admin/run-detection` is the auth-gated UAT/ops equivalent, same service.
 
 ---
 
-## J. Eligibility state machine
+## I. Order state machine (`app/services/order_status_service.py`)
 
-`app/services/eligibility_service.py::compute_eligibility` — first failing
-check wins:
-
-1. valid birthday present → else `MISSING_BIRTHDAY`
-2. month/day in range → else `INVALID_EMPLOYEE_DATA`
-3. `employment_status == "Active"` → else `INACTIVE_EMPLOYEE`
-4. hire date known → else `MISSING_HIRE_DATE`
-5. hire date ≤ this birthday occurrence → else `FUTURE_STARTER`
-6. no termination date before this occurrence → else `EMPLOYMENT_ENDED`
-7. otherwise → `ELIGIBLE`
-
-Future starters never receive an order before their start date.
-
----
-
-## K. Order state machine
-
-Statuses: `DRAFT → READY_FOR_APPROVAL → APPROVED → SENT_TO_SUPPLIER →
-SUPPLIER_REVIEW → CONFIRMED → PREPARING → OUT_FOR_DELIVERY → DELIVERED →
-COMPLETED`.
-
-Exception / side paths: `ON_HOLD`, `CANCELLED`, `REJECTED`,
-`CHANGE_REQUESTED`, `UNABLE_TO_FULFIL`, `REQUIRES_ATTENTION`.
-`PLANNED` is a retained legacy status.
-
-Transitions are enforced by the table in
-`app/services/order_status_service.py::ALLOWED_TRANSITIONS`. No route mutates
-`status` directly; every transition writes an `OrderEvent` **and** an audit
-log entry.
-
-**Approval provenance (QA/QC pass):** `approve()` now stamps `approved_at` /
-`approved_by` on the order. `order_email_service._send()` gates on
-`approved_at is not None` — closing the gap where a detection-time
-`REQUIRES_ATTENTION` order (never approved) could be sent to a supplier just
-because `REQUIRES_ATTENTION` was on the "retry a previously-approved send"
-allow-list.
-
----
-
-## L. Readiness (gate into READY_FOR_APPROVAL)
-
-`app/services/readiness_service.py::check` — an order is ready only when:
-
-- `address_verification_status == VERIFIED`
-- `supplier_id` assigned
-- `delivery_date` set  *(added in the QA/QC pass — §17)*
-- `office_location` present
-- `quantity >= 1`
-- `employee_name` present
-
-Product / catalogue selection (`catalogue_item_id`) is captured but not a
-hard gate (a supplier can be assigned a default cake); it is surfaced in the
-UI. Eligibility is not re-checked here — an ineligible employee never had a
-row.
-
-`submit_for_approval` and `approve` both re-run this check server-side.
-
----
-
-## M. Address-verification state machine
-
-`app/services/address_verification_service.py` — P&C-manual, **no automated
-employee contact ever**, and no transition table (a P&C user may move
-between any two states):
+**13 active statuses.** `ALLOWED_TRANSITIONS` is the single source of truth; every
+transition goes through `transition(...)`, writes an `OrderEvent`, and best-effort
+`AuditService.log("birthday.order.status_change")`. No route mutates `status` directly.
 
 ```
-NOT_CHECKED ─► VERIFICATION_REQUESTED ─► VERIFIED
-                                    └──► NEEDS_UPDATE ─► (edit address) ─► VERIFIED
+PENDING_VERIFICATION → REQUIRES_REVIEW | SENT_TO_SUPPLIER | ON_HOLD | REQUIRES_ATTENTION | CANCELLED
+REQUIRES_REVIEW      → SENT_TO_SUPPLIER | ON_HOLD | REQUIRES_ATTENTION | CANCELLED
+REQUIRES_ATTENTION   → PENDING_VERIFICATION | SENT_TO_SUPPLIER | ON_HOLD | CANCELLED | REQUIRES_ATTENTION
+ON_HOLD              → PENDING_VERIFICATION | REQUIRES_REVIEW | SENT_TO_SUPPLIER | CANCELLED
+SENT_TO_SUPPLIER     → CONFIRMED | CHANGE_REQUESTED | UNABLE_TO_FULFIL | ON_HOLD | REQUIRES_ATTENTION | CANCELLED
+CHANGE_REQUESTED     → SENT_TO_SUPPLIER | CANCELLED
+CONFIRMED            → PREPARING | UNABLE_TO_FULFIL | CANCELLED
+PREPARING            → OUT_FOR_DELIVERY | UNABLE_TO_FULFIL | CANCELLED
+OUT_FOR_DELIVERY     → DELIVERED | REQUIRES_ATTENTION | CANCELLED
+DELIVERED            → COMPLETED            UNABLE_TO_FULFIL → REQUIRES_ATTENTION
+CANCELLED / COMPLETED → (terminal)
 ```
 
-Editing the address sets `delivery_address_source = MANUAL_CORRECTION`.
-The audit trail records **only which field names changed**, never address
-content (the order row is the source of the address; the audit log is not).
-The supplier sees address fields **only** when `VERIFIED`.
+`SUPPLIER_DRIVABLE` (portal only): `SENT_TO_SUPPLIER → {CONFIRMED, CHANGE_REQUESTED,
+UNABLE_TO_FULFIL}`, `CONFIRMED → PREPARING`, `PREPARING → OUT_FOR_DELIVERY`,
+`OUT_FOR_DELIVERY → DELIVERED`. Helpers: `hold`, `release` (→ `PENDING_VERIFICATION`),
+`cancel`, `auto_complete` (`DELIVERED → COMPLETED`, system actor).
 
 ---
 
-## N. Approval
+## J. "Verification is the approval" (`address_verification_service.verify_and_release`)
 
-`DRAFT → READY_FOR_APPROVAL → APPROVED`; exits `REJECTED` / `ON_HOLD` /
-`CANCELLED`. Approval captures `approved_by`, `approved_at`, an `OrderEvent`,
-and an audit entry. A supplier cannot see an order before it is `APPROVED`
-**and** sent (`SENT_TO_SUPPLIER`+).
+Marking the delivery address **VERIFIED** is the one routine human checkpoint. Then:
 
----
+- readiness unmet (`readiness_service.check`: verified address, supplier, delivery date,
+  office location, quantity ≥ 1, employee name) → `REQUIRES_ATTENTION`, typed;
+- readiness met but the order carries an exception trigger
+  (`ADDRESS_MANUALLY_CORRECTED` / `SHORT_NOTICE_LEAD_TIME` / `QUANTITY_CHANGED`) or
+  `auto_release_enabled` is off → `REQUIRES_REVIEW`, one click from release;
+- readiness met and unflagged → **auto-released** to the supplier (`SENT_TO_SUPPLIER`,
+  system actor, outbound email).
 
-## O. Supplier fulfilment state machine (portal actions)
-
-`app/api/routes/portal.py::_SUPPLIER_ALLOWED_TARGETS`:
-
-```
-SENT_TO_SUPPLIER ──acknowledge──► SUPPLIER_REVIEW
-SUPPLIER_REVIEW  ──► CONFIRMED | CHANGE_REQUESTED | UNABLE_TO_FULFIL
-CONFIRMED        ──► PREPARING
-PREPARING        ──► OUT_FOR_DELIVERY
-OUT_FOR_DELIVERY ──► DELIVERED
-```
-
-Every portal action re-validates: authenticated `SupplierUser`, user ACTIVE,
-supplier ACTIVE, supplier owns the order, current state, transition
-validity. Each records actor + time + `OrderEvent` + audit entry.
+VERIFIED is refused (409) for an order with **no delivery destination at all** — no
+`office_location` and no `delivery_address_*`. `AddressVerificationStatus` is P&C-manual,
+never set by automation, and never triggers employee contact.
 
 ---
 
-## P. Issue / change workflow
+## K. Supplier fulfilment + issues
 
-Supplier raises an issue (`POST /portal/orders/{id}/issue`) — allowed only
-while the order is **in progress** (`SENT_TO_SUPPLIER`, `SUPPLIER_REVIEW`,
-`CHANGE_REQUESTED`, `CONFIRMED`, `PREPARING`, `OUT_FOR_DELIVERY`); blocked
-(409) once terminal *(guard added in the QA/QC pass)*. The issue is recorded
-as a `SUPPLIER_ISSUE` `OrderEvent`, audited, and broadcast to
-`BIRTHDAY_ADMIN`. Internal ops then amend / hold / reassign / cancel /
-re-release; audit history is preserved throughout.
-
----
-
-## Q. External production scheduler requirement
-
-Do **not** add an in-process scheduler to FastAPI. Production automatic
-detection is:
-
-```
-Azure scheduled job (Function Timer / Logic App recurrence)
-  → POST /api/birthday/internal/run-daily-scan  (X-Internal-Token: <INTERNAL_SERVICE_SECRET>)
-  → run_daily_scan  (same service the manual/UAT path calls)
-```
-
-For UAT/ops, `POST /api/birthday/admin/run-detection`
-(`birthday.config.manage` permission) calls the identical service — no
-duplicated logic. The birthday-web "Run Birthday Detection" button (admin
-only, Upcoming Birthdays page) is the front door for this.
-
-Starting `npm run dev:all` does **not** run any scan or create any orders.
+Portal actions map to `SUPPLIER_DRIVABLE`. **Accept** merges the old acknowledge+confirm
+(`SENT_TO_SUPPLIER → CONFIRMED`). `DELIVERED` auto-completes. A supplier's structured
+**Report a problem** creates a typed `OrderIssue` (`CHANGE_REQUEST` / `CANNOT_FULFIL` /
+`DELIVERY_ISSUE` / `OTHER`); only `CANNOT_FULFIL` moves status (`→ UNABLE_TO_FULFIL`). Issue
+lifecycle (`OPEN` / `RESOLVED`) is separate from order lifecycle — an order can be
+`PREPARING` with an OPEN non-blocking issue.
 
 ---
 
-## R. Local development startup
+## L. Supplier communication (Unified Timeline)
 
-```
-npm run dev:all
-```
+`SupplierCommunication` is the canonical per-order conversation record across **both
+channels, both directions**:
 
-starts every DijiOne service **including** `birthday-supplier-web` (port
-3006, added in the QA/QC pass). It can also be started alone:
+- **Portal**: supplier ⇄ internal messages on an order.
+- **Email — outbound**: order released / changed post-release / cancelled + ad-hoc; each
+  attempt is an append-only row; automatic retry with backoff; duplicate-send guarded.
+- **Email — inbound**: replies polled (~10 min) from a shared mailbox via
+  `get_inbound_mail_client()` (`MockInboundMailClient` in DEV + a dev inject endpoint;
+  `GraphInboundMailClient` in UAT+); correlated by `order_reference` regex / `In-Reply-To`
+  vs a sent `message_id`; **sender must be an ACTIVE `SupplierUser` / supplier primary
+  contact** of that order's supplier; matched → `SupplierCommunication(channel=EMAIL,
+  direction=INBOUND)` + internal notification, **no auto `OrderIssue`**; unmatched →
+  quarantined `inbound_email` row + an internal "Unmatched supplier email" queue; never
+  mutates order state from free text.
 
-```
-cd apps/birthday-supplier-web && npm run dev
-```
-
-Ports: shell-web 3000, birthday-web 3003, **birthday-supplier-web 3006**,
-platform-api 8000, birthday-api 8003.
-
-Environment (`apps/birthday-api/.env`): keep `INTEGRATIONS_MODE=live`
-(BambooHR read-only) and `EMAIL_SENDING_MODE=mock`. `APP_ENV` must be
-`production` in production so the dev supplier-auth routes 404.
-
----
-
-## S. Deployment requirements
-
-See §V of the QA/QC report. Summary: Entra B2B app registrations (portal SPA
-+ API), API audience/scope, RS256 + JWKS + issuer/audience validation in
-`birthday-api`, production redirect URIs, per-supplier `entra_object_id`
-mapping, HTTPS, tightened CORS, production secrets, PostgreSQL + `alembic
-upgrade head`, the external scheduler job, Application Insights, and — only
-when explicitly approved — flipping `EMAIL_SENDING_MODE=live`.
+The Order Detail page renders one **Unified Timeline** merging `SupplierCommunication` +
+`OrderEvent` + `OrderIssue` markers, audience-filtered (internal sees `INTERNAL_NOTE` and
+raw events; the supplier portal does not).
 
 ---
 
-## T. Database ownership
+## M. Attention / SLA + notifications
 
-`birthday-api` owns: `birthday_orders`, `order_events`, `order_sequences`,
-`special_requirements`, `birthday_detection_configs`, `suppliers`,
-`supplier_locations`, `supplier_catalogue_items`, `supplier_users`,
-`supplier_communications`. Users, audit log and notifications are owned by
-`platform-api` (no FK from birthday tables into it — `actor_id` /
-`created_by` are opaque ints).
+A daily **attention sweep** job computes and emits (deduped, digested) internal
+notifications via `broadcast_notification("birthday", "BIRTHDAY_ADMIN", …)`:
 
-Single Alembic head: `e7f2a0b1c9d3`.
-
----
-
-## U. Known limitations
-
-| Item | Class |
+| Rule | Condition |
 |---|---|
-| Real Entra B2B tenant guest invitation flow + RS256/JWKS token validation | Deployment task |
-| Scan-run history table (`GET /internal/scan-runs/{id}` returns 501) | Future enhancement |
-| `SUPPLIER_ADMIN` vs `SUPPLIER_USER` finer-grained portal gating | Future enhancement |
-| Module-`/summary` endpoints unauthenticated (platform-wide convention; 3 integer counts only) | Accepted / documented |
-| Correcting a `VERIFIED` address does not auto-reset verification status (by design — caller re-verifies) | Accepted / documented |
-| BambooHR fetched live per request (no local cache) | Future enhancement — see `docs/platform/performance-investigation.md` |
+| Verification overdue | `verify_by < today` and not VERIFIED |
+| Supplier not accepted | `released_at < now − acknowledgement_sla_hours` and `SENT_TO_SUPPLIER` |
+| Delivery at risk today | `delivery_date == today` and status ∉ {OUT_FOR_DELIVERY, DELIVERED, COMPLETED} |
+| Overdue delivery | `delivery_date < today` and not terminal |
+| Send failed | `EMAIL_FAILED` and auto-retry exhausted |
+| Detection not running | last scan age > 26 h or `DEFERRED_SOURCE_UNAVAILABLE`; consecutive count escalates |
+
+Supplier-facing notifications in Phase 1 are **email only**. Scan success is silent.
+
+---
+
+## N. User persona matrix
+
+| Persona | App | Dashboard | Orders | Suppliers | Verify / review | Portal fulfilment | SupplierUser admin |
+|---|---|---|---|---|---|---|---|
+| **INTERNAL ADMIN** (`BIRTHDAY_ADMIN`) | birthday-web | ✅ | ✅ | ✅ | ✅ verify / confirm-release / hold | — | ✅ CRUD + Entra link |
+| **INTERNAL USER** (`BIRTHDAY_USER`) | birthday-web | ✅ | ✅ read | ➖ | ➖ | — | ➖ |
+| **SUPPLIER** (`BIRTHDAY_SUPPLIER`) | birthday-supplier-web | ✅ own | ✅ own (fulfilment fields) | — | — | ✅ accept → deliver, raise issue, message | — |
+
+Permission keys: `birthday.dashboard.read`, `birthday.orders.{read,create,update,delete,verify,review,hold_release,cancel,send_supplier}`, `birthday.suppliers.{read,manage}`, `birthday.config.manage`, `birthday.portal.{access,respond}`.
+
+---
+
+## O. Deployment / configuration state
+
+| Setting | DEV | UAT / PROD |
+|---|---|---|
+| `INTEGRATIONS_MODE` | `live` (People via `people-api`) — the Phase 1 validation switch | `live` |
+| `EMAIL_SENDING_MODE` | `mock` (`MockGraphEmailClient` + `MockInboundMailClient`) | `live` — enabled + proven in UAT (Graph app reg + `Mail.Send` + `Mail.Read` + admin consent + shared mailbox + KV secrets) |
+| `SUPPLIER_AUTH_MODE` | `entra` | `entra` |
+| Jobs | `birthday-scan-job` (`30 5 * * *`), `birthday-attention-job` (daily), `birthday-comms-job` (~10 min: outbound-retry + inbound-poll) | same |
+
+Rollback levers: `SUPPLIER_AUTH_MODE=dev`, `EMAIL_SENDING_MODE=mock`,
+`INTEGRATIONS_MODE=mock`; redeploy to the prior image digest.
+
+---
+
+## P. Database ownership
+
+`birthday-api` is the **only** writer of `birthday_dev`. No cross-service DB access, no
+cross-service SQL joins. People facts live in `people_dev` (owned by `people-api`) and reach
+Birthday only as HTTP DTOs, snapshotted onto orders at detection time.
+
+---
+
+## Q. Known limitations / Phase-2 items
+
+- Real Graph outbound + inbound email is enabled and proven in **UAT**, not DEV.
+- Inbound-email **attachments** are withheld (recorded, not stored) — Phase 2.
+- No supplier-facing in-app notification centre — Phase 2 (email + portal pull counts today).
+- No management reporting view (cakes/month, on-time %) — Phase 2.
+- Teams is not a supplier channel; an internal Teams notification mirror is optional/deferred.

@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import BirthdayScope, require_birthday_permission
 from app.api.routes.config import get_or_create_config
-from app.core.constants import AddressVerificationStatus, OrderIssueStatus, OrderStatus
+from app.core.constants import (
+    ActorType,
+    AddressVerificationStatus,
+    ExceptionReason,
+    OrderIssueStatus,
+    OrderStatus,
+)
 from app.db.session import get_db
 from app.models.birthday_order import BirthdayOrder
 from app.models.order_event import OrderEvent
@@ -132,10 +138,20 @@ def create_order(
         )
 
     # Business-facing Team Member ID (BambooHR employeeNumber), NOT the
-    # internal record id — falls back to the internal id only when the
-    # employee genuinely has no employeeNumber. See order_sequence_service.
+    # internal record id. No silent fallback: when it is absent the
+    # reference is tagged BDAY-TMP… and the order is flagged
+    # MISSING_EMPLOYEE_NUMBER (Phase 1 §1.0).
+    has_employee_number = bool(payload.employee_number)
     team_member_id = payload.employee_number or payload.employee_id
-    order_reference = next_order_reference(db, team_member_id, birthday_year)
+    order_reference = next_order_reference(
+        db, team_member_id, birthday_year, provisional=not has_employee_number
+    )
+    initial_status = (
+        OrderStatus.PENDING_VERIFICATION if has_employee_number else OrderStatus.REQUIRES_ATTENTION
+    )
+    initial_exception = (
+        None if has_employee_number else ExceptionReason.MISSING_EMPLOYEE_NUMBER.value
+    )
     # Deterministic supplier default (§5/§6): sole ACTIVE supplier ->
     # office-location rule -> is_default. Still fully editable afterwards.
     default_supplier = detection_service.resolve_supplier_for_office(payload.office_location, db)
@@ -153,7 +169,8 @@ def create_order(
         office_location=payload.office_location,
         lead_time_days=(payload.birthday_date - date.today()).days,
         lead_time_class="NORMAL",
-        status=OrderStatus.PENDING_VERIFICATION,
+        status=initial_status,
+        exception_reason=initial_exception,
         requires_admin_review=False,
         hold_reason=None,
         supplier_id=default_supplier.id if default_supplier is not None else None,
@@ -199,11 +216,50 @@ def update_order(
                 status.HTTP_409_CONFLICT,
                 f"Supplier {target_supplier.name!r} is INACTIVE and cannot be assigned to orders",
             )
+    # Recovery for a MISSING_EMPLOYEE_NUMBER-flagged order: supplying the
+    # real Team Member ID clears the exception and, while the order has
+    # never reached a supplier, regenerates the provisional BDAY-TMP…
+    # reference (Phase 1 §1.0).
+    employee_number_supplied = bool(updates.get("employee_number")) and (
+        updates["employee_number"] != order.employee_number
+    )
+    recovered_missing_number = (
+        employee_number_supplied
+        and order.exception_reason == ExceptionReason.MISSING_EMPLOYEE_NUMBER.value
+    )
+
     # Already visible to the supplier — a change here must not be silent
     # (plan §Y). Flag for a fresh human look and notify.
     was_supplier_visible = order.status in order_status_service.SUPPLIER_VISIBLE_STATUSES
     for field, value in updates.items():
         setattr(order, field, value)
+
+    if recovered_missing_number:
+        order.exception_reason = None
+        never_reached_supplier = order.order_reference.startswith("BDAY-TMP") and (
+            db.query(SupplierCommunication)
+            .filter(SupplierCommunication.order_id == order.id)
+            .first()
+            is None
+        )
+        if never_reached_supplier:
+            order.order_reference = next_order_reference(
+                db, order.employee_number, order.birthday_year
+            )
+        db.add(
+            OrderEvent(
+                order_id=order.id, event_type="EMPLOYEE_NUMBER_ASSIGNED",
+                actor_id=scope.user.id, actor_type="USER",
+                detail=f"Team Member ID set to {order.employee_number}; reference {order.order_reference}",
+            )
+        )
+        if order.status == OrderStatus.REQUIRES_ATTENTION.value:
+            order = order_status_service.transition(
+                db, order, OrderStatus.PENDING_VERIFICATION,
+                actor_id=scope.user.id, actor_type=ActorType.USER,
+                detail="Team Member ID supplied — MISSING_EMPLOYEE_NUMBER cleared",
+            )
+
     if supplier_reassigned:
         db.add(
             OrderEvent(
@@ -312,9 +368,12 @@ def verify_address(
     REQUIRES_REVIEW instead; see /confirm-release."""
     order = _get_order_or_404(db, order_id)
     config = get_or_create_config(db)
-    outcome = address_verification_service.verify_and_release(
-        db, order, actor_id=scope.user.id, corrected=payload.corrected, note=payload.note, config=config,
-    )
+    try:
+        outcome = address_verification_service.verify_and_release(
+            db, order, actor_id=scope.user.id, corrected=payload.corrected, note=payload.note, config=config,
+        )
+    except address_verification_service.EmptyAddressError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return VerifyAddressResponse(
         order=outcome.order, auto_released=outcome.auto_released, flagged_reasons=outcome.flagged_reasons,
     )
@@ -492,9 +551,12 @@ def update_address_verification(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"Invalid address verification status: {payload.status!r}",
         ) from exc
-    return address_verification_service.set_address_verification_status(
-        db, order, new_status, actor_id=scope.user.id, note=payload.note,
-    )
+    try:
+        return address_verification_service.set_address_verification_status(
+            db, order, new_status, actor_id=scope.user.id, note=payload.note,
+        )
+    except address_verification_service.EmptyAddressError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
 @router.patch("/{order_id}/delivery-address", response_model=BirthdayOrderRead)

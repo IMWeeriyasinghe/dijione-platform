@@ -15,6 +15,7 @@ from tests.conftest import headers_for
 def _create_order(api_client, headers, employee_id="emp-appr-1"):
     payload = {
         "employee_id": employee_id,
+        "employee_number": employee_id.replace("emp-appr-", "9000"),
         "employee_name": "Approval Test",
         "employee_email": "approval.test@example.com",
         "birthday_date": str(date.today() + timedelta(days=20)),

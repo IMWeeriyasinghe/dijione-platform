@@ -257,6 +257,7 @@ def test_7_days_away_birthday_is_within_scan_window_and_creates_order(db):
             return [
                 EmployeeRecord(
                     id="emp-7day",
+                    employee_number="7007",
                     first_name="Seven",
                     last_name="Day",
                     display_name="Seven Day",

@@ -26,11 +26,24 @@ from sqlalchemy.orm import Session
 from app.models.order_sequence import OrderSequence
 
 
-def next_order_reference(db: Session, team_member_id: str, year: int) -> str:
+def next_order_reference(
+    db: Session, team_member_id: str, year: int, *, provisional: bool = False
+) -> str:
     """``team_member_id`` is the resolved business Team Member ID
-    (``employee_number or employee_id`` — see module docstring)."""
+    (``employee_number or employee_id`` — see module docstring).
+
+    ``provisional=True`` is passed by callers when the employee has **no**
+    BambooHR ``employeeNumber`` and the internal record ``id`` had to be
+    used instead. The reference is then tagged ``BDAY-TMP…`` rather than
+    ``BDAY-EMP…`` so it is visibly a placeholder — there is NO silent
+    fallback (Phase 1 §1.0). The order also carries
+    ``ExceptionReason.MISSING_EMPLOYEE_NUMBER`` until an internal user
+    supplies the real Team Member ID, at which point the reference is
+    regenerated (only while the order has never been sent to a supplier).
+    """
     seq = _next_seq_for_year(db, year)
-    return f"BDAY-EMP{team_member_id}-{year}-{seq:05d}"
+    prefix = "BDAY-TMP" if provisional else "BDAY-EMP"
+    return f"{prefix}{team_member_id}-{year}-{seq:05d}"
 
 
 def _next_seq_for_year(db: Session, year: int, _retries: int = 3) -> int:

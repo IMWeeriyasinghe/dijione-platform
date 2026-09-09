@@ -26,6 +26,31 @@ from app.services import order_email_service, order_status_service, readiness_se
 from app.services.audit_service import AuditService
 
 
+class EmptyAddressError(Exception):
+    """Raised when VERIFIED is requested for an order that has **nowhere to
+    deliver to** — no ``office_location`` AND every ``delivery_address_*``
+    field empty. The delivery target is normally the office
+    (``office_location``, always set by detection and a readiness gate);
+    the ``delivery_address_*`` fields are a supplementary home address.
+    Verifying an order with neither would auto-release something the
+    supplier cannot deliver, so the address must be corrected first
+    (Phase 1 §1.0)."""
+
+
+_ADDRESS_FIELDS = (
+    "delivery_address_line1",
+    "delivery_address_line2",
+    "delivery_city",
+    "delivery_state_province",
+    "delivery_postal_code",
+    "delivery_country",
+)
+
+
+def _has_deliverable_address(order: BirthdayOrder) -> bool:
+    return bool(order.office_location) or any(getattr(order, name) for name in _ADDRESS_FIELDS)
+
+
 def set_address_verification_status(
     db: Session,
     order: BirthdayOrder,
@@ -35,6 +60,11 @@ def set_address_verification_status(
     note: str | None = None,
     audit_service: AuditService | None = None,
 ) -> BirthdayOrder:
+    if new_status == AddressVerificationStatus.VERIFIED and not _has_deliverable_address(order):
+        raise EmptyAddressError(
+            f"Order {order.order_reference} has no delivery destination (no office location and no "
+            "delivery address) — correct the address before marking it verified."
+        )
     previous_status = order.address_verification_status
     order.address_verification_status = new_status.value
 
@@ -77,16 +107,6 @@ def set_address_verification_status(
         pass
 
     return order
-
-
-_ADDRESS_FIELDS = (
-    "delivery_address_line1",
-    "delivery_address_line2",
-    "delivery_city",
-    "delivery_state_province",
-    "delivery_postal_code",
-    "delivery_country",
-)
 
 
 def update_delivery_address(

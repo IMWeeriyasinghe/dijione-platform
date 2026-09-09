@@ -140,6 +140,10 @@ class BirthdayOrderUpdate(BaseModel):
     supplier_id: int | None = None
     delivery_date: date | None = None
     catalogue_item_id: int | None = None
+    # Supplying this on an order flagged MISSING_EMPLOYEE_NUMBER clears the
+    # exception and (while the order has never reached a supplier)
+    # regenerates the provisional BDAY-TMP… reference to BDAY-EMP…
+    employee_number: str | None = None
 
 
 class HoldRequest(BaseModel):

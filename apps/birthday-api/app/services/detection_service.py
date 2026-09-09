@@ -106,17 +106,25 @@ def determine_initial_status(
     supplier: Supplier | None,
     has_work_email: bool,
     has_default_cake: bool,
+    has_employee_number: bool = True,
 ) -> tuple[OrderStatus, str | None]:
     """Returns (status, exception_reason).
 
-    Missing critical employee data (no work_email) is checked first and
-    always wins, regardless of lead time or supplier resolution. A
-    standard, resolvable order lands in PENDING_VERIFICATION — the one
-    routine human checkpoint (plan §F) — never in an auto-approved state;
-    there is no separate approval status any more (decision A).
+    Missing critical employee data is checked first and always wins,
+    regardless of lead time or supplier resolution. A standard, resolvable
+    order lands in PENDING_VERIFICATION — the one routine human checkpoint
+    (plan §F) — never in an auto-approved state; there is no separate
+    approval status any more (decision A).
     """
     if not has_work_email:
         return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.MISSING_EMAIL.value
+
+    if not has_employee_number:
+        # No BambooHR employeeNumber -> the order reference had to fall back
+        # to the internal record id (tagged BDAY-TMP…). A human must supply
+        # the real Team Member ID (or confirm it is genuinely absent) before
+        # the order proceeds — never a silent fallback (Phase 1 §1.0).
+        return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.MISSING_EMPLOYEE_NUMBER.value
 
     if supplier is None:
         return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.NO_SUPPLIER.value
@@ -221,6 +229,7 @@ def run_daily_scan(
             lead_time_class = classify_lead_time(days_remaining, config)
             supplier = resolve_supplier_for_office(employee["office_location"], db)
             has_work_email = bool(employee["work_email"])
+            has_employee_number = bool(employee.get("employee_number"))
             default_catalogue_item = resolve_default_catalogue_item(supplier, db)
 
             status, exception_reason = determine_initial_status(
@@ -229,6 +238,7 @@ def run_daily_scan(
                 supplier=supplier,
                 has_work_email=has_work_email,
                 has_default_cake=default_catalogue_item is not None,
+                has_employee_number=has_employee_number,
             )
             requires_admin_review = status == OrderStatus.PENDING_VERIFICATION and lead_time_class != LeadTimeClass.NORMAL
             hold_reason = "Supplier lead time exceeds remaining days" if status == OrderStatus.ON_HOLD else None
@@ -241,8 +251,12 @@ def run_daily_scan(
 
             # Business-facing Team Member ID (BambooHR employeeNumber), NOT
             # the internal record id — see order_sequence_service docstring.
+            # No silent fallback: when employeeNumber is absent the reference
+            # is tagged BDAY-TMP… and the order carries MISSING_EMPLOYEE_NUMBER.
             team_member_id = employee.get("employee_number") or employee["employee_id"]
-            order_reference = next_order_reference(db, team_member_id, occurrence_year)
+            order_reference = next_order_reference(
+                db, team_member_id, occurrence_year, provisional=not has_employee_number
+            )
 
             _order, created = create_or_get_order(
                 db,
