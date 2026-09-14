@@ -86,6 +86,19 @@ app-specific `RELEASE_DATE` set without first manually capturing
 (`az containerapp show ... --query "properties.template.containers[0].env"`)
 and understanding what would be lost.**
 
+**Second follow-up, same shape of gap — web apps have no `APP_ENV`.**
+`main.bicep`'s `commonApiEnv` (which sets `APP_ENV`) is only applied when
+`s.kind == 'api'`; no equivalent exists for `kind == 'web'`, so no web app
+(`birthday-web` included) receives `APP_ENV` from Bicep at all. This
+mattered starting with DijiBirthday's Email Safety feature
+(`docs/birthday/email-safety.md`), whose non-production-only nav item reads
+`APP_ENV` via `birthday-web`'s own `/api/meta` route. Until `main.bicep`
+gets a `commonWebEnv`-style addition, `APP_ENV` is set ad hoc on
+`birthday-web` (`az containerapp update --set-env-vars APP_ENV=development`
+in DEV) — same "silently wiped by a full `main.bicep` run" risk as
+`RELEASE_DATE` above, and the same rule applies: capture it first before a
+full redeploy of a web app in an environment where it's been set ad hoc.
+
 ## Prerequisites (user)
 
 - `az login` on a subscription with spend approved (see

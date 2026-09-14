@@ -133,6 +133,35 @@ business/workflow state) and `SupplierCommunication.transport_outcome` (the
 raw, truthful `MailOutcome`) — never overloading one with the other's
 meaning.
 
+## Two independent safety layers: SEND-AS vs. SEND-TO
+
+Exchange RBAC (above) and the DB-backed Email Safety allowlist (below)
+answer two different questions and neither replaces the other:
+
+| Layer | Question | Controls | Owner |
+|---|---|---|---|
+| Exchange RBAC for Applications | Which mailbox may this identity send **as**? | `appassistant@dijitalteam.com` only, via `DijiApps-AppAssistant-Mailbox-Scope` | Exchange/Entra admin, tenant-wide |
+| Email Safety (`BirthdayTestEmailRecipient`) | In DEV/UAT, who may this service send **to**? | An explicit, DB-backed, admin-managed list of approved test addresses | DijiBirthday application, per environment |
+
+Exchange RBAC is identical across DEV/UAT/PROD (same sender mailbox, same
+scope). Email Safety exists **only** in DEV/UAT — PROD never consults it,
+never depends on it, and never restricts a real supplier address because of
+it. Losing sight of this distinction is the most common mistake: a
+`Test-ServicePrincipalAuthorization` check passing tells you the identity
+*can send as* the mailbox — it says nothing about which recipients are safe
+to send *to* in a non-production environment. That second question is
+Email Safety's job, and it is deliberately DijiBirthday-owned, not a
+DijiOne platform-admin or Customer Portal V2 concern — see
+`docs/birthday/email-safety.md` for the full design, API surface, and
+non-production-only enforcement mechanism.
+
+The now-removed `MAIL_ALLOWLIST` environment variable was an early,
+env-var-based sketch of the second layer; it has been fully replaced by the
+DB-backed `BirthdayTestEmailRecipient` table precisely because an env var
+requires a redeploy to change, while the actual requirement is "change the
+approved list at runtime, with no redeploy." See
+`docs/birthday/email-safety.md` for why and how.
+
 ## Managed Identity + Exchange RBAC for Applications
 
 Every DijiOne Container App already gets a system-assigned Managed Identity
@@ -192,9 +221,12 @@ a per-app display name against a shared one.
 ## Future app adoption checklist
 
 1. `-e ../../packages/mail-client-py` in the service's own `requirements.txt`.
-2. Its own `MAIL_TRANSPORT` / `MAIL_POLICY` / `MAIL_SHARED_MAILBOX` /
-   `MAIL_ALLOWLIST` settings in its own config — independently, same shared
-   mailbox or its own dedicated one.
+2. Its own `MAIL_TRANSPORT` / `MAIL_POLICY` / `MAIL_SHARED_MAILBOX` settings
+   in its own config — independently, same shared mailbox or its own
+   dedicated one. If it adopts `mail_policy=internal_allowlist` for
+   DEV/UAT, it needs its own local, DB-backed recipient-allowlist feature —
+   DijiBirthday's `BirthdayTestEmailRecipient` (`docs/birthday/email-safety.md`)
+   is a reference implementation, not a shared table another service reads.
 3. Its own factory function (mirroring `birthday-api`'s
    `get_email_client()`), binding config once at module load time.
 4. The Exchange RBAC runbook above, against its **own** already-existing
