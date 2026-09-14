@@ -78,7 +78,14 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
       title="DijiTalentFlow"
       topNavTitle={scope.isStaff ? "Talent Acquisition Workspace" : "Client Workspace"}
       sections={scope.isStaff ? staffSections : clientSections}
-      footer={<VersionFooter appLabel="DijiTalentFlow" />}
+      footer={
+        <VersionFooter
+          appName="DijiTalentFlow"
+          version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+          gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+          buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+        />
+      }
     >
       {children}
     </AppShell>

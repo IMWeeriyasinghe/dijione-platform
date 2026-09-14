@@ -1,30 +1,37 @@
 /**
- * Per-application version/build metadata, rendered in each app's Sidebar
- * footer slot (see docs/platform/versioning.md for the full convention).
+ * Per-application version/build metadata, rendered in each app's footer
+ * area (see docs/platform/versioning.md for the full convention).
  *
- * Deliberately reads `process.env.NEXT_PUBLIC_*` directly in this shared
- * component rather than taking version/sha/date as props: each consuming
- * app transpiles this package into its OWN Next.js build
- * (`transpilePackages`), so Next's build-time env replacement substitutes
- * a different literal value per app — the same component code yields
- * app-specific output with zero per-app plumbing beyond each app's own
- * next.config.ts (which reads its own package.json version + the
- * GIT_SHA/BUILD_DATE build args). This is what keeps the platform from
- * ever showing one shared DijiOne-wide version number by accident.
+ * Presentation-only: this component owns no global version state and reads
+ * no `process.env` itself. Each consuming app resolves its OWN metadata
+ * (its own package.json version, its own build-time NEXT_PUBLIC_GIT_SHA /
+ * NEXT_PUBLIC_BUILD_DATE) and supplies it as props at the call site — that
+ * is what makes "every app owns its own version" independently auditable
+ * by reading each app's own shell file, rather than trusting a comment
+ * inside a shared component.
+ *
+ * `buildDate` is the artifact BUILD date (when the image was built), never
+ * a deployment/release date — those are different concepts. If a separate
+ * true release timestamp is ever needed, it is a distinct RELEASE_DATE
+ * value, not this one; see docs/platform/versioning.md.
  */
 export function VersionFooter({
-  appLabel,
+  appName,
+  version,
+  gitSha,
+  buildDate,
   tone = "dark",
 }: {
-  appLabel: string;
+  appName: string;
+  version: string;
+  gitSha: string;
+  /** ISO date/timestamp string, or undefined if not available (e.g. `next dev`). */
+  buildDate?: string;
   /** "dark" (default) for the sidebar's dark-gradient background; "light"
-   * for a white/surface background (the two apps with a header-based shell
-   * instead of a sidebar — Supplier Portal, TalentFlow Client Portal). */
+   * for a white/surface background (header-shell apps — Supplier Portal,
+   * TalentFlow Client Portal). */
   tone?: "dark" | "light";
 }) {
-  const version = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0";
-  const gitSha = process.env.NEXT_PUBLIC_GIT_SHA || "dev";
-  const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE;
   const buildDateShort = buildDate ? buildDate.slice(0, 10) : null;
 
   const labelClass = tone === "dark" ? "text-white/70" : "text-dt-text-secondary";
@@ -32,13 +39,13 @@ export function VersionFooter({
 
   return (
     <div className="space-y-0.5">
-      <p className={`text-xs font-medium ${labelClass}`}>{appLabel} · by Dijital Team</p>
+      <p className={`text-xs font-medium ${labelClass}`}>{appName} · by Dijital Team</p>
       <p
         className={`font-mono text-[10px] tracking-tight ${metaClass}`}
-        title={buildDate ? `${appLabel} v${version} · commit ${gitSha} · built ${buildDate}` : undefined}
+        title={buildDate ? `${appName} v${version} · commit ${gitSha} · built ${buildDate}` : undefined}
       >
         v{version} · {gitSha}
-        {buildDateShort && ` · ${buildDateShort}`}
+        {buildDateShort && ` · Built ${buildDateShort}`}
       </p>
     </div>
   );

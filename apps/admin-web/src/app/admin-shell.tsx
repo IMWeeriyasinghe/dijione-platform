@@ -74,7 +74,12 @@ function AdminGate({ children }: { children: React.ReactNode }) {
           >
             Back to DijiOne Home
           </a>
-          <VersionFooter appLabel="Admin Center" />
+          <VersionFooter
+            appName="Admin Center"
+            version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+            gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+            buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+          />
         </div>
       }
     >

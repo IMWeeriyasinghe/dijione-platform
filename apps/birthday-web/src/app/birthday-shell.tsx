@@ -47,7 +47,14 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
       topNavTitle="Birthday Workflow Automation"
       sections={sections}
       homeHref="/"
-      footer={<VersionFooter appLabel="DijiBirthday" />}
+      footer={
+        <VersionFooter
+          appName="DijiBirthday"
+          version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+          gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+          buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+        />
+      }
     >
       {children}
     </AppShell>

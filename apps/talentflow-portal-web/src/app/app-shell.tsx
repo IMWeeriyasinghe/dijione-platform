@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandLogo } from "@dijione/design-system";
+import { BrandLogo, VersionFooter } from "@dijione/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Briefcase, CalendarClock, LayoutDashboard, LogOut } from "lucide-react";
 import Link from "next/link";
@@ -78,8 +78,20 @@ function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
-      <footer className="px-6 py-4 text-center text-xs text-dt-text-secondary">
-        A read-only view of your engagement, provided by Dijital Team.
+      <footer className="space-y-1 px-6 py-4 text-center text-xs text-dt-text-secondary">
+        <p>A read-only view of your engagement, provided by Dijital Team.</p>
+        {/* Every DijiOne app owns and exposes its own version/build identity
+            — no exemption for an external/client-facing portal. Reuses the
+            same VersionFooter architecture as the internal apps, styled
+            (tone="light") to sit quietly under the existing client-facing
+            message rather than compete with it. */}
+        <VersionFooter
+          appName="Client Talent Review Workspace"
+          version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+          gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+          buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+          tone="light"
+        />
       </footer>
     </div>
   );

@@ -15,7 +15,9 @@
   ],
   "scripts": {
     "diagrams": "node scripts/generate-diagrams.js",
-    "dev:all": "node scripts/dev-all.js"
+    "dev:all": "node scripts/dev-all.js",
+    "versions:check": "node scripts/check-app-versions.js",
+    "test:versions-check": "node --test scripts/check-app-versions.test.js"
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^11.16.0",

@@ -3846,33 +3846,65 @@ Every reusable source-data domain MUST provide:
 # PER-APPLICATION VERSIONING CONTRACT
 
 > Authoritative. Added when the footer's per-app version/build metadata was
-> implemented. Full detail, including the exact build-time mechanism:
+> implemented; corrected after review found both the bump policy and the
+> shared-component architecture weren't yet right. Full detail, including
+> the exact build-time mechanism and the `versions:check` tool:
 > `docs/platform/versioning.md`.
 
 Every application in this monorepo (`shell-web`, `admin-web`, `talent-web`,
 `talentflow-portal-web`, `birthday-web`, `birthday-supplier-web`) owns its
-**own** version number — its own `package.json` `"version"` field. There is
-no shared, platform-wide DijiOne version. Two apps' footers showing the
-same version number is a defect unless that is genuinely, coincidentally
-correct for both — never something to engineer on purpose.
+**own** version number — its own `package.json` `"version"` field, the one
+sole source of truth per app. There is no shared, platform-wide DijiOne
+version. **No application is exempt, including an external/client-facing
+one** — `talentflow-portal-web` (the external Client Talent Review
+Workspace) displays its own version/build identity too, styled more
+subtly than the internal apps but architecturally identical; being
+client-facing is not grounds for withholding it. Two apps' footers showing
+the same version number is fine **if each independently reached that
+version through its own release history** — never invent a different
+number just to look distinct, and never avoid a bump just to avoid a
+match.
 
-Each app's footer (the existing sidebar/header footer area) shows that
-app's own version, Git commit SHA, and build date, sourced automatically:
-version from that app's `package.json` at build time, commit SHA and build
-date from Docker build args set by `deploy/build-images.sh` /
-`deploy/build-push.sh`. Nothing about this requires a runtime environment
-variable on the deployed Container App — it is all baked in at image build
-time.
+Each app's footer shows that app's own version, Git commit SHA, and
+**build** date (labeled "Built {date}" — never "Release date"; a future
+true deployment timestamp would be a separate `RELEASE_DATE` concept, not
+this one), sourced automatically: version from that app's `package.json`
+at build time, commit SHA and build date from Docker build args set by
+`deploy/build-images.sh` / `deploy/build-push.sh`. The shared
+`VersionFooter` component is presentation-only — it takes these as props
+and reads no `process.env`/global state itself; each app's own shell file
+resolves and supplies its own values, which is what makes "every app owns
+its own version" independently auditable per app rather than merely
+documented.
 
-**Versioning rule:**
+**Versioning rule — artifact-based, not visibility-based:**
 
-- Patch/minor bumps (`1.0.0 → 1.0.1`, `1.0.0 → 1.1.0`) are routine
+- If an app's own source/config changes and that app is rebuilt/released,
+  its version **must** increment — regardless of whether an end user would
+  ever notice the diff (an internal-only refactor still counts: the
+  released artifact is genuinely different). A shared `packages/*`
+  dependency change counts too, transitively, for every app that depends
+  on it. Only an app with zero changes in a release keeps its prior
+  version.
+- Patch/minor bumps (`1.0.1 → 1.0.2`, `1.0.1 → 1.1.0`) are routine
   maintenance — the agent may make these as part of normal development
   without asking first.
 - Major bumps (`1.x.x → 2.0.0`, `2.x.x → 3.0.0`, …) **require explicit user
   approval before being made.** Never bump a major version as a side
   effect of an unrelated change, and never infer approval from a request
   that doesn't explicitly authorize one.
+- This rule applies per app — approval for a major bump on one app says
+  nothing about any other app.
+- Run `npm run versions:check` (reports only, never auto-bumps; compares a
+  base ref against the current working tree by default, since it's meant
+  to run before the release commit exists) as part of the release
+  checklist — it catches a changed-but-not-bumped app and flags a major
+  bump for explicit confirmation rather than letting it pass silently.
 
-This rule applies per app — approval for a major bump on one app says
-nothing about any other app.
+**Responsive/layout changes to shared shell components**
+(`AppShell`/`Sidebar`/`TopNav` in `packages/design-system`) require
+verification against the full viewport matrix (1920/1440/1280/1180/1024/
+900/768/430/390) for the **whole rendered page**, not a cropped element —
+a shell overflow is a shell bug, fixed in the shell, never worked around
+in one consuming app. See `docs/platform/versioning.md` for the tooling
+(Puppeteer is already available in `node_modules`, no new dependency).

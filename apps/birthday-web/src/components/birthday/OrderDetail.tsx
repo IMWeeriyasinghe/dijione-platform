@@ -324,21 +324,30 @@ export function OrderDetail({ orderId }: { orderId: number }) {
         Back to orders
       </Link>
 
-      {/* Responsive review round: this row used to switch from a stacked
-          layout to a single side-by-side row at `sm:` (640px) — far too
-          early for a persistent 256px sidebar plus up to 8 action buttons.
-          On real laptop widths (~900-1280px available content width after
-          the sidebar) the button cluster wrapped onto 2-3 lines while
-          `items-center` vertically centred the single-line title against
-          that much taller block, producing the reported cramped/misaligned
-          look. Fix: stay stacked (full-width title, full-width wrapping
-          button row below) all the way up to `lg:` (1024px), and switch to
-          a top-aligned (`items-start`, not `items-center`) row only once
-          there's realistically enough width for it — 1280px+ in practice. */}
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
+      {/* Responsive review round 2 — round 1's `lg:flex-wrap` + `shrink-0` on
+          both blocks stopped the title from being crushed but did NOT bound
+          the actions block's own width: a shrink-0 flex item's width is its
+          uncapped content size, so once it has a line to itself (via wrap)
+          it can still be wider than its parent and overflow the card. Fix:
+          the actions block is `w-full` (an explicit ceiling, not a shrink
+          negotiation) below `2xl`, so it can never exceed the card's width
+          regardless of button count; it only becomes `w-auto`/`shrink-0`
+          (content-sized, sharing a line with the title) at `2xl` (1536px)+,
+          where there's realistically enough room. `2xl:flex-wrap` on the
+          OUTER row stays on as a safety net even at that width — if the
+          arithmetic is ever wrong (a longer reference, an added button),
+          the whole actions block just drops to its own new line instead of
+          overflowing, rather than relying on the math being exactly right. */}
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 2xl:flex-row 2xl:flex-wrap 2xl:items-start 2xl:justify-between">
+        <div className="min-w-0 max-w-full">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold text-dt-text-primary wrap-break-word">{order.order_reference}</h1>
+            {/* No wrap-break-word: that permits breaking mid-token (the
+                round-1 "BD"/"AY-" collapse). Default text flow already
+                treats the reference's own hyphens as valid break points,
+                so it wraps at BDAY-/EMP.../2026- boundaries only, if ever
+                needed — and now that this block is never force-shrunk
+                below its natural size, it normally won't need to at all. */}
+            <h1 className="text-xl font-semibold text-dt-text-primary">{order.order_reference}</h1>
             <StatusBadge status={order.status} />
             {order.requires_admin_review && <StatusBadge status="PENDING" label="Needs review" />}
           </div>
@@ -350,104 +359,116 @@ export function OrderDetail({ orderId }: { orderId: number }) {
         </div>
 
         {scope?.isAdmin && (
-          <div className="flex flex-wrap gap-2 lg:shrink-0">
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={!policy.canVerify || isMutating}
-              loading={verifyMutation.isPending}
-              onClick={() => verifyMutation.mutate()}
-              title="The one routine checkpoint — marks the address VERIFIED and auto-releases a standard order to the supplier"
-            >
-              <BadgeCheck className="size-4" />
-              Verify Address
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={!policy.canConfirmRelease || isMutating}
-              loading={confirmReleaseMutation.isPending}
-              onClick={() => confirmReleaseMutation.mutate()}
-              title="This order was flagged for a look before release — confirm to send it to the supplier"
-            >
-              Confirm &amp; Release
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!policy.canSendToSupplier || isMutating}
-              loading={sendToSupplierMutation.isPending}
-              onClick={() => sendToSupplierMutation.mutate()}
-            >
-              <Send className="size-4" />
-              Send to Supplier
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!policy.canResend || isMutating}
-              loading={resendMutation.isPending}
-              onClick={() => resendMutation.mutate()}
-            >
-              <RefreshCcw className="size-4" />
-              Resend
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!policy.canHold || isMutating}
-              title={!policy.canHold ? "This order is complete, cancelled, or already on hold and can no longer be held" : undefined}
-              onClick={() => setActionOpen("hold")}
-            >
-              <PauseCircle className="size-4" />
-              Hold
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!policy.canRelease || isMutating}
-              onClick={() => setActionOpen("release")}
-            >
-              <PlayCircle className="size-4" />
-              Release
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={!policy.canCancel || isMutating}
-              title={!policy.canCancel ? "This order is already complete, delivered, or cancelled" : undefined}
-              onClick={() => setActionOpen("cancel")}
-            >
-              <XCircle className="size-4" />
-              Cancel
-            </Button>
-            {policy.canReopen && (
+          // Grouped by meaning (Primary / Secondary / Destructive), separated
+          // by spacing alone (gap-x-4 between groups vs gap-2 within one) —
+          // no vertical border, which would look awkward once a group wraps
+          // onto its own line at narrow widths.
+          <div className="flex w-full min-w-0 flex-wrap gap-x-4 gap-y-2 2xl:w-auto 2xl:shrink-0">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!policy.canVerify || isMutating}
+                loading={verifyMutation.isPending}
+                onClick={() => verifyMutation.mutate()}
+                title="The one routine checkpoint — marks the address VERIFIED and auto-releases a standard order to the supplier"
+              >
+                <BadgeCheck className="size-4" />
+                Verify Address
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!policy.canConfirmRelease || isMutating}
+                loading={confirmReleaseMutation.isPending}
+                onClick={() => confirmReleaseMutation.mutate()}
+                title="This order was flagged for a look before release — confirm to send it to the supplier"
+              >
+                Confirm &amp; Release
+              </Button>
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={isMutating}
-                title="Reopen this cancelled order — reruns readiness or, if it had already reached the supplier, routes to a fresh review before re-release"
-                onClick={() => setActionOpen("reopen")}
+                disabled={!policy.canSendToSupplier || isMutating}
+                loading={sendToSupplierMutation.isPending}
+                onClick={() => sendToSupplierMutation.mutate()}
+              >
+                <Send className="size-4" />
+                Send to Supplier
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!policy.canResend || isMutating}
+                loading={resendMutation.isPending}
+                onClick={() => resendMutation.mutate()}
               >
                 <RefreshCcw className="size-4" />
-                Reopen order
+                Resend
               </Button>
-            )}
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={!policy.canDelete || isMutating}
-              loading={deleteMutation.isPending}
-              title={!policy.canDelete ? "Only never-actioned DRAFT orders can be deleted — use Cancel instead" : undefined}
-              onClick={() => {
-                if (window.confirm("Permanently delete this draft order? This cannot be undone.")) {
-                  deleteMutation.mutate();
-                }
-              }}
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!policy.canHold || isMutating}
+                title={!policy.canHold ? "This order is complete, cancelled, or already on hold and can no longer be held" : undefined}
+                onClick={() => setActionOpen("hold")}
+              >
+                <PauseCircle className="size-4" />
+                Hold
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!policy.canRelease || isMutating}
+                onClick={() => setActionOpen("release")}
+              >
+                <PlayCircle className="size-4" />
+                Release
+              </Button>
+              {policy.canReopen && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isMutating}
+                  title="Reopen this cancelled order — reruns readiness or, if it had already reached the supplier, routes to a fresh review before re-release"
+                  onClick={() => setActionOpen("reopen")}
+                >
+                  <RefreshCcw className="size-4" />
+                  Reopen order
+                </Button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={!policy.canCancel || isMutating}
+                title={!policy.canCancel ? "This order is already complete, delivered, or cancelled" : undefined}
+                onClick={() => setActionOpen("cancel")}
+              >
+                <XCircle className="size-4" />
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={!policy.canDelete || isMutating}
+                loading={deleteMutation.isPending}
+                title={!policy.canDelete ? "Only never-actioned DRAFT orders can be deleted — use Cancel instead" : undefined}
+                onClick={() => {
+                  if (window.confirm("Permanently delete this draft order? This cannot be undone.")) {
+                    deleteMutation.mutate();
+                  }
+                }}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </Button>
+            </div>
           </div>
         )}
       </div>

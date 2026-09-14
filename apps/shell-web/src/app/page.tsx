@@ -52,7 +52,14 @@ function HomeContent() {
       title="DijiOne"
       topNavTitle="DijiOne Home"
       sections={[{ items: navItems }]}
-      footer={<VersionFooter appLabel="DijiOne" />}
+      footer={
+        <VersionFooter
+          appName="DijiOne"
+          version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+          gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+          buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+        />
+      }
     >
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-dt-text-primary">

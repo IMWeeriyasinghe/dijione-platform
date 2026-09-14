@@ -54,7 +54,13 @@ function Shell({ children }: { children: React.ReactNode }) {
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
       <footer className="border-t border-dt-border bg-dt-surface px-4 py-3 sm:px-6">
-        <VersionFooter appLabel="Supplier Portal" tone="light" />
+        <VersionFooter
+          appName="Supplier Portal"
+          version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+          gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+          buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+          tone="light"
+        />
       </footer>
     </div>
   );
