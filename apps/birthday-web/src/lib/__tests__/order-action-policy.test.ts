@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { orderActionPolicy } from "@/lib/order-action-policy";
 import type { BirthdayOrderOut } from "@dijione/contracts";
 
-function order(overrides: Partial<BirthdayOrderOut>): BirthdayOrderOut {
+function order(overrides: Partial<Omit<BirthdayOrderOut, "status">> & { status: string }): BirthdayOrderOut {
   return {
     id: 1, order_reference: "BDAY-EMP1-2026-00001", employee_id: "1", employee_number: "1",
     employee_name: "Test", employee_email: "t@example.com", birthday_date: "2026-10-01",
     birthday_year: 2026, office_location: "Colombo", detected_at: null, lead_time_days: 20,
-    lead_time_class: "NORMAL", quantity: 1, status: "PENDING_VERIFICATION", hold_reason: null,
+    lead_time_class: "NORMAL", quantity: 1, hold_reason: null,
     address_verification_status: "NOT_CHECKED", delivery_address_line1: null,
     delivery_address_line2: null, delivery_city: null, delivery_state_province: null,
     delivery_postal_code: null, delivery_country: null, delivery_address_source: null,
@@ -19,7 +19,7 @@ function order(overrides: Partial<BirthdayOrderOut>): BirthdayOrderOut {
     created_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
     events: [], special_requirements: [], issues: [],
     ...overrides,
-  };
+  } as BirthdayOrderOut;
 }
 
 describe("orderActionPolicy (Phase 1.6 §10/R9/R10)", () => {
