@@ -29,6 +29,7 @@ vi.mock("@dijione/contracts", () => ({
 vi.mock("@dijione/design-system", () => {
   const P = ({ children }: { children: ReactNode }) => <div>{children}</div>;
   return {
+    Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
     EmptyState: () => <p>empty</p>,
     ErrorState: () => <p>error</p>,
     FormField: ({ children }: any) => <div>{children}</div>,
@@ -42,9 +43,14 @@ vi.mock("@dijione/design-system", () => {
     StatusBadge: ({ status }: any) => <span>{status}</span>,
     Table: P,
     Td: ({ children, ...rest }: any) => <td {...rest}>{children}</td>,
+    Th: ({ children }: any) => <th>{children}</th>,
     Thead: P,
     Tr: ({ children, ...rest }: any) => <tr {...rest}>{children}</tr>,
-    useSortToggle: () => vi.fn(),
+    useSortToggle: (
+      _sortBy: string | null,
+      _sortDirection: string,
+      setSortBy: (v: string) => void
+    ) => (key: string) => setSortBy(key),
   };
 });
 
@@ -82,14 +88,18 @@ describe("Cake Orders page (§15/R14)", () => {
 
   it("clicking anywhere on a row navigates to the order", async () => {
     wrap(<OrdersPage />);
-    const row = (await screen.findByText("Jane Doe")).closest("tr")!;
+    // Round 4 — both the table and card renderers exist in the DOM
+    // simultaneously in jsdom (CSS breakpoints aren't applied), so "Jane
+    // Doe" now appears twice; find the one inside a <tr> (the table row).
+    const matches = await screen.findAllByText("Jane Doe");
+    const row = matches.map((el) => el.closest("tr")).find(Boolean)!;
     row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(pushMock).toHaveBeenCalledWith("/orders/7");
   });
 
   it("shows 'Today' in the Days Until column for a birthday_date of today", async () => {
     wrap(<OrdersPage />);
-    expect(await screen.findByText("Today")).toBeInTheDocument();
+    expect((await screen.findAllByText("Today")).length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows '—' for a terminal order regardless of birthday_date", async () => {
@@ -107,7 +117,7 @@ describe("Cake Orders page (§15/R14)", () => {
       total: 1, page: 1, page_size: 20,
     });
     wrap(<OrdersPage />);
-    expect(await screen.findByText("Terminal Person")).toBeInTheDocument();
+    expect((await screen.findAllByText("Terminal Person")).length).toBeGreaterThanOrEqual(1);
     // "—" appears at least once (the Days Until cell) even though the
     // order's birthday_date is today — a settled order's countdown is
     // meaningless and must not show "Today"/a day count.
@@ -118,7 +128,7 @@ describe("Cake Orders page (§15/R14)", () => {
     searchParamsValue.current = new URLSearchParams("lead_time_class=NORMAL");
 
     wrap(<OrdersPage />);
-    await screen.findByText("Jane Doe");
+    await screen.findAllByText("Jane Doe");
 
     const select = document.getElementById("lead-time-filter") as HTMLSelectElement;
     expect(select.value).toBe("NORMAL");

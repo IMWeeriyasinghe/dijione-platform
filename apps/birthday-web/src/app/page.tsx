@@ -93,7 +93,7 @@ export default function DashboardPage() {
       {/* Detection & integration health (plan §1.2) */}
       <div className="mt-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle>Detection health</CardTitle>
             <span
               className={
@@ -182,7 +182,7 @@ export default function DashboardPage() {
 
       <div className="mt-6">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle>Upcoming Birthdays (next 14 days)</CardTitle>
             <Link href="/upcoming" className="text-sm font-medium text-dt-burnt-orange underline underline-offset-2">
               View all

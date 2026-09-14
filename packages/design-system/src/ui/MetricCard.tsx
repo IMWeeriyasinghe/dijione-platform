@@ -20,14 +20,14 @@ export function MetricCard({
   href?: string;
 }) {
   const body = (
-    <div className="flex items-start justify-between">
-      <div>
-        <p className="text-sm text-dt-text-secondary">{label}</p>
-        <p className="mt-1.5 text-2xl font-semibold text-dt-text-primary">{value}</p>
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="wrap-break-word text-sm text-dt-text-secondary">{label}</p>
+        <p className="mt-1.5 wrap-break-word text-2xl font-semibold text-dt-text-primary">{value}</p>
       </div>
       <div
         className={cn(
-          "flex size-9 items-center justify-center rounded-xl",
+          "flex size-9 shrink-0 items-center justify-center rounded-xl",
           tone === "brand"
             ? "bg-linear-to-br from-dt-red to-dt-orange text-white"
             : "bg-dt-surface-warm text-dt-burnt-orange"

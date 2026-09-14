@@ -39,13 +39,13 @@ apps/shell-web/package.json               "version": "1.0.1"
 apps/admin-web/package.json                "version": "1.0.1"
 apps/talent-web/package.json               "version": "1.0.1"
 apps/talentflow-portal-web/package.json    "version": "1.0.1"
-apps/birthday-web/package.json             "version": "1.0.2"
+apps/birthday-web/package.json             "version": "1.0.3"
 apps/birthday-supplier-web/package.json    "version": "1.0.1"
 ```
 
-(As of round 3: `birthday-web` is ahead of the others precisely because it
-was the only app actually released that round — exactly the independent,
-per-app history this document describes, not a typo.)
+(As of round 4: `birthday-web` is ahead of the others precisely because it
+was the only app actually released in rounds 3 and 4 — exactly the
+independent, per-app history this document describes, not a typo.)
 
 (`apps/*-api` backend services are not currently in scope for this
 mechanism — this convention covers the six Next.js frontends, which is
@@ -224,7 +224,7 @@ correction.
   (every app started from the untouched `0.1.0` scaffold default, never a
   deliberately chosen version) — that reasoning does not carry forward.
 
-### Worked example: this release (round 3 — Birthday-only)
+### Worked example: round 3 (Birthday-only)
 
 `birthday-web` is the **only** release target this round (Upcoming
 Birthdays responsive layout, Lead Time Class deep-link, the 3-line footer
@@ -239,6 +239,21 @@ next release, whenever that is — not automatically now. (Compare with
 round 2's mistake, corrected here: round 2 bumped all 6 apps together for
 a purely presentational `VersionFooter` change, conflating "the shared
 source changed" with "every consumer is being released.")
+
+### Worked example: round 4 (full-application responsive hardening, Birthday-only)
+
+Same policy applied again, this time for a full-app responsive-hardening
+pass — `birthday-web` **`1.0.2 → 1.0.3`**. This round touched two
+`packages/design-system` files (`Modal.tsx` — a genuine P0 fix, no more
+unbounded-height panel that could push its footer buttons off-screen on a
+short viewport; `MetricCard.tsx` — an additive truncation guard) as well as
+Cake Orders, Suppliers, and Supplier Detail inside `birthday-web` itself.
+Both shared-file changes were confirmed backward-compatible for their
+other consumers (`talent-web`, `admin-web`, `birthday-supplier-web`,
+`talentflow-portal-web` all reference `Modal`/`MetricCard`) by rebuilding
+`admin-web` and `talent-web` as a sanity check before release — both build
+clean. As with round 3, none of those other apps are release targets:
+their versions, images, and release dates are untouched this round.
 
 ## Continuous enforcement: `npm run versions:check`
 
@@ -317,6 +332,49 @@ must be fixed in the shell, never worked around inside one consuming app's
 page. Puppeteer with a locally cached Chromium build is already available
 in this repo's `node_modules` (no new dependency) for real headless-browser
 verification; prefer it over reasoning about pixel budgets alone.
+
+### `scripts/verify-birthday-responsive.js` — the committed, whole-app audit tool
+
+Round 4 (the full DijiBirthday responsive-hardening pass) built one
+reusable, **committed** Puppeteer script that drives every `birthday-web`
+route through the full viewport matrix above in one run, rather than a
+one-off scratchpad script per page. Run it via:
+
+```
+npm run birthday:responsive-check
+```
+
+It requires a live local stack — `platform-api` (port 8000), `birthday-api`
+(port 8003, started with `INTEGRATIONS_MODE=mock` so employee data actually
+loads instead of trying real BambooHR), and `birthday-web`
+(`npm run dev` from `apps/birthday-web`, port 3003) — plus a dev bearer
+token exported as `DEV_TOKEN`:
+
+```bash
+curl -s -X POST http://localhost:8000/api/auth/dev-login \
+  -H "Content-Type: application/json" -d '{"persona_key":"super-admin"}'
+# copy the access_token from the response, then:
+DEV_TOKEN=<token> npm run birthday:responsive-check
+DEV_TOKEN=<token> npm run birthday:responsive-check -- --screenshots
+```
+
+It self-seeds deterministic `/orders/<id>` and `/suppliers/<id>` route IDs
+by reading whatever already exists in the local `birthday-api` database
+(create at least one order — e.g. via a detection run — and one supplier
+first if the database is empty). It asserts the whole-page overflow
+invariant above on every route, runs a diagnostic pass that reports which
+specific visible element is causing an overflow when one is found (skipping
+elements that are hidden, zero-size, or intentionally inside their own
+local `overflow-x-auto` container), and separately drives the tallest
+modal (Add/Edit Supplier User) through real Chromium at short/landscape
+mobile dimensions to prove the `Modal.tsx` height-cap/scroll fix actually
+works — a jsdom unit test cannot prove real scroll/reachability behavior,
+only the class/DOM contract that makes it possible.
+
+Not wired into CI (it needs a live local stack CI doesn't currently
+provision for `birthday-web`). Output under `responsive-audit/` (JSON
+results, and screenshots when `--screenshots` is passed) is a regenerated
+run artifact, gitignored — never committed.
 
 ## Follow-up work (not built yet — tracked here on purpose)
 

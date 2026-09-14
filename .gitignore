@@ -54,3 +54,7 @@ coverage/
 
 # Logs
 *.log
+
+# Run artifacts from scripts/verify-birthday-responsive.js (JSON results +
+# screenshots) — regenerated on every run, never committed.
+responsive-audit/

@@ -4,13 +4,16 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { listOrders } from "@/lib/api";
 import {
   ADDRESS_VERIFICATION_STATUSES,
   LEAD_TIME_CLASSES,
   ORDER_STATUSES,
+  type BirthdayOrderSummary,
 } from "@dijione/contracts";
 import {
+  Button,
   EmptyState,
   ErrorState,
   FormField,
@@ -24,6 +27,7 @@ import {
   StatusBadge,
   Table,
   Td,
+  Th,
   Thead,
   Tr,
   useSortToggle,
@@ -87,6 +91,118 @@ function daysUntilBirthdayLabel(birthdayDate: string, status: string): string {
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
   return `${days} days`;
+}
+
+// Round 4 — one canonical field list consumed by BOTH the table (wide
+// viewports) and the card view (laptop/tablet/mobile below the measured
+// breakpoint, see CARD_BREAKPOINT_CLASS below), same pattern established on
+// Upcoming Birthdays: a label or value can never drift between the two
+// views because there is exactly one render function per field.
+type FieldDef = {
+  key: string;
+  label: string;
+  sortKey?: string;
+  render: (order: BirthdayOrderSummary) => ReactNode;
+};
+
+const FIELDS: FieldDef[] = [
+  {
+    key: "reference",
+    label: "Reference",
+    sortKey: "employee_number",
+    render: (order) => (
+      <>
+        <span className="font-medium text-dt-text-primary">{order.order_reference}</span>
+        {order.requires_admin_review && <p className="text-xs font-medium text-dt-warning">Needs review</p>}
+      </>
+    ),
+  },
+  {
+    key: "team_member",
+    label: "Team Member",
+    sortKey: "employee_name",
+    render: (order) => (
+      <>
+        {order.employee_name}
+        <p className="text-xs text-dt-text-secondary">
+          {order.employee_number ?? (
+            <span className="italic text-dt-text-secondary/70">{order.employee_id} (internal id — no team member ID)</span>
+          )}
+        </p>
+      </>
+    ),
+  },
+  { key: "birthday", label: "Birthday", sortKey: "birthday_date", render: (order) => order.birthday_date },
+  {
+    key: "days_until",
+    label: "Days Until",
+    // Shares the Birthday sort key — sorting by birthday_date ascending
+    // already sorts by days-until-birthday ascending (Phase 1.6 §15).
+    sortKey: "birthday_date",
+    render: (order) => daysUntilBirthdayLabel(order.birthday_date, order.status),
+  },
+  {
+    key: "delivery_date",
+    label: "Delivery Date",
+    sortKey: "delivery_date",
+    render: (order) => order.delivery_date ?? "—",
+  },
+  {
+    key: "supplier",
+    label: "Supplier",
+    sortKey: "supplier_id",
+    render: (order) => order.supplier_name ?? (order.supplier_id != null ? `Supplier #${order.supplier_id}` : "Unassigned"),
+  },
+  {
+    key: "status",
+    label: "Status",
+    sortKey: "status",
+    render: (order) => <StatusBadge status={order.status} />,
+  },
+];
+
+// "Days Until" intentionally shares its sortKey with "Birthday" (sorting by
+// birthday_date ascending already sorts by days-until-birthday ascending —
+// Phase 1.6 §15), so the card-mode "Sort by" select must dedupe by sortKey
+// rather than list both as separate options with an identical value/key.
+const sortableFieldOptions = FIELDS.filter((f) => f.sortKey).reduce<FieldDef[]>((acc, f) => {
+  if (!acc.some((existing) => existing.sortKey === f.sortKey)) acc.push(f);
+  return acc;
+}, []);
+
+// Below this breakpoint, the 7-column table's natural width (measured via a
+// real headless-browser pass through the full AppShell — sidebar included,
+// not raw viewport-width arithmetic) can't show every column without its
+// own internal horizontal scroll — the card view takes over instead so no
+// field ever requires an extra interaction to see. Measured: the table fits
+// its available content-area width (viewport minus sidebar) with zero
+// internal scroll at 1180px and above (858px content width available vs.
+// 834px table content); at 1024px the same table needs 834px but only 702px
+// is available, so xl (1280px) — not lg (1024px) — is the correct cutoff.
+const CARD_BREAKPOINT_CLASS = {
+  table: "hidden xl:block",
+  cards: "xl:hidden",
+};
+
+function OrderCard({ order }: { order: BirthdayOrderSummary }) {
+  return (
+    <Link
+      href={`/orders/${order.id}`}
+      className="block rounded-2xl border border-dt-border bg-dt-surface p-4 text-left transition hover:border-dt-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange focus-visible:ring-offset-1"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">{FIELDS[0].render(order)}</div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+        {FIELDS.slice(1).map((field) => (
+          <div key={field.key} className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-dt-text-secondary">{field.label}</p>
+            <div className="mt-0.5 text-sm text-dt-text-primary">{field.render(order)}</div>
+          </div>
+        ))}
+      </div>
+    </Link>
+  );
 }
 
 export default function OrdersPage() {
@@ -189,7 +305,7 @@ export default function OrdersPage() {
           placeholder="Search team member ID, name, or order reference…"
           className="max-w-md"
         />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <FormField label="Status" htmlFor="status-filter">
             <Select
               id="status-filter"
@@ -273,110 +389,83 @@ export default function OrdersPage() {
         <EmptyState title="No orders found" description="Try adjusting the search or filters above." />
       ) : (
         <>
-          <Table>
-            <Thead>
-              <Tr>
-                <SortableTh
-                  label="Reference"
-                  sortKey="employee_number"
-                  activeSortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Team Member"
-                  sortKey="employee_name"
-                  activeSortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Birthday"
-                  sortKey="birthday_date"
-                  activeSortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                />
-                {/* Days Until (Birthday) shares the Birthday sort key —
-                    sorting by birthday_date ascending already sorts by
-                    days-until-birthday ascending (Phase 1.6 §15). */}
-                <SortableTh
-                  label="Days Until"
-                  sortKey="birthday_date"
-                  activeSortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Delivery Date"
-                  sortKey="delivery_date"
-                  activeSortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Supplier"
-                  sortKey="supplier_id"
-                  activeSortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                />
-                <SortableTh
-                  label="Status"
-                  sortKey="status"
-                  activeSortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                />
-              </Tr>
-            </Thead>
-            <tbody>
-              {orders.map((order) => (
-                <Tr
-                  key={order.id}
-                  className="cursor-pointer transition hover:bg-dt-surface-warm"
-                  tabIndex={0}
-                  onClick={() => router.push(`/orders/${order.id}`)}
-                  onKeyDown={(e: React.KeyboardEvent) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      router.push(`/orders/${order.id}`);
-                    }
-                  }}
-                >
-                  <Td>
-                    <Link
-                      href={`/orders/${order.id}`}
-                      className="font-medium text-dt-text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {order.order_reference}
-                    </Link>
-                    {order.requires_admin_review && (
-                      <p className="text-xs font-medium text-dt-warning">Needs review</p>
-                    )}
-                  </Td>
-                  <Td>
-                    {order.employee_name}
-                    <p className="text-xs text-dt-text-secondary">
-                      {order.employee_number ?? (
-                        <span className="italic text-dt-text-secondary/70">
-                          {order.employee_id} (internal id — no team member ID)
-                        </span>
-                      )}
-                    </p>
-                  </Td>
-                  <Td>{order.birthday_date}</Td>
-                  <Td>{daysUntilBirthdayLabel(order.birthday_date, order.status)}</Td>
-                  <Td>{order.delivery_date ?? "—"}</Td>
-                  <Td>{order.supplier_name ?? (order.supplier_id != null ? `Supplier #${order.supplier_id}` : "Unassigned")}</Td>
-                  <Td>
-                    <StatusBadge status={order.status} />
-                  </Td>
+          {/* Wide viewports: the full 7-column table (unchanged structurally,
+              now sourced from the shared FIELDS list). */}
+          <div className={CARD_BREAKPOINT_CLASS.table}>
+            <Table>
+              <Thead>
+                <Tr>
+                  {FIELDS.map((field) =>
+                    field.sortKey ? (
+                      <SortableTh
+                        key={field.key}
+                        label={field.label}
+                        sortKey={field.sortKey}
+                        activeSortBy={sortBy}
+                        sortDirection={sortDirection}
+                        onSort={toggleSort}
+                      />
+                    ) : (
+                      <Th key={field.key}>{field.label}</Th>
+                    )
+                  )}
                 </Tr>
+              </Thead>
+              <tbody>
+                {orders.map((order) => (
+                  <Tr
+                    key={order.id}
+                    className="cursor-pointer transition hover:bg-dt-surface-warm"
+                    tabIndex={0}
+                    onClick={() => router.push(`/orders/${order.id}`)}
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/orders/${order.id}`);
+                      }
+                    }}
+                  >
+                    {FIELDS.map((field) => (
+                      <Td key={field.key}>{field.render(order)}</Td>
+                    ))}
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+
+          {/* Laptop/tablet/mobile: cards, same FIELDS, no field ever hidden
+              behind an extra interaction. */}
+          <div className={CARD_BREAKPOINT_CLASS.cards}>
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium uppercase tracking-wide text-dt-text-secondary">Sort by</span>
+              <Select
+                value={sortBy ?? ""}
+                onChange={(e) => toggleSort(e.target.value)}
+                className="w-auto"
+                aria-label="Sort orders by"
+              >
+                {sortableFieldOptions.map((f) => (
+                  <option key={f.sortKey} value={f.sortKey}>
+                    {f.label}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setSortDirection((d) => (d === "asc" ? "desc" : "asc"))}
+                title={sortDirection === "asc" ? "Ascending — click for descending" : "Descending — click for ascending"}
+              >
+                {sortDirection === "asc" ? "↑ Ascending" : "↓ Descending"}
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {orders.map((order) => (
+                <OrderCard key={order.id} order={order} />
               ))}
-            </tbody>
-          </Table>
+            </div>
+          </div>
 
           <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
         </>

@@ -756,7 +756,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <StatusBadge status={order.address_verification_status} />
                 {scope?.isAdmin && (
                   <Select

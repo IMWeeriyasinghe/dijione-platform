@@ -82,7 +82,7 @@ export default function UnmatchedEmailsPage() {
                         value={orderRef}
                         onChange={(ev) => setOrderRef(ev.target.value)}
                         placeholder="e.g. BDAY-EMP239-2026-00001"
-                        className="w-64"
+                        className="w-full sm:w-64"
                       />
                     </FormField>
                     <label className="flex items-center gap-2 text-sm text-dt-text-secondary">

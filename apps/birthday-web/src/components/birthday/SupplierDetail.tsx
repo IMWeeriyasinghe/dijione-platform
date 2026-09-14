@@ -261,21 +261,25 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
         Back to suppliers
       </Link>
 
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
+      {/* Round 4 — hardened to the same 2xl stacked pattern as OrderDetail.tsx's
+          header (defense-in-depth: a long supplier name + 2 admin buttons
+          could pinch under the older sm:flex-row default, even though no
+          concrete overflow was measured at the time this was written). */}
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 2xl:flex-row 2xl:flex-wrap 2xl:items-start 2xl:justify-between">
+        <div className="min-w-0 max-w-full">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold text-dt-text-primary">{supplier.name}</h1>
+            <h1 className="wrap-break-word text-xl font-semibold text-dt-text-primary">{supplier.name}</h1>
             <StatusBadge status={supplier.status} />
             {supplier.is_default && <StatusBadge status="INFO" label="Island-wide default" />}
           </div>
-          <p className="mt-1 text-sm text-dt-text-secondary">
+          <p className="mt-1 wrap-break-word text-sm text-dt-text-secondary">
             {supplier.primary_contact_name || "No primary contact"} ·{" "}
             {supplier.primary_contact_email || "—"}
           </p>
         </div>
 
         {scope?.isAdmin && (
-          <div className="flex shrink-0 gap-2">
+          <div className="flex w-full flex-wrap gap-2 2xl:w-auto 2xl:shrink-0">
             <Button size="sm" variant="secondary" onClick={openEdit}>
               Edit Supplier
             </Button>
@@ -337,10 +341,14 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
                   {locations.map((loc) => (
                     <li
                       key={loc.id}
-                      className="flex items-center justify-between rounded-xl border border-dt-border p-3"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-dt-border p-3"
                     >
-                      <span className="text-sm text-dt-text-primary">{loc.office_location}</span>
-                      {loc.is_primary && <StatusBadge status="PRIMARY" label="Primary" />}
+                      <span className="min-w-0 wrap-break-word text-sm text-dt-text-primary">{loc.office_location}</span>
+                      {loc.is_primary && (
+                        <span className="shrink-0">
+                          <StatusBadge status="PRIMARY" label="Primary" />
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -428,21 +436,26 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
               ) : (
                 <ul className="flex flex-col gap-2">
                   {supplierUsers.map((user) => (
+                    // Round 4 — restructured into two stacked sub-rows below
+                    // sm: (identity text, then the control cluster on its own
+                    // line) instead of relying on flex-wrap's default
+                    // left-to-right reflow, which used to interleave text and
+                    // up to 5 controls unpredictably on narrow viewports.
                     <li
                       key={user.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dt-border p-3"
+                      className="flex flex-col gap-3 rounded-xl border border-dt-border p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-dt-text-primary">
+                        <p className="wrap-break-word text-sm font-medium text-dt-text-primary">
                           {user.full_name || user.email}
                         </p>
-                        <p className="text-xs text-dt-text-secondary">
+                        <p className="wrap-break-word text-xs text-dt-text-secondary">
                           {user.email} · {user.role.replace(/_/g, " ")}
                           {user.last_login_at &&
                             ` · last sign-in ${new Date(user.last_login_at).toLocaleDateString()}`}
                         </p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                         <span className="rounded-full bg-dt-surface-warm px-2 py-0.5 text-[11px] font-medium text-dt-text-secondary">
                           {user.onboarding_state.replace(/_/g, " ")}
                         </span>
