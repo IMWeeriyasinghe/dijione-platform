@@ -140,13 +140,18 @@ export default function DashboardPage() {
             <CardTitle>Orders by Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-1">
               {Object.entries(summary.by_status)
                 .filter(([, count]) => count > 0)
                 .map(([status, count]) => (
-                  <li key={status} className="flex items-center justify-between text-sm">
-                    <StatusBadge status={status} />
-                    <span className="font-medium text-dt-text-primary">{count}</span>
+                  <li key={status}>
+                    <Link
+                      href={`/orders?status_filter=${status}`}
+                      className="-mx-2 flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-dt-surface-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange focus-visible:ring-offset-1"
+                    >
+                      <StatusBadge status={status} />
+                      <span className="font-medium text-dt-text-primary">{count}</span>
+                    </Link>
                   </li>
                 ))}
             </ul>

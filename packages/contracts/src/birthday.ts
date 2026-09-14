@@ -116,6 +116,98 @@ export function getSupplierOrderStatusGroup(status: string): string {
   return SUPPLIER_ORDER_STATUS_GROUP[status as OrderStatus] ?? status;
 }
 
+// --- Order event log presentation (Phase 1.6 §2/§3 review round) ---------
+// Centralised here for the same reason as the status labels above: the
+// internal Raw Event Log must never hard-code a raw OrderEvent.event_type
+// or enum value inline in a component — one lookup, reused everywhere the
+// event log is rendered.
+
+export const ORDER_EVENT_TYPE_LABELS: Record<string, string> = {
+  STATUS_CHANGE: "Status Changed",
+  DETECTED: "Detected",
+  AUTO_RELEASED: "Auto Released",
+  ADDRESS_VERIFICATION_CHANGE: "Address Verification Updated",
+  SUPPLIER_ASSIGNED: "Supplier Assigned",
+  EMPLOYEE_NUMBER_ASSIGNED: "Team Member ID Assigned",
+  DELIVERY_DATE_ADJUSTED: "Delivery Date Adjusted",
+  EXCEPTION: "Exception Raised",
+  EXCEPTION_CLEARED: "Exception Cleared",
+  EMAIL_SENT: "Email Sent",
+  EMAIL_FAILED: "Email Failed",
+  EMAIL_RETRY_EXHAUSTED: "Email Retries Exhausted",
+  ORDER_CHANGED_POST_RELEASE: "Order Changed After Release",
+  PORTAL_MESSAGE: "Portal Message",
+  SUPPLIER_EMAIL_REPLY: "Supplier Email Reply",
+  SUPPLIER_ISSUE: "Supplier Reported a Problem",
+  REOPENED: "Order Reopened",
+};
+
+/** Falls back to a readable title-case rendering of an unmapped event_type
+ * (e.g. a future code addition) rather than a raw underscored enum string. */
+export function getOrderEventTypeLabel(eventType: string): string {
+  return (
+    ORDER_EVENT_TYPE_LABELS[eventType] ??
+    eventType
+      .toLowerCase()
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+  );
+}
+
+export type OrderEventTone = "success" | "warning" | "progress" | "error" | "info";
+
+// Keyed by the event's resulting status (to_status) — the strongest signal
+// for most events, since the default event_type is the generic
+// "STATUS_CHANGE" and the interesting information is what it changed *to*.
+const ORDER_EVENT_STATUS_TONE: Partial<Record<OrderStatus, OrderEventTone>> = {
+  CONFIRMED: "success",
+  DELIVERED: "success",
+  COMPLETED: "success",
+  PENDING_VERIFICATION: "warning",
+  REQUIRES_REVIEW: "warning",
+  REQUIRES_ATTENTION: "warning",
+  ON_HOLD: "warning",
+  PREPARING: "warning",
+  CHANGE_REQUESTED: "warning",
+  SENT_TO_SUPPLIER: "progress",
+  OUT_FOR_DELIVERY: "progress",
+  CANCELLED: "error",
+  UNABLE_TO_FULFIL: "error",
+};
+
+// Keyed by event_type — used when to_status is absent, or to override a
+// generic STATUS_CHANGE tone with a more specific meaning of its own.
+const ORDER_EVENT_TYPE_TONE: Record<string, OrderEventTone> = {
+  AUTO_RELEASED: "success",
+  EMAIL_SENT: "success",
+  EXCEPTION_CLEARED: "success",
+  REOPENED: "warning",
+  EXCEPTION: "warning",
+  SUPPLIER_ISSUE: "warning",
+  ORDER_CHANGED_POST_RELEASE: "warning",
+  EMAIL_FAILED: "error",
+  EMAIL_RETRY_EXHAUSTED: "error",
+  DETECTED: "info",
+  SUPPLIER_ASSIGNED: "info",
+  EMPLOYEE_NUMBER_ASSIGNED: "info",
+  ADDRESS_VERIFICATION_CHANGE: "info",
+  DELIVERY_DATE_ADJUSTED: "info",
+  PORTAL_MESSAGE: "info",
+  SUPPLIER_EMAIL_REPLY: "info",
+};
+
+/** The single source of truth for an OrderEvent's semantic colour — reused
+ * by the dot/icon, left accent and (never colour-only) any badge tone in
+ * the Raw Event Log timeline. to_status wins when present; event_type is
+ * the fallback for events that don't carry a status transition. */
+export function getOrderEventTone(event: { event_type: string; to_status?: string | null }): OrderEventTone {
+  if (event.to_status && ORDER_EVENT_STATUS_TONE[event.to_status as OrderStatus]) {
+    return ORDER_EVENT_STATUS_TONE[event.to_status as OrderStatus]!;
+  }
+  return ORDER_EVENT_TYPE_TONE[event.event_type] ?? "info";
+}
+
 export const COMMUNICATION_CHANNELS = ["EMAIL", "PORTAL", "SYSTEM", "TEAMS"] as const;
 export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[number];
 

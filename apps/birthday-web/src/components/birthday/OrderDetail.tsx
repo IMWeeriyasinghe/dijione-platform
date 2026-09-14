@@ -51,31 +51,10 @@ import {
 } from "@/lib/api";
 import type { BirthdayOrderOut, DeliveryAddressUpdateInput, SupplierOut } from "@dijione/contracts";
 import { OrderTimeline } from "@/components/birthday/OrderTimeline";
+import { EventLogTimeline } from "@/components/birthday/EventLogTimeline";
 import { orderActionPolicy } from "@/lib/order-action-policy";
 
 type ActionKind = "hold" | "release" | "cancel" | "reopen" | null;
-
-// Phase 1.6 §17 — semantic colour by event outcome, using only the
-// existing design-system tokens (no new hex values). Never colour-only:
-// the text label stays in every case.
-const EVENT_ACCENT: Record<string, string> = {
-  DELIVERED: "border-dt-success",
-  COMPLETED: "border-dt-success",
-  AUTO_RELEASED: "border-dt-success",
-  ON_HOLD: "border-dt-warning",
-  REQUIRES_REVIEW: "border-dt-warning",
-  REOPENED: "border-dt-warning",
-  REVIEW_CONFIRMED: "border-dt-success",
-  CANCELLED: "border-dt-danger",
-  UNABLE_TO_FULFIL: "border-dt-danger",
-  SEND_FAILED: "border-dt-danger",
-  EMAIL_FAILED: "border-dt-danger",
-  EMAIL_RETRY_EXHAUSTED: "border-dt-danger",
-};
-
-function eventAccentClass(event: { event_type: string; to_status: string | null }): string {
-  return EVENT_ACCENT[event.to_status ?? ""] ?? EVENT_ACCENT[event.event_type] ?? "border-dt-border";
-}
 
 type FulfilmentEdit = { supplier_id?: string; delivery_date?: string; catalogue_item_id?: string };
 
@@ -865,28 +844,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             Raw event log ({order.events.length})
           </summary>
           <div className="px-5 pb-4">
-            {order.events.length === 0 ? (
-              <p className="text-sm text-dt-text-secondary">No events recorded.</p>
-            ) : (
-              <ol className="flex flex-col gap-3">
-                {order.events.map((event) => (
-                  <li key={event.id} className={`border-l-2 pl-3 ${eventAccentClass(event)}`}>
-                    <p className="text-sm font-medium text-dt-text-primary">
-                      {event.event_type.replace(/_/g, " ")}
-                    </p>
-                    {event.from_status && event.to_status && (
-                      <p className="text-xs text-dt-text-secondary">
-                        {event.from_status} → {event.to_status}
-                      </p>
-                    )}
-                    {event.detail && <p className="mt-0.5 text-xs text-dt-text-secondary">{event.detail}</p>}
-                    <p className="mt-0.5 text-xs text-dt-text-secondary">
-                      {new Date(event.created_at).toLocaleString()} · {event.actor_display_name ?? event.actor_type}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            )}
+            <EventLogTimeline events={order.events} />
           </div>
         </details>
       </div>

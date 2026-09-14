@@ -60,7 +60,7 @@ describe("DashboardPage tiles (§D)", () => {
       open_issues_count: 0,
       unmatched_emails_count: 0,
       upcoming_count: 5,
-      by_status: {},
+      by_status: { PENDING_VERIFICATION: 3, REQUIRES_ATTENTION: 1, ON_HOLD: 0, COMPLETED: 7 },
       by_lead_time_class: {},
       detection_health: { healthy: true, last_scan_at: null, last_status: "OK", consecutive_deferrals: 0, stale: false },
     });
@@ -92,6 +92,29 @@ describe("DashboardPage tiles (§D)", () => {
     expect(await screen.findByText("Awaiting supplier acceptance")).toBeInTheDocument();
     expect(linkFor("Awaiting supplier acceptance")).toHaveAttribute("href", "/orders?acceptance=awaiting");
     expect(linkFor("Acceptance overdue")).toHaveAttribute("href", "/orders?acceptance=overdue");
+  });
+
+  it("makes each Orders by Status row a whole-row link to the exact same predicate it counts (review round)", async () => {
+    // Uses statuses that don't also appear in the Upcoming Birthdays mock
+    // below (which separately renders "PENDING_VERIFICATION" via its own
+    // StatusBadge) so each lookup here resolves to exactly one element.
+    wrap(<DashboardPage />);
+    expect(await screen.findByText("REQUIRES_ATTENTION")).toBeInTheDocument();
+
+    expect(linkFor("REQUIRES_ATTENTION")).toHaveAttribute("href", "/orders?status_filter=REQUIRES_ATTENTION");
+    expect(linkFor("COMPLETED")).toHaveAttribute("href", "/orders?status_filter=COMPLETED");
+
+    // A zero-count status (ON_HOLD here) is filtered out of the panel
+    // entirely — unchanged existing behaviour, just re-pinned here since
+    // it now shares the same row markup as the clickable statuses.
+    expect(screen.queryByText("ON_HOLD")).not.toBeInTheDocument();
+  });
+
+  it("keeps the count visible and right-aligned inside the same clickable row", async () => {
+    wrap(<DashboardPage />);
+    await screen.findByText("REQUIRES_ATTENTION");
+    const row = linkFor("REQUIRES_ATTENTION");
+    expect(within(row).getByText("1")).toBeInTheDocument();
   });
 
   it("makes each Upcoming Birthdays row a link to the order", async () => {
