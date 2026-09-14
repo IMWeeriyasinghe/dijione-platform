@@ -113,6 +113,56 @@ def test_open_issues_count_matches_has_open_issue_list(db, api_client):
     assert attention_service.count_open_issues(db) == body["total"]
 
 
+def test_lead_time_class_dashboard_count_matches_list_total(db):
+    """Round 3 — Orders by Lead Time Class becomes clickable
+    (/orders?lead_time_class=<CLASS>); the dashboard's by_lead_time_class
+    GROUP BY and the list's lead_time_class filter must agree exactly for
+    every class, the same invariant already proven for status/due/verify/
+    acceptance/open-issues above."""
+    from sqlalchemy import func, select
+
+    from app.models.birthday_order import BirthdayOrder
+
+    repo = BirthdayOrderRepository(db)
+    _order(db, employee_id="g1", lead_time_class="NORMAL")
+    _order(db, employee_id="g2", lead_time_class="NORMAL")
+    _order(db, employee_id="g3", lead_time_class="SHORT_NOTICE")
+    _order(db, employee_id="g4", lead_time_class="URGENT")
+
+    by_lead_time_class: dict[str, int] = {}
+    for class_value, count in db.execute(
+        select(BirthdayOrder.lead_time_class, func.count()).group_by(BirthdayOrder.lead_time_class)
+    ).all():
+        by_lead_time_class[class_value] = count
+
+    for cls in ("NORMAL", "SHORT_NOTICE", "URGENT"):
+        assert by_lead_time_class.get(cls, 0) == repo.count_filtered(lead_time_class=cls)
+
+    assert by_lead_time_class["NORMAL"] == 2
+    assert by_lead_time_class["SHORT_NOTICE"] == 1
+    assert by_lead_time_class["URGENT"] == 1
+
+
+def test_lead_time_class_is_stored_at_detection_time_not_recomputed(db):
+    """An order keeps the lead_time_class it was assigned at detection time
+    even if it would classify differently under a different (e.g. later-
+    changed) threshold configuration — it is a stored column, never
+    recomputed from the order's current days-remaining. This is the exact
+    semantic the dashboard count and the deep-link filter both rely on
+    matching identically."""
+    repo = BirthdayOrderRepository(db)
+    # This order was assigned URGENT at detection time (short lead time back
+    # then); its birthday_date here is intentionally far out now, which
+    # would reclassify as NORMAL if the class were ever recomputed live —
+    # it must not be.
+    stored_urgent = _order(db, employee_id="h1", lead_time_class="URGENT", birthday_date=date.today() + timedelta(days=90))
+
+    assert repo.count_filtered(lead_time_class="URGENT") == 1
+    assert repo.count_filtered(lead_time_class="NORMAL") == 0
+    db.refresh(stored_urgent)
+    assert stored_urgent.lead_time_class == "URGENT"
+
+
 def test_boundary_exactly_at_sla_cutoff_is_not_yet_overdue(db):
     """A release exactly at the SLA cutoff is not yet overdue — only
     strictly older than the cutoff counts, matching the '<' predicate."""

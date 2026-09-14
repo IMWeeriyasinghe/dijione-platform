@@ -6,8 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Phase 1.6 §15 (R14) — Cake Orders gets whole-row click (the one table
 // that didn't have it) and a Days-Until-Birthday display column.
 
+const searchParamsValue = vi.hoisted(() => ({ current: new URLSearchParams() }));
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => searchParamsValue.current,
   useRouter: () => ({ push: pushMock }),
 }));
 
@@ -63,6 +64,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 describe("Cake Orders page (§15/R14)", () => {
   beforeEach(() => {
     pushMock.mockClear();
+    searchParamsValue.current = new URLSearchParams();
     listOrders.mockResolvedValue({
       items: [
         {
@@ -110,5 +112,16 @@ describe("Cake Orders page (§15/R14)", () => {
     // order's birthday_date is today — a settled order's countdown is
     // meaningless and must not show "Today"/a day count.
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("initializes the Lead Time Class filter from ?lead_time_class= in the URL (round 3 dashboard deep-link)", async () => {
+    searchParamsValue.current = new URLSearchParams("lead_time_class=NORMAL");
+
+    wrap(<OrdersPage />);
+    await screen.findByText("Jane Doe");
+
+    const select = document.getElementById("lead-time-filter") as HTMLSelectElement;
+    expect(select.value).toBe("NORMAL");
+    expect(listOrders).toHaveBeenCalledWith(expect.objectContaining({ lead_time_class: "NORMAL" }));
   });
 });

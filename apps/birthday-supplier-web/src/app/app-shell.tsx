@@ -58,7 +58,8 @@ function Shell({ children }: { children: React.ReactNode }) {
           appName="Supplier Portal"
           version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
           gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
-          buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+          // releaseDate intentionally omitted — not wired to a runtime
+          // RELEASE_DATE source yet (round 3 only did this for birthday-web).
           tone="light"
         />
       </footer>

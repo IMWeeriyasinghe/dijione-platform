@@ -22,6 +22,8 @@ const {
   transitiveWorkspaceDeps,
   directWorkspaceDeps,
   anyFileUnder,
+  parseArgs,
+  UsageError,
 } = require("./check-app-versions");
 
 test("app source changed + version bumped -> OK, not an error", () => {
@@ -82,6 +84,20 @@ test("directWorkspaceDeps resolves only @dijione/* deps declared by the package,
   // files); covered instead by the real-repo self-check run.
   // Kept as a placeholder assertion so the test name documents the contract.
   assert.equal(typeof directWorkspaceDeps, "function");
+});
+
+test("--apps is required — omitting it is a usage error, never an implicit 'check everything' default", () => {
+  assert.throws(() => parseArgs(["--base", "HEAD~1"]), UsageError);
+});
+
+test("--apps accepts a comma-separated list", () => {
+  const { apps } = parseArgs(["--apps", "birthday-web,talent-web", "--base", "HEAD~1"]);
+  assert.deepEqual(apps, ["birthday-web", "talent-web"]);
+});
+
+test("--apps accepts a single app name", () => {
+  const { apps } = parseArgs(["--apps", "birthday-web"]);
+  assert.deepEqual(apps, ["birthday-web"]);
 });
 
 test("transitiveWorkspaceDeps resolves a dependency-of-a-dependency (two levels deep), not just direct deps", () => {

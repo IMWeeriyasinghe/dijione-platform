@@ -34,6 +34,17 @@ import { qs, request } from "@dijione/auth-client";
 
 export { ApiError } from "@dijione/auth-client";
 
+// --- Release metadata --------------------------------------------
+// Deliberately NOT "/api/birthday/..." (that prefix has its own basePath:
+// false rewrite in next.config.ts proxying to birthday-api) — /api/meta is
+// a route INSIDE this app itself, so it lives at this app's own basePath
+// ("/birthday", see next.config.ts) and must be fetched at that exact
+// path. A bare fetch("/api/meta") would resolve to this origin's root and
+// 404 once reached through the DijiOne shell (docs/platform/versioning.md
+// has the full explanation) — confirmed correct both standalone and
+// through the shell's /birthday/:path* wildcard proxy.
+export const getReleaseMetadata = () => request<{ release_date: string | null }>("/birthday/api/meta");
+
 // --- Dashboard -------------------------------------------------
 export const getDashboardSummary = () => request<BirthdayDashboardSummary>("/api/birthday/dashboard");
 export const getSummary = () => request<BirthdaySummaryOut>("/api/birthday/summary");

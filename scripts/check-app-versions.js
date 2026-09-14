@@ -1,11 +1,22 @@
 #!/usr/bin/env node
 /**
- * npm run versions:check [-- --base <ref>] [--committed]
+ * npm run versions:check -- --apps <name>[,<name>...] [--base <ref>] [--committed]
  *
- * Answers: "did every DijiOne app whose released artifact actually changes
- * get its own version bumped?" — the artifact-based rule in
- * docs/platform/versioning.md. Reports only; never bumps anything itself,
- * never decides patch vs. minor, and never auto-approves a major bump.
+ * Answers a release-target-aware question: "for the app(s) I am actually
+ * releasing this time, did each one's version genuinely advance?" — NOT
+ * "did every app whose bundled bytes happen to differ get a new version."
+ * A monorepo commit is not an application release, and a shared-package
+ * change is not an automatic release of every consumer — see
+ * docs/platform/versioning.md for the full policy this enforces. Reports
+ * only; never bumps anything itself, never decides patch vs. minor, and
+ * never auto-approves a major bump.
+ *
+ * `--apps` is REQUIRED (comma or space separated) — release-target
+ * selection must be a conscious, explicit choice every run, never an
+ * implicit "check everything" default. Only the named app(s) can fail this
+ * check; every other app that happens to be affected by the same shared
+ * source is reported purely as information, never as a requirement to
+ * bump/rebuild/redeploy it.
  *
  * DEFAULT MODE compares <base> (default HEAD~1) against the CURRENT WORKING
  * TREE — committed history since <base>, plus staged, unstaged, and
@@ -34,14 +45,30 @@ function git(args) {
   return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" });
 }
 
+class UsageError extends Error {}
+
 function parseArgs(argv) {
   let base = "HEAD~1";
   let committed = false;
+  let apps = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--base") base = argv[++i];
     else if (argv[i] === "--committed") committed = true;
+    else if (argv[i] === "--apps") {
+      apps = (argv[++i] || "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
   }
-  return { base, committed };
+  if (!apps || apps.length === 0) {
+    throw new UsageError(
+      "Usage: npm run versions:check -- --apps <name>[,<name>...] [--base <ref>] [--committed]\n" +
+        "--apps is required: release-target selection must be explicit every run, never an " +
+        "implicit default of 'check everything'."
+    );
+  }
+  return { base, committed, apps };
 }
 
 /** Union of every changed-file source relevant to "what am I about to
@@ -163,49 +190,73 @@ function pad(s, n) {
 }
 
 function run(argv) {
-  const { base, committed } = parseArgs(argv);
+  let base, committed, apps;
+  try {
+    ({ base, committed, apps } = parseArgs(argv));
+  } catch (e) {
+    if (e instanceof UsageError) {
+      console.error(e.message);
+      return 2;
+    }
+    throw e;
+  }
+
   const rootPkg = readJson(path.join(REPO_ROOT, "package.json"));
   const workspaces = rootPkg.workspaces || [];
   const appWorkspaces = workspaces.filter((w) => w.startsWith("apps/"));
   const packageWorkspaces = workspaces.filter((w) => w.startsWith("packages/"));
   const pkgNameToDir = resolvePackageNameToDir(packageWorkspaces);
   const changedFiles = collectChangedFiles(base, committed);
+  const appNames = appWorkspaces.map((d) => d.replace(/^apps\//, ""));
+  const unknown = apps.filter((a) => !appNames.includes(a));
+  if (unknown.length > 0) {
+    console.error(`Unknown app(s) in --apps: ${unknown.join(", ")}. Known apps: ${appNames.join(", ")}`);
+    return 2;
+  }
+  const releaseTargets = new Set(apps);
 
   const results = appWorkspaces.map((appDir) => {
     const appName = appDir.replace(/^apps\//, "");
     const currentVersion = readJson(path.join(REPO_ROOT, appDir, "package.json")).version;
     const baseVersion = versionAtBase(base, `${appDir}/package.json`);
 
-    let isChanged = anyFileUnder(changedFiles, appDir);
-    let changedVia = isChanged ? "app source" : null;
-    if (!isChanged) {
+    let isAffected = anyFileUnder(changedFiles, appDir);
+    let affectedVia = isAffected ? "app source" : null;
+    if (!isAffected) {
       const closure = transitiveWorkspaceDeps(appDir, pkgNameToDir);
       for (const depDir of closure) {
         if (anyFileUnder(changedFiles, depDir)) {
-          isChanged = true;
-          changedVia = `shared package (${depDir})`;
+          isAffected = true;
+          affectedVia = `shared package (${depDir})`;
           break;
         }
       }
     }
 
-    return { appName, isChanged, changedVia, baseVersion, currentVersion };
+    return { appName, isAffected, affectedVia, baseVersion, currentVersion };
   });
 
-  const changed = results.filter((r) => r.isChanged);
-  const untouched = results.filter((r) => !r.isChanged);
+  const targets = results.filter((r) => releaseTargets.has(r.appName));
+  const affectedNonTargets = results.filter((r) => !releaseTargets.has(r.appName) && r.isAffected);
+  const untouched = results.filter((r) => !releaseTargets.has(r.appName) && !r.isAffected);
   let hasError = false;
 
-  console.log(`Comparing base ${base} -> ${committed ? "HEAD" : "current working tree"}\n`);
-  console.log("Changed application artifacts:");
-  if (changed.length === 0) console.log("  (none)");
-  for (const r of changed) {
+  console.log(`Comparing base ${base} -> ${committed ? "HEAD" : "current working tree"}`);
+  console.log(`Release targets: ${apps.join(", ")}\n`);
+
+  console.log("Release targets:");
+  for (const r of targets) {
     const { status, isError } = computeBumpStatus(r.baseVersion, r.currentVersion);
     if (isError) hasError = true;
-    console.log(
-      `  ${pad(r.appName, 26)} ${r.baseVersion ?? "(new)"} -> ${r.currentVersion}   ${status}` +
-        (r.changedVia && r.changedVia !== "app source" ? `   [via ${r.changedVia}]` : "")
-    );
+    console.log(`  ${pad(r.appName, 26)} ${r.baseVersion ?? "(new)"} -> ${r.currentVersion}   ${status}`);
+  }
+
+  console.log(
+    "\nAffected by shared source but not selected for this release (informational only — NOT rebuilt/deployed):"
+  );
+  if (affectedNonTargets.length === 0) console.log("  (none)");
+  for (const r of affectedNonTargets) {
+    console.log(`  ${pad(r.appName, 26)} — ${r.affectedVia}`);
   }
 
   console.log("\nUntouched:");
@@ -216,7 +267,7 @@ function run(argv) {
 
   if (hasError) {
     console.log(
-      "\nOne or more changed apps need attention above: either the version wasn't bumped, or a " +
+      "\nOne or more release-target apps need attention above: either the version wasn't bumped, or a " +
         "major bump needs explicit user approval before this release proceeds."
     );
   }
@@ -235,5 +286,7 @@ module.exports = {
   directWorkspaceDeps,
   anyFileUnder,
   resolvePackageNameToDir,
+  parseArgs,
+  UsageError,
   run,
 };

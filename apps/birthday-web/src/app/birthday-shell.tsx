@@ -1,12 +1,21 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useBirthdayScope } from "@dijione/auth-client";
 import { CakeSlice, LayoutDashboard, ListOrdered, Mail, Truck } from "lucide-react";
+import { getReleaseMetadata } from "@/lib/api";
 
 function BirthdayContent({ children }: { children: React.ReactNode }) {
   const scope = useBirthdayScope();
+  // Genuinely runtime — see /api/meta's own doc comment for why this can't
+  // just be a build-time NEXT_PUBLIC_* value like version/gitSha are.
+  const { data: releaseMeta } = useQuery({
+    queryKey: ["birthday-release-metadata"],
+    queryFn: getReleaseMetadata,
+    staleTime: 5 * 60_000,
+  });
 
   if (!scope) {
     return (
@@ -52,7 +61,7 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
           appName="DijiBirthday"
           version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
           gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
-          buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+          releaseDate={releaseMeta?.release_date}
         />
       }
     >

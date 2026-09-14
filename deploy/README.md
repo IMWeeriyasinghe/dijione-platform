@@ -54,12 +54,37 @@ Create each once: `az deployment group create -g <rg> -f deploy/bicep/modules/ac
 
 ## Per-app version/build footer metadata
 
-Every web image build passes `GIT_SHA` and `BUILD_DATE` build args (see
-`build-images.sh`/`build-push.sh`) so each app's footer can show its own
-version (from that app's own `package.json`), commit SHA, and build date —
-never a single shared DijiOne-wide version. Full convention, including the
-rule that major version bumps need explicit approval:
-`docs/platform/versioning.md`.
+Every web image build passes `GIT_SHA` (and legacy `BUILD_DATE`, no longer
+shown) build args so each app's footer can show its own version (from that
+app's own `package.json`) and commit SHA — never a single shared
+DijiOne-wide version. A third, genuinely optional footer line, `Released
+<date>`, is sourced at **runtime** from a per-app `RELEASE_DATE` Container
+App environment variable, set ad hoc via `az containerapp update
+--set-env-vars RELEASE_DATE=<UTC timestamp>` in the same call that deploys
+that app's new image (never as a separate revision, and never one value
+written identically to every service). Full convention, including the
+rule that major version bumps need explicit approval, and why
+`RELEASE_DATE` must be read at request time rather than baked in at build
+time: `docs/platform/versioning.md`.
+
+**Follow-up work, not yet implemented — `main.bicep` does not currently
+know about `RELEASE_DATE` at all.** Because Bicep's `env` array on a
+Container App resource is fully **replaced**, not merged, on every
+deployment, running `main.bicep` against a service that has an ad hoc
+`RELEASE_DATE` set (as above) will **silently wipe it**, with no error. Do
+not add a `releaseDates` (or similarly named) bicep parameter to fix this
+without, in the same change, also giving `deploy.sh`/`deploy/deploy.sh`
+logic that (1) reads every currently-deployed service's live `RELEASE_DATE`
+before the run, (2) carries each one forward into the parameter unless that
+service is itself being released this run, and (3) only then invokes
+`main.bicep`. A bicep parameter with an empty/default value and no such
+wrapper logic is **not safe** — it looks like a real mechanism but silently
+erases every other app's release date the next time someone runs a routine
+`main.bicep` deployment. Until this follow-up lands: **do not run a full
+multi-service `main.bicep` deployment against an environment that has any
+app-specific `RELEASE_DATE` set without first manually capturing
+(`az containerapp show ... --query "properties.template.containers[0].env"`)
+and understanding what would be lost.**
 
 ## Prerequisites (user)
 

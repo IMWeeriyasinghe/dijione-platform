@@ -163,11 +163,16 @@ export default function DashboardPage() {
             <CardTitle>Orders by Lead Time Class</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-1">
               {Object.entries(summary.by_lead_time_class).map(([cls, count]) => (
-                <li key={cls} className="flex items-center justify-between text-sm">
-                  <span className="text-dt-text-secondary">{cls.replace(/_/g, " ")}</span>
-                  <span className="font-medium text-dt-text-primary">{count}</span>
+                <li key={cls}>
+                  <Link
+                    href={`/orders?lead_time_class=${cls}`}
+                    className="-mx-2 flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-dt-surface-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange focus-visible:ring-offset-1"
+                  >
+                    <span className="text-dt-text-secondary">{cls.replace(/_/g, " ")}</span>
+                    <span className="font-medium text-dt-text-primary">{count}</span>
+                  </Link>
                 </li>
               ))}
             </ul>

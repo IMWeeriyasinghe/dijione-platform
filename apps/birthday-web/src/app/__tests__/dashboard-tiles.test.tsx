@@ -61,7 +61,7 @@ describe("DashboardPage tiles (§D)", () => {
       unmatched_emails_count: 0,
       upcoming_count: 5,
       by_status: { PENDING_VERIFICATION: 3, REQUIRES_ATTENTION: 1, ON_HOLD: 0, COMPLETED: 7 },
-      by_lead_time_class: {},
+      by_lead_time_class: { NORMAL: 12, SHORT_NOTICE: 3, URGENT: 1 },
       detection_health: { healthy: true, last_scan_at: null, last_status: "OK", consecutive_deferrals: 0, stale: false },
     });
     getUpcoming.mockResolvedValue({
@@ -115,6 +115,18 @@ describe("DashboardPage tiles (§D)", () => {
     await screen.findByText("REQUIRES_ATTENTION");
     const row = linkFor("REQUIRES_ATTENTION");
     expect(within(row).getByText("1")).toBeInTheDocument();
+  });
+
+  it("makes each Orders by Lead Time Class row a whole-row link to the matching Cake Orders filter (round 3)", async () => {
+    wrap(<DashboardPage />);
+    expect(await screen.findByText("URGENT")).toBeInTheDocument();
+
+    expect(linkFor("NORMAL")).toHaveAttribute("href", "/orders?lead_time_class=NORMAL");
+    expect(linkFor("SHORT NOTICE")).toHaveAttribute("href", "/orders?lead_time_class=SHORT_NOTICE");
+    expect(linkFor("URGENT")).toHaveAttribute("href", "/orders?lead_time_class=URGENT");
+
+    const urgentRow = linkFor("URGENT");
+    expect(within(urgentRow).getByText("1")).toBeInTheDocument();
   });
 
   it("makes each Upcoming Birthdays row a link to the order", async () => {

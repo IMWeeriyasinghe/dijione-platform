@@ -101,7 +101,7 @@ export default function OrdersPage() {
   const [verify, setVerify] = useState(searchParams.get("verify") ?? "");
   const [acceptance, setAcceptance] = useState(searchParams.get("acceptance") ?? "");
   const [hasOpenIssue, setHasOpenIssue] = useState(searchParams.get("has_open_issue") === "true");
-  const [leadTimeClass, setLeadTimeClass] = useState("");
+  const [leadTimeClass, setLeadTimeClass] = useState(searchParams.get("lead_time_class") ?? "");
   const [officeLocation, setOfficeLocation] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [addressStatus, setAddressStatus] = useState("");

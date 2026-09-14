@@ -3846,9 +3846,11 @@ Every reusable source-data domain MUST provide:
 # PER-APPLICATION VERSIONING CONTRACT
 
 > Authoritative. Added when the footer's per-app version/build metadata was
-> implemented; corrected after review found both the bump policy and the
-> shared-component architecture weren't yet right. Full detail, including
-> the exact build-time mechanism and the `versions:check` tool:
+> implemented; corrected three times after review — most recently to
+> separate **repository change** from **application release**: a monorepo
+> commit is not a release, and a shared-package change is not an automatic
+> release of every consumer. Full detail, including the runtime
+> `RELEASE_DATE` mechanism and the `versions:check` tool:
 > `docs/platform/versioning.md`.
 
 Every application in this monorepo (`shell-web`, `admin-web`, `talent-web`,
@@ -3865,46 +3867,54 @@ version through its own release history** — never invent a different
 number just to look distinct, and never avoid a bump just to avoid a
 match.
 
-Each app's footer shows that app's own version, Git commit SHA, and
-**build** date (labeled "Built {date}" — never "Release date"; a future
-true deployment timestamp would be a separate `RELEASE_DATE` concept, not
-this one), sourced automatically: version from that app's `package.json`
-at build time, commit SHA and build date from Docker build args set by
-`deploy/build-images.sh` / `deploy/build-push.sh`. The shared
-`VersionFooter` component is presentation-only — it takes these as props
-and reads no `process.env`/global state itself; each app's own shell file
-resolves and supplies its own values, which is what makes "every app owns
-its own version" independently auditable per app rather than merely
-documented.
+Each app's footer shows 3 lines: app name, version + `Build <SHA>`, and a
+genuinely optional `Released <date>` line — sourced from an app-specific
+**runtime** `RELEASE_DATE` env var (never a relabelled build-time value;
+omitted entirely, never faked, until an app wires its own runtime source —
+see `docs/platform/versioning.md` for why a build-time read can't be used
+for this one). Version + SHA remain build-time (`package.json` +
+`GIT_SHA` Docker build arg). The shared `VersionFooter` component is
+presentation-only — it takes these as props and reads no
+`process.env`/global state itself; each app's own shell file resolves and
+supplies its own values.
 
-**Versioning rule — artifact-based, not visibility-based:**
+**Versioning rule — release-target-aware, not diff-based:** if an
+application is selected for release AND its artifact differs from its
+previously released artifact, its version must advance. If an application
+is NOT selected for release: don't deploy a new image for it, don't change
+its version, don't change its release date — regardless of whether its
+source would technically compile differently due to a shared dependency. A
+monorepo commit is not an application release; only the apps explicitly
+selected for a given release bump, rebuild, redeploy, or get a new release
+date.
 
-- If an app's own source/config changes and that app is rebuilt/released,
-  its version **must** increment — regardless of whether an end user would
-  ever notice the diff (an internal-only refactor still counts: the
-  released artifact is genuinely different). A shared `packages/*`
-  dependency change counts too, transitively, for every app that depends
-  on it. Only an app with zero changes in a release keeps its prior
-  version.
 - Patch/minor bumps (`1.0.1 → 1.0.2`, `1.0.1 → 1.1.0`) are routine
-  maintenance — the agent may make these as part of normal development
-  without asking first.
+  maintenance for a release target — the agent may make these without
+  asking first.
 - Major bumps (`1.x.x → 2.0.0`, `2.x.x → 3.0.0`, …) **require explicit user
   approval before being made.** Never bump a major version as a side
   effect of an unrelated change, and never infer approval from a request
   that doesn't explicitly authorize one.
 - This rule applies per app — approval for a major bump on one app says
   nothing about any other app.
-- Run `npm run versions:check` (reports only, never auto-bumps; compares a
-  base ref against the current working tree by default, since it's meant
-  to run before the release commit exists) as part of the release
-  checklist — it catches a changed-but-not-bumped app and flags a major
-  bump for explicit confirmation rather than letting it pass silently.
+- A shared `packages/*` dependency change (transitively) means a
+  non-target app's image *would* differ if rebuilt — that's **advisory
+  information only**, never a requirement to bump/rebuild/redeploy it.
+- Run `npm run versions:check -- --apps <target>[,<target>...]`
+  (`--apps` required — reports only, never auto-bumps, never infers release
+  targets) as part of the release checklist — it hard-fails only for a
+  named release target that wasn't bumped or that moved by a major digit
+  without explicit confirmation; every other affected app is reported
+  purely as information.
 
 **Responsive/layout changes to shared shell components**
-(`AppShell`/`Sidebar`/`TopNav` in `packages/design-system`) require
-verification against the full viewport matrix (1920/1440/1280/1180/1024/
-900/768/430/390) for the **whole rendered page**, not a cropped element —
-a shell overflow is a shell bug, fixed in the shell, never worked around
-in one consuming app. See `docs/platform/versioning.md` for the tooling
-(Puppeteer is already available in `node_modules`, no new dependency).
+(`AppShell`/`Sidebar`/`TopNav`/`PageHeader` in `packages/design-system`)
+require verification against the full viewport matrix (1920/1440/1280/
+1180/1024/900/768/430/390) for the **whole rendered page**, not a cropped
+element — a shell overflow is a shell bug, fixed in the shell, never
+worked around in one consuming app. When only one consumer actually needs
+a different layout, prefer an explicit opt-in prop with the existing
+behavior kept as the default (e.g. `PageHeader`'s `actionLayout`), rather
+than changing the shared default and re-validating every other consumer.
+See `docs/platform/versioning.md` for the viewport tooling (Puppeteer is
+already available in `node_modules`, no new dependency).

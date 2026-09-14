@@ -1,11 +1,14 @@
 # DijiOne — Per-application versioning and footer build metadata
 
 > Authoritative. Added when the footer's version/build display was
-> implemented; corrected twice after review found the bump policy and the
-> shared-component architecture still weren't right. This document is the
-> source of truth for how each application's version is defined, how it
-> reaches the UI, and the rules for who may change a major version number
-> and when an app's version must move at all.
+> implemented; corrected three times after review found the bump policy and
+> the shared-component architecture still weren't right — most recently to
+> separate **repository change** from **application release**: a monorepo
+> commit is not a release, and a shared-package change is not an automatic
+> release of every consumer. This document is the source of truth for how
+> each application's version is defined, how it reaches the UI, and the
+> rules for who may change a major version number and when an app's version
+> must move at all.
 
 ## The rule, in one sentence
 
@@ -36,9 +39,13 @@ apps/shell-web/package.json               "version": "1.0.1"
 apps/admin-web/package.json                "version": "1.0.1"
 apps/talent-web/package.json               "version": "1.0.1"
 apps/talentflow-portal-web/package.json    "version": "1.0.1"
-apps/birthday-web/package.json             "version": "1.0.1"
+apps/birthday-web/package.json             "version": "1.0.2"
 apps/birthday-supplier-web/package.json    "version": "1.0.1"
 ```
+
+(As of round 3: `birthday-web` is ahead of the others precisely because it
+was the only app actually released that round — exactly the independent,
+per-app history this document describes, not a typo.)
 
 (`apps/*-api` backend services are not currently in scope for this
 mechanism — this convention covers the six Next.js frontends, which is
@@ -47,36 +54,83 @@ extend this same pattern rather than inventing a second one.)
 
 ## How the value reaches the UI
 
-Three pieces of information are shown per app, in the existing footer area
-(the bottom of that app's sidebar, or — for the two header-shell apps,
-Supplier Portal and the TalentFlow Client Portal — a footer bar at the
-bottom of the page):
-
-| Value | Source | Baked in when |
-|---|---|---|
-| App version | That app's own `package.json` `"version"` | Every build, read directly by `next.config.ts` |
-| Git commit SHA | The `GIT_SHA` Docker build arg | Container image build (`az acr build` / `docker build`) |
-| **Build** date | The `BUILD_DATE` Docker build arg | Container image build |
-
-### "Built" vs. a release date — these are not the same thing
-
-`BUILD_DATE` identifies when the **artifact** (the container image) was
-built — it is deliberately **not** called or labeled a release/deployment
-date, because those are different concepts: an image can be built once and
-later promoted/deployed unchanged to a different environment at a later
-time, and conflating the two would misrepresent when something was
-actually released. The rendered label is always **"Built {date}"**, never
-a bare date and never "Release date":
+Three lines are shown per app, each a distinct concept, in the existing
+footer area (the bottom of that app's sidebar, or — for the two
+header-shell apps, Supplier Portal and the TalentFlow Client Portal — a
+footer bar at the bottom of the page):
 
 ```
 DijiBirthday · by Dijital Team
-v1.0.1 · 394527a · Built 2026-09-14
+v1.0.2 · Build 9ea594ddd113
+Released 2026-09-14
 ```
 
-If a true deployment/release timestamp is ever needed, it is a **separate**
-`RELEASE_DATE` value, injected by the deployment pipeline (not the image
-build) — not implemented as of this writing; this is a deliberate, named
-gap, not something silently folded into `BUILD_DATE`.
+| Line | Value | Source | Evaluated when |
+|---|---|---|---|
+| 1 | App name | Hardcoded per shell (`appName` prop) | — |
+| 2 | Version + the exact commit the artifact was built from | `package.json` `"version"` (build-time) + `GIT_SHA` (Docker build arg) | Image build time, baked into `NEXT_PUBLIC_*` |
+| 3 | The real release/deploy date, or omitted entirely if unavailable | `RELEASE_DATE`, an app-specific **runtime** env var | Container **runtime**, read fresh per request — never baked at build time |
+
+### "Built" vs. "Released" — genuinely different mechanisms, not just different words
+
+The commit/SHA line is labeled **"Build"** — it identifies the artifact.
+The date line is labeled **"Released"** — it identifies when *this specific
+deployment* actually happened, which can be later than the build (an image
+can be built once and promoted to another environment afterward without
+rebuilding — `deploy/promote.sh`'s whole purpose). Conflating the two would
+misrepresent when something was actually released, so they are sourced
+differently on purpose:
+
+- **Build info (version + SHA) is a build-time constant** — `NEXT_PUBLIC_*`,
+  baked into the client bundle by `next build`, identical for the lifetime
+  of that image regardless of where/when it's deployed.
+- **Release date is a runtime value, read per app** — see "Per-app
+  `RELEASE_DATE`" below. If it isn't wired up for a given app yet, the
+  footer simply omits the third line entirely; it is never fabricated from
+  `BUILD_DATE` or any other stand-in.
+
+### Per-app `RELEASE_DATE` — why a build-time value can't be used
+
+`RELEASE_DATE` must be genuinely **per-application** — Azure Container Apps
+environment variables are already scoped per service, so setting it via
+`az containerapp update -n birthday-web --set-env-vars RELEASE_DATE=<...>`
+touches only that one app; every other app's environment (including its
+own future `RELEASE_DATE`) is untouched by construction. **A single global
+value written identically into every service by one `main.bicep` run is
+explicitly rejected** — that would make every app appear newly released
+even when untouched.
+
+It also can't be read the way `NEXT_PUBLIC_*` values are (a plain
+`process.env` access baked at `next build` time), because deploy always
+happens *after* build — reading it at build time would freeze whatever
+value happened to be present then, or nothing at all. And a plain
+`process.env` read inside a page/layout component isn't automatically
+"read fresh per request" either: most of this app's routes are statically
+prerendered (confirmed via this app's own `next build` output — most
+routes show `○ (Static)`), so Next could bake a build-time snapshot of a
+layout that reads `process.env.RELEASE_DATE` directly, silently defeating
+the mechanism the first time a route happens to be statically optimized.
+
+**The mechanism actually used (`birthday-web`, round 3):** a dedicated
+Route Handler, `apps/birthday-web/src/app/api/meta/route.ts`, exporting
+`export const dynamic = "force-dynamic"` — this is the provable guarantee
+(confirmed in the app's own build output: `/api/meta` is listed as
+`ƒ (Dynamic)`, never static) that it executes fresh against the running
+standalone Node server (`output: "standalone"`) on every request, reading
+`process.env.RELEASE_DATE` live. It's served at `/birthday/api/meta` (this
+app's own `basePath`) — a client-side `fetch()` is **not** basePath-aware
+the way `next/link`/`router.push` are, so the bare path `/api/meta` would
+resolve to the wrong origin/path once reached through the DijiOne shell
+(`https://shell-host/api/meta` instead of the correct
+`https://shell-host/birthday/api/meta`) and silently 404 — confirmed by
+reading `shell-web`'s rewrite table (`/birthday/:path*` is a genuine
+wildcard forwarding any subpath, including `/birthday/api/meta`, straight
+to `birthday-web`). The app's shell (`birthday-shell.tsx`) fetches this
+once on mount and passes the result to `VersionFooter` as `releaseDate`.
+
+This pattern is documented here for the other 5 apps to adopt on their own
+future release, each substituting its own `basePath` — not built for them
+in this round (a Birthday-only release; see below).
 
 ### The mechanism, end to end
 
@@ -103,16 +157,17 @@ gap, not something silently folded into `BUILD_DATE`.
    `next dev` locally falls back to `NEXT_PUBLIC_GIT_SHA="dev"` and an
    empty build date.
 4. **`packages/design-system/src/shell/VersionFooter.tsx`** is
-   **presentation-only**: it takes `{ appName, version, gitSha, buildDate?,
-   tone? }` as **props** and reads no `process.env` itself, owns no global
-   version state. Each app's own shell file resolves its own
-   `NEXT_PUBLIC_*` values and passes them explicitly:
+   **presentation-only**: it takes `{ appName, version, gitSha,
+   releaseDate?, tone? }` as **props** and reads no `process.env` itself,
+   owns no global version state. Each app's own shell file resolves its own
+   `NEXT_PUBLIC_*` values (and, once wired, its own runtime release date)
+   and passes them explicitly:
    ```tsx
    <VersionFooter
      appName="DijiBirthday"
      version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
      gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
-     buildDate={process.env.NEXT_PUBLIC_BUILD_DATE}
+     releaseDate={releaseMeta?.release_date}
    />
    ```
    This is what makes "every app owns its own version" independently
@@ -136,88 +191,104 @@ audience, so no app is exempt from this.
 
 ## Versioning rules for future changes
 
-**The bump rule is artifact-based, not visibility-based**: if an app's own
-source/config changes and that app is rebuilt/released, its version
-increments — full stop, regardless of whether an end user would notice the
-difference. A pure internal refactor that changes a call site still counts,
-because the released artifact is genuinely different from the last one.
-The only apps that legitimately keep their prior version are ones with
-**zero** changes in a given release.
+**The bump rule is release-target-aware, not diff-based**: *if an
+application is selected for release AND its artifact differs from its
+previously released artifact, its semantic version must advance. If an
+application is NOT selected for release: don't deploy a new image for it,
+don't change its version, don't change its release date* — full stop,
+regardless of whether its source happens to be technically different due
+to a shared dependency. **A repository/monorepo commit is not the same
+thing as an application release, and a shared-package change is not an
+automatic release of every consumer** — this is the one thing earlier
+drafts of this policy got wrong and it's the whole point of this
+correction.
 
 - **Patch and minor increments** (`1.0.1 → 1.0.2`, `1.0.1 → 1.1.0`) are
-  routine maintenance — the agent may make these as part of normal
-  development without asking first.
+  routine maintenance for a release target — the agent may make these
+  without asking first.
 - **Major version increments** (`1.x.x → 2.0.0`, `2.x.x → 3.0.0`, …)
   **require explicit user approval before being made.** Never bump a major
   version as a side effect of an unrelated change, and never infer
   approval from a request that doesn't explicitly authorize one.
 - Each app's version is independent — bumping `birthday-web` says nothing
-  about any other app's version, and every app happening to bump in the
-  same release (see the worked example below) is a coincidence of that
-  release's scope, not a shared version.
-- A shared `packages/*` workspace-package change counts as changing every
-  app that depends on it (**transitively** — a change two dependency levels
-  deep still counts, not only direct dependencies), because those apps are
-  genuinely rebuilt with different content even though their own `apps/`
-  directory has no diff.
+  about any other app's version.
+- A shared `packages/*` workspace-package change (resolved transitively —
+  a change two dependency levels deep still counts) means every dependent
+  app's **image would differ if rebuilt** — that is **advisory
+  information only**, never a requirement to bump/rebuild/redeploy an app
+  that isn't actually being released this cycle. An app not selected for
+  release keeps its current image, version, and release date untouched,
+  even if its source would technically compile differently.
 - The **initial `1.0.0` baseline** (September 2026) was a deliberate,
-  explicitly user-approved exception to the major-bump-needs-approval rule:
-  every app started from the untouched `0.1.0` scaffold default, never a
-  deliberately chosen version, so establishing `1.0.0` was initializing
-  versioning, not a major bump on an established product line. That
-  reasoning does not carry forward.
+  explicitly user-approved exception to the major-bump-needs-approval rule
+  (every app started from the untouched `0.1.0` scaffold default, never a
+  deliberately chosen version) — that reasoning does not carry forward.
 
-### Worked example: this release
+### Worked example: this release (round 3 — Birthday-only)
 
-All 6 apps were genuinely touched by the release that introduced the
-prop-driven `VersionFooter` (every app's shell file needed its call site
-updated to the new prop shape) plus `birthday-web`'s own additional
-`OrderDetail.tsx` responsive fix — so **all 6 apps bump `1.0.0 → 1.0.1`**,
-including `talentflow-portal-web` (its footer gained a `VersionFooter` line
-it didn't have before). This is not "bump everything by default" — the
-next release that only touches `birthday-web` will only bump
-`birthday-web`; `npm run versions:check` (below) is what catches the case
-where a release should have bumped an app and didn't.
+`birthday-web` is the **only** release target this round (Upcoming
+Birthdays responsive layout, Lead Time Class deep-link, the 3-line footer
++ per-app `RELEASE_DATE` mechanism) — **`1.0.1 → 1.0.2`**. The shared
+`VersionFooter`/`PageHeader` source in `packages/design-system` also
+changed, and the other 5 apps' shell files needed a small mechanical prop
+update to stay compilable against the new `VersionFooter` shape — but
+**none of the other 5 apps are release targets this round**: their
+`package.json` versions, deployed images, and release dates are all left
+exactly as they were. They pick up the 3-line footer format on their own
+next release, whenever that is — not automatically now. (Compare with
+round 2's mistake, corrected here: round 2 bumped all 6 apps together for
+a purely presentational `VersionFooter` change, conflating "the shared
+source changed" with "every consumer is being released.")
 
 ## Continuous enforcement: `npm run versions:check`
 
 Documentation alone relies on a future session remembering the bump rule.
-`scripts/check-app-versions.js` (run via `npm run versions:check [-- --base
-<ref>] [-- --committed]`) **reports**, never auto-bumps — it detects the
-"changed a released artifact but forgot to bump its version" case:
+`scripts/check-app-versions.js`, run via:
 
+```
+npm run versions:check -- --apps <name>[,<name>...] [--base <ref>] [--committed]
+```
+
+**reports**, never auto-bumps, and never decides which apps to release —
+that's an explicit, required input, not something the tool infers:
+
+- **`--apps` is required.** Release-target selection must be a conscious,
+  explicit choice every run — omitting it is a usage error, never an
+  implicit "check every app in the workspace" default.
 - **Default mode compares `<base>` (default `HEAD~1`) against the current
   working tree** — committed history since `<base>`, plus staged,
   unstaged, and untracked changes — because this is meant to run **before**
-  a release commit exists, answering "what am I about to release?", not
-  only "what did I already commit?" `--committed` restricts detection to
+  a release commit exists. `--committed` restricts detection to
   `<base>..HEAD` only, for a CI context that only cares about committed
   history.
-- An app counts as changed if any file under `apps/<name>/` differs, or any
-  file in a `packages/*` workspace it depends on (resolved transitively)
-  differs.
-- The app's *current* version is always read from the filesystem
-  `package.json` (so a working-tree edit is seen); its *base* version comes
-  from `git show <base>:apps/<name>/package.json`.
-- A changed app whose version **didn't move** is reported as
-  `ERROR: version bump required` and the tool exits non-zero.
-- A changed app whose version moved by a **major** digit is reported as
-  `MAJOR VERSION CHANGE — USER APPROVAL REQUIRED` and also exits non-zero
-  — not because a major bump is wrong, but because it must never pass
-  silently as routine; a human confirms it was the explicitly-approved one.
+- **Release targets** (named via `--apps`): the app's version at `<base>`
+  vs. the current working tree must differ, or it's a hard failure
+  (`ERROR: version bump required`); a major-digit jump is flagged as
+  needing explicit approval. **This is the only section that can fail the
+  check.**
+- **Affected by shared source but not selected for this release**: every
+  other app whose `apps/<name>/` directory *or* a `packages/*` dependency
+  it uses (resolved transitively) differs, but isn't named in `--apps` —
+  reported as pure information. **Never gates the check, never implies
+  those apps should be rebuilt or deployed.**
 - The tool makes **no** patch-vs-minor decision itself — that stays an
   agent/contributor judgment call per the rules above.
 
-Example output:
+Example output (this release):
 
 ```
-Changed application artifacts:
-  birthday-web              1.0.0 -> 1.0.1   OK
-  talent-web                1.0.0 -> 1.0.1   OK
-  admin-web                 1.0.0 -> 1.0.0   ERROR: version bump required
+Release targets:
+  birthday-web               1.0.1 -> 1.0.2   OK
+
+Affected by shared source but not selected for this release (informational only — NOT rebuilt/deployed):
+  shell-web                  — app source
+  admin-web                  — app source
+  talent-web                 — app source
+  talentflow-portal-web      — app source
+  birthday-supplier-web      — app source
 
 Untouched:
-  talentflow-portal-web     1.0.1 (unchanged)
+  (none)
 ```
 
 Run this as a step in the release checklist (before finalizing a release
@@ -247,20 +318,49 @@ page. Puppeteer with a locally cached Chromium build is already available
 in this repo's `node_modules` (no new dependency) for real headless-browser
 verification; prefer it over reasoning about pixel budgets alone.
 
+## Follow-up work (not built yet — tracked here on purpose)
+
+- **`RELEASE_DATE` for the other 5 apps.** Only `birthday-web` has the
+  `/api/meta` force-dynamic Route Handler + shell wiring. The pattern is
+  documented above; each other app adopts it on its own future release.
+- **`main.bicep` `RELEASE_DATE` persistence.** Deliberately **not**
+  touched this round. A `releaseDates object = {}` parameter with a
+  default-empty map is only safe if every future `main.bicep` deployment
+  reliably repopulates the full map first — shipping the parameter without
+  that wrapper logic in the same change would be a half-built mechanism
+  that silently erases an app's `RELEASE_DATE` the first time someone runs
+  `main.bicep` for an unrelated reason (Container Apps `env` arrays are
+  fully replaced, not merged, by a bicep deployment). **Do not add the
+  bicep parameter without the wrapper logic in the same change.** When this
+  is eventually built: `main.bicep` takes a `releaseDates` object keyed by
+  service name (never one global value), and the deployment wrapper
+  (`deploy/deploy.sh` or equivalent) is responsible for reading every
+  currently-deployed service's live `RELEASE_DATE`, carrying them forward
+  unchanged, and overwriting only the entry for the app(s) actually being
+  released that run, before ever invoking `main.bicep`. Until this exists,
+  **do not run a full multi-service `main.bicep` deployment against an
+  environment that has any app-specific `RELEASE_DATE` set via
+  `az containerapp update`** without first manually capturing and
+  understanding what would be lost.
+
 ## Where this is enforced / referenced
 
-- `deploy/Dockerfile.web` — build-arg plumbing.
+- `deploy/Dockerfile.web` — build-arg plumbing (version/SHA — build-time
+  only; `RELEASE_DATE` is deliberately NOT a build arg, see above).
 - `deploy/build-images.sh`, `deploy/build-push.sh` — compute + pass
   `GIT_SHA`/`BUILD_DATE` for every web image build.
 - Each app's `next.config.ts` — reads its own `package.json` version.
+- `apps/birthday-web/src/app/api/meta/route.ts` — the force-dynamic
+  runtime `RELEASE_DATE` endpoint (birthday-web only, so far).
 - `packages/design-system/src/shell/VersionFooter.tsx` — the shared,
-  presentation-only, prop-driven rendering component.
+  presentation-only, prop-driven rendering component (3-line format).
 - Each app's shell component (`birthday-shell.tsx`, `talent-shell.tsx`,
   `admin-shell.tsx`, `shell-web/src/app/page.tsx`,
-  `admin-shell.tsx`, `birthday-supplier-web/src/app/app-shell.tsx`,
+  `birthday-supplier-web/src/app/app-shell.tsx`,
   `talentflow-portal-web/src/app/app-shell.tsx`) — resolves its own
   metadata and passes it to `VersionFooter` as props.
-- `scripts/check-app-versions.js` + `npm run versions:check` — continuous
-  enforcement of the bump rule.
+- `scripts/check-app-versions.js` + `npm run versions:check -- --apps
+  <targets>` — continuous, release-target-aware enforcement of the bump
+  rule.
 - Root `CLAUDE.md`'s "PER-APPLICATION VERSIONING CONTRACT" — points here
   as the authoritative versioning convention.
