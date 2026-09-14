@@ -83,12 +83,12 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
       </p>
       <div className="flex flex-col gap-3">
         {candidate.applications.map((app) => (
-          <Card key={app.application_id} className="flex items-center justify-between p-4">
-            <div>
-              <p className="text-sm font-semibold text-dt-text-primary">{app.designation}</p>
-              <p className="text-xs text-dt-text-secondary">{app.client_name}</p>
+          <Card key={app.application_id} className="flex flex-wrap items-center justify-between gap-2 p-4">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-dt-text-primary">{app.designation}</p>
+              <p className="truncate text-xs text-dt-text-secondary">{app.client_name}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <StatusBadge status={app.current_stage} />
               <StatusBadge status={app.status} />
             </div>

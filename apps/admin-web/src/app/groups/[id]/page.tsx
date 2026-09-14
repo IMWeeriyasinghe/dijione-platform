@@ -334,11 +334,11 @@ export default function AdminGroupDetailPage() {
       </Link>
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-dt-text-primary">{group.display_name}</h1>
-          <p className="text-sm text-dt-text-secondary">{group.key} · {group.group_type}</p>
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-semibold text-dt-text-primary">{group.display_name}</h1>
+          <p className="truncate text-sm text-dt-text-secondary">{group.key} · {group.group_type}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <StatusBadge status={group.status === "ACTIVE" ? "ACTIVE_CLIENT" : "INACTIVE"} label={group.status === "ACTIVE" ? "Active" : "Inactive"} />
           <Button
             size="sm"

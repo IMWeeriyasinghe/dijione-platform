@@ -25,10 +25,10 @@ function Shell({ children }: { children: React.ReactNode }) {
           Viewing as {me.user_name || "supplier user"} — read-only internal preview. Sign out to exit.
         </div>
       )}
-      <header className="flex items-center justify-between border-b border-dt-border bg-dt-surface px-6 py-4">
-        <div className="flex items-center gap-3">
-          <BrandLogo width={110} />
-          <div className="border-l border-dt-border pl-3">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dt-border bg-dt-surface px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <BrandLogo width={110} className="shrink-0" />
+          <div className="hidden border-l border-dt-border pl-3 sm:block">
             <p className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">
               DijiBirthday · by Dijital Team
             </p>
@@ -46,13 +46,13 @@ function Shell({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           onClick={() => setToken(null)}
-          className="flex items-center gap-1.5 rounded-lg border border-dt-border px-3 py-1.5 text-sm text-dt-text-secondary hover:text-dt-text-primary"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dt-border px-3 py-1.5 text-sm text-dt-text-secondary hover:text-dt-text-primary"
         >
           <LogOut className="size-4" />
           Sign out
         </button>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
     </div>
   );
 }

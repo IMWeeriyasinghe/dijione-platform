@@ -48,7 +48,7 @@ export function NotificationsPanel() {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-40 mt-2 w-80 rounded-2xl border border-dt-border bg-dt-surface p-2 shadow-xl">
+        <div className="absolute right-0 z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-dt-border bg-dt-surface p-2 shadow-xl">
           <div className="flex items-center justify-between px-2 py-1.5">
             <p className="text-sm font-semibold text-dt-text-primary">Notifications</p>
             {unreadCount > 0 && <span className="text-xs text-dt-text-secondary">{unreadCount} unread</span>}

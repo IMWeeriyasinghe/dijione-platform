@@ -107,11 +107,11 @@ export function Pagination({
   const end = Math.min(page * pageSize, total);
 
   return (
-    <div className="mt-4 flex items-center justify-between">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-dt-text-secondary">
         {total === 0 ? "No results" : `${start}–${end} of ${total}`}
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={page <= 1}
@@ -121,7 +121,7 @@ export function Pagination({
           <ChevronLeft className="size-4" />
           Previous
         </button>
-        <span className="text-sm text-dt-text-secondary">
+        <span className="text-sm text-dt-text-secondary whitespace-nowrap">
           Page {page} of {totalPages}
         </span>
         <button

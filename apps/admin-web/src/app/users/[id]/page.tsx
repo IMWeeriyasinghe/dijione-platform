@@ -299,14 +299,14 @@ export default function AdminUserDetailPage() {
       </Link>
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Avatar name={user.full_name} size={44} />
-          <div>
-            <h1 className="text-2xl font-semibold text-dt-text-primary">{user.full_name}</h1>
-            <p className="text-sm text-dt-text-secondary">{user.email}</p>
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-semibold text-dt-text-primary">{user.full_name}</h1>
+            <p className="truncate text-sm text-dt-text-secondary">{user.email}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <StatusBadge status={user.is_active ? "ACTIVE_CLIENT" : "CANCELLED"} label={user.is_active ? "Active" : "Inactive"} />
           <Button
             size="sm"
@@ -419,12 +419,12 @@ export default function AdminUserDetailPage() {
           )}
           <div className="flex flex-col divide-y divide-dt-border">
             {userGroups.map((g) => (
-              <div key={g.id} className="flex items-center justify-between py-2.5">
-                <div>
-                  <Link href={`/groups/${g.id}`} className="text-sm font-medium text-dt-burnt-orange">
+              <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                <div className="min-w-0">
+                  <Link href={`/groups/${g.id}`} className="truncate text-sm font-medium text-dt-burnt-orange">
                     {g.display_name}
                   </Link>
-                  <p className="text-xs text-dt-text-secondary">{g.group_type} · {g.module_assignments.length} module{g.module_assignments.length === 1 ? "" : "s"}</p>
+                  <p className="truncate text-xs text-dt-text-secondary">{g.group_type} · {g.module_assignments.length} module{g.module_assignments.length === 1 ? "" : "s"}</p>
                 </div>
                 <Button
                   size="sm"
@@ -485,8 +485,8 @@ export default function AdminUserDetailPage() {
               </div>
               {effectiveQuery.data.modules.map((m) => (
                 <div key={m.module_key} className="border-t border-dt-border pt-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-dt-text-primary">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="min-w-0 truncate text-sm font-medium text-dt-text-primary">
                       {m.module_name} — {m.role_name}
                     </p>
                     <StatusBadge status={m.enabled ? "ACTIVE_CLIENT" : "CANCELLED"} label={m.enabled ? "Enabled" : "Disabled"} />
