@@ -51,6 +51,7 @@ vi.mock("@dijione/design-system", () => ({
       <main>{children}</main>
     </div>
   ),
+  VersionFooter: ({ appLabel }: { appLabel: string }) => <p data-testid="version-footer">{appLabel}</p>,
 }));
 
 import { useTalentScope } from "@dijione/auth-client";

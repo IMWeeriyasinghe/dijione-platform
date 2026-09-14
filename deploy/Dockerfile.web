@@ -47,6 +47,20 @@ ENV PLATFORM_API_URL=${PLATFORM_API_URL} \
     TALENT_WEB_URL=${TALENT_WEB_URL} \
     BIRTHDAY_WEB_URL=${BIRTHDAY_WEB_URL}
 
+# Per-app footer version/build metadata (docs/platform/versioning.md). The
+# app VERSION itself is read from each app's own package.json at build time
+# (never a build arg — it must never drift from what's committed); only the
+# two values package.json can't know come in as build args: the exact
+# commit this image was built from, and when. Each app's next.config.ts
+# reads these via process.env and re-exposes them as NEXT_PUBLIC_* so
+# Next's build-time replacement bakes an app-specific literal into that
+# app's own client bundle — see VersionFooter's own doc comment for why one
+# shared component still renders different values per app.
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_SHA=${GIT_SHA} \
+    BUILD_DATE=${BUILD_DATE}
+
 COPY package.json package-lock.json .nvmrc ./
 COPY packages ./packages
 COPY apps ./apps

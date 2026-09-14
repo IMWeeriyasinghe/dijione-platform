@@ -22,6 +22,7 @@ export * from "./shell/NotificationsPanel";
 export * from "./shell/Sidebar";
 export * from "./shell/TopNav";
 export * from "./shell/UserMenu";
+export * from "./shell/VersionFooter";
 
 export * from "./providers";
 export * from "./utils";

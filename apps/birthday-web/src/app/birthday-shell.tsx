@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, AuthGate, EmptyState } from "@dijione/design-system";
+import { AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useBirthdayScope } from "@dijione/auth-client";
 import { CakeSlice, LayoutDashboard, ListOrdered, Mail, Truck } from "lucide-react";
@@ -47,7 +47,7 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
       topNavTitle="Birthday Workflow Automation"
       sections={sections}
       homeHref="/"
-      footer={<p className="text-xs text-white/60">DijiBirthday · by Dijital Team</p>}
+      footer={<VersionFooter appLabel="DijiBirthday" />}
     >
       {children}
     </AppShell>

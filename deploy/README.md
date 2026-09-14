@@ -52,6 +52,15 @@ deploy/
 
 Create each once: `az deployment group create -g <rg> -f deploy/bicep/modules/acr.bicep -p name=<registry>`.
 
+## Per-app version/build footer metadata
+
+Every web image build passes `GIT_SHA` and `BUILD_DATE` build args (see
+`build-images.sh`/`build-push.sh`) so each app's footer can show its own
+version (from that app's own `package.json`), commit SHA, and build date —
+never a single shared DijiOne-wide version. Full convention, including the
+rule that major version bumps need explicit approval:
+`docs/platform/versioning.md`.
+
 ## Prerequisites (user)
 
 - `az login` on a subscription with spend approved (see

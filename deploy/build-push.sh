@@ -12,6 +12,10 @@ TAG="${TAG:-latest}"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-false}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 
+# Per-app footer version/build metadata (docs/platform/versioning.md).
+GIT_SHA="${GIT_SHA:-$(git rev-parse --short=12 HEAD)}"
+BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+
 # talentflow-portal-web is the external Client Talent Review Workspace —
 # always part of DijiTalentFlow, its own hostname, not proxied through shell-web.
 API_SERVICES=(platform-api admin-api talent-api recruitment-api)
@@ -34,6 +38,7 @@ done
 for app in "${WEB_APPS[@]}"; do
   echo "==> build $app"
   docker build -f deploy/Dockerfile.web --build-arg APP="$app" \
+    --build-arg GIT_SHA="$GIT_SHA" --build-arg BUILD_DATE="$BUILD_DATE" \
     -t "$REGISTRY/dijione/$app:$TAG" .
   docker push "$REGISTRY/dijione/$app:$TAG"
 done

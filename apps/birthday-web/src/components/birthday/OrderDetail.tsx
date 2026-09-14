@@ -87,9 +87,9 @@ const ADDRESS_VERIFICATION_OPTIONS = [
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-xs font-medium uppercase tracking-wide text-dt-text-secondary">{label}</span>
-      <span className="text-sm text-dt-text-primary">{value}</span>
+      <span className="text-sm wrap-break-word text-dt-text-primary">{value}</span>
     </div>
   );
 }
@@ -324,10 +324,21 @@ export function OrderDetail({ orderId }: { orderId: number }) {
         Back to orders
       </Link>
 
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 sm:flex-row sm:items-center sm:justify-between">
+      {/* Responsive review round: this row used to switch from a stacked
+          layout to a single side-by-side row at `sm:` (640px) — far too
+          early for a persistent 256px sidebar plus up to 8 action buttons.
+          On real laptop widths (~900-1280px available content width after
+          the sidebar) the button cluster wrapped onto 2-3 lines while
+          `items-center` vertically centred the single-line title against
+          that much taller block, producing the reported cramped/misaligned
+          look. Fix: stay stacked (full-width title, full-width wrapping
+          button row below) all the way up to `lg:` (1024px), and switch to
+          a top-aligned (`items-start`, not `items-center`) row only once
+          there's realistically enough width for it — 1280px+ in practice. */}
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold text-dt-text-primary">{order.order_reference}</h1>
+            <h1 className="text-xl font-semibold text-dt-text-primary wrap-break-word">{order.order_reference}</h1>
             <StatusBadge status={order.status} />
             {order.requires_admin_review && <StatusBadge status="PENDING" label="Needs review" />}
           </div>
@@ -339,7 +350,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
         </div>
 
         {scope?.isAdmin && (
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 lg:shrink-0">
             <Button
               size="sm"
               variant="primary"

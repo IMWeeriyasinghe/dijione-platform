@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { BrandLogo } from "@dijione/design-system";
+import { BrandLogo, VersionFooter } from "@dijione/design-system";
 import { SupplierAuthProvider, useSupplierAuth } from "@/lib/supplier-auth";
 import { usePortalMe } from "@/lib/portal-me";
 import { LoginScreen } from "./login-screen";
@@ -53,6 +53,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+      <footer className="border-t border-dt-border bg-dt-surface px-4 py-3 sm:px-6">
+        <VersionFooter appLabel="Supplier Portal" tone="light" />
+      </footer>
     </div>
   );
 }

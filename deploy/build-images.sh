@@ -23,6 +23,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-true}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 
+# Per-app footer version/build metadata (docs/platform/versioning.md) — the
+# exact commit + timestamp this set of images was built from. The app
+# VERSION itself is never passed here; each app reads its own from its own
+# package.json at build time.
+BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+
 API_SERVICES=(platform-api admin-api talent-api recruitment-api)
 WEB_APPS=(shell-web admin-web talent-web talentflow-portal-web)
 if [ "$DEPLOY_BIRTHDAY" = "true" ]; then
@@ -55,8 +61,14 @@ build_one() {  # $1 service  $2 dockerfile  $3 build-arg name
   d="$(digest_of "$svc")"
   if [ -z "$d" ]; then
     echo ">> building dijione/$svc:$GITSHA"
-    az acr build -r "$ACR" -f "deploy/$dockerfile" --build-arg "$arg=$svc" \
-      -t "dijione/$svc:$GITSHA" "$REPO_ROOT" -o none
+    if [ "$dockerfile" = "Dockerfile.web" ]; then
+      az acr build -r "$ACR" -f "deploy/$dockerfile" --build-arg "$arg=$svc" \
+        --build-arg "GIT_SHA=$GITSHA" --build-arg "BUILD_DATE=$BUILD_DATE" \
+        -t "dijione/$svc:$GITSHA" "$REPO_ROOT" -o none
+    else
+      az acr build -r "$ACR" -f "deploy/$dockerfile" --build-arg "$arg=$svc" \
+        -t "dijione/$svc:$GITSHA" "$REPO_ROOT" -o none
+    fi
     d="$(digest_of "$svc")"
   else
     echo ">> dijione/$svc:$GITSHA already present, skipping"

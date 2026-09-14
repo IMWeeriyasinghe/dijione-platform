@@ -3840,3 +3840,39 @@ Every reusable source-data domain MUST provide:
     requirement, security problem, verified defect, or architectural
     violation genuinely requires a change — not an alternative style or a
     speculative improvement.
+
+---
+
+# PER-APPLICATION VERSIONING CONTRACT
+
+> Authoritative. Added when the footer's per-app version/build metadata was
+> implemented. Full detail, including the exact build-time mechanism:
+> `docs/platform/versioning.md`.
+
+Every application in this monorepo (`shell-web`, `admin-web`, `talent-web`,
+`talentflow-portal-web`, `birthday-web`, `birthday-supplier-web`) owns its
+**own** version number — its own `package.json` `"version"` field. There is
+no shared, platform-wide DijiOne version. Two apps' footers showing the
+same version number is a defect unless that is genuinely, coincidentally
+correct for both — never something to engineer on purpose.
+
+Each app's footer (the existing sidebar/header footer area) shows that
+app's own version, Git commit SHA, and build date, sourced automatically:
+version from that app's `package.json` at build time, commit SHA and build
+date from Docker build args set by `deploy/build-images.sh` /
+`deploy/build-push.sh`. Nothing about this requires a runtime environment
+variable on the deployed Container App — it is all baked in at image build
+time.
+
+**Versioning rule:**
+
+- Patch/minor bumps (`1.0.0 → 1.0.1`, `1.0.0 → 1.1.0`) are routine
+  maintenance — the agent may make these as part of normal development
+  without asking first.
+- Major bumps (`1.x.x → 2.0.0`, `2.x.x → 3.0.0`, …) **require explicit user
+  approval before being made.** Never bump a major version as a side
+  effect of an unrelated change, and never infer approval from a request
+  that doesn't explicitly authorize one.
+
+This rule applies per app — approval for a major bump on one app says
+nothing about any other app.

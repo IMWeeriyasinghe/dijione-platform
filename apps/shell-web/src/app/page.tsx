@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, AuthGate, Button, Card, EmptyState, ErrorState, LoadingState, formatDateTime } from "@dijione/design-system";
+import { AppShell, AuthGate, Button, Card, EmptyState, ErrorState, LoadingState, VersionFooter, formatDateTime } from "@dijione/design-system";
 import { listNotifications, useAuth, usePlatformAdmin } from "@dijione/auth-client";
 import { useQuery } from "@tanstack/react-query";
 import { Home, ShieldCheck, Sparkles } from "lucide-react";
@@ -52,7 +52,7 @@ function HomeContent() {
       title="DijiOne"
       topNavTitle="DijiOne Home"
       sections={[{ items: navItems }]}
-      footer={<p className="text-xs text-white/60">DijiOne · by Dijital Team</p>}
+      footer={<VersionFooter appLabel="DijiOne" />}
     >
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-dt-text-primary">

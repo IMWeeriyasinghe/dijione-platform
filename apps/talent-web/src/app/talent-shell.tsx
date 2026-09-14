@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, AuthGate, EmptyState } from "@dijione/design-system";
+import { AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useTalentScope } from "@dijione/auth-client";
 import {
@@ -78,7 +78,7 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
       title="DijiTalentFlow"
       topNavTitle={scope.isStaff ? "Talent Acquisition Workspace" : "Client Workspace"}
       sections={scope.isStaff ? staffSections : clientSections}
-      footer={<p className="text-xs text-white/60">DijiTalentFlow · by Dijital Team</p>}
+      footer={<VersionFooter appLabel="DijiTalentFlow" />}
     >
       {children}
     </AppShell>
