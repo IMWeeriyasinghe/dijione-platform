@@ -128,6 +128,7 @@ def link_unmatched_email(
         OrderEvent(
             order_id=order.id, event_type="SUPPLIER_EMAIL_REPLY",
             actor_id=scope.user.id, actor_type=ActorType.USER.value,
+            actor_display_name=scope.user.full_name,
             detail=f"Manually linked from the unmatched queue: {row.body_preview[:240]}",
         )
     )

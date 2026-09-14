@@ -200,6 +200,7 @@ def _handle_failure(
 def _send(
     db: Session, order: BirthdayOrder, *, actor_id: int | None, target_status: OrderStatus,
     released_by: int | None = None, guard_duplicate: bool = False,
+    actor_display_name: str | None = None,
 ) -> BirthdayOrder:
     if order.supplier is None:
         raise NoSupplierAssignedError(f"Order {order.order_reference} has no supplier assigned")
@@ -273,6 +274,7 @@ def _send(
         actor_id=actor_id, actor_type=ActorType.SYSTEM if actor_id is None else ActorType.USER,
         detail=f"Email sent, message_id={result.message_id}",
         event_type="AUTO_RELEASED" if released_by is None else "STATUS_CHANGE",
+        actor_display_name=actor_display_name if actor_id is not None else "System",
     )
     db.add(
         OrderEvent(
@@ -282,6 +284,7 @@ def _send(
             to_status=order.status,
             actor_id=actor_id,
             actor_type=ActorType.SYSTEM.value if actor_id is None else ActorType.USER.value,
+            actor_display_name=actor_display_name if actor_id is not None else "System",
             detail=f"message_id={result.message_id}",
         )
     )
@@ -290,12 +293,14 @@ def _send(
     return order
 
 
-def send_order_to_supplier(db: Session, order: BirthdayOrder, *, actor_id: int | None) -> BirthdayOrder:
+def send_order_to_supplier(
+    db: Session, order: BirthdayOrder, *, actor_id: int | None, actor_display_name: str | None = None,
+) -> BirthdayOrder:
     """Manual release — used for held orders and one-off ad hoc sends.
     Recorded as human-released (released_by=actor_id)."""
     return _send(
         db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER,
-        released_by=actor_id, guard_duplicate=True,
+        released_by=actor_id, guard_duplicate=True, actor_display_name=actor_display_name,
     )
 
 
@@ -309,22 +314,29 @@ def auto_release_order(db: Session, order: BirthdayOrder) -> BirthdayOrder:
     )
 
 
-def confirm_release_order(db: Session, order: BirthdayOrder, *, actor_id: int) -> BirthdayOrder:
+def confirm_release_order(
+    db: Session, order: BirthdayOrder, *, actor_id: int, actor_display_name: str | None = None,
+) -> BirthdayOrder:
     """The one-click "Confirm & release" action for a flagged
     (REQUIRES_REVIEW) order — the exception-only approval (plan §K)."""
     order.review_confirmed_at = datetime.now(UTC)
     order.review_confirmed_by = actor_id
     return _send(
         db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER,
-        released_by=actor_id, guard_duplicate=True,
+        released_by=actor_id, guard_duplicate=True, actor_display_name=actor_display_name,
     )
 
 
-def resend_order_to_supplier(db: Session, order: BirthdayOrder, *, actor_id: int | None) -> BirthdayOrder:
+def resend_order_to_supplier(
+    db: Session, order: BirthdayOrder, *, actor_id: int | None, actor_display_name: str | None = None,
+) -> BirthdayOrder:
     """Manual retry for orders already SENT_TO_SUPPLIER/REQUIRES_ATTENTION
     after a prior failure — same order_reference, never a second order.
     Explicit, so the duplicate guard does not apply."""
-    return _send(db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER, released_by=actor_id)
+    return _send(
+        db, order, actor_id=actor_id, target_status=OrderStatus.SENT_TO_SUPPLIER,
+        released_by=actor_id, actor_display_name=actor_display_name,
+    )
 
 
 def retry_failed_outbound(db: Session, *, now: datetime | None = None) -> dict:

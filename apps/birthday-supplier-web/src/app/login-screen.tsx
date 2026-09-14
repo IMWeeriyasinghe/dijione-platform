@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { BrandLogo } from "@dijione/design-system";
 import {
   devSupplierLogin,
   getSupplierAuthConfig,
@@ -44,7 +45,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md rounded-2xl border border-dt-border bg-dt-surface p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-dt-burnt-orange">
+        <BrandLogo width={140} className="mb-4" />
+        <p className="text-xs font-semibold uppercase tracking-wide text-dt-orange">
           DijiBirthday · by Dijital Team
         </p>
         <h1 className="mt-1 text-xl font-semibold text-dt-text-primary">Supplier Portal Sign-in</h1>

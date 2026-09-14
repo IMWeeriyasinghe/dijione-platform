@@ -171,10 +171,12 @@ def ingest_message(db: Session, msg: InboundMessage) -> str:
         issue_id=matched_outbound.issue_id if matched_outbound is not None else None,
     )
     db.add(comm)
+    _supplier_user = db.get(SupplierUser, supplier_user_id) if supplier_user_id is not None else None
     db.add(
         OrderEvent(
             order_id=order.id, event_type="SUPPLIER_EMAIL_REPLY",
             actor_id=supplier_user_id, actor_type=ActorType.SUPPLIER.value,
+            actor_display_name=(_supplier_user.full_name or _supplier_user.email) if _supplier_user else None,
             detail=body[:280] + (f"  [{msg.attachment_count} attachment(s) withheld]" if msg.attachment_count else ""),
         )
     )

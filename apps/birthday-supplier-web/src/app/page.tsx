@@ -43,7 +43,7 @@ export default function SupplierDashboardPage() {
         <Link href="/orders?due=overdue" className="block">
           <MetricCard label="Overdue" value={data.overdue} icon={AlertTriangle} />
         </Link>
-        <Link href="/orders?status_filter=CONFIRMED,PREPARING,OUT_FOR_DELIVERY" className="block">
+        <Link href="/orders?has_open_issue=true" className="block">
           <MetricCard label="Open problems" value={data.open_issues} icon={TriangleAlert} />
         </Link>
       </div>
@@ -63,7 +63,7 @@ export default function SupplierDashboardPage() {
 
       <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">Done</h3>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Link href="/orders?status_filter=DELIVERED,COMPLETED" className="block">
+        <Link href="/orders?completed=today" className="block">
           <MetricCard label="Completed today" value={data.completed_today} icon={PackageCheck} tone="brand" />
         </Link>
       </div>

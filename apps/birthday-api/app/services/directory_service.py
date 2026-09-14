@@ -163,7 +163,12 @@ def list_upcoming_birthdays(
             continue
 
     if group_filter and group_filter != "ALL":
-        items = [i for i in items if group_for(i) == group_filter]
+        # Phase 1.6 §16 (R15): comma-list, mirroring cake_status_filter
+        # below — needed so the frontend's curated default ("who do I need
+        # to care about" = ELIGIBLE + NEEDS_ATTENTION) is a real supported
+        # filter, not a value silently faked client-side.
+        wanted_groups = {g.strip() for g in group_filter.split(",") if g.strip()}
+        items = [i for i in items if group_for(i) in wanted_groups]
 
     if cake_status_filter:
         wanted = {s.strip() for s in cake_status_filter.split(",") if s.strip()}

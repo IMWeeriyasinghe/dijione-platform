@@ -60,6 +60,13 @@ const NEEDS_ATTENTION_ADDRESS_STATUSES = new Set(["NEEDS_UPDATE", "VERIFICATION_
 
 type Group = "ELIGIBLE" | "FUTURE_STARTER" | "NOT_ELIGIBLE" | "NEEDS_ATTENTION";
 
+// Phase 1.6 §16 (R15) — the curated default: "who has a birthday coming up
+// that I actually need to look at", not every group mixed together. The
+// backend's group_filter now accepts a comma-list (mirroring
+// cake_status_filter's existing pattern) specifically to support this.
+// "ALL" stays one click away in the same Select.
+const DEFAULT_GROUP_FILTER = "ELIGIBLE,NEEDS_ATTENTION";
+
 // Display-only mirror of birthday-api's directory_service.group_for — the
 // actual filtering (Phase-Next §4) now happens server-side via the
 // `filter` query param, this is purely for the per-row badge label.
@@ -103,11 +110,17 @@ export default function UpcomingPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const [days, setDays] = useState(30);
-  const [groupFilter, setGroupFilter] = useState<Group | "ALL">("ALL");
+  // string, not Group | "ALL": a comma-list is a real supported value now
+  // (Phase 1.6 §16) — "ALL" (empty filter) stays available in the Select.
+  const [groupFilter, setGroupFilter] = useState<string>(DEFAULT_GROUP_FILTER);
   const [cakeStatusFilter, setCakeStatusFilter] = useState("");
   const [province, setProvince] = useState("");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<string | null>(null);
+  // Explicit default (Phase 1.6 §16/R15) — the server already falls back to
+  // this when sort_by is empty, but asserting it here means the default
+  // ordering is declared where a future change is most likely to be made,
+  // not left to an implicit backend fallback.
+  const [sortBy, setSortBy] = useState<string | null>("days_until_birthday");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [page, setPage] = useState(1);
   const [scanResult, setScanResult] = useState<RunDetectionResult | null>(null);
@@ -167,9 +180,10 @@ export default function UpcomingPage() {
           <div className="flex flex-wrap gap-2">
             <Select
               value={groupFilter}
-              onChange={(e) => resetAndSet(setGroupFilter, e.target.value as Group | "ALL")}
+              onChange={(e) => resetAndSet(setGroupFilter, e.target.value)}
               className="w-auto"
             >
+              <option value={DEFAULT_GROUP_FILTER}>Needs my attention (default)</option>
               <option value="ALL">All groups</option>
               {GROUP_FILTER_OPTIONS.filter((g) => g !== "ALL").map((g) => (
                 <option key={g} value={g}>

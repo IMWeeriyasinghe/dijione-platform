@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -10,7 +10,17 @@ from app.models.birthday_order import BirthdayOrder
 from app.models.order_issue import OrderIssue
 from app.services.order_status_service import SUPPLIER_VISIBLE_STATUSES
 
-# Orders whose delivery is "settled" — excluded from due=today/tomorrow/overdue.
+# Orders whose *fulfilment* is settled — excluded from due=today/tomorrow/
+# overdue, verify=overdue, acceptance=*, and every dashboard "is this order
+# still actionable" count. This is the single shared source of truth for
+# that question (Phase 1.6 §4) — do not re-declare a local copy elsewhere;
+# every prior duplicate (count_overdue_delivery's own tuple, portal.py's
+# due-counts, which had drifted to omit UNABLE_TO_FULFIL) has been removed
+# in favour of importing this one.
+#
+# This is NOT the same concept as "communication is closed" (Phase 1.6
+# review correction #1) — see order_status_service.SUPPLIER_COMMUNICATION_CLOSED_STATUSES
+# for that narrower, separately-named set.
 _TERMINAL_STATUSES = (
     OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value,
     OrderStatus.CANCELLED.value, OrderStatus.UNABLE_TO_FULFIL.value,
@@ -43,6 +53,58 @@ def _apply_has_open_issue(stmt, has_open_issue: bool | None):
     return stmt.where(
         BirthdayOrder.id.in_(sub) if has_open_issue else BirthdayOrder.id.notin_(sub)
     )
+
+
+def _apply_verify(stmt, verify: str | None, *, today: date | None = None):
+    """Phase 1.6 §7 (R8): the exact predicate behind the "Verification
+    overdue" dashboard card, now also reachable as a list filter so the
+    card's link is never a superset of what it counts. Only 'overdue' is
+    defined today — the same shape as _apply_due, on purpose."""
+    if not verify:
+        return stmt
+    today = today or date.today()
+    if verify == "overdue":
+        return stmt.where(
+            BirthdayOrder.status == OrderStatus.PENDING_VERIFICATION.value,
+            BirthdayOrder.verify_by.is_not(None),
+            BirthdayOrder.verify_by < today,
+        )
+    return stmt
+
+
+def _apply_completed(stmt, completed: str | None, *, today: date | None = None):
+    """Phase 1.6 §11/§13 (R17): the supplier 'Completed today' card's exact
+    predicate, also reachable as a list filter — never the broader
+    'status in (DELIVERED, COMPLETED)' the card used to link to."""
+    if not completed:
+        return stmt
+    today = today or date.today()
+    if completed == "today":
+        return stmt.where(
+            BirthdayOrder.status == OrderStatus.COMPLETED.value,
+            func.date(BirthdayOrder.completed_at) == today,
+        )
+    return stmt
+
+
+def _apply_acceptance(stmt, acceptance: str | None, *, sla_cutoff: datetime | None = None):
+    """Phase 1.6 §6 (R6): 'awaiting' (every SENT_TO_SUPPLIER order) vs.
+    'overdue' (SENT_TO_SUPPLIER past the acknowledgement SLA). The SLA
+    cutoff is always computed server-side by the caller from
+    BirthdayDetectionConfig — the frontend only ever sends the word
+    'awaiting'/'overdue', never a raw timestamp (review correction #4)."""
+    if not acceptance:
+        return stmt
+    stmt = stmt.where(BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value)
+    if acceptance == "awaiting":
+        return stmt
+    if acceptance == "overdue":
+        cutoff = sla_cutoff or datetime.now(UTC)
+        return stmt.where(
+            BirthdayOrder.released_at.is_not(None),
+            BirthdayOrder.released_at < cutoff,
+        )
+    return stmt
 
 
 _SORTABLE_COLUMNS = {
@@ -95,10 +157,15 @@ class BirthdayOrderRepository:
         address_verification_status: str | None = None,
         due: str | None = None,
         has_open_issue: bool | None = None,
+        verify: str | None = None,
+        acceptance: str | None = None,
+        sla_cutoff: datetime | None = None,
     ):
         stmt = select(BirthdayOrder)
         stmt = _apply_due(stmt, due)
         stmt = _apply_has_open_issue(stmt, has_open_issue)
+        stmt = _apply_verify(stmt, verify)
+        stmt = _apply_acceptance(stmt, acceptance, sla_cutoff=sla_cutoff)
         if status is not None:
             # Comma-separated statuses supported for the Cake Orders saved
             # views (Phase 1 §1.7) — a single value still works unchanged.
@@ -138,6 +205,9 @@ class BirthdayOrderRepository:
         address_verification_status: str | None = None,
         due: str | None = None,
         has_open_issue: bool | None = None,
+        verify: str | None = None,
+        acceptance: str | None = None,
+        sla_cutoff: datetime | None = None,
         sort_by: str | None = None,
         sort_direction: str = "desc",
         limit: int = 50,
@@ -148,6 +218,7 @@ class BirthdayOrderRepository:
             office_location=office_location, supplier_id=supplier_id,
             search=search, address_verification_status=address_verification_status,
             due=due, has_open_issue=has_open_issue,
+            verify=verify, acceptance=acceptance, sla_cutoff=sla_cutoff,
         )
         column = _SORTABLE_COLUMNS.get(sort_by or "", BirthdayOrder.created_at)
         stmt = stmt.order_by(column.desc() if sort_direction == "desc" else column.asc())
@@ -165,11 +236,15 @@ class BirthdayOrderRepository:
         address_verification_status: str | None = None,
         due: str | None = None,
         has_open_issue: bool | None = None,
+        verify: str | None = None,
+        acceptance: str | None = None,
+        sla_cutoff: datetime | None = None,
     ) -> int:
         stmt = self._filtered_stmt(
             status=status, lead_time_class=lead_time_class,
             office_location=office_location, supplier_id=supplier_id,
             search=search, address_verification_status=address_verification_status,
+            verify=verify, acceptance=acceptance, sla_cutoff=sla_cutoff,
             due=due, has_open_issue=has_open_issue,
         )
         count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -190,6 +265,7 @@ class BirthdayOrderRepository:
     def _supplier_scoped_stmt(
         self, *, supplier_id: int, search: str | None = None,
         status_filter: str | None = None, due: str | None = None,
+        has_open_issue: bool | None = None, completed: str | None = None,
     ):
         stmt = select(BirthdayOrder).where(
             BirthdayOrder.supplier_id == supplier_id,
@@ -202,6 +278,8 @@ class BirthdayOrderRepository:
             elif wanted:
                 stmt = stmt.where(BirthdayOrder.status.in_(wanted))
         stmt = _apply_due(stmt, due)
+        stmt = _apply_has_open_issue(stmt, has_open_issue)
+        stmt = _apply_completed(stmt, completed)
         if search:
             like = f"%{search}%"
             stmt = stmt.where(
@@ -212,11 +290,13 @@ class BirthdayOrderRepository:
     def list_for_supplier(
         self, *, supplier_id: int, search: str | None = None,
         status_filter: str | None = None, due: str | None = None,
+        has_open_issue: bool | None = None, completed: str | None = None,
         sort_by: str | None = None, sort_direction: str = "desc",
         limit: int = 20, offset: int = 0,
     ) -> list[BirthdayOrder]:
         stmt = self._supplier_scoped_stmt(
             supplier_id=supplier_id, search=search, status_filter=status_filter, due=due,
+            has_open_issue=has_open_issue, completed=completed,
         )
         column = _SORTABLE_COLUMNS.get(sort_by or "", BirthdayOrder.delivery_date)
         stmt = stmt.order_by(column.desc() if sort_direction == "desc" else column.asc())
@@ -226,9 +306,11 @@ class BirthdayOrderRepository:
     def count_for_supplier(
         self, *, supplier_id: int, search: str | None = None,
         status_filter: str | None = None, due: str | None = None,
+        has_open_issue: bool | None = None, completed: str | None = None,
     ) -> int:
         stmt = self._supplier_scoped_stmt(
             supplier_id=supplier_id, search=search, status_filter=status_filter, due=due,
+            has_open_issue=has_open_issue, completed=completed,
         )
         count_stmt = select(func.count()).select_from(stmt.subquery())
         return self.db.execute(count_stmt).scalar_one()
@@ -254,12 +336,7 @@ class BirthdayOrderRepository:
         return self.db.execute(stmt).scalar_one()
 
     def count_verification_overdue(self, *, today: date | None = None) -> int:
-        today = today or date.today()
-        stmt = select(func.count()).select_from(BirthdayOrder).where(
-            BirthdayOrder.status == OrderStatus.PENDING_VERIFICATION.value,
-            BirthdayOrder.verify_by.is_not(None),
-            BirthdayOrder.verify_by < today,
-        )
+        stmt = _apply_verify(select(func.count()).select_from(BirthdayOrder), "overdue", today=today)
         return self.db.execute(stmt).scalar_one()
 
     def count_requires_review(self) -> int:
@@ -281,38 +358,30 @@ class BirthdayOrderRepository:
         return self.db.execute(stmt).scalar_one()
 
     def count_overdue_delivery(self, *, today: date | None = None) -> int:
-        today = today or date.today()
-        terminal = (
-            OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value,
-            OrderStatus.CANCELLED.value, OrderStatus.UNABLE_TO_FULFIL.value,
-        )
-        stmt = select(func.count()).select_from(BirthdayOrder).where(
-            BirthdayOrder.delivery_date.is_not(None),
-            BirthdayOrder.delivery_date < today,
-            BirthdayOrder.status.notin_(terminal),
-        )
+        # Reference implementation (Phase 1.6 §4/§7) — count and every
+        # "due=overdue" list filter share this exact predicate via
+        # _apply_due, so this card can never drift from its own link.
+        stmt = _apply_due(select(func.count()).select_from(BirthdayOrder), "overdue", today=today)
         return self.db.execute(stmt).scalar_one()
 
-    def count_supplier_not_accepted(self, *, older_than: datetime) -> int:
-        stmt = select(func.count()).select_from(BirthdayOrder).where(
-            BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value,
-            BirthdayOrder.released_at.is_not(None),
-            BirthdayOrder.released_at < older_than,
-        )
+    def count_acceptance_awaiting(self) -> int:
+        """Phase 1.6 §6 (R6) — every SENT_TO_SUPPLIER order, no SLA gate.
+        Replaces the old, misleadingly-named single 'not accepted' card:
+        this one increments the instant an order is released."""
+        stmt = _apply_acceptance(select(func.count()).select_from(BirthdayOrder), "awaiting")
+        return self.db.execute(stmt).scalar_one()
+
+    def count_acceptance_overdue(self, *, sla_cutoff: datetime) -> int:
+        """Renamed from count_supplier_not_accepted (Phase 1.6 §6) — same
+        predicate, honest name: SENT_TO_SUPPLIER *and* past the SLA."""
+        stmt = _apply_acceptance(select(func.count()).select_from(BirthdayOrder), "overdue", sla_cutoff=sla_cutoff)
         return self.db.execute(stmt).scalar_one()
 
     def count_deliveries_today_at_risk(self, *, today: date | None = None) -> int:
-        today = today or date.today()
-        at_risk_statuses = (
-            OrderStatus.PENDING_VERIFICATION.value, OrderStatus.REQUIRES_REVIEW.value,
-            OrderStatus.REQUIRES_ATTENTION.value, OrderStatus.ON_HOLD.value,
-            OrderStatus.SENT_TO_SUPPLIER.value, OrderStatus.CHANGE_REQUESTED.value,
-            OrderStatus.CONFIRMED.value, OrderStatus.PREPARING.value,
-        )
-        stmt = select(func.count()).select_from(BirthdayOrder).where(
-            BirthdayOrder.delivery_date == today,
-            BirthdayOrder.status.in_(at_risk_statuses),
-        )
+        # Phase 1.6 §7 (R7): was a hand-picked status allow-list that
+        # excluded OUT_FOR_DELIVERY while the "due=today" list filter
+        # (_apply_due) included it — the two disagreed. Now identical.
+        stmt = _apply_due(select(func.count()).select_from(BirthdayOrder), "today", today=today)
         return self.db.execute(stmt).scalar_one()
 
     def list_upcoming(self, *, days_ahead: int) -> list[BirthdayOrder]:

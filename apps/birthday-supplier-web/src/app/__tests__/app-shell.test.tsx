@@ -85,6 +85,16 @@ describe("AppShell (supplier portal)", () => {
     expect(screen.queryByText(/read-only internal preview/i)).not.toBeInTheDocument();
   });
 
+  it("renders the official Dijital Team logo in the header (§18 branding)", () => {
+    mockedUseSupplierAuth.mockReturnValue({ token: "tok-123", setToken: vi.fn(), ready: true });
+
+    render(<AppShell>content</AppShell>);
+
+    const logo = screen.getByAltText("Dijital Team") as HTMLImageElement;
+    expect(logo).toBeInTheDocument();
+    expect(logo.getAttribute("src")).toBe("/brand/dijital-team-logo.png");
+  });
+
   it("clears the token when Sign out is clicked", async () => {
     const setToken = vi.fn();
     mockedUseSupplierAuth.mockReturnValue({ token: "tok-123", setToken, ready: true });

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { listOrders } from "@/lib/api";
 import {
@@ -38,29 +38,69 @@ const LEAD_TIME_OPTIONS = LEAD_TIME_CLASSES;
 const ADDRESS_STATUS_OPTIONS = ADDRESS_VERIFICATION_STATUSES;
 
 const PAGE_SIZE = 20;
+const TERMINAL = new Set(["DELIVERED", "COMPLETED", "CANCELLED", "UNABLE_TO_FULFIL"]);
 
-type SavedView = { label: string; filter?: string; due?: "today" | "tomorrow" | "overdue" };
+// Phase 1.6 §5/§6/§7 — every "special" saved view now sets the exact same
+// semantic param its dashboard tile links with (has_open_issue / verify /
+// acceptance), never a status_filter approximation of it.
+type SavedView = {
+  label: string;
+  filter?: string;
+  due?: "today" | "tomorrow" | "overdue";
+  verify?: "overdue";
+  acceptance?: "awaiting" | "overdue";
+  hasOpenIssue?: boolean;
+};
 const SAVED_VIEWS: SavedView[] = [
   { label: "All", filter: "" },
   { label: "Needs attention", filter: "REQUIRES_ATTENTION,ON_HOLD" },
   { label: "Awaiting verification", filter: "PENDING_VERIFICATION" },
+  { label: "Verification overdue", verify: "overdue" },
   { label: "In review", filter: "REQUIRES_REVIEW" },
+  { label: "Awaiting acceptance", acceptance: "awaiting" },
+  { label: "Acceptance overdue", acceptance: "overdue" },
   { label: "With supplier", filter: "SENT_TO_SUPPLIER,CONFIRMED,PREPARING" },
   { label: "Delivery in progress", filter: "OUT_FOR_DELIVERY" },
   { label: "Due today", due: "today" },
   { label: "Overdue delivery", due: "overdue" },
+  { label: "Open issues", hasOpenIssue: true },
   { label: "Completed", filter: "COMPLETED" },
   { label: "Cancelled / unfulfilled", filter: "CANCELLED,UNABLE_TO_FULFIL" },
 ];
+
+/** Phase 1.6 §15 (R14) — "Days Until Birthday", not delivery: birthday_date
+ * and delivery_date can legitimately differ (working-day shift), and this
+ * is the same countdown concept already shown on Upcoming Birthdays.
+ * Purely a display derivation from the already-returned birthday_date — no
+ * new backend field or sort key; it shares the existing "Birthday"
+ * SortableTh (sorting by birthday_date ascending already *is* sorting by
+ * days-until-birthday ascending, since "today" is one fixed point across
+ * every row in a response). Delivery urgency is a separate, already-built
+ * concept (the Delivery Due filter above) — not duplicated here. */
+function daysUntilBirthdayLabel(birthdayDate: string, status: string): string {
+  if (TERMINAL.has(status)) return "—";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const bday = new Date(`${birthdayDate}T00:00:00`);
+  const days = Math.round((bday.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return "Overdue";
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  return `${days} days`;
+}
 
 export default function OrdersPage() {
   // Dashboard attention cards deep-link here with a pre-set filter (plan
   // §M/§36 — "avoid static KPI cards with no action") — read it once on
   // load so /orders?status_filter=REQUIRES_ATTENTION actually filters.
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status_filter") ?? "");
   const [due, setDue] = useState(searchParams.get("due") ?? "");
+  const [verify, setVerify] = useState(searchParams.get("verify") ?? "");
+  const [acceptance, setAcceptance] = useState(searchParams.get("acceptance") ?? "");
+  const [hasOpenIssue, setHasOpenIssue] = useState(searchParams.get("has_open_issue") === "true");
   const [leadTimeClass, setLeadTimeClass] = useState("");
   const [officeLocation, setOfficeLocation] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -73,6 +113,9 @@ export default function OrdersPage() {
     search: search || undefined,
     status_filter: statusFilter || undefined,
     due: (due || undefined) as "today" | "tomorrow" | "overdue" | undefined,
+    verify: (verify || undefined) as "overdue" | undefined,
+    acceptance: (acceptance || undefined) as "awaiting" | "overdue" | undefined,
+    has_open_issue: hasOpenIssue || undefined,
     lead_time_class: leadTimeClass || undefined,
     office_location: officeLocation || undefined,
     supplier_id: supplierId ? Number(supplierId) : undefined,
@@ -101,17 +144,30 @@ export default function OrdersPage() {
     <div>
       <PageHeader title="Cake Orders" description="Register of every cake order tracked by DijiBirthday." />
 
-      {/* Saved views — each is a status_filter or due preset. */}
+      {/* Saved views — each sets exactly one "special" filter dimension
+          (status_filter, due, verify, acceptance, has_open_issue) at a
+          time, matching whichever dashboard tile links here. */}
       <div className="mb-4 flex flex-wrap gap-2">
         {SAVED_VIEWS.map((v) => {
-          const active = v.due ? due === v.due : statusFilter === (v.filter ?? "") && !due;
+          const active = v.hasOpenIssue
+            ? hasOpenIssue
+            : v.verify
+              ? verify === v.verify
+              : v.acceptance
+                ? acceptance === v.acceptance
+                : v.due
+                  ? due === v.due
+                  : statusFilter === (v.filter ?? "") && !due && !verify && !acceptance && !hasOpenIssue;
           return (
             <button
               key={v.label}
               onClick={() => {
                 setPage(1);
                 setDue(v.due ?? "");
-                setStatusFilter(v.due ? "" : (v.filter ?? ""));
+                setVerify(v.verify ?? "");
+                setAcceptance(v.acceptance ?? "");
+                setHasOpenIssue(v.hasOpenIssue ?? false);
+                setStatusFilter(v.filter !== undefined ? v.filter : "");
               }}
               className={
                 "rounded-full border px-3 py-1 text-xs font-medium transition " +
@@ -241,6 +297,16 @@ export default function OrdersPage() {
                   sortDirection={sortDirection}
                   onSort={toggleSort}
                 />
+                {/* Days Until (Birthday) shares the Birthday sort key —
+                    sorting by birthday_date ascending already sorts by
+                    days-until-birthday ascending (Phase 1.6 §15). */}
+                <SortableTh
+                  label="Days Until"
+                  sortKey="birthday_date"
+                  activeSortBy={sortBy}
+                  sortDirection={sortDirection}
+                  onSort={toggleSort}
+                />
                 <SortableTh
                   label="Delivery Date"
                   sortKey="delivery_date"
@@ -266,9 +332,24 @@ export default function OrdersPage() {
             </Thead>
             <tbody>
               {orders.map((order) => (
-                <Tr key={order.id}>
+                <Tr
+                  key={order.id}
+                  className="cursor-pointer transition hover:bg-dt-surface-warm"
+                  tabIndex={0}
+                  onClick={() => router.push(`/orders/${order.id}`)}
+                  onKeyDown={(e: React.KeyboardEvent) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/orders/${order.id}`);
+                    }
+                  }}
+                >
                   <Td>
-                    <Link href={`/orders/${order.id}`} className="font-medium text-dt-text-primary hover:underline">
+                    <Link
+                      href={`/orders/${order.id}`}
+                      className="font-medium text-dt-text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {order.order_reference}
                     </Link>
                     {order.requires_admin_review && (
@@ -286,6 +367,7 @@ export default function OrdersPage() {
                     </p>
                   </Td>
                   <Td>{order.birthday_date}</Td>
+                  <Td>{daysUntilBirthdayLabel(order.birthday_date, order.status)}</Td>
                   <Td>{order.delivery_date ?? "—"}</Td>
                   <Td>{order.supplier_name ?? (order.supplier_id != null ? `Supplier #${order.supplier_id}` : "Unassigned")}</Td>
                   <Td>

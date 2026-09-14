@@ -14,6 +14,7 @@ class OrderEventRead(BaseModel):
     to_status: str | None
     actor_id: int | None
     actor_type: str
+    actor_display_name: str | None = None
     detail: str | None
     created_at: datetime
 
@@ -156,6 +157,12 @@ class ReleaseRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     reason: str | None = None
+
+
+class ReopenRequest(BaseModel):
+    # Mandatory, unlike CancelRequest's optional reason — Phase 1.6 §14
+    # requires an explicit, non-empty reason for every reopen.
+    reason: str
 
 
 class VerifyAddressRequest(BaseModel):

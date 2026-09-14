@@ -21,7 +21,7 @@ auto-completes (system actor) once the supplier marks it delivered.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -100,7 +100,6 @@ def get_supplier_dashboard(
     does not mirror the internal dashboard. Every count is scoped to this
     supplier's own orders via the same repository methods the order list
     uses, so isolation holds here too."""
-    today = date.today()
 
     def _count(*extra_where):
         stmt = select(func.count()).select_from(BirthdayOrder).where(
@@ -108,31 +107,32 @@ def get_supplier_dashboard(
         )
         return db.execute(stmt).scalar_one()
 
+    def _due_count(due: str) -> int:
+        # Phase 1.6 §11 (R17): reuses the exact same _apply_due predicate
+        # the Orders list uses for this supplier's ?due=... link, instead
+        # of a separately hand-rolled status.notin_([...]) list that had
+        # drifted from the shared _TERMINAL_STATUSES (it was missing
+        # UNABLE_TO_FULFIL).
+        repo = BirthdayOrderRepository(db)
+        return repo.count_for_supplier(supplier_id=scope.supplier_id, due=due)
+
     return {
         "new_orders": _count(BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value),
-        "awaiting_acceptance": _count(BirthdayOrder.status == OrderStatus.SENT_TO_SUPPLIER.value),
         "preparing": _count(BirthdayOrder.status == OrderStatus.PREPARING.value),
-        "due_today": _count(
-            BirthdayOrder.delivery_date == today,
-            BirthdayOrder.status.notin_([OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value, OrderStatus.CANCELLED.value]),
-        ),
-        "due_tomorrow": _count(
-            BirthdayOrder.delivery_date == today.fromordinal(today.toordinal() + 1),
-            BirthdayOrder.status.notin_([OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value, OrderStatus.CANCELLED.value]),
-        ),
-        "overdue": _count(
-            BirthdayOrder.delivery_date < today,
-            BirthdayOrder.status.notin_([OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value, OrderStatus.CANCELLED.value]),
-        ),
+        "due_today": _due_count("today"),
+        "due_tomorrow": _due_count("tomorrow"),
+        "overdue": _due_count("overdue"),
         "out_for_delivery": _count(BirthdayOrder.status == OrderStatus.OUT_FOR_DELIVERY.value),
-        "open_issues": db.execute(
-            select(func.count()).select_from(OrderIssue).join(BirthdayOrder).where(
-                BirthdayOrder.supplier_id == scope.supplier_id, OrderIssue.status == OrderIssueStatus.OPEN.value,
-            )
-        ).scalar_one(),
-        "completed_today": _count(
-            BirthdayOrder.status == OrderStatus.COMPLETED.value,
-            func.date(BirthdayOrder.completed_at) == today,
+        # Same has_open_issue predicate the Orders list's ?has_open_issue=true
+        # link now uses (Phase 1.6 §5/§11) — the "Open problems" card and
+        # its destination are the same query.
+        "open_issues": BirthdayOrderRepository(db).count_for_supplier(
+            supplier_id=scope.supplier_id, has_open_issue=True,
+        ),
+        # Real "completed today" filter (Phase 1.6 §13) — never a broader
+        # all-completed link.
+        "completed_today": BirthdayOrderRepository(db).count_for_supplier(
+            supplier_id=scope.supplier_id, completed="today",
         ),
     }
 
@@ -142,6 +142,8 @@ def list_supplier_orders(
     search: str | None = None,
     status_filter: str | None = None,
     due: str | None = None,
+    has_open_issue: bool | None = None,
+    completed: str | None = None,
     sort_by: str | None = None,
     # Soonest delivery first by default (Phase 1 §1.7) — the supplier's
     # worklist is ordered by what is due next.
@@ -155,16 +157,20 @@ def list_supplier_orders(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "sort_direction must be 'asc' or 'desc'")
     if due is not None and due not in ("today", "tomorrow", "overdue"):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "due must be today, tomorrow, or overdue")
+    if completed is not None and completed not in ("today",):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "completed must be 'today'")
     page = max(page, 1)
     page_size = max(1, min(page_size, 50))  # tightened from 200 — plan §U rate/volume hygiene
     repo = BirthdayOrderRepository(db)
     orders = repo.list_for_supplier(
         supplier_id=scope.supplier_id, search=search, status_filter=status_filter, due=due,
+        has_open_issue=has_open_issue, completed=completed,
         sort_by=sort_by, sort_direction=sort_direction,
         limit=page_size, offset=(page - 1) * page_size,
     )
     total = repo.count_for_supplier(
         supplier_id=scope.supplier_id, search=search, status_filter=status_filter, due=due,
+        has_open_issue=has_open_issue, completed=completed,
     )
     return SupplierOrderListResponse(
         items=[to_supplier_view(o) for o in orders], total=total, page=page, page_size=page_size,
@@ -194,7 +200,7 @@ def accept_order(
         order = order_status_service.transition(
             db, order, OrderStatus.CONFIRMED,
             actor_id=scope.supplier_user_id, actor_type=ActorType.SUPPLIER,
-            detail="Accepted by supplier",
+            detail="Accepted by supplier", actor_display_name=scope.full_name,
         )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -227,6 +233,7 @@ def update_supplier_order_status(
     try:
         order = order_status_service.transition(
             db, order, target, actor_id=scope.supplier_user_id, actor_type=ActorType.SUPPLIER,
+            actor_display_name=scope.full_name,
         )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -276,7 +283,8 @@ def raise_supplier_issue(
     db.add(
         OrderEvent(
             order_id=order.id, event_type="SUPPLIER_ISSUE", actor_id=scope.supplier_user_id,
-            actor_type=ActorType.SUPPLIER.value, detail=f"[{payload.type}] {payload.detail}",
+            actor_type=ActorType.SUPPLIER.value, actor_display_name=scope.full_name,
+            detail=f"[{payload.type}] {payload.detail}",
         )
     )
 
@@ -285,7 +293,7 @@ def raise_supplier_issue(
             order = order_status_service.transition(
                 db, order, OrderStatus.UNABLE_TO_FULFIL,
                 actor_id=scope.supplier_user_id, actor_type=ActorType.SUPPLIER,
-                detail=payload.detail,
+                detail=payload.detail, actor_display_name=scope.full_name,
             )
         except order_status_service.InvalidTransitionError:
             pass
@@ -361,7 +369,10 @@ def post_supplier_order_message(
         communication_service.post_portal_message(
             db, order, author_type=ActorType.SUPPLIER, author_id=scope.supplier_user_id,
             body=payload.body, issue_id=issue_id,
+            author_display_name=scope.full_name,
         )
+    except communication_service.CommunicationClosedError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     entries = communication_service.build_timeline(db, order, audience="supplier")

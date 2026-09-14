@@ -1,27 +1,40 @@
 @import "tailwindcss";
 @source "../../../../packages/design-system/src/**/*.{ts,tsx}";
 
+/* Official Dijital Team brand system (Phase 1.6 §18 — merged in from the
+ * canonical packages/design-system/src/globals.css; only these colour
+ * values changed, every other rule in this file is untouched). Exactly
+ * five sanctioned colours: black #000000 (reserved for the logo — see
+ * <BrandLogo>), green #056839, red #BF1E2E, orange #F1592A, yellow
+ * #FCB040. --dt-red-deep/--dt-burnt-orange/--dt-orange-deep previously
+ * held three separate invented shades; every app references these token
+ * NAMES in Tailwind utility classes, so the names stay, each now
+ * resolving to one of the two canonical brand hexes below. */
 :root {
-  --dt-red-deep: #8f2417;
-  --dt-red: #aa2f1d;
-  --dt-burnt-orange: #c9431d;
-  --dt-orange-deep: #db4d18;
-  --dt-orange: #f26a1b;
-  --dt-amber: #f59e0b;
-  --dt-yellow-soft: #fbc34a;
+  --dt-red-deep: #bf1e2e;
+  --dt-red: #bf1e2e;
+  --dt-burnt-orange: #f1592a;
+  --dt-orange-deep: #f1592a;
+  --dt-orange: #f1592a;
+  --dt-amber: #fcb040;
+  --dt-yellow-soft: #fcb040;
 
   --dt-background: #f8f5f2;
   --dt-surface: #ffffff;
   --dt-surface-warm: #fff8ef;
   --dt-cream: #ffefd5;
 
-  --dt-text-primary: #24140f;
+  /* #111111 for body text, not the brand's literal #000000 — pure black
+   * is harsh at small sizes; #000000 stays reserved for the logo itself. */
+  --dt-text-primary: #111111;
   --dt-text-secondary: #76584c;
   --dt-border: #eadbd3;
 
-  --dt-success: #138a4b;
+  --dt-success: #056839;
+  /* Kept as a readable dark amber for text, not the brand's literal
+   * #FCB040 — the brand yellow fails contrast as a text colour. */
   --dt-warning: #c78300;
-  --dt-danger: #c62d26;
+  --dt-danger: #bf1e2e;
   --dt-info: #5b6472;
 
   --background: var(--dt-background);
@@ -53,6 +66,13 @@
   --color-dt-warning: var(--dt-warning);
   --color-dt-danger: var(--dt-danger);
   --color-dt-info: var(--dt-info);
+
+  /* Phase 1.6 §18 — this mapping did not exist before (unlike talent-web's
+   * own globals.css), so the previous Geist registration in layout.tsx was
+   * never actually wired to Tailwind's font-sans utility. Added, not just
+   * swapped. */
+  --font-sans: var(--font-be-vietnam-pro);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {

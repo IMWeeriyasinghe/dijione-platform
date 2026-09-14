@@ -315,6 +315,7 @@ def run_daily_scan(
                             order_id=_order.id,
                             event_type="DELIVERY_DATE_ADJUSTED",
                             actor_type=ActorType.SYSTEM.value,
+                            actor_display_name="Scheduled Birthday Scan",
                             detail=(
                                 f"Birthday {occurrence_date.isoformat()} falls on a supplier "
                                 f"non-working day; default delivery date set to "

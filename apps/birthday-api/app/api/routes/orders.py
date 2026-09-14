@@ -4,7 +4,7 @@ assignment here."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -44,6 +44,7 @@ from app.schemas.order import (
     OrderTimelineResponse,
     ReadinessCheckResponse,
     ReleaseRequest,
+    ReopenRequest,
     SpecialRequirementCreate,
     SpecialRequirementRead,
     TimelineEntryOut,
@@ -86,6 +87,8 @@ def list_orders(
     address_verification_status: str | None = None,
     due: str | None = None,
     has_open_issue: bool | None = None,
+    verify: str | None = None,
+    acceptance: str | None = None,
     sort_by: str | None = None,
     sort_direction: str = "desc",
     page: int = 1,
@@ -97,14 +100,26 @@ def list_orders(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "sort_direction must be 'asc' or 'desc'")
     if due is not None and due not in ("today", "tomorrow", "overdue"):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "due must be today, tomorrow, or overdue")
+    if verify is not None and verify not in ("overdue",):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "verify must be 'overdue'")
+    if acceptance is not None and acceptance not in ("awaiting", "overdue"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "acceptance must be 'awaiting' or 'overdue'")
     page = max(page, 1)
     page_size = max(1, min(page_size, 200))
     repo = BirthdayOrderRepository(db)
+    # Same semantic-param principle as `due` (Phase 1.6 §6/§7): the frontend
+    # sends a named state, never a raw timestamp; the SLA cutoff is always
+    # computed here, server-side, from the one BirthdayDetectionConfig.
+    sla_cutoff = None
+    if acceptance == "overdue":
+        config = get_or_create_config(db)
+        sla_cutoff = datetime.now(UTC) - timedelta(hours=config.acknowledgement_sla_hours)
     filters = dict(
         status=status_filter, lead_time_class=lead_time_class,
         office_location=office_location, supplier_id=supplier_id,
         search=search, address_verification_status=address_verification_status,
         due=due, has_open_issue=has_open_issue,
+        verify=verify, acceptance=acceptance, sla_cutoff=sla_cutoff,
     )
     items = repo.list_filtered(
         **filters, sort_by=sort_by, sort_direction=sort_direction,
@@ -267,6 +282,7 @@ def update_order(
             OrderEvent(
                 order_id=order.id, event_type="EMPLOYEE_NUMBER_ASSIGNED",
                 actor_id=scope.user.id, actor_type="USER",
+                actor_display_name=scope.user.full_name,
                 detail=f"Team Member ID set to {order.employee_number}; reference {order.order_reference}",
             )
         )
@@ -275,6 +291,7 @@ def update_order(
                 db, order, OrderStatus.PENDING_VERIFICATION,
                 actor_id=scope.user.id, actor_type=ActorType.USER,
                 detail="Team Member ID supplied — MISSING_EMPLOYEE_NUMBER cleared",
+                actor_display_name=scope.user.full_name,
             )
 
     # §H2 — a NO_SUPPLIER / NO_DEFAULT_CAKE exception no longer applies once
@@ -296,6 +313,7 @@ def update_order(
                 OrderEvent(
                     order_id=order.id, event_type="EXCEPTION_CLEARED",
                     actor_id=scope.user.id, actor_type="USER",
+                    actor_display_name=scope.user.full_name,
                     detail=f"{prev} resolved via Fulfilment Assignment",
                 )
             )
@@ -304,6 +322,7 @@ def update_order(
                     db, order, OrderStatus.PENDING_VERIFICATION,
                     actor_id=scope.user.id, actor_type=ActorType.USER,
                     detail=f"{prev} cleared — ready for verification",
+                    actor_display_name=scope.user.full_name,
                 )
 
     if supplier_reassigned:
@@ -313,6 +332,7 @@ def update_order(
                 event_type="SUPPLIER_ASSIGNED",
                 actor_id=scope.user.id,
                 actor_type="USER",
+                actor_display_name=scope.user.full_name,
                 detail=f"Supplier reassigned to supplier_id={updates.get('supplier_id')}",
             )
         )
@@ -329,6 +349,7 @@ def update_order(
                 event_type="ORDER_CHANGED_POST_RELEASE",
                 actor_id=scope.user.id,
                 actor_type="USER",
+                actor_display_name=scope.user.full_name,
                 detail=change_detail,
             )
         )
@@ -423,6 +444,7 @@ def verify_address(
     try:
         outcome = address_verification_service.verify_and_release(
             db, order, actor_id=scope.user.id, corrected=payload.corrected, note=payload.note, config=config,
+            actor_display_name=scope.user.full_name,
         )
     except address_verification_service.EmptyAddressError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -448,7 +470,9 @@ def confirm_release(
             f"Only REQUIRES_REVIEW orders can be confirmed & released (current status: {order.status})",
         )
     try:
-        return address_verification_service.confirm_release(db, order, actor_id=scope.user.id)
+        return address_verification_service.confirm_release(
+            db, order, actor_id=scope.user.id, actor_display_name=scope.user.full_name,
+        )
     except order_email_service.NoSupplierAssignedError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except order_email_service.AddressNotVerifiedError as exc:
@@ -466,7 +490,10 @@ def hold_order(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_status_service.hold(db, order, hold_reason=payload.hold_reason, actor_id=scope.user.id)
+        return order_status_service.hold(
+            db, order, hold_reason=payload.hold_reason, actor_id=scope.user.id,
+            actor_display_name=scope.user.full_name,
+        )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
@@ -480,7 +507,10 @@ def release_order(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_status_service.release(db, order, actor_id=scope.user.id, note=payload.note)
+        return order_status_service.release(
+            db, order, actor_id=scope.user.id, note=payload.note,
+            actor_display_name=scope.user.full_name,
+        )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
@@ -501,7 +531,10 @@ def cancel_order(
         and order.supplier_id is not None
     )
     try:
-        order = order_status_service.cancel(db, order, actor_id=scope.user.id, reason=payload.reason)
+        order = order_status_service.cancel(
+            db, order, actor_id=scope.user.id, reason=payload.reason,
+            actor_display_name=scope.user.full_name,
+        )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     if notify_supplier:
@@ -513,6 +546,28 @@ def cancel_order(
             actor_id=scope.user.id,
         )
     return order
+
+
+@router.post("/{order_id}/reopen", response_model=BirthdayOrderRead)
+def reopen_order(
+    order_id: int,
+    payload: ReopenRequest,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.reopen")),
+) -> BirthdayOrder:
+    """Phase 1.6 §14 — the guarded exception to CANCELLED being terminal.
+    All eligibility logic lives in order_status_service.reopen_cancelled_order;
+    this route only translates its exceptions to HTTP."""
+    order = _get_order_or_404(db, order_id)
+    try:
+        return order_status_service.reopen_cancelled_order(
+            db, order, reason=payload.reason, actor_id=scope.user.id,
+            actor_display_name=scope.user.full_name,
+        )
+    except order_status_service.InvalidTransitionError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except order_status_service.ReopenNotEligibleError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, exc.reason) from exc
 
 
 @router.post(
@@ -567,6 +622,7 @@ def post_order_message(
         communication_service.post_portal_message(
             db, order, author_type=ActorType.USER, author_id=scope.user.id,
             body=payload.body, issue_id=payload.issue_id,
+            author_display_name=scope.user.full_name,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
@@ -658,6 +714,7 @@ def update_address_verification(
     try:
         return address_verification_service.set_address_verification_status(
             db, order, new_status, actor_id=scope.user.id, note=payload.note,
+            actor_display_name=scope.user.full_name,
         )
     except address_verification_service.EmptyAddressError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -688,7 +745,9 @@ def send_to_supplier(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_email_service.send_order_to_supplier(db, order, actor_id=scope.user.id)
+        return order_email_service.send_order_to_supplier(
+            db, order, actor_id=scope.user.id, actor_display_name=scope.user.full_name,
+        )
     except order_email_service.NoSupplierAssignedError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except order_email_service.AddressNotVerifiedError as exc:
@@ -707,7 +766,9 @@ def resend_to_supplier(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_email_service.resend_order_to_supplier(db, order, actor_id=scope.user.id)
+        return order_email_service.resend_order_to_supplier(
+            db, order, actor_id=scope.user.id, actor_display_name=scope.user.full_name,
+        )
     except order_email_service.NoSupplierAssignedError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except order_email_service.AddressNotVerifiedError as exc:

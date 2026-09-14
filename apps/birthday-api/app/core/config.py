@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     people_api_url: str = "http://localhost:8006"
     # Must match platform-api's INTERNAL_SERVICE_SECRET.
     internal_service_secret: str = "dev-only-internal-secret-change-me"
+    # Phase 1.6 §9 root-cause fix: people-api scales to zero in DEV
+    # (minReplicas=0); a measured cold start took 23s against the old
+    # hard-coded 5s timeout, which was the actual cause of the daily scan's
+    # consecutive DEFERRED_SOURCE_UNAVAILABLE runs. Deployment-visible via
+    # PEOPLE_API_TIMEOUT_SECONDS (see deploy/bicep/main.bicep), not buried
+    # in code.
+    people_api_timeout_seconds: float = 30.0
 
     # --- Supplier Portal authentication ---------------------------------
     # "dev"   -> the seeded SupplierUser persona picker

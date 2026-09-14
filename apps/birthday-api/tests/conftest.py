@@ -38,7 +38,7 @@ BIRTHDAY_PERMISSIONS_BY_ROLE = {
         "birthday.dashboard.read", "birthday.orders.read", "birthday.orders.create",
         "birthday.orders.update", "birthday.orders.hold_release", "birthday.orders.cancel",
         "birthday.orders.send_supplier", "birthday.orders.verify", "birthday.orders.review",
-        "birthday.orders.delete",
+        "birthday.orders.delete", "birthday.orders.reopen",
         "birthday.suppliers.read", "birthday.suppliers.manage",
         "birthday.config.manage",
     ],

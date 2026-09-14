@@ -16,7 +16,10 @@ class DashboardSummary(BaseModel):
     pending_verification_count: int
     verification_overdue_count: int
     requires_review_count: int
-    supplier_not_accepted_count: int
+    # Phase 1.6 §6 (R6) — split from the old, misleadingly-named single
+    # supplier_not_accepted_count (which was secretly SLA-gated).
+    acceptance_awaiting_count: int
+    acceptance_overdue_count: int
     deliveries_today_at_risk_count: int
     # Phase 1 §1.2 — attention + detection health.
     on_hold_count: int = 0

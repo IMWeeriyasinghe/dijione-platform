@@ -18,17 +18,16 @@ import {
   StatusBadge,
   Textarea,
 } from "@dijione/design-system";
-import { SUPPLIER_DRIVABLE_TARGETS, type OrderIssueType } from "@dijione/contracts";
+import { getSupplierOrderStatusLabel, type OrderIssueType } from "@dijione/contracts";
 import { acceptPortalOrder, getPortalOrder, raisePortalIssue, updatePortalOrderStatus } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 import { usePortalMe } from "@/lib/portal-me";
+import { supplierActionPolicy } from "@/lib/supplier-action-policy";
 import { OrderTimeline } from "@/app/order-timeline";
 
-// Labels for the transitions a supplier may set directly. The allow-list
-// itself is imported from @dijione/contracts — derived from the backend's
-// order_status_service.SUPPLIER_DRIVABLE, not a second hand-typed copy
-// (the drift that motivated this: this file used to re-declare the whole
-// table "mirrors ... exactly" with nothing enforcing the mirror).
+// Labels for the transitions a supplier may set directly (verbs, not
+// status names — distinct from getSupplierOrderStatusLabel's audience
+// label for the badge above).
 const STATUS_LABELS: Record<string, string> = {
   CONFIRMED: "Confirm / Accept",
   CHANGE_REQUESTED: "Request Change",
@@ -91,10 +90,9 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
   if (isLoading) return <LoadingState label="Loading order…" />;
   if (isError || !order) return <ErrorState onRetry={() => refetch()} />;
 
-  // CONFIRMED is reached via the Accept button below, not a status pill —
-  // avoids showing "Confirm / Accept" twice for the same transition.
-  const nextOptions = (SUPPLIER_DRIVABLE_TARGETS[order.status] ?? []).filter((s) => s !== "CONFIRMED");
-  const canAccept = order.status === "SENT_TO_SUPPLIER";
+  // Phase 1.6 §12/§18A (R19) — one shared policy, not a scattered
+  // `readOnly ? … : …` per component.
+  const policy = supplierActionPolicy(order.status, readOnly);
 
   return (
     <div>
@@ -107,7 +105,7 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold text-dt-text-primary">{order.order_reference}</h1>
-            <StatusBadge status={order.status} />
+            <StatusBadge status={order.status} label={getSupplierOrderStatusLabel(order.status)} />
           </div>
           <p className="mt-1 text-sm text-dt-text-secondary">
             {order.employee_name} · {order.office_location}
@@ -115,15 +113,19 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
         </div>
         {readOnly ? (
           <p className="text-xs italic text-dt-text-secondary">Read-only preview — actions are disabled.</p>
+        ) : policy.isTerminal ? (
+          <p className="text-xs italic text-dt-text-secondary">
+            This order is {getSupplierOrderStatusLabel(order.status).toLowerCase()} — no further action is needed.
+          </p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {canAccept && (
+            {policy.canAccept && (
               <Button size="sm" loading={acceptMutation.isPending} onClick={() => acceptMutation.mutate()}>
                 <CheckCircle2 className="size-4" />
                 Accept
               </Button>
             )}
-            {nextOptions.map((value) => (
+            {policy.nextStatusOptions.map((value) => (
               <Button
                 key={value}
                 size="sm"
@@ -134,10 +136,12 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
                 {STATUS_LABELS[value] ?? value}
               </Button>
             ))}
-            <Button size="sm" variant="secondary" onClick={() => setIssueOpen(true)}>
-              <TriangleAlert className="size-4" />
-              Report a Problem
-            </Button>
+            {policy.canReportProblem && (
+              <Button size="sm" variant="secondary" onClick={() => setIssueOpen(true)}>
+                <TriangleAlert className="size-4" />
+                Report a Problem
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -212,7 +216,7 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
 
-      <OrderTimeline orderId={orderId} />
+      <OrderTimeline orderId={orderId} orderStatus={order.status} />
 
       <Modal open={issueOpen} onClose={() => setIssueOpen(false)} title="Report a Problem">
         <div className="flex flex-col gap-4">

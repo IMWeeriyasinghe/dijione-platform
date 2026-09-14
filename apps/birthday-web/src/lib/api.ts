@@ -77,6 +77,8 @@ export const listOrders = (params: {
   address_verification_status?: string;
   due?: "today" | "tomorrow" | "overdue";
   has_open_issue?: boolean;
+  verify?: "overdue";
+  acceptance?: "awaiting" | "overdue";
   sort_by?: string;
   sort_direction?: string;
   page?: number;
@@ -108,6 +110,13 @@ export const releaseOrder = (id: number, note?: string) =>
 
 export const cancelOrder = (id: number, reason?: string) =>
   request<BirthdayOrderOut>(`/api/birthday/orders/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+// Phase 1.6 §14 — the dedicated, non-bypassable Reopen command.
+export const reopenOrder = (id: number, reason: string) =>
+  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/reopen`, {
     method: "POST",
     body: JSON.stringify({ reason }),
   });

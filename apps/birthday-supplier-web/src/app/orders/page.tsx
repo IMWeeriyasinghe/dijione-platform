@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   EmptyState,
@@ -20,6 +20,7 @@ import {
   useSortToggle,
   type SortDirection,
 } from "@dijione/design-system";
+import { getSupplierOrderStatusLabel } from "@dijione/contracts";
 import { listPortalOrders } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 
@@ -43,9 +44,16 @@ const TERMINAL = new Set(["DELIVERED", "COMPLETED", "CANCELLED", "UNABLE_TO_FULF
 export default function SupplierOrdersPage() {
   const { token } = useSupplierAuth();
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [due, setDue] = useState("");
+  // Phase 1.6 §11 (R16) — the fix for the root cause of "every dashboard
+  // tile lands on the unfiltered list": this page never read the URL at
+  // all. Seed every filter's initial state from the query string the
+  // dashboard cards actually link with.
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get("search") ?? "");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status_filter") ?? "");
+  const [due, setDue] = useState(searchParams.get("due") ?? "");
+  const [hasOpenIssue, setHasOpenIssue] = useState(searchParams.get("has_open_issue") === "true");
+  const [completed, setCompleted] = useState(searchParams.get("completed") ?? "");
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [page, setPage] = useState(1);
@@ -61,6 +69,8 @@ export default function SupplierOrdersPage() {
     search: search || undefined,
     status_filter: statusFilter || undefined,
     due: (due || undefined) as "today" | "tomorrow" | "overdue" | undefined,
+    has_open_issue: hasOpenIssue || undefined,
+    completed: (completed || undefined) as "today" | undefined,
     sort_by: sortBy || undefined,
     sort_direction: sortDirection,
     page,
@@ -99,7 +109,7 @@ export default function SupplierOrdersPage() {
           <option value="">All statuses</option>
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>
-              {s.replace(/_/g, " ")}
+              {getSupplierOrderStatusLabel(s)}
             </option>
           ))}
         </Select>
@@ -108,6 +118,22 @@ export default function SupplierOrdersPage() {
           <option value="today">Due today</option>
           <option value="tomorrow">Due tomorrow</option>
           <option value="overdue">Overdue</option>
+        </Select>
+        <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
+          <input
+            type="checkbox"
+            checked={hasOpenIssue}
+            onChange={(e) => resetAndSet(setHasOpenIssue, e.target.checked)}
+          />
+          Open problems only
+        </label>
+        <Select
+          value={completed}
+          onChange={(e) => resetAndSet(setCompleted, e.target.value)}
+          className="w-auto"
+        >
+          <option value="">Any completion</option>
+          <option value="today">Completed today</option>
         </Select>
       </div>
 
@@ -156,7 +182,7 @@ export default function SupplierOrdersPage() {
                   <Td>{order.quantity}</Td>
                   <Td>{order.address_verified ? "Yes" : "No"}</Td>
                   <Td>
-                    <StatusBadge status={order.status} />
+                    <StatusBadge status={order.status} label={getSupplierOrderStatusLabel(order.status)} />
                   </Td>
                 </Tr>
               ))}

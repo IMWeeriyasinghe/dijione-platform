@@ -320,6 +320,11 @@ BIRTHDAY_PERMISSIONS: list[PermissionDef] = [
         MODULE_BIRTHDAY, "Orders",
     ),
     PermissionDef(
+        "birthday.orders.reopen", "Reopen Cancelled Order",
+        "Reopen a CANCELLED order through the guarded reopen workflow (Phase 1.6).",
+        MODULE_BIRTHDAY, "Orders",
+    ),
+    PermissionDef(
         "birthday.suppliers.read", "View Suppliers", "View the supplier directory.",
         MODULE_BIRTHDAY, "Suppliers",
     ),

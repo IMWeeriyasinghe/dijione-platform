@@ -76,6 +76,8 @@ export const listPortalOrders = (
     search?: string;
     status_filter?: string;
     due?: "today" | "tomorrow" | "overdue";
+    has_open_issue?: boolean;
+    completed?: "today";
     sort_by?: string;
     sort_direction?: string;
     page?: number;
@@ -126,7 +128,6 @@ export const postPortalOrderMessage = (
 
 export type SupplierDashboardSummary = {
   new_orders: number;
-  awaiting_acceptance: number;
   preparing: number;
   due_today: number;
   due_tomorrow: number;

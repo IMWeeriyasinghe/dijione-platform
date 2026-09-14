@@ -7,10 +7,17 @@ import type { TimelineEntryOut } from "@dijione/contracts";
 import { getPortalOrderTimeline, postPortalOrderMessage } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 import { usePortalMe } from "@/lib/portal-me";
+import { supplierActionPolicy } from "@/lib/supplier-action-policy";
 
-export function OrderTimeline({ orderId }: { orderId: number }) {
+export function OrderTimeline({ orderId, orderStatus }: { orderId: number; orderStatus?: string }) {
   const { token } = useSupplierAuth();
   const readOnly = usePortalMe()?.read_only ?? false;
+  // Phase 1.6 §12 (review correction #1) — communication eligibility is
+  // its own, narrower concept than fulfilment-terminal: only
+  // COMPLETED/CANCELLED close the reply box; UNABLE_TO_FULFIL deliberately
+  // stays open. orderStatus is optional so this component still renders
+  // (message box shown) in any context that doesn't have it yet.
+  const canMessage = orderStatus == null ? !readOnly : supplierActionPolicy(orderStatus, readOnly).canMessage;
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["portal-order-timeline", orderId],
@@ -59,7 +66,7 @@ export function OrderTimeline({ orderId }: { orderId: number }) {
             ))}
           </ol>
         )}
-        {!readOnly && (
+        {canMessage && (
           <div className="mt-5 flex flex-col gap-2 border-t border-dt-border pt-4">
             <Textarea
               value={draft}

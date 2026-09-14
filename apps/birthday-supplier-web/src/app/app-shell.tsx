@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { BrandLogo } from "@dijione/design-system";
 import { SupplierAuthProvider, useSupplierAuth } from "@/lib/supplier-auth";
 import { usePortalMe } from "@/lib/portal-me";
 import { LoginScreen } from "./login-screen";
@@ -25,11 +26,14 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       )}
       <header className="flex items-center justify-between border-b border-dt-border bg-dt-surface px-6 py-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">
-            DijiBirthday · by Dijital Team
-          </p>
-          <h1 className="text-lg font-semibold text-dt-text-primary">Supplier Portal</h1>
+        <div className="flex items-center gap-3">
+          <BrandLogo width={110} />
+          <div className="border-l border-dt-border pl-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">
+              DijiBirthday · by Dijital Team
+            </p>
+            <h1 className="text-lg font-semibold text-dt-text-primary">Supplier Portal</h1>
+          </div>
         </div>
         <nav className="flex items-center gap-4 text-sm font-medium text-dt-text-secondary">
           <Link href="/" className="hover:text-dt-text-primary">

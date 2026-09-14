@@ -499,19 +499,23 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Internal Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
+        {/* Phase 1.6 §13 (R21) — kept (confirmed already correctly isolated
+            from every supplier-facing schema/response), collapsed by
+            default when empty so an empty card doesn't take a full block;
+            opens automatically once a note exists. */}
+        <details open={Boolean(supplier.notes)} className="rounded-2xl border border-dt-border bg-dt-surface">
+          <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-dt-text-primary">
+            Internal Notes
+          </summary>
+          <div className="px-5 pb-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-dt-warning">
               Internal only — never shared with the supplier
             </p>
             <p className="whitespace-pre-wrap text-sm text-dt-text-primary">
               {supplier.notes || "No notes recorded."}
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </details>
       </div>
 
       <Modal open={editOpen && editForm !== null} onClose={() => setEditOpen(false)} title="Edit Supplier">

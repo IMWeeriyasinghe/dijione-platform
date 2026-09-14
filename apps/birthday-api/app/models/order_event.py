@@ -23,6 +23,12 @@ class OrderEvent(TimestampMixin, Base):
     # No FK to `users.id` — User is owned by platform-api's own database.
     actor_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     actor_type: Mapped[str] = mapped_column(String(16), default=ActorType.SYSTEM.value)
+    # Snapshotted at write time (Phase 1.6 §17) — an actor's *current* name
+    # is never resolved later, so this stays historically accurate even if
+    # the person's display name changes afterwards. NULL for any event
+    # written before this column existed; the internal event-log UI falls
+    # back to actor_type in that case.
+    actor_display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     order: Mapped[BirthdayOrder] = relationship(back_populates="events")  # noqa: F821

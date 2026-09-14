@@ -90,6 +90,10 @@ class SupplierScope:
     permissions: frozenset[str] = field(default_factory=frozenset)
     read_only: bool = False
     impersonated_by: int | None = None
+    # Phase 1.6 §17 — resolved from the SupplierUser row this function
+    # already loads below, at zero extra query cost. Feeds
+    # actor_display_name on every OrderEvent/message this session writes.
+    full_name: str = ""
 
     def has(self, permission_key: str) -> bool:
         return permission_key in self.permissions
@@ -118,6 +122,7 @@ def get_supplier_scope(
         permissions=module_claim.permissions,
         read_only=claims.supplier.read_only,
         impersonated_by=claims.supplier.impersonated_by,
+        full_name=supplier_user.full_name or supplier_user.email,
     )
 
 

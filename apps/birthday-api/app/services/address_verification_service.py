@@ -59,6 +59,7 @@ def set_address_verification_status(
     actor_id: int | None,
     note: str | None = None,
     audit_service: AuditService | None = None,
+    actor_display_name: str | None = None,
 ) -> BirthdayOrder:
     if new_status == AddressVerificationStatus.VERIFIED and not _has_deliverable_address(order):
         raise EmptyAddressError(
@@ -81,6 +82,7 @@ def set_address_verification_status(
             to_status=new_status.value,
             actor_id=actor_id,
             actor_type="USER",
+            actor_display_name=actor_display_name,
             detail=note,
         )
     )
@@ -184,6 +186,7 @@ def verify_and_release(
     note: str | None = None,
     config,
     audit_service: AuditService | None = None,
+    actor_display_name: str | None = None,
 ) -> VerifyOutcome:
     """The one routine human checkpoint (plan §J/§K/§F). Marks the address
     VERIFIED, then immediately decides what happens next:
@@ -198,7 +201,7 @@ def verify_and_release(
     """
     order = set_address_verification_status(
         db, order, AddressVerificationStatus.VERIFIED, actor_id=actor_id, note=note,
-        audit_service=audit_service,
+        audit_service=audit_service, actor_display_name=actor_display_name,
     )
 
     readiness = readiness_service.check(order)
@@ -208,6 +211,7 @@ def verify_and_release(
             db, order, OrderStatus.REQUIRES_ATTENTION,
             actor_id=actor_id, actor_type=ActorType.USER,
             detail=f"Verified, but not ready to release: {', '.join(readiness.missing)}",
+            actor_display_name=actor_display_name,
         )
         return VerifyOutcome(order=order, auto_released=False, flagged_reasons=readiness.missing)
 
@@ -218,6 +222,7 @@ def verify_and_release(
             db, order, OrderStatus.REQUIRES_REVIEW,
             actor_id=actor_id, actor_type=ActorType.USER,
             detail=f"Flagged for one-click review: {', '.join(flags) or 'auto-release paused'}",
+            actor_display_name=actor_display_name,
         )
         return VerifyOutcome(order=order, auto_released=False, flagged_reasons=flags)
 
@@ -230,11 +235,12 @@ def verify_and_release(
         order = order_status_service.transition(
             db, order, OrderStatus.REQUIRES_ATTENTION,
             actor_id=actor_id, actor_type=ActorType.USER, detail="Verified, but no supplier assigned",
+            actor_display_name=actor_display_name,
         )
         return VerifyOutcome(order=order, auto_released=False, flagged_reasons=["no_supplier"])
 
 
-def confirm_release(db: Session, order: BirthdayOrder, *, actor_id: int) -> BirthdayOrder:
+def confirm_release(db: Session, order: BirthdayOrder, *, actor_id: int, actor_display_name: str | None = None) -> BirthdayOrder:
     """One-click "Confirm & release" for a REQUIRES_REVIEW order — the
     exception-only approval (plan §K)."""
-    return order_email_service.confirm_release_order(db, order, actor_id=actor_id)
+    return order_email_service.confirm_release_order(db, order, actor_id=actor_id, actor_display_name=actor_display_name)

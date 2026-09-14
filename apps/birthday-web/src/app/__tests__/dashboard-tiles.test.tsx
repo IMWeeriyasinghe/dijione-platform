@@ -52,7 +52,8 @@ describe("DashboardPage tiles (§D)", () => {
       verification_overdue_count: 2,
       requires_review_count: 0,
       exceptions_count: 0,
-      supplier_not_accepted_count: 0,
+      acceptance_awaiting_count: 0,
+      acceptance_overdue_count: 0,
       on_hold_count: 0,
       deliveries_today_at_risk_count: 3,
       overdue_delivery_count: 4,
@@ -77,6 +78,20 @@ describe("DashboardPage tiles (§D)", () => {
     expect(linkFor("Deliveries today at risk")).toHaveAttribute("href", "/orders?due=today");
     expect(linkFor("Overdue deliveries")).toHaveAttribute("href", "/orders?due=overdue");
     expect(linkFor("Upcoming (14 days)")).toHaveAttribute("href", "/upcoming");
+  });
+
+  it("links the split Open Issues / Unmatched Supplier Email tiles separately (§5)", async () => {
+    wrap(<DashboardPage />);
+    expect(await screen.findByText("Open issues")).toBeInTheDocument();
+    expect(linkFor("Open issues")).toHaveAttribute("href", "/orders?has_open_issue=true");
+    expect(linkFor("Unmatched supplier email")).toHaveAttribute("href", "/inbound-emails");
+  });
+
+  it("links Awaiting/Overdue supplier acceptance with exact semantic params (§6)", async () => {
+    wrap(<DashboardPage />);
+    expect(await screen.findByText("Awaiting supplier acceptance")).toBeInTheDocument();
+    expect(linkFor("Awaiting supplier acceptance")).toHaveAttribute("href", "/orders?acceptance=awaiting");
+    expect(linkFor("Acceptance overdue")).toHaveAttribute("href", "/orders?acceptance=overdue");
   });
 
   it("makes each Upcoming Birthdays row a link to the order", async () => {

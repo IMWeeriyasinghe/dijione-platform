@@ -86,7 +86,7 @@ def run_attention_sweep(db: Session, *, now: datetime | None = None) -> dict:
 
     counts = {
         "verification_overdue": repo.count_verification_overdue(today=today),
-        "supplier_not_accepted": repo.count_supplier_not_accepted(older_than=sla_cutoff),
+        "acceptance_overdue": repo.count_acceptance_overdue(sla_cutoff=sla_cutoff),
         "deliveries_today_at_risk": repo.count_deliveries_today_at_risk(today=today),
         "overdue_delivery": repo.count_overdue_delivery(today=today),
         "on_hold": repo.count_on_hold(),
@@ -99,11 +99,11 @@ def run_attention_sweep(db: Session, *, now: datetime | None = None) -> dict:
         _notify("verification_overdue", "Address verification overdue",
                 f"{counts['verification_overdue']} order(s) are past their verify-by date.")
         emitted.append("verification_overdue")
-    if counts["supplier_not_accepted"]:
-        _notify("supplier_not_accepted", "Suppliers have not accepted orders",
-                f"{counts['supplier_not_accepted']} order(s) sent to a supplier are unaccepted "
+    if counts["acceptance_overdue"]:
+        _notify("acceptance_overdue", "Suppliers have not accepted orders",
+                f"{counts['acceptance_overdue']} order(s) sent to a supplier are unaccepted "
                 f"beyond the {config.acknowledgement_sla_hours}h SLA.")
-        emitted.append("supplier_not_accepted")
+        emitted.append("acceptance_overdue")
     if counts["deliveries_today_at_risk"]:
         _notify("deliveries_today_at_risk", "Deliveries at risk today",
                 f"{counts['deliveries_today_at_risk']} order(s) are due today and not yet out for delivery.")

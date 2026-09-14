@@ -68,4 +68,16 @@ describe("supplier OrderTimeline", () => {
     expect(screen.queryByText("Send")).not.toBeInTheDocument();
     usePortalMe.mockReturnValue(undefined);
   });
+
+  it("hides the reply box on a COMPLETED order even when not read-only (§12)", async () => {
+    wrap(<OrderTimeline orderId={5} orderStatus="COMPLETED" />);
+    expect(await screen.findByText("Internal · Portal message")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Send a message to Dijital Team/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the reply box open on an UNABLE_TO_FULFIL order (review correction #1)", async () => {
+    wrap(<OrderTimeline orderId={5} orderStatus="UNABLE_TO_FULFIL" />);
+    expect(await screen.findByText("Internal · Portal message")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Send a message to Dijital Team/)).toBeInTheDocument();
+  });
 });

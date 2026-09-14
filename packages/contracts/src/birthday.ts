@@ -47,6 +47,75 @@ export const SUPPLIER_DRIVABLE_TARGETS: Record<string, OrderStatus[]> = {
   OUT_FOR_DELIVERY: ["DELIVERED"],
 };
 
+// --- Audience-specific status presentation (Phase 1.6 §18A) ---------------
+// ONE canonical OrderStatus is the workflow/state-machine truth (unchanged,
+// backend-authoritative); labels differ by audience. Never hard-code a
+// status label inside a component — use these so internal-only workflow
+// terminology (PENDING_VERIFICATION, REQUIRES_REVIEW, REQUIRES_ATTENTION,
+// ON_HOLD) can never leak into supplier-facing UI. Those four statuses
+// have no supplier label at all below because a supplier-scoped API
+// response can never contain them in the first place (enforced
+// server-side by SUPPLIER_VISIBLE_STATUSES) — this mapping's absence of an
+// entry is a second, presentation-layer guard, not the only one.
+
+export const INTERNAL_ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  PENDING_VERIFICATION: "Pending Verification",
+  REQUIRES_REVIEW: "Requires Review",
+  REQUIRES_ATTENTION: "Requires Attention",
+  ON_HOLD: "On Hold",
+  SENT_TO_SUPPLIER: "Sent to Supplier",
+  CHANGE_REQUESTED: "Change Requested",
+  CONFIRMED: "Supplier Confirmed",
+  PREPARING: "Preparing",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DELIVERED: "Delivered",
+  COMPLETED: "Completed",
+  UNABLE_TO_FULFIL: "Unable to Fulfil",
+  CANCELLED: "Cancelled",
+};
+
+export function getInternalOrderStatusLabel(status: string): string {
+  return INTERNAL_ORDER_STATUS_LABELS[status as OrderStatus] ?? status;
+}
+
+export const SUPPLIER_ORDER_STATUS_LABELS: Partial<Record<OrderStatus, string>> = {
+  SENT_TO_SUPPLIER: "Awaiting Your Acceptance",
+  CHANGE_REQUESTED: "Change Requested",
+  CONFIRMED: "Accepted",
+  PREPARING: "Preparing",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DELIVERED: "Delivered",
+  COMPLETED: "Completed",
+  UNABLE_TO_FULFIL: "Unable to Fulfil",
+  CANCELLED: "Cancelled",
+};
+
+export function getSupplierOrderStatusLabel(status: string): string {
+  return SUPPLIER_ORDER_STATUS_LABELS[status as OrderStatus] ?? status;
+}
+
+// Supplier-dashboard-only grouping word for a status — distinct from the
+// per-row label above (e.g. a SENT_TO_SUPPLIER row reads "Awaiting Your
+// Acceptance" but its dashboard group is "New Orders"). Reuses
+// StatusBadge's existing tone-by-canonical-status lookup unchanged — a
+// status's underlying severity/colour doesn't change by audience, only
+// its words do, so no separate "supplier tone" function is introduced.
+export const SUPPLIER_ORDER_STATUS_GROUP: Partial<Record<OrderStatus, string>> = {
+  SENT_TO_SUPPLIER: "New Orders",
+  CHANGE_REQUESTED: "New Orders",
+  CONFIRMED: "In Progress",
+  PREPARING: "In Progress",
+  OUT_FOR_DELIVERY: "In Progress",
+  DELIVERED: "Done",
+  COMPLETED: "Done",
+  UNABLE_TO_FULFIL: "Done",
+  CANCELLED: "Done",
+};
+
+export function getSupplierOrderStatusGroup(status: string): string {
+  return SUPPLIER_ORDER_STATUS_GROUP[status as OrderStatus] ?? status;
+}
+
 export const COMMUNICATION_CHANNELS = ["EMAIL", "PORTAL", "SYSTEM", "TEAMS"] as const;
 export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[number];
 
@@ -77,6 +146,9 @@ export type OrderEventOut = {
   to_status: string | null;
   actor_id: number | null;
   actor_type: string;
+  // Phase 1.6 §17 — snapshotted at write time; null for any event written
+  // before this column existed (fall back to actor_type when rendering).
+  actor_display_name: string | null;
   detail: string | null;
   created_at: string;
 };
@@ -341,7 +413,10 @@ export type BirthdayDashboardSummary = {
   pending_verification_count: number;
   verification_overdue_count: number;
   requires_review_count: number;
-  supplier_not_accepted_count: number;
+  // Phase 1.6 §6 — split from the old, misleadingly-named single
+  // supplier_not_accepted_count (secretly SLA-gated).
+  acceptance_awaiting_count: number;
+  acceptance_overdue_count: number;
   deliveries_today_at_risk_count: number;
   on_hold_count: number;
   overdue_delivery_count: number;

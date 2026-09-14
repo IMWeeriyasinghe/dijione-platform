@@ -40,6 +40,7 @@ import {
   listSuppliers,
   postOrderMessage,
   releaseOrder,
+  reopenOrder,
   resendOrderToSupplier,
   resolveOrderIssue,
   sendOrderToSupplier,
@@ -50,8 +51,31 @@ import {
 } from "@/lib/api";
 import type { BirthdayOrderOut, DeliveryAddressUpdateInput, SupplierOut } from "@dijione/contracts";
 import { OrderTimeline } from "@/components/birthday/OrderTimeline";
+import { orderActionPolicy } from "@/lib/order-action-policy";
 
-type ActionKind = "hold" | "release" | "cancel" | null;
+type ActionKind = "hold" | "release" | "cancel" | "reopen" | null;
+
+// Phase 1.6 §17 — semantic colour by event outcome, using only the
+// existing design-system tokens (no new hex values). Never colour-only:
+// the text label stays in every case.
+const EVENT_ACCENT: Record<string, string> = {
+  DELIVERED: "border-dt-success",
+  COMPLETED: "border-dt-success",
+  AUTO_RELEASED: "border-dt-success",
+  ON_HOLD: "border-dt-warning",
+  REQUIRES_REVIEW: "border-dt-warning",
+  REOPENED: "border-dt-warning",
+  REVIEW_CONFIRMED: "border-dt-success",
+  CANCELLED: "border-dt-danger",
+  UNABLE_TO_FULFIL: "border-dt-danger",
+  SEND_FAILED: "border-dt-danger",
+  EMAIL_FAILED: "border-dt-danger",
+  EMAIL_RETRY_EXHAUSTED: "border-dt-danger",
+};
+
+function eventAccentClass(event: { event_type: string; to_status: string | null }): string {
+  return EVENT_ACCENT[event.to_status ?? ""] ?? EVENT_ACCENT[event.event_type] ?? "border-dt-border";
+}
 
 type FulfilmentEdit = { supplier_id?: string; delivery_date?: string; catalogue_item_id?: string };
 
@@ -170,6 +194,18 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     },
   });
 
+  // §14 — the dedicated Reopen command. Reuses the same modal/reason flow
+  // as Hold/Release/Cancel, but the reason is mandatory (enforced both
+  // client-side, in the modal's Confirm button, and server-side).
+  const reopenMutation = useMutation({
+    mutationFn: (reason: string) => reopenOrder(orderId, reason),
+    onSuccess: () => {
+      invalidate();
+      setActionOpen(null);
+      setReasonText("");
+    },
+  });
+
   const sendToSupplierMutation = useMutation({
     mutationFn: () => sendOrderToSupplier(orderId),
     onSuccess: () => invalidate(),
@@ -263,6 +299,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     holdMutation.isPending ||
     releaseMutation.isPending ||
     cancelMutation.isPending ||
+    reopenMutation.isPending ||
     sendToSupplierMutation.isPending ||
     resendMutation.isPending ||
     verifyMutation.isPending ||
@@ -283,28 +320,19 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     eff.catalogueId !== (order.catalogue_item_id != null ? String(order.catalogue_item_id) : "");
   const catalogueItems = catalogueQuery.data ?? [];
 
-  // "Verification is the approval" (plan §K): the Verify button is the
-  // single routine happy-path action, available any time the address
-  // isn't already VERIFIED. Manual Send/Resend remain for held orders and
-  // exception recovery — mirrors birthday-api's order_email_service._send
-  // reachability check exactly; this is a UX convenience only, never the
-  // enforcement point.
-  const canVerify = order.address_verification_status !== "VERIFIED" && !["CANCELLED", "COMPLETED"].includes(order.status);
-  const canConfirmRelease = order.status === "REQUIRES_REVIEW";
-  const canSendToSupplier =
-    ["PENDING_VERIFICATION", "REQUIRES_ATTENTION"].includes(order.status) &&
-    order.supplier_id != null &&
-    order.address_verification_status === "VERIFIED";
-  const canResend = ["REQUIRES_ATTENTION", "CHANGE_REQUESTED"].includes(order.status) && order.supplier_id != null;
+  // Phase 1.6 §10 (R10) — one shared policy object instead of five
+  // separately-named consts plus inline conditions (the shape that let
+  // Hold drift out of sync with the backend — §B row 3/4).
+  const policy = orderActionPolicy(order);
   const verifyError = verifyMutation.error as Error | null;
-  // Hard delete is PENDING_VERIFICATION-only and never-actioned (server is
-  // the real boundary — see the 409 birthday-api returns otherwise).
-  const canDelete = order.status === "PENDING_VERIFICATION";
+  const holdError = holdMutation.error as Error | null;
+  const reopenError = reopenMutation.error as Error | null;
 
   function submitAction() {
     if (actionOpen === "hold") holdMutation.mutate(reasonText);
     if (actionOpen === "release") releaseMutation.mutate(reasonText);
     if (actionOpen === "cancel") cancelMutation.mutate(reasonText);
+    if (actionOpen === "reopen") reopenMutation.mutate(reasonText);
   }
 
   return (
@@ -336,7 +364,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <Button
               size="sm"
               variant="primary"
-              disabled={!canVerify || isMutating}
+              disabled={!policy.canVerify || isMutating}
               loading={verifyMutation.isPending}
               onClick={() => verifyMutation.mutate()}
               title="The one routine checkpoint — marks the address VERIFIED and auto-releases a standard order to the supplier"
@@ -347,7 +375,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <Button
               size="sm"
               variant="primary"
-              disabled={!canConfirmRelease || isMutating}
+              disabled={!policy.canConfirmRelease || isMutating}
               loading={confirmReleaseMutation.isPending}
               onClick={() => confirmReleaseMutation.mutate()}
               title="This order was flagged for a look before release — confirm to send it to the supplier"
@@ -357,7 +385,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <Button
               size="sm"
               variant="secondary"
-              disabled={!canSendToSupplier || isMutating}
+              disabled={!policy.canSendToSupplier || isMutating}
               loading={sendToSupplierMutation.isPending}
               onClick={() => sendToSupplierMutation.mutate()}
             >
@@ -367,7 +395,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <Button
               size="sm"
               variant="secondary"
-              disabled={!canResend || isMutating}
+              disabled={!policy.canResend || isMutating}
               loading={resendMutation.isPending}
               onClick={() => resendMutation.mutate()}
             >
@@ -377,7 +405,8 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <Button
               size="sm"
               variant="secondary"
-              disabled={order.status === "ON_HOLD" || isMutating}
+              disabled={!policy.canHold || isMutating}
+              title={!policy.canHold ? "This order is complete, cancelled, or already on hold and can no longer be held" : undefined}
               onClick={() => setActionOpen("hold")}
             >
               <PauseCircle className="size-4" />
@@ -386,7 +415,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <Button
               size="sm"
               variant="secondary"
-              disabled={order.status !== "ON_HOLD" || isMutating}
+              disabled={!policy.canRelease || isMutating}
               onClick={() => setActionOpen("release")}
             >
               <PlayCircle className="size-4" />
@@ -395,18 +424,31 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             <Button
               size="sm"
               variant="danger"
-              disabled={["CANCELLED", "COMPLETED"].includes(order.status) || isMutating}
+              disabled={!policy.canCancel || isMutating}
+              title={!policy.canCancel ? "This order is already complete, delivered, or cancelled" : undefined}
               onClick={() => setActionOpen("cancel")}
             >
               <XCircle className="size-4" />
               Cancel
             </Button>
+            {policy.canReopen && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isMutating}
+                title="Reopen this cancelled order — reruns readiness or, if it had already reached the supplier, routes to a fresh review before re-release"
+                onClick={() => setActionOpen("reopen")}
+              >
+                <RefreshCcw className="size-4" />
+                Reopen order
+              </Button>
+            )}
             <Button
               size="sm"
               variant="danger"
-              disabled={!canDelete || isMutating}
+              disabled={!policy.canDelete || isMutating}
               loading={deleteMutation.isPending}
-              title={!canDelete ? "Only never-actioned DRAFT orders can be deleted — use Cancel instead" : undefined}
+              title={!policy.canDelete ? "Only never-actioned DRAFT orders can be deleted — use Cancel instead" : undefined}
               onClick={() => {
                 if (window.confirm("Permanently delete this draft order? This cannot be undone.")) {
                   deleteMutation.mutate();
@@ -423,6 +465,16 @@ export function OrderDetail({ orderId }: { orderId: number }) {
       {verifyError && (
         <div className="mb-6 rounded-xl border border-dt-danger/40 bg-dt-danger/5 p-3 text-sm text-dt-danger">
           Could not verify: {verifyError.message}.
+        </div>
+      )}
+      {holdError && (
+        <div className="mb-6 rounded-xl border border-dt-danger/40 bg-dt-danger/5 p-3 text-sm text-dt-danger">
+          Could not place this order on hold: {holdError.message}.
+        </div>
+      )}
+      {reopenError && (
+        <div className="mb-6 rounded-xl border border-dt-danger/40 bg-dt-danger/5 p-3 text-sm text-dt-danger">
+          Could not reopen this order: {reopenError.message}.
         </div>
       )}
 
@@ -805,7 +857,10 @@ export function OrderDetail({ orderId }: { orderId: number }) {
           <OrderTimeline orderId={orderId} />
         </div>
 
-        <details className="rounded-2xl border border-dt-border bg-dt-surface">
+        {/* Phase 1.6 §17 — expanded by default (desktop); the content is
+            useful enough for operational testing/audit that it shouldn't
+            require an extra click to see. */}
+        <details open className="rounded-2xl border border-dt-border bg-dt-surface">
           <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-dt-text-primary">
             Raw event log ({order.events.length})
           </summary>
@@ -815,7 +870,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             ) : (
               <ol className="flex flex-col gap-3">
                 {order.events.map((event) => (
-                  <li key={event.id} className="border-l-2 border-dt-border pl-3">
+                  <li key={event.id} className={`border-l-2 pl-3 ${eventAccentClass(event)}`}>
                     <p className="text-sm font-medium text-dt-text-primary">
                       {event.event_type.replace(/_/g, " ")}
                     </p>
@@ -826,7 +881,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                     )}
                     {event.detail && <p className="mt-0.5 text-xs text-dt-text-secondary">{event.detail}</p>}
                     <p className="mt-0.5 text-xs text-dt-text-secondary">
-                      {new Date(event.created_at).toLocaleString()} · {event.actor_type}
+                      {new Date(event.created_at).toLocaleString()} · {event.actor_display_name ?? event.actor_type}
                     </p>
                   </li>
                 ))}
@@ -847,10 +902,19 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             ? "Put order on hold"
             : actionOpen === "release"
               ? "Release order from hold"
-              : "Cancel order"
+              : actionOpen === "reopen"
+                ? "Reopen cancelled order"
+                : "Cancel order"
         }
       >
         <div className="flex flex-col gap-4">
+          {actionOpen === "reopen" && (
+            <p className="text-sm text-dt-text-secondary">
+              {order.released_at
+                ? "This order had already reached the supplier — it will move to Requires Review, and a deliberate re-release is needed to notify the supplier again."
+                : "This order never reached the supplier — readiness will be rerun and it will return to Pending Verification (or Requires Attention if something it needs, like a supplier, is missing)."}
+            </p>
+          )}
           <FormField
             label={actionOpen === "release" ? "Note (optional)" : "Reason"}
             htmlFor="action-reason"
@@ -860,7 +924,13 @@ export function OrderDetail({ orderId }: { orderId: number }) {
               id="action-reason"
               value={reasonText}
               onChange={(e) => setReasonText(e.target.value)}
-              placeholder={actionOpen === "hold" ? "Why is this order on hold?" : "Optional detail"}
+              placeholder={
+                actionOpen === "hold"
+                  ? "Why is this order on hold?"
+                  : actionOpen === "reopen"
+                    ? "Why is this order being reopened?"
+                    : "Optional detail"
+              }
             />
           </FormField>
           <div className="flex justify-end gap-2">
@@ -871,7 +941,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
               variant={actionOpen === "cancel" ? "danger" : "primary"}
               size="sm"
               loading={isMutating}
-              disabled={actionOpen === "hold" && reasonText.trim() === ""}
+              disabled={(actionOpen === "hold" || actionOpen === "reopen") && reasonText.trim() === ""}
               onClick={submitAction}
             >
               Confirm

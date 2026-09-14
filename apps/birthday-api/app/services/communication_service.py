@@ -28,6 +28,7 @@ from app.models.birthday_order import BirthdayOrder
 from app.models.order_event import OrderEvent
 from app.models.order_issue import OrderIssue
 from app.models.supplier_communication import SupplierCommunication
+from app.services import order_status_service
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 
@@ -46,6 +47,15 @@ def sanitise_message_body(raw: str) -> str:
     return text[:_MAX_MESSAGE_CHARS]
 
 
+class CommunicationClosedError(Exception):
+    """Raised when a supplier tries to post a new message on an order whose
+    communication is closed (Phase 1.6 §12 / review correction #1)."""
+
+    def __init__(self, status_value: str):
+        self.status_value = status_value
+        super().__init__(f"This order's communication is closed (status: {status_value})")
+
+
 def post_portal_message(
     db: Session,
     order: BirthdayOrder,
@@ -54,10 +64,25 @@ def post_portal_message(
     author_id: int | None,
     body: str,
     issue_id: int | None = None,
+    author_display_name: str | None = None,
 ) -> SupplierCommunication:
     """Flow 1 (supplier -> internal) and flow 2 (internal -> supplier):
     a message posted on an order in either portal. Direction is relative to
-    the supplier."""
+    the supplier.
+
+    Communication eligibility is a narrower, separately-named concept from
+    fulfilment "terminal" status (Phase 1.6 §12 review correction #1) — only
+    COMPLETED/CANCELLED close the conversation for a *supplier*-authored
+    message; internal staff may still post a note on any order, and
+    UNABLE_TO_FULFIL deliberately stays open since operations and the
+    supplier still need to discuss reassignment/recovery there.
+    """
+    if (
+        author_type == ActorType.SUPPLIER
+        and order.status in order_status_service.SUPPLIER_COMMUNICATION_CLOSED_STATUSES
+    ):
+        raise CommunicationClosedError(order.status)
+
     clean = sanitise_message_body(body)
     if not clean:
         raise ValueError("Message body is empty")
@@ -85,6 +110,7 @@ def post_portal_message(
             event_type="PORTAL_MESSAGE",
             actor_id=author_id,
             actor_type=author_type.value,
+            actor_display_name=author_display_name,
             detail=clean[:280],
         )
     )
@@ -145,8 +171,12 @@ class TimelineEntry:
 
 
 def _author_label(author_type: str | None) -> str:
+    # Phase 1.6 §17: "Dijital Team" (not "Internal") to match brand voice —
+    # this label is audience-independent by design (same string whether the
+    # viewer is internal staff or the supplier), so it already never leaks
+    # an internal employee's actual name to a supplier session.
     return {
-        "USER": "Internal",
+        "USER": "Dijital Team",
         "SUPPLIER": "Supplier",
         "SYSTEM": "System",
     }.get(author_type or "", author_type or "System")

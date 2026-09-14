@@ -252,6 +252,9 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         { name: 'INTEGRATIONS_MODE', value: birthdayMode }
         { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
         { name: 'PEOPLE_API_URL', value: 'http://people-api' }
+        // Phase 1.6 §9: people-api scales to zero in DEV; a measured cold
+        // start took 23s. Deployment-visible, not a buried code constant.
+        { name: 'PEOPLE_API_TIMEOUT_SECONDS', value: '30' }
         { name: 'SUPPLIER_AUTH_MODE', value: supplierAuthMode }
       ],
       supplierAuthMode == 'entra' ? [

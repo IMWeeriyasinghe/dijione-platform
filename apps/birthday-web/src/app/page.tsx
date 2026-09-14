@@ -39,27 +39,32 @@ export default function DashboardPage() {
         description="Operational overview of the cake-ordering workflow."
       />
 
-      {/* Actionable attention cards (plan §M) — each links straight to the
-          filtered queue it counts, not a static vanity number. */}
+      {/* Actionable attention cards (plan §M / Phase 1.6 §4-§8) — every
+          card's count is produced by the exact same repository predicate
+          its link's list filter uses, so a number can never point at a
+          different result set than what it counts. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Link href="/orders?status_filter=PENDING_VERIFICATION" className="block">
           <MetricCard label="Address verification required" value={summary.pending_verification_count} icon={BadgeCheck} tone="brand" />
         </Link>
-        <Link href="/orders?status_filter=PENDING_VERIFICATION" className="block">
+        <Link href="/orders?verify=overdue" className="block">
           <MetricCard label="Verification overdue" value={summary.verification_overdue_count} icon={Clock3} />
         </Link>
         <Link href="/orders?status_filter=REQUIRES_REVIEW" className="block">
           <MetricCard label="In review" value={summary.requires_review_count} icon={ListOrdered} />
         </Link>
-        <Link href="/orders?status_filter=REQUIRES_ATTENTION" className="block">
+        <Link href="/orders?status_filter=REQUIRES_ATTENTION,ON_HOLD" className="block">
           <MetricCard label="Exceptions" value={summary.exceptions_count} icon={AlertTriangle} />
         </Link>
-        <Link href="/orders?status_filter=SENT_TO_SUPPLIER" className="block">
-          <MetricCard label="Supplier not yet accepted" value={summary.supplier_not_accepted_count} icon={CakeSlice} />
+        <Link href="/orders?acceptance=awaiting" className="block">
+          <MetricCard label="Awaiting supplier acceptance" value={summary.acceptance_awaiting_count} icon={CakeSlice} />
         </Link>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Link href="/orders?acceptance=overdue" className="block">
+          <MetricCard label="Acceptance overdue" value={summary.acceptance_overdue_count} icon={Clock3} />
+        </Link>
         <Link href="/orders?status_filter=ON_HOLD" className="block">
           <MetricCard label="On hold — needs a decision" value={summary.on_hold_count} icon={Clock3} />
         </Link>
@@ -69,8 +74,19 @@ export default function DashboardPage() {
         <Link href="/orders?due=overdue" className="block">
           <MetricCard label="Overdue deliveries" value={summary.overdue_delivery_count} icon={AlertTriangle} />
         </Link>
+      </div>
+
+      {/* Split from the old combined "Open issues / unmatched emails" tile
+          (Phase 1.6 §5) — that tile linked only to the unmatched-email
+          queue, so an open issue count was never actually reachable from
+          it. Two honest tiles now, each linking to where its own number
+          actually lives. */}
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Link href="/orders?has_open_issue=true" className="block">
+          <MetricCard label="Open issues" value={summary.open_issues_count} icon={AlertTriangle} />
+        </Link>
         <Link href="/inbound-emails" className="block">
-          <MetricCard label="Open issues / unmatched emails" value={summary.open_issues_count + summary.unmatched_emails_count} icon={AlertTriangle} />
+          <MetricCard label="Unmatched supplier email" value={summary.unmatched_emails_count} icon={AlertTriangle} />
         </Link>
       </div>
 
