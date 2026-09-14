@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from mail_client_py import NullMailTransport, ProductionPolicy
+
 from app.core.config import get_settings
 from app.integrations.factory import get_email_client
-from app.integrations.graph_email.mock_client import MockGraphEmailClient
 from app.integrations.people_source.mock_adapter import MockEmployeeSource
 from app.integrations.people_source.schemas import EmployeeRecord
 from app.models.detection_config import BirthdayDetectionConfig
@@ -42,14 +43,23 @@ def _seed_supplier(db, office_location="Colombo", lead_time_days=3):
     return supplier
 
 
-def test_email_sending_mode_is_mock_by_default():
-    """Safety control: EMAIL_SENDING_MODE must default to mock so no code
-    path can send real supplier email without an explicit, separate
-    opt-in from the BambooHR live/mock switch."""
+def test_mail_transport_is_null_by_default():
+    """Safety control: MAIL_TRANSPORT must default to null (and
+    MAIL_POLICY to disabled) so no code path can send real supplier email
+    without an explicit, separate opt-in — the single most important test
+    to keep green throughout the Managed Identity migration."""
     get_settings.cache_clear()
+    get_email_client.cache_clear()
     settings = get_settings()
-    assert settings.email_sending_mode == "mock"
-    assert isinstance(get_email_client(), MockGraphEmailClient)
+    assert settings.mail_transport == "null"
+    assert settings.mail_policy == "disabled"
+    client = get_email_client()
+    assert isinstance(client.transport, NullMailTransport)
+    # Policy is intentionally NOT DisabledPolicy here — the null transport
+    # is unconditionally safe regardless of policy (see get_email_client()'s
+    # docstring); ProductionPolicy is used for the null-transport path so
+    # simulated sends still progress the business workflow in dev/test.
+    assert isinstance(client.policy, ProductionPolicy)
 
 
 def test_full_automatic_workflow_bamboohr_to_completion(api_client, db):
@@ -98,8 +108,8 @@ def test_full_automatic_workflow_bamboohr_to_completion(api_client, db):
     assert body["order"]["status"] == "SENT_TO_SUPPLIER"
     assert body["order"]["released_by"] is None  # a SYSTEM release, not a human approval click
 
-    # Real Graph client must never have been touched.
-    assert isinstance(get_email_client(), MockGraphEmailClient)
+    # Real Graph transport must never have been touched.
+    assert isinstance(get_email_client().transport, NullMailTransport)
 
     # Supplier accepts (merged acknowledge+confirm) and fulfils.
     supplier_hdrs = supplier_headers_for(db, supplier)

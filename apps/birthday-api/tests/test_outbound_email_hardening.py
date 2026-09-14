@@ -6,19 +6,22 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.integrations.graph_email.schemas import EmailSendResult
+from mail_client_py import MailOutcome, MailResult
+
 from tests.conftest import headers_for
 
 
 class _ToggleClient:
-    """Fails while ``ok`` is False, then succeeds."""
+    """Fails while ``ok`` is False, then succeeds. Stands in for the whole
+    MailClient (monkeypatched over get_email_client), so returns real
+    MailResult values with truthful outcomes."""
 
     ok = False
 
-    def send(self, *, to, subject, body, order_reference):
+    def send(self, *, to, subject, body, correlation_id=None):
         if not self.ok:
-            return EmailSendResult(message_id="x", sent=False)
-        return EmailSendResult(message_id="ok-msg", sent=True)
+            return MailResult(correlation_id="x", outcome=MailOutcome.FAILED, sent=False, error="toggled off")
+        return MailResult(correlation_id="ok-msg", outcome=MailOutcome.SUBMITTED, sent=True)
 
 
 def _order_ready_to_send(db):

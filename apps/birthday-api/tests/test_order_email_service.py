@@ -90,7 +90,11 @@ def test_send_order_to_supplier_success(db):
     assert len(updated.communications) == 1
     comm = updated.communications[0]
     assert comm.status == "SENT"
-    assert comm.message_id.startswith("mock-msg-")
+    # message_id now stores MailClient's own generated correlation id (a
+    # plain UUID, generated once centrally rather than per-transport) —
+    # not a Graph-native id, and no longer prefixed by the transport.
+    assert comm.message_id
+    assert comm.transport_outcome == "SIMULATED"
 
 
 def test_send_order_to_supplier_failure_moves_to_requires_attention(db):

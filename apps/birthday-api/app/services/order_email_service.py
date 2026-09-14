@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from mail_client_py import MailOutcome
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -123,10 +124,31 @@ def _has_successful_release(db: Session, order: BirthdayOrder) -> bool:
     return db.execute(stmt).first() is not None
 
 
+# Birthday's own business-acceptance adapter (never taught to the shared
+# mail_client_py library, which stays fully truthful — see
+# docs/platform/email-architecture.md): a SIMULATED send is not a real
+# submission, but Birthday's workflow has always treated a successful mock
+# send as sufficient to progress the order, so that behavior is preserved
+# HERE, explicitly, rather than by weakening MailResult.sent upstream.
+_BUSINESS_ACCEPTED_OUTCOMES = {MailOutcome.SIMULATED, MailOutcome.SUBMITTED}
+
+# Distinct, human-readable last_error text per non-accepted outcome — the
+# concrete fix for "no allowlist/policy layer existed before this round,"
+# so a policy block is never indistinguishable from a genuine Graph failure.
+_OUTCOME_ERROR_TEXT = {
+    MailOutcome.BLOCKED: "blocked by mail policy: recipient not in allowlist",
+    MailOutcome.DISABLED: "mail transport disabled",
+}
+
+
+def _business_accepted(outcome: MailOutcome) -> bool:
+    return outcome in _BUSINESS_ACCEPTED_OUTCOMES
+
+
 def _record_communication(
     db: Session, order: BirthdayOrder, *, subject: str, body: str, status: str,
     message_id: str | None, last_error: str | None, retry_count: int,
-    next_retry_at: datetime | None = None,
+    next_retry_at: datetime | None = None, transport_outcome: str | None = None,
 ) -> SupplierCommunication:
     communication = SupplierCommunication(
         order_id=order.id,
@@ -142,6 +164,7 @@ def _record_communication(
         retry_count=retry_count,
         next_retry_at=next_retry_at,
         last_error=last_error,
+        transport_outcome=transport_outcome,
     )
     db.add(communication)
     db.flush()
@@ -244,35 +267,35 @@ def _send(
             to=order.supplier.primary_contact_email,
             subject=subject,
             body=body,
-            order_reference=order.order_reference,
         )
     except Exception as exc:  # noqa: BLE001 - integration failures must never propagate silently
         _record_communication(
             db, order, subject=subject, body=body, status=CommunicationStatus.FAILED.value,
             message_id=None, last_error=str(exc), retry_count=retry_count,
-            next_retry_at=_first_retry_at,
+            next_retry_at=_first_retry_at, transport_outcome=MailOutcome.FAILED.value,
         )
         return _handle_failure(db, order, error_detail=str(exc), actor_id=actor_id, notify=False)
 
-    if not result.sent:
-        error_detail = "Email send reported failure (sent=False)"
+    if not _business_accepted(result.outcome):
+        error_detail = _OUTCOME_ERROR_TEXT.get(result.outcome, result.error or f"Email send failed ({result.outcome.value})")
         _record_communication(
             db, order, subject=subject, body=body, status=CommunicationStatus.FAILED.value,
-            message_id=result.message_id, last_error=error_detail, retry_count=retry_count,
-            next_retry_at=_first_retry_at,
+            message_id=result.correlation_id, last_error=error_detail, retry_count=retry_count,
+            next_retry_at=_first_retry_at, transport_outcome=result.outcome.value,
         )
         return _handle_failure(db, order, error_detail=error_detail, actor_id=actor_id, notify=False)
 
     _record_communication(
         db, order, subject=subject, body=body, status=CommunicationStatus.SENT.value,
-        message_id=result.message_id, last_error=None, retry_count=retry_count,
+        message_id=result.correlation_id, last_error=None, retry_count=retry_count,
+        transport_outcome=result.outcome.value,
     )
     order.released_at = datetime.now(UTC)
     order.released_by = released_by
     order = order_status_service.transition(
         db, order, target_status,
         actor_id=actor_id, actor_type=ActorType.SYSTEM if actor_id is None else ActorType.USER,
-        detail=f"Email sent, message_id={result.message_id}",
+        detail=f"Email sent, correlation_id={result.correlation_id}",
         event_type="AUTO_RELEASED" if released_by is None else "STATUS_CHANGE",
         actor_display_name=actor_display_name if actor_id is not None else "System",
     )
@@ -285,7 +308,7 @@ def _send(
             actor_id=actor_id,
             actor_type=ActorType.SYSTEM.value if actor_id is None else ActorType.USER.value,
             actor_display_name=actor_display_name if actor_id is not None else "System",
-            detail=f"message_id={result.message_id}",
+            detail=f"correlation_id={result.correlation_id}, transport_outcome={result.outcome.value}",
         )
     )
     db.commit()
@@ -394,16 +417,17 @@ def retry_failed_outbound(db: Session, *, now: datetime | None = None) -> dict:
         retried += 1
         try:
             result = get_email_client().send(
-                to=order.supplier.primary_contact_email, subject=comm.subject,
-                body=comm.body, order_reference=order.order_reference,
+                to=order.supplier.primary_contact_email, subject=comm.subject, body=comm.body,
             )
-            ok = bool(result.sent)
-            err = None if ok else "sent=False"
-            msg_id = result.message_id
+            ok = _business_accepted(result.outcome)
+            err = None if ok else _OUTCOME_ERROR_TEXT.get(result.outcome, result.error or f"send failed ({result.outcome.value})")
+            msg_id = result.correlation_id
+            outcome_value = result.outcome.value
         except Exception as exc:  # noqa: BLE001
-            ok, err, msg_id = False, str(exc), None
+            ok, err, msg_id, outcome_value = False, str(exc), None, MailOutcome.FAILED.value
 
         comm.retry_count += 1
+        comm.transport_outcome = outcome_value
         if ok:
             comm.status = CommunicationStatus.SENT.value
             comm.sent_at = now
@@ -478,17 +502,20 @@ def send_ad_hoc_message(
     try:
         result = get_email_client().send(
             to=order.supplier.primary_contact_email, subject=subject, body=full_body,
-            order_reference=order.order_reference,
         )
     except Exception as exc:  # noqa: BLE001
         return _record_communication(
             db, order, subject=subject, body=full_body, status=CommunicationStatus.FAILED.value,
-            message_id=None, last_error=str(exc), retry_count=0,
+            message_id=None, last_error=str(exc), retry_count=0, transport_outcome=MailOutcome.FAILED.value,
         )
+    accepted = _business_accepted(result.outcome)
+    fallback_error = result.error or f"send failed ({result.outcome.value})"
     comm = _record_communication(
         db, order, subject=subject, body=full_body,
-        status=CommunicationStatus.SENT.value if result.sent else CommunicationStatus.FAILED.value,
-        message_id=result.message_id, last_error=None if result.sent else "sent=False", retry_count=0,
+        status=CommunicationStatus.SENT.value if accepted else CommunicationStatus.FAILED.value,
+        message_id=result.correlation_id,
+        last_error=None if accepted else _OUTCOME_ERROR_TEXT.get(result.outcome, fallback_error),
+        retry_count=0, transport_outcome=result.outcome.value,
     )
     comm.author_type = ActorType.USER.value if actor_id is not None else ActorType.SYSTEM.value
     comm.author_id = actor_id

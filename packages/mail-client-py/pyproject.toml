@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dijione-mail-client"
+version = "0.1.0"
+description = "Shared, transport-agnostic outbound mail client for DijiOne business services — Microsoft Graph via per-service Managed Identity, no client secrets, no shared runtime."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "azure-identity>=1.17",
+]
+
+[tool.setuptools.packages.find]
+include = ["mail_client_py*"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]

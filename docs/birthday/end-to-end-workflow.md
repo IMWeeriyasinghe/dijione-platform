@@ -283,7 +283,8 @@ Permission keys: `birthday.dashboard.read`, `birthday.orders.{read,create,update
 | Setting | DEV | UAT / PROD |
 |---|---|---|
 | `INTEGRATIONS_MODE` | `live` (People via `people-api`) — the Phase 1 validation switch | `live` |
-| `EMAIL_SENDING_MODE` | `mock` (`MockGraphEmailClient` + `MockInboundMailClient`) | `live` — enabled + proven in UAT (Graph app reg + `Mail.Send` + `Mail.Read` + admin consent + shared mailbox + KV secrets) |
+| `MAIL_TRANSPORT` (outbound) | `null` (`NullMailTransport`) | `graph` — Managed Identity + Exchange RBAC for Applications (`Application Mail.Send`, scoped to one mailbox), no client secret. See `docs/platform/email-architecture.md`. |
+| `EMAIL_SENDING_MODE` (inbound only) | `mock` (`MockInboundMailClient`) | `live` — enabled + proven in UAT (Graph app reg + `Mail.Read` + admin consent + shared mailbox + KV secrets); inbound is out of scope for the outbound Managed Identity migration |
 | `SUPPLIER_AUTH_MODE` | `entra` | `entra` |
 | Jobs | `birthday-scan-job` (`30 5 * * *`), `birthday-attention-job` (daily), `birthday-comms-job` (~10 min: outbound-retry + inbound-poll) | same |
 

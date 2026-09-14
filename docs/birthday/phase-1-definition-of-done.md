@@ -74,7 +74,7 @@ Plan `C:\Users\Dell\.claude\plans\dijione-dijitalentflow-rippling-cascade.md`.
 ## UAT entry (blocked until)
 - All P0 merged (done) + the 1.9 ⏳ validation steps executed and PASS
 - Browser E2E (deferred item) resolved or explicitly accepted
-- Real Graph outbound + inbound email enabled and proven **in UAT** (Graph app reg + `Mail.Send` + `Mail.Read` + admin consent + shared mailbox + KV secrets `birthday-graph-*`)
+- Real Graph outbound email enabled and proven in DEV via Managed Identity — birthday-api's own system-assigned identity + Exchange Online RBAC for Applications (`Application Mail.Send`, scoped to `appassistant@dijitalteam.com` only), no client secret, no KV secret (see `docs/platform/email-architecture.md`). Inbound (`Mail.Read`) remains out of scope; UAT proves the same outbound design against UAT's own Managed Identity + Exchange scope.
 - Supplier onboarding runbook executed for a real supplier in UAT
 - Monitoring/alerting wired to the platform's real alert sink
 

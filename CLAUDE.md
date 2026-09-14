@@ -3807,6 +3807,18 @@ Every reusable source-data domain MUST provide:
     change point, that same factory. The future improvement does not block
     DEV.
 
+21a. **Email: shared `packages/mail-client-py` code, never shared runtime
+    ownership.** Each email-sending service authenticates via its **own**
+    Container App system-assigned Managed Identity (never a client secret)
+    and its **own** Exchange Online RBAC-for-Applications mailbox scope —
+    never a central `mail-api`, never a shared identity across apps. The
+    shared library's `MailResult.sent` is fully truthful (`True` only for a
+    real Graph `SUBMITTED`, never for a `NullMailTransport` `SIMULATED`); a
+    consuming service's own "is this good enough to progress my workflow"
+    judgment is a locally-owned adapter, never taught to the shared library.
+    Full design, the Exchange RBAC runbook, and the future-adoption
+    checklist: `docs/platform/email-architecture.md`.
+
 ## Analytics
 
 22. Reporting consumes downstream reporting models — it does **not**

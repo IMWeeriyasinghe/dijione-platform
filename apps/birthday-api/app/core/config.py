@@ -10,11 +10,13 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./birthday.db"
 
     integrations_mode: str = "mock"
-    # Independent from integrations_mode (Phase-Next §7/§8): lets BambooHR
-    # stay live while email sending stays mocked during the dry-run phase,
-    # rather than one shared switch forcing both integrations to move
-    # together. Defaults mock — real supplier email requires an explicit
-    # opt-in, never an accidental side effect of enabling live BambooHR.
+    # Gates INBOUND supplier-mail polling only (GraphInboundMailClient vs.
+    # MockInboundMailClient) — inbound is out of scope for the Managed
+    # Identity migration and still uses the client-credentials
+    # graph_tenant_id/graph_client_id/graph_client_secret trio below.
+    # Independent from integrations_mode (Phase-Next §7/§8) so BambooHR can
+    # stay live while inbound mail stays mocked. Outbound email transport
+    # is governed separately by mail_transport (below), not this setting.
     email_sending_mode: str = "mock"
 
     api_cors_origins: str = (
@@ -57,21 +59,45 @@ class Settings(BaseSettings):
     supplier_entra_redirect_uri: str = ""
     supplier_public_base_url: str = ""
 
-    # Microsoft Graph email adapter (plan §9) — client-credentials flow.
-    # Unset until the user completes Graph app registration; GraphEmailClient
-    # raises GraphNotConfiguredError until all four are set.
+    # --- Outbound mail (packages/mail-client-py) -------------------------
+    # "null"  -> NullMailTransport, no real email ever leaves the system.
+    # "graph" -> GraphMailTransport, authenticates via this Container App's
+    #            own system-assigned Managed Identity (DefaultAzureCredential)
+    #            — never a client secret. Safe by default: null.
+    mail_transport: str = "null"
+    # "disabled" (safe default) | "internal_allowlist" | "production".
+    # Unknown/misconfigured values behave as "disabled" — fail closed,
+    # never a silent pass-through. See resolve_policy() in mail_client_py.
+    mail_policy: str = "disabled"
+    # The one mailbox this service ever sends as — e.g.
+    # "appassistant@dijitalteam.com". Exchange, not this code, resolves the
+    # sender display name at send time.
+    mail_shared_mailbox: str = ""
+    # Comma-separated exact addresses and/or "@domain" entries, read only
+    # when mail_policy == "internal_allowlist". DEV must be one or more
+    # explicit test addresses, never a bare "@dijitalteam.com" domain entry.
+    mail_allowlist: str = ""
+
+    # --- Inbound mail (client-credentials, out of scope for the Managed
+    # Identity migration — see app/integrations/inbound_mail/) -----------
+    # tenant/client/secret are read ONLY by GraphInboundMailClient today;
+    # the outbound path (mail_transport above) needs none of them.
     graph_tenant_id: str = ""
     graph_client_id: str = ""
     graph_client_secret: str = ""
-    graph_sender_mailbox: str = ""
     # Shared mailbox polled for supplier email replies (Phase 1 §1.5).
-    # Same Graph app registration as outbound + the Mail.Read permission.
+    # Same Graph app registration as legacy outbound + the Mail.Read
+    # permission — untouched by this round's outbound migration.
     graph_inbox_mailbox: str = ""
     graph_base_url: str = "https://graph.microsoft.com/v1.0"
 
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def mail_allowlist_list(self) -> list[str]:
+        return [a.strip() for a in self.mail_allowlist.split(",") if a.strip()]
 
     @property
     def is_sqlite(self) -> bool:

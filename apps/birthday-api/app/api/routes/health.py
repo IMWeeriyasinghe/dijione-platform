@@ -44,7 +44,11 @@ def health_deep(db: Session = Depends(get_db)) -> dict:
         checks["migration"] = {"current": "unknown", "head": "unknown", "up_to_date": None}
 
     checks["integrations_mode"] = settings.integrations_mode
+    # email_sending_mode now gates INBOUND supplier-mail polling only.
     checks["email_sending_mode"] = settings.email_sending_mode
+    # mail_transport/mail_policy gate OUTBOUND email (packages/mail-client-py).
+    checks["mail_transport"] = settings.mail_transport
+    checks["mail_policy"] = settings.mail_policy
 
     # People / Workforce source (people-api) reachability — NON-FATAL. An
     # outage defers detection (ScanRunStatus.DEFERRED_SOURCE_UNAVAILABLE)

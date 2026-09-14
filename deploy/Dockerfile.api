@@ -15,6 +15,12 @@
 # /app/packages/auth-client-py — which is copied to the SAME absolute path in
 # both stages so the editable link keeps resolving at runtime.
 #
+# `packages/mail-client-py` (the shared outbound-mail library, DijiBirthday
+# round) follows the identical pattern — copied unconditionally for every
+# service (cheap, matches auth-client-py's own unconditional copy), but only
+# whichever service's requirements.txt actually declares
+# `-e ../../packages/mail-client-py` installs it.
+#
 # The same image also backs the scheduled Container Apps Jobs (deploy/),
 # whose command is a `curl` to an internal endpoint — hence curl is
 # installed in the run stage.
@@ -32,13 +38,16 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# Shared editable package first (referenced by ../../packages/auth-client-py).
+# Shared editable packages first (referenced by ../../packages/<name>-py).
 COPY packages/auth-client-py ./packages/auth-client-py
+COPY packages/mail-client-py ./packages/mail-client-py
 
 # Dependencies. Run pip FROM the service directory so the requirements file's
 # `-e ../../packages/auth-client-py` resolves to /app/packages/auth-client-py.
 # A failure here MUST fail the build (no `|| true`, no cleanup on the same line).
 COPY apps/${SERVICE}/requirements.txt ./apps/${SERVICE}/requirements.txt
+# Run pip FROM the service directory so `-e ../../packages/<name>-py`
+# resolves against /app/packages/<name>-py.
 RUN cd apps/${SERVICE} && pip install -r requirements.txt
 
 # Drop dev-only tooling. Best-effort ONLY — must never be able to mask the
@@ -52,6 +61,11 @@ RUN python -c "import fastapi, uvicorn, pydantic, pydantic_settings, httpx, auth
         python -c "import sqlalchemy, alembic, psycopg; print('db runtime deps OK for ${SERVICE}')"; \
     else \
         echo "no db runtime deps expected for ${SERVICE}"; \
+    fi \
+ && if grep -qE 'mail-client-py' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import mail_client_py; print('mail-client-py runtime deps OK for ${SERVICE}')"; \
+    else \
+        echo "mail-client-py not used by ${SERVICE}"; \
     fi
 
 # ---- run ----------------------------------------------------------------
@@ -68,6 +82,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 WORKDIR /app
 COPY --from=build /opt/venv /opt/venv
 COPY --from=build /app/packages/auth-client-py ./packages/auth-client-py
+COPY --from=build /app/packages/mail-client-py ./packages/mail-client-py
 COPY apps/${SERVICE} ./apps/${SERVICE}
 RUN chown -R app:app /app
 

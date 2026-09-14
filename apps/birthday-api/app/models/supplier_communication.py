@@ -36,12 +36,20 @@ class SupplierCommunication(TimestampMixin, Base):
     body: Mapped[str] = mapped_column(Text, default="")
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Provider (Graph) message id — set on outbound send and inbound ingest;
-    # inbound dedupe is keyed on it. ``in_reply_to`` carries the outbound
+    # Outbound: the app-generated correlation id from MailClient.send()
+    # (never a Graph-native id — sendMail returns 202 with an empty body).
+    # Inbound: the real provider (Graph) message id, set on ingest; inbound
+    # dedupe is keyed on it. ``in_reply_to`` carries the outbound
     # message_id a supplier email reply threads to.
     message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     in_reply_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default=CommunicationStatus.QUEUED.value)
+    # Truthful mail-transport outcome (NOT_ATTEMPTED|DISABLED|BLOCKED|
+    # SIMULATED|SUBMITTED|FAILED, mail_client_py.MailOutcome) — durable and
+    # distinct from `status`, which represents only Birthday's own business/
+    # workflow state (see order_email_service._business_accepted). Nullable:
+    # historical rows predating this column are NULL, never backfilled.
+    transport_outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     # Outbound-email auto-retry (Phase 1 §1.3): next attempt time + ceiling.
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
