@@ -73,10 +73,16 @@ class Settings(BaseSettings):
     # "appassistant@dijitalteam.com". Exchange, not this code, resolves the
     # sender display name at send time.
     mail_shared_mailbox: str = ""
-    # Comma-separated exact addresses and/or "@domain" entries, read only
-    # when mail_policy == "internal_allowlist". DEV must be one or more
-    # explicit test addresses, never a bare "@dijitalteam.com" domain entry.
-    mail_allowlist: str = ""
+    # NOTE: there is deliberately no MAIL_ALLOWLIST env var. The
+    # "internal_allowlist" policy's actual approved-recipient list is
+    # authoritative and DB-backed (BirthdayTestEmailRecipient, managed
+    # through DijiBirthday's own Email Safety admin UI) — see
+    # app/integrations/factory.py's _build_policy() and
+    # docs/platform/email-architecture.md. Deliberately not
+    # env-var-configurable: an env var would require a redeploy to change
+    # the approved list, defeating the whole point of runtime
+    # administration, and would risk silently broadening permissions if
+    # ever left stale after a config change.
 
     # --- Inbound mail (client-credentials, out of scope for the Managed
     # Identity migration — see app/integrations/inbound_mail/) -----------
@@ -96,12 +102,17 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]
 
     @property
-    def mail_allowlist_list(self) -> list[str]:
-        return [a.strip() for a in self.mail_allowlist.split(",") if a.strip()]
-
-    @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
+
+    @property
+    def is_production(self) -> bool:
+        """Matches deploy/bicep/main.bicep's APP_ENV value for the prod
+        environment exactly ('dev' -> 'development', else the raw
+        environmentName — so 'uat' stays 'uat', 'prod' stays 'prod').
+        Gates the non-production-only Email Safety admin surface
+        (app/api/routes/admin.py) — never true in DEV or UAT."""
+        return self.app_env == "prod"
 
     @property
     def dev_supplier_auth_enabled(self) -> bool:

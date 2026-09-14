@@ -717,3 +717,37 @@ export type SupplierSetupReadiness = {
   missing: string[];
 };
 
+// --- DijiBirthday Email Safety (non-production outbound-recipient
+// allowlist, docs/platform/email-architecture.md) — DijiBirthday-owned,
+// never surfaced in DijiOne platform-level admin. -----------------------
+export type TestEmailRecipientType = "INTERNAL_TESTER" | "TEST_SUPPLIER";
+
+export type TestEmailRecipientOut = {
+  id: number;
+  email_address: string;
+  display_label: string;
+  recipient_type: TestEmailRecipientType;
+  is_active: boolean;
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TestEmailRecipientListResponse = {
+  items: TestEmailRecipientOut[];
+};
+
+export type TestEmailRecipientCreateInput = {
+  email_address: string;
+  display_label?: string;
+  recipient_type?: TestEmailRecipientType;
+  is_active?: boolean;
+};
+
+export type TestEmailRecipientUpdateInput = {
+  display_label?: string;
+  recipient_type?: TestEmailRecipientType;
+  is_active?: boolean;
+};
+

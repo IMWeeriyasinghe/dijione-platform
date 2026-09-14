@@ -54,7 +54,7 @@ def test_transient_failure_is_retried_and_recovers(db, monkeypatch):
     from app.services import order_email_service
 
     client = _ToggleClient()
-    monkeypatch.setattr(order_email_service, "get_email_client", lambda: client)
+    monkeypatch.setattr(order_email_service, "get_email_client", lambda db=None: client)
 
     order = _order_ready_to_send(db)
     order_email_service.auto_release_order(db, order)
@@ -90,7 +90,7 @@ def test_retry_exhaustion_notifies_and_records_event(db, monkeypatch):
     calls: list = []
     from app.services.notification_service import NotificationService
 
-    monkeypatch.setattr(order_email_service, "get_email_client", lambda: _ToggleClient())  # always fails
+    monkeypatch.setattr(order_email_service, "get_email_client", lambda db=None: _ToggleClient())  # always fails
     monkeypatch.setattr(
         NotificationService, "notify_module_role",
         lambda self, **kw: calls.append(kw),
@@ -126,7 +126,7 @@ def test_duplicate_release_is_a_no_op(db, monkeypatch):
 
     client = _ToggleClient()
     client.ok = True
-    monkeypatch.setattr(order_email_service, "get_email_client", lambda: client)
+    monkeypatch.setattr(order_email_service, "get_email_client", lambda db=None: client)
 
     order = _order_ready_to_send(db)
     order_email_service.auto_release_order(db, order)
@@ -147,7 +147,7 @@ def test_post_release_change_emails_the_supplier(api_client, db, monkeypatch):
 
     client = _ToggleClient()
     client.ok = True
-    monkeypatch.setattr(order_email_service, "get_email_client", lambda: client)
+    monkeypatch.setattr(order_email_service, "get_email_client", lambda db=None: client)
 
     order = _order_ready_to_send(db)
     order_email_service.auto_release_order(db, order)

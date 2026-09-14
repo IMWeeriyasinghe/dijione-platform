@@ -263,7 +263,7 @@ def _send(
     _first_retry_at = datetime.now(UTC) + timedelta(minutes=_backoff_minutes(0))
 
     try:
-        result = get_email_client().send(
+        result = get_email_client(db).send(
             to=order.supplier.primary_contact_email,
             subject=subject,
             body=body,
@@ -416,7 +416,7 @@ def retry_failed_outbound(db: Session, *, now: datetime | None = None) -> dict:
             continue
         retried += 1
         try:
-            result = get_email_client().send(
+            result = get_email_client(db).send(
                 to=order.supplier.primary_contact_email, subject=comm.subject, body=comm.body,
             )
             ok = _business_accepted(result.outcome)
@@ -500,7 +500,7 @@ def send_ad_hoc_message(
         f"Open the DijiBirthday Supplier Portal to view and respond to this order."
     )
     try:
-        result = get_email_client().send(
+        result = get_email_client(db).send(
             to=order.supplier.primary_contact_email, subject=subject, body=full_body,
         )
     except Exception as exc:  # noqa: BLE001

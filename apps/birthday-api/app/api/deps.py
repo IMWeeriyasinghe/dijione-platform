@@ -75,6 +75,17 @@ def require_birthday_permission(permission_key: str):
     return _dependency
 
 
+def require_non_production() -> None:
+    """Hard environment guard for the Email Safety test-recipient admin
+    surface (app/api/routes/admin.py) — a non-production-only safety
+    feature that must never become an active control surface in PROD
+    (docs/platform/email-architecture.md). Enforced at the router boundary,
+    independently of whether the frontend nav item is shown — 404, not 403,
+    so PROD gives no signal the route exists at all."""
+    if get_settings().is_production:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+
+
 @dataclass
 class SupplierScope:
     """Resolved supplier-portal authorization scope (Phase-Next §5).

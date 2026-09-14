@@ -58,7 +58,7 @@ def test_business_acceptance_and_transport_outcome_recorded(db, monkeypatch, out
     from app.services import order_email_service
 
     result = MailResult(correlation_id="corr-x", outcome=outcome, sent=(outcome == MailOutcome.SUBMITTED))
-    monkeypatch.setattr(order_email_service, "get_email_client", lambda: _FixedResultClient(result))
+    monkeypatch.setattr(order_email_service, "get_email_client", lambda db=None: _FixedResultClient(result))
 
     order = _order(db)
     updated = order_email_service.send_order_to_supplier(db, order, actor_id=1)

@@ -26,6 +26,10 @@ import type {
   SupplierUserCreateInput,
   SupplierUserOut,
   SupplierUserUpdateInput,
+  TestEmailRecipientCreateInput,
+  TestEmailRecipientListResponse,
+  TestEmailRecipientOut,
+  TestEmailRecipientUpdateInput,
   UpcomingBirthdaysResponse,
   VerifyAddressInput,
   VerifyAddressResponse,
@@ -43,7 +47,8 @@ export { ApiError } from "@dijione/auth-client";
 // 404 once reached through the DijiOne shell (docs/platform/versioning.md
 // has the full explanation) — confirmed correct both standalone and
 // through the shell's /birthday/:path* wildcard proxy.
-export const getReleaseMetadata = () => request<{ release_date: string | null }>("/birthday/api/meta");
+export const getReleaseMetadata = () =>
+  request<{ release_date: string | null; is_production: boolean }>("/birthday/api/meta");
 
 // --- Dashboard -------------------------------------------------
 export const getDashboardSummary = () => request<BirthdayDashboardSummary>("/api/birthday/dashboard");
@@ -361,3 +366,26 @@ export const impersonateSupplierUser = (supplierId: number, userId: number) =>
     `/api/birthday/suppliers/${supplierId}/users/${userId}/impersonate`,
     { method: "POST" },
   );
+
+// --- Email Safety (non-production outbound-recipient allowlist) ----
+// Backend enforces require_non_production() independently of anything
+// here — this client simply calls the route; in PROD the route itself
+// 404s (docs/platform/email-architecture.md), so no separate frontend
+// guard is needed against these calls themselves.
+export const listTestEmailRecipients = () =>
+  request<TestEmailRecipientListResponse>("/api/birthday/admin/test-email-recipients");
+
+export const createTestEmailRecipient = (payload: TestEmailRecipientCreateInput) =>
+  request<TestEmailRecipientOut>("/api/birthday/admin/test-email-recipients", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateTestEmailRecipient = (id: number, payload: TestEmailRecipientUpdateInput) =>
+  request<TestEmailRecipientOut>(`/api/birthday/admin/test-email-recipients/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteTestEmailRecipient = (id: number) =>
+  request<void>(`/api/birthday/admin/test-email-recipients/${id}`, { method: "DELETE" });

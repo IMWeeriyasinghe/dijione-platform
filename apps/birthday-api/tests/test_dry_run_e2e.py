@@ -14,6 +14,7 @@ from datetime import date, timedelta
 from mail_client_py import NullMailTransport, ProductionPolicy
 
 from app.core.config import get_settings
+from app.integrations import factory
 from app.integrations.factory import get_email_client
 from app.integrations.people_source.mock_adapter import MockEmployeeSource
 from app.integrations.people_source.schemas import EmployeeRecord
@@ -49,7 +50,7 @@ def test_mail_transport_is_null_by_default():
     without an explicit, separate opt-in — the single most important test
     to keep green throughout the Managed Identity migration."""
     get_settings.cache_clear()
-    get_email_client.cache_clear()
+    factory._get_transport.cache_clear()
     settings = get_settings()
     assert settings.mail_transport == "null"
     assert settings.mail_policy == "disabled"

@@ -1,10 +1,23 @@
+import logging
 from functools import lru_cache
 
-from mail_client_py import GraphMailTransport, MailClient, NullMailTransport, ProductionPolicy, resolve_policy
+from mail_client_py import (
+    DisabledPolicy,
+    GraphMailTransport,
+    InternalAllowlistPolicy,
+    MailClient,
+    MailPolicy,
+    MailTransport,
+    NullMailTransport,
+    ProductionPolicy,
+)
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.integrations.people_source.client import EmployeeSourceClient
 from app.integrations.people_source.mock_adapter import MockEmployeeSource
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache
@@ -21,35 +34,69 @@ def get_employee_source() -> EmployeeSourceClient:
 
 
 @lru_cache
-def get_email_client() -> MailClient:
-    """The one place birthday-api builds its outbound MailClient — binds
-    the shared, transport-agnostic packages/mail-client-py library to this
-    service's own config (mail_transport/mail_policy/mail_shared_mailbox/
-    mail_allowlist). mail_transport (not email_sending_mode, which now
-    gates inbound only) decides null vs. graph.
-
-    mail_policy (default "disabled" — fail closed) only matters once a
-    real transport is actually in play: NullMailTransport can never submit
-    a real email regardless of policy, so gating it too would only break
-    business-workflow testing for no safety benefit — birthday-api's own
-    judgment call, made here rather than in the shared library (which
-    stays fully generic and applies whatever policy it's given uniformly,
-    exactly as designed). The moment mail_transport=graph is turned on,
-    mail_policy's real, fail-closed-by-default value governs — an operator
-    who forgets to also set it still gets DISABLED, never an accidental
-    open send."""
+def _get_transport() -> MailTransport:
+    """The transport half of get_email_client() — safe to cache (unlike
+    the policy half, below): which mailbox/credential birthday-api sends
+    through never changes at runtime, and caching GraphMailTransport
+    across calls preserves its in-memory Graph token cache instead of
+    re-authenticating on every send."""
     settings = get_settings()
-
     if settings.mail_transport == "graph":
-        transport = GraphMailTransport(
+        return GraphMailTransport(
             sender_mailbox=settings.mail_shared_mailbox, base_url=settings.graph_base_url,
         )
-        policy = resolve_policy(settings.mail_policy, allowlist=settings.mail_allowlist_list)
-    else:
-        transport = NullMailTransport()
-        policy = ProductionPolicy()
+    return NullMailTransport()
 
-    return MailClient(transport=transport, policy=policy)
+
+def _build_policy(db: Session | None) -> MailPolicy:
+    """Deliberately NOT cached — unlike the transport, the policy for
+    "internal_allowlist" must reflect BirthdayTestEmailRecipient's live DB
+    state on every call, with no redeploy/restart, per the explicit
+    runtime-administration requirement (docs/platform/email-architecture.md).
+
+    NullMailTransport can never submit a real email regardless of policy,
+    so pairing it with a permissive policy is safe and keeps
+    business-workflow testing working exactly as before — policy only
+    carries real weight once mail_transport=graph is actually in play.
+    """
+    settings = get_settings()
+    if settings.mail_transport != "graph":
+        return ProductionPolicy()
+
+    if settings.mail_policy != "internal_allowlist":
+        # "disabled" (fail-closed default) or "production" (real
+        # supplier traffic — the DB-backed test allowlist must never
+        # restrict it, per the explicit PROD-behavior requirement).
+        return ProductionPolicy() if settings.mail_policy == "production" else DisabledPolicy()
+
+    if db is None:
+        # A caller reached the graph+internal_allowlist path without a DB
+        # session to query — fail closed rather than silently falling
+        # back to an open policy.
+        logger.warning("mail_policy=internal_allowlist requested with no db session — failing closed")
+        return DisabledPolicy()
+
+    try:
+        from app.services.test_email_recipient_service import list_active_recipient_emails
+
+        allowlist = list_active_recipient_emails(db)
+    except Exception:  # noqa: BLE001 - a DB lookup failure must fail closed, never silently allow
+        logger.exception("Failed to load the test-email-recipient allowlist — failing closed")
+        return DisabledPolicy()
+
+    return InternalAllowlistPolicy(allowlist)
+
+
+def get_email_client(db: Session | None = None) -> MailClient:
+    """The one place birthday-api builds its outbound MailClient — binds
+    the shared, transport-agnostic packages/mail-client-py library to this
+    service's own config (mail_transport/mail_policy/mail_shared_mailbox)
+    plus, for mail_policy="internal_allowlist", the live
+    BirthdayTestEmailRecipient table (db must be passed by every caller on
+    the outbound-send path — see app/services/order_email_service.py).
+    mail_transport (not email_sending_mode, which now gates inbound only)
+    decides null vs. graph."""
+    return MailClient(transport=_get_transport(), policy=_build_policy(db))
 
 
 @lru_cache

@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/api", () => ({
-  getReleaseMetadata: vi.fn().mockResolvedValue({ release_date: null }),
+const { getReleaseMetadata } = vi.hoisted(() => ({
+  getReleaseMetadata: vi.fn().mockResolvedValue({ release_date: null, is_production: false }),
 }));
+vi.mock("@/lib/api", () => ({ getReleaseMetadata }));
 
 // BirthdayShell's real dependency tree pulls in the design system's full
 // AppShell chrome, each with its own API calls. This test is scoped to
@@ -61,6 +62,10 @@ function wrap(ui: ReactNode) {
 }
 
 describe("BirthdayShell", () => {
+  beforeEach(() => {
+    getReleaseMetadata.mockResolvedValue({ release_date: null, is_production: false });
+  });
+
   it("shows a no-access empty state for a persona with no DijiBirthday role", () => {
     mockedUseBirthdayScope.mockReturnValue(null);
 
@@ -80,5 +85,34 @@ describe("BirthdayShell", () => {
     expect(screen.getByText("Cake Orders")).toBeInTheDocument();
     expect(screen.getByText("Suppliers")).toBeInTheDocument();
     expect(screen.queryByTestId("empty-state")).not.toBeInTheDocument();
+  });
+
+  it("shows the Email Safety admin nav item for an admin in a non-production environment", async () => {
+    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true });
+    getReleaseMetadata.mockResolvedValue({ release_date: null, is_production: false });
+
+    wrap(<BirthdayShell>content</BirthdayShell>);
+
+    expect(await screen.findByText("Email Safety")).toBeInTheDocument();
+  });
+
+  it("hides the Email Safety admin nav item for a non-admin internal user", async () => {
+    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_USER", isAdmin: false });
+    getReleaseMetadata.mockResolvedValue({ release_date: null, is_production: false });
+
+    wrap(<BirthdayShell>content</BirthdayShell>);
+
+    await screen.findByText("Upcoming Birthdays");
+    expect(screen.queryByText("Email Safety")).not.toBeInTheDocument();
+  });
+
+  it("hides the Email Safety admin nav item in a production environment, even for an admin", async () => {
+    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true });
+    getReleaseMetadata.mockResolvedValue({ release_date: null, is_production: true });
+
+    wrap(<BirthdayShell>content</BirthdayShell>);
+
+    await screen.findByText("Upcoming Birthdays");
+    expect(screen.queryByText("Email Safety")).not.toBeInTheDocument();
   });
 });
