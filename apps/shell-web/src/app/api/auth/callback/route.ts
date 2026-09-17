@@ -17,8 +17,14 @@ const PLATFORM_API_URL = process.env.PLATFORM_API_URL ?? "http://localhost:8000"
 const TOKEN_STORAGE_KEY = "dijione.devToken";
 
 function page(script: string): NextResponse {
+  // The <script> must be inside <body>, not <head>: an error branch sets
+  // `document.body.textContent`, and without an explicit <body> the parser
+  // hasn't created it yet when this synchronous inline script runs —
+  // `document.body` is null, the assignment throws, and the user is left on
+  // a blank page instead of seeing the error (or reaching location.replace
+  // on the success path). See docs/platform/authentication.md.
   return new NextResponse(
-    `<!doctype html><meta charset="utf-8"><title>Signing in…</title><script>${script}</script>`,
+    `<!doctype html><html><head><meta charset="utf-8"><title>Signing in…</title></head><body><script>${script}</script></body></html>`,
     { headers: { "content-type": "text/html; charset=utf-8" } },
   );
 }
