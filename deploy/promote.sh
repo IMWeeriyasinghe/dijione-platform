@@ -43,9 +43,14 @@ if [ "$TO" = "prod" ]; then
   # AcrPull on the source and AcrPush on the target.
   while IFS=$'\t' read -r svc digest; do
     [ -n "$svc" ] || continue
+    # --image/-t requires a repo:tag target — this az CLI rejects a
+    # "repo@digest" target string outright (InvalidImportImageParameter).
+    # --repository is the manifest-only-copy form: it preserves the source
+    # digest exactly with no tag, which is what a digest-pinned deployment
+    # needs anyway (verified below).
     az acr import -n "$PROD_ACR" \
       --source "${NONPROD_ACR}.azurecr.io/dijione/${svc}@${digest}" \
-      --image "dijione/${svc}@${digest}" --force -o none
+      --repository "dijione/${svc}" -o none
     got="$(az acr repository show -n "$PROD_ACR" --image "dijione/${svc}@${digest}" --query digest -o tsv)"
     if [ "$got" != "$digest" ]; then
       echo "!! digest mismatch for $svc: expected $digest got $got" >&2

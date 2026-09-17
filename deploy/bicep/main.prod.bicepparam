@@ -46,13 +46,19 @@ param maxReplicasOverrides = {
 // instead of real Microsoft Entra ID sign-in. Found during the
 // PLATFORM_JWT_SECRET environment-cleanliness audit; see main.dev.bicepparam
 // for the fully-wired reference (DEV itself already runs authMode=entra).
-// entraTenantId / entraClientId / publicBaseUrl and the supplier equivalents
-// are intentionally left unset here — they require PROD's own Entra app
-// registrations, a human Entra-tenant action outside this repository's
-// authority (CLAUDE.md). Until those are provisioned and these four params
-// are filled in (plus the entra-client-secret-prod /
-// birthday-supplier-entra-secret-prod Key Vault secrets), a PROD deployment
-// attempt correctly FAILS rather than silently falling back to DEV identity
-// mode.
+//
+// PROD's own Entra app registrations now exist (confirmed values, no
+// secrets here — client secrets live only in kv-dijione-prod as
+// entra-client-secret-prod / birthday-supplier-entra-secret-prod, never in
+// source control):
+//   dijione-prod                     (internal DijiOne sign-in)
+//   dijione-birthday-supplier-prod   (Birthday Supplier Portal B2B guest sign-in)
 param authMode = 'entra'
+param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
+param entraClientId = '98b1f056-68a2-492e-9d37-ae2e5eb0d218'
+param publicBaseUrl = 'https://shell-web.icybush-52a8142b.southeastasia.azurecontainerapps.io'
+
 param supplierAuthMode = 'entra'
+param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
+param supplierEntraClientId = '572564e5-acad-495b-92e7-029ecabba8e7'
+param supplierPublicBaseUrl = 'https://birthday-supplier-web.icybush-52a8142b.southeastasia.azurecontainerapps.io'
