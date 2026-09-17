@@ -17,6 +17,14 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
+// Canonical client-directory sync (talent-api's clients extension rows,
+// keyed on platform_client_id) — a one-time bootstrap task needed for the
+// governed DTC tag -> Client resolution, NOT DEV persona/seeding behavior.
+// seedDevIdentities is deliberately left at its default (false): PROD uses
+// real Microsoft Entra sign-in (authMode=entra below), so the passwordless
+// dev-login persona switcher must never be seeded/exposed here.
+param seedTalentClientExtensions = true
+
 // Initial PROD (Amendment 8): smallest validated container size; ONLY the JWT
 // issuer + the entry point stay warm, everything else scales to zero. Raise
 // per the scaling-trigger table, not preemptively.
