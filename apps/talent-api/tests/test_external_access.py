@@ -19,7 +19,7 @@ from app.models.candidate import Candidate
 from app.models.talent_request import TalentRequest
 from tests.conftest import external_headers_for, headers_for, make_magic_link_grant
 
-_INTERNAL_SECRET = "test-only-secret"  # matches conftest's JWT_DEV_SECRET
+_INTERNAL_SECRET = "test-only-secret"  # matches conftest's PLATFORM_JWT_SECRET
 
 
 @pytest.fixture(autouse=True)

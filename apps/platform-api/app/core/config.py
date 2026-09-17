@@ -32,7 +32,7 @@ class Settings(BaseSettings):
         "http://localhost:3000,http://localhost:3001,http://localhost:3002,"
         "http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002"
     )
-    jwt_dev_secret: str = "dev-only-insecure-secret-change-me"
+    platform_jwt_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 12
 

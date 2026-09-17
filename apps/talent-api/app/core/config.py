@@ -24,10 +24,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002"
     )
 
-    # Must match platform-api's JWT_DEV_SECRET — talent-api verifies tokens
+    # Must match platform-api's PLATFORM_JWT_SECRET — talent-api verifies tokens
     # locally from claims, it never calls Platform Core to authenticate a
     # request (see packages/auth-client-py).
-    jwt_dev_secret: str = "dev-only-insecure-secret-change-me"
+    platform_jwt_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
 
     platform_api_url: str = "http://localhost:8000"
@@ -35,11 +35,11 @@ class Settings(BaseSettings):
     internal_service_secret: str = "dev-only-internal-secret-change-me"
 
     # DijiTalentFlow magic-link external client sessions — a DELIBERATELY
-    # SEPARATE signing secret + issuer from jwt_dev_secret/
+    # SEPARATE signing secret + issuer from platform_jwt_secret/
     # "dijione-dev-identity" (approved security amendment). An
     # internally-signed staff token must never verify against this secret,
     # and an externally-signed session must never verify against
-    # jwt_dev_secret — see get_talent_external_scope in app/api/deps.py.
+    # platform_jwt_secret — see get_talent_external_scope in app/api/deps.py.
     # Local-dev-only default; production provisioning is a future,
     # separate cloud task, not something this value needs to anticipate.
     external_session_jwt_secret: str = "dev-only-external-session-secret-change-me"

@@ -35,7 +35,7 @@
 # run populates them.
 #
 # Usage (from the repo root, with each service's env already set —
-#   DATABASE_URL, JWT_DEV_SECRET, INTERNAL_SERVICE_SECRET, INTEGRATIONS_MODE=mock, ...):
+#   DATABASE_URL, PLATFORM_JWT_SECRET, INTERNAL_SERVICE_SECRET, INTEGRATIONS_MODE=mock, ...):
 #
 #   PYTHON=python ./scripts/bootstrap-dev.sh
 

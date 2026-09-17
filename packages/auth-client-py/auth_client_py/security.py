@@ -1,7 +1,7 @@
 """Fail-closed validation of the shared trust anchors.
 
 Every DijiOne backend ships insecure development defaults for
-``JWT_DEV_SECRET`` / ``INTERNAL_SERVICE_SECRET`` (and talent-api's
+``PLATFORM_JWT_SECRET`` / ``INTERNAL_SERVICE_SECRET`` (and talent-api's
 ``EXTERNAL_SESSION_JWT_SECRET``) so local dev and CI work with no setup.
 Those defaults must never reach a deployed non-development environment. A
 service calls :func:`assert_trust_anchors_safe` once at startup; it raises
@@ -49,7 +49,7 @@ def assert_trust_anchors_safe(
 ) -> None:
     """Abort startup if a non-development environment holds an insecure secret.
 
-    ``secrets`` maps a human name (e.g. ``"JWT_DEV_SECRET"``) to its resolved
+    ``secrets`` maps a human name (e.g. ``"PLATFORM_JWT_SECRET"``) to its resolved
     value — each service passes the anchors it actually uses.
 
     In a development-class ``app_env`` this is a no-op, except that if the

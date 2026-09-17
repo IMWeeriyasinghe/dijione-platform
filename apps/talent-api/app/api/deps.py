@@ -26,7 +26,7 @@ from app.models.magic_link_grant import MagicLinkGrant
 from app.repositories.client_repo import ClientRepository
 
 _settings = get_settings()
-get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
+get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # The external magic-link session decoder — a DELIBERATELY separate trust
 # boundary (approved security amendment). Bound to its own secret AND its

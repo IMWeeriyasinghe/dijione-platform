@@ -31,12 +31,12 @@ credential — they consume the source domain over HTTP.
 
 | Service | Port | DB | Real-secret keys (only ever in `.env` / Key Vault) | Notes |
 |---|---|---|---|---|
-| `platform-api` | 8000 | SQLite / `platform_dev` | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`, `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET` | Owns identity, authz, module registry, audit, notifications, canonical Client identity |
+| `platform-api` | 8000 | SQLite / `platform_dev` | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`, `PLATFORM_JWT_SECRET`, `INTERNAL_SERVICE_SECRET` | Owns identity, authz, module registry, audit, notifications, canonical Client identity |
 | `admin-api` | 8001 | none | `INTERNAL_SERVICE_SECRET` | Zero-DB BFF; forwards the caller's bearer to platform-api, enriches from talent-api |
-| `talent-api` | 8002 | SQLite / `talent_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `EXTERNAL_SESSION_JWT_SECRET`, `AZURE_STORAGE_CONNECTION_STRING` (reserved, unused) | `INTEGRATIONS_MODE=mock` locally; **no Lever/HubSpot credential** — consumes `recruitment-api` |
-| `recruitment-api` | 8005 | SQLite / `recruitment_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `LEVER_API_KEY`, `LEVER_WEBHOOK_SIGNING_SECRET` | Sole Lever owner; Lever is **GET-only** (CLAUDE.md §60); internal ingress |
-| `people-api` | 8006 | SQLite / `people_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `BAMBOOHR_API_KEY`, `BAMBOOHR_SUBDOMAIN` | Sole BambooHR owner; never writes to BambooHR; internal ingress |
-| `birthday-api` | 8003 | SQLite / `birthday_dev` | `JWT_DEV_SECRET`, `INTERNAL_SERVICE_SECRET`, `GRAPH_CLIENT_SECRET` (+ `GRAPH_TENANT_ID`/`CLIENT_ID`) | `INTEGRATIONS_MODE` and `EMAIL_SENDING_MODE` independent, both default `mock`; **no BambooHR credential** — consumes `people-api`; mints its own supplier-portal tokens |
+| `talent-api` | 8002 | SQLite / `talent_dev` | `PLATFORM_JWT_SECRET`, `INTERNAL_SERVICE_SECRET`, `EXTERNAL_SESSION_JWT_SECRET`, `AZURE_STORAGE_CONNECTION_STRING` (reserved, unused) | `INTEGRATIONS_MODE=mock` locally; **no Lever/HubSpot credential** — consumes `recruitment-api` |
+| `recruitment-api` | 8005 | SQLite / `recruitment_dev` | `PLATFORM_JWT_SECRET`, `INTERNAL_SERVICE_SECRET`, `LEVER_API_KEY`, `LEVER_WEBHOOK_SIGNING_SECRET` | Sole Lever owner; Lever is **GET-only** (CLAUDE.md §60); internal ingress |
+| `people-api` | 8006 | SQLite / `people_dev` | `PLATFORM_JWT_SECRET`, `INTERNAL_SERVICE_SECRET`, `BAMBOOHR_API_KEY`, `BAMBOOHR_SUBDOMAIN` | Sole BambooHR owner; never writes to BambooHR; internal ingress |
+| `birthday-api` | 8003 | SQLite / `birthday_dev` | `PLATFORM_JWT_SECRET`, `INTERNAL_SERVICE_SECRET`, `GRAPH_CLIENT_SECRET` (+ `GRAPH_TENANT_ID`/`CLIENT_ID`) | `INTEGRATIONS_MODE` and `EMAIL_SENDING_MODE` independent, both default `mock`; **no BambooHR credential** — consumes `people-api`; mints its own supplier-portal tokens |
 | `commercial-api` | 8007 | `commercial_dev` (skeleton) | `HUBSPOT_ACCESS_TOKEN`, `HUBSPOT_WEBHOOK_SECRET` (blank — no live client yet) | Future sole HubSpot owner; not deployed to the first DEV |
 | `spark-api` | 8004 | none | — | Skeleton — **not deployed** |
 
@@ -50,7 +50,7 @@ Present in every backend `.env.example` and as defaults in `config.py`:
 
 | Key | Placeholder | Rule |
 |---|---|---|
-| `JWT_DEV_SECRET` | `dev-only-insecure-secret-change-me` | **Identical** across every backend — services verify tokens locally from claims |
+| `PLATFORM_JWT_SECRET` | `dev-only-insecure-secret-change-me` | **Identical** across every backend — services verify tokens locally from claims |
 | `INTERNAL_SERVICE_SECRET` | `dev-only-internal-secret-change-me` | **Identical** across every backend — service-to-service trust |
 
 In any deployed environment both must be replaced with real, high-entropy values

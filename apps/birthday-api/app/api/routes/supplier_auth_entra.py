@@ -106,7 +106,7 @@ def _sign_flow_token(state: str, nonce: str, verifier: str) -> str:
             "nonce": nonce,
             "cv": verifier,
         },
-        s.jwt_dev_secret,
+        s.platform_jwt_secret,
         algorithm=s.jwt_algorithm,
     )
 
@@ -115,7 +115,7 @@ def _read_flow_token(flow_token: str) -> dict:
     s = get_settings()
     try:
         return jwt.decode(
-            flow_token, s.jwt_dev_secret, algorithms=[s.jwt_algorithm], issuer=_FLOW_ISS
+            flow_token, s.platform_jwt_secret, algorithms=[s.jwt_algorithm], issuer=_FLOW_ISS
         )
     except JWTError as exc:
         raise HTTPException(

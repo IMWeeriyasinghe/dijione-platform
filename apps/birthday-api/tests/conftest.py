@@ -7,7 +7,7 @@ from pathlib import Path
 # Honour a pre-set DATABASE_URL (the `postgres` CI workflow points this
 # at a real Postgres 16); fall back to a local SQLite file otherwise.
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_birthday.db")
-os.environ["JWT_DEV_SECRET"] = "test-only-secret"
+os.environ["PLATFORM_JWT_SECRET"] = "test-only-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"
 os.environ["INTEGRATIONS_MODE"] = "mock"
@@ -73,7 +73,7 @@ def issue_token(
         payload["supplier"] = {
             "supplier_id": supplier_id, "supplier_user_id": supplier_user_id or user_id,
         }
-    return jwt.encode(payload, os.environ["JWT_DEV_SECRET"], algorithm="HS256")
+    return jwt.encode(payload, os.environ["PLATFORM_JWT_SECRET"], algorithm="HS256")
 
 
 def headers_for(user_id: int, **kwargs) -> dict:

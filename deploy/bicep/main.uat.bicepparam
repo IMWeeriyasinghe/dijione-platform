@@ -22,3 +22,20 @@ param containerMemory = '0.5Gi'
 param minReplicas = {}
 param maxReplicasDefault = 2
 param maxReplicasOverrides = {}
+
+// SECURITY: pinned explicitly (never left to main.bicep's default, which is
+// 'dev') — an unset authMode/supplierAuthMode here would silently deploy
+// UAT with the passwordless DEV_IDENTITY_MODE persona switcher exposed
+// instead of real Microsoft Entra ID sign-in. Found during the
+// PLATFORM_JWT_SECRET environment-cleanliness audit; see main.dev.bicepparam
+// for the fully-wired reference (DEV itself already runs authMode=entra).
+// entraTenantId / entraClientId / publicBaseUrl and the supplier equivalents
+// are intentionally left unset here — they require UAT's own Entra app
+// registrations (dijione-uat, dijione-birthday-supplier-uat), a human
+// Entra-tenant action outside this repository's authority (CLAUDE.md). Until
+// those are provisioned and these four params are filled in (plus the
+// entra-client-secret-uat / birthday-supplier-entra-secret-uat Key Vault
+// secrets), a UAT deployment attempt correctly FAILS rather than silently
+// falling back to DEV identity mode.
+param authMode = 'entra'
+param supplierAuthMode = 'entra'

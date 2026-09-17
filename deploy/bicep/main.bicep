@@ -299,9 +299,9 @@ func _apiSecretRefs(svc string, db string, uri string, authMode string, env stri
     // jwt-<env>-secret: the Key Vault secret NAME is environment-specific
     // (each environment gets its own independently-generated signing
     // secret) — but the container env var name it's injected as
-    // (JWT_DEV_SECRET) is a fixed application-code constant across every
-    // environment, read by every service's Settings.jwt_dev_secret field.
-    { name: 'jwt-${env}-secret', keyVaultUrl: '${uri}secrets/jwt-${env}-secret', envName: 'JWT_DEV_SECRET' }
+    // (PLATFORM_JWT_SECRET) is a fixed application-code constant across every
+    // environment, read by every service's Settings.platform_jwt_secret field.
+    { name: 'jwt-${env}-secret', keyVaultUrl: '${uri}secrets/jwt-${env}-secret', envName: 'PLATFORM_JWT_SECRET' }
     { name: 'internal-service-secret', keyVaultUrl: '${uri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
   ],
   svc == 'talent-api' ? [
@@ -466,7 +466,7 @@ module bootstrapTalentClientsJob 'modules/job.bicep' = if (seedTalentClientExten
     secretRefs: [
       { name: 'database-url-talent', keyVaultUrl: '${kvUri}secrets/database-url-talent', envName: 'DATABASE_URL' }
       { name: 'internal-service-secret', keyVaultUrl: '${kvUri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
-      { name: 'jwt-${environmentName}-secret', keyVaultUrl: '${kvUri}secrets/jwt-${environmentName}-secret', envName: 'JWT_DEV_SECRET' }
+      { name: 'jwt-${environmentName}-secret', keyVaultUrl: '${kvUri}secrets/jwt-${environmentName}-secret', envName: 'PLATFORM_JWT_SECRET' }
     ]
   }
 }

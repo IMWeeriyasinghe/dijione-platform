@@ -17,7 +17,7 @@ _settings = get_settings()
 # Platform Core authorization integration seam (CR §9): birthday-api
 # authorizes exactly the way talent-api does — decoding Platform Core's
 # signed JWT claims locally, no database, no synchronous call back.
-get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
+get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # Gate for service-to-service calls with no human actor behind them (the
 # scan-trigger endpoint, invoked by an OS/cloud scheduler, not a browser

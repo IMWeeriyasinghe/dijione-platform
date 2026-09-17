@@ -28,7 +28,7 @@ settings = get_settings()
 assert_trust_anchors_safe(
     settings.app_env,
     {
-        "JWT_DEV_SECRET": settings.jwt_dev_secret,
+        "PLATFORM_JWT_SECRET": settings.platform_jwt_secret,
         "INTERNAL_SERVICE_SECRET": settings.internal_service_secret,
         "EXTERNAL_SESSION_JWT_SECRET": settings.external_session_jwt_secret,
     },

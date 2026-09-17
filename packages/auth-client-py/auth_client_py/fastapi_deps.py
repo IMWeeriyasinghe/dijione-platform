@@ -50,7 +50,7 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
     """Build a FastAPI dependency that resolves ``AuthClaims`` from the
     request's bearer token. Call once per service at module load time:
 
-        get_claims = make_get_claims(secret=settings.jwt_dev_secret)
+        get_claims = make_get_claims(secret=settings.platform_jwt_secret)
 
         @router.get("/requests")
         def list_requests(claims: AuthClaims = Depends(get_claims)): ...

@@ -59,14 +59,14 @@ class DevAuthProvider(AuthProvider):
             "iss": "dijione-dev-identity",
             **claims,
         }
-        return jwt.encode(payload, settings.jwt_dev_secret, algorithm=settings.jwt_algorithm)
+        return jwt.encode(payload, settings.platform_jwt_secret, algorithm=settings.jwt_algorithm)
 
     def decode_token(self, token: str) -> dict:
         settings = get_settings()
         try:
             return jwt.decode(
                 token,
-                settings.jwt_dev_secret,
+                settings.platform_jwt_secret,
                 algorithms=[settings.jwt_algorithm],
                 issuer="dijione-dev-identity",
             )

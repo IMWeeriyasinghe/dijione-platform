@@ -107,7 +107,7 @@ every backend + non-shell web app (gateway rewrites).
 
 | Secret | Used by | Notes |
 |---|---|---|
-| `JWT_DEV_SECRET` | every backend | Must be identical, high-entropy, generated fresh for this environment — never the repo's dev default |
+| `PLATFORM_JWT_SECRET` | every backend | Must be identical, high-entropy, generated fresh for this environment — never the repo's dev default |
 | `INTERNAL_SERVICE_SECRET` | every backend | Same — s2s trust anchor for `X-Internal-Token` |
 | `DATABASE_URL` (per service) | every DB-owning service | Contains the PostgreSQL password — a secret in its own right |
 | `ENTRA_CLIENT_SECRET` | `platform-api` (Wave 4b) / Entra app registration (Easy AUTH first cut) | From the Entra app registration |

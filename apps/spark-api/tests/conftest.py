@@ -3,7 +3,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-os.environ["JWT_DEV_SECRET"] = "test-only-secret"
+os.environ["PLATFORM_JWT_SECRET"] = "test-only-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -29,7 +29,7 @@ def issue_token(user_id: int, full_name: str = "Test User") -> str:
         "platform_permissions": [],
         "module_roles": {},
     }
-    return jwt.encode(payload, os.environ["JWT_DEV_SECRET"], algorithm="HS256")
+    return jwt.encode(payload, os.environ["PLATFORM_JWT_SECRET"], algorithm="HS256")
 
 
 @pytest.fixture()

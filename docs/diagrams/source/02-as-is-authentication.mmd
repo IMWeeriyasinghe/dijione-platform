@@ -15,7 +15,7 @@ sequenceDiagram
     U->>W: Click a persona (e.g. "Amal Perera")
     W->>A: POST /api/auth/dev-login {persona_key}
     A->>DB: Look up User by persona_key
-    A->>A: DevAuthProvider.issue_token(user_id)\n(HS256, JWT_DEV_SECRET, 12h expiry)
+    A->>A: DevAuthProvider.issue_token(user_id)\n(HS256, PLATFORM_JWT_SECRET, 12h expiry)
     A-->>W: {access_token, user}
     W->>W: localStorage.setItem(token)\nsetUser(user)
     W-->>U: Render DijiOne Home

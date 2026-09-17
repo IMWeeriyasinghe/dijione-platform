@@ -149,4 +149,4 @@ def mint_supplier_session_token(
         },
         "supplier": supplier_claim,
     }
-    return jwt.encode(claims, settings.jwt_dev_secret, algorithm=settings.jwt_algorithm)
+    return jwt.encode(claims, settings.platform_jwt_secret, algorithm=settings.jwt_algorithm)

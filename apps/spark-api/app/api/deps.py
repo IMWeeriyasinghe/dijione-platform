@@ -17,4 +17,4 @@ require_internal_service = make_verify_internal_request(
 # nothing uses this to gate a real capability today; it exists so the next
 # phase can add ``claims.module("spark")`` checks without touching the
 # authorization plumbing.
-get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
+get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
