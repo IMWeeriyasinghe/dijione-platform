@@ -18,6 +18,9 @@ param granteeName string
 @description('The Container App / Job system-assigned identity principalId.')
 param principalId string
 
+@description('Override the AcrPull role-assignment name instead of the deterministic guid(acr.id, granteeName, roleId) this module computes by default. Only needed when that exact (scope, role, principal) grant already exists in this environment under a different assignment id (created out-of-band before this template first ran here). Leave empty (the default) for a normal deployment.')
+param existingAcrPullRoleAssignmentName string = ''
+
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 
 resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' existing = {
@@ -25,7 +28,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' existin
 }
 
 resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, granteeName, acrPullRoleId)
+  name: empty(existingAcrPullRoleAssignmentName) ? guid(acr.id, granteeName, acrPullRoleId) : existingAcrPullRoleAssignmentName
   scope: acr
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)

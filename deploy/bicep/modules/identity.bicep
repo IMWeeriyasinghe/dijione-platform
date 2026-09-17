@@ -23,6 +23,9 @@ param tags object = {}
 @description('Key Vault name (same RG) — this identity receives Key Vault Secrets User on it.')
 param keyVaultName string
 
+@description('Override the Key Vault Secrets User role-assignment NAME (a GUID) instead of the deterministic guid(kv.id, uami.id, roleId) this module computes by default. Only needed when that exact (scope, role, principal) grant already exists under a different assignment id — e.g. it was created out-of-band before this module ever ran for this environment — so a fresh incremental deployment does not collide with it as a duplicate RBAC assignment. Leave empty (the default) everywhere else.')
+param existingKvSecretsUserRoleAssignmentName string = ''
+
 resource uami 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: name
   location: location
@@ -37,7 +40,7 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
 }
 
 resource kvSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(kv.id, uami.id, kvSecretsUserRoleId)
+  name: empty(existingKvSecretsUserRoleAssignmentName) ? guid(kv.id, uami.id, kvSecretsUserRoleId) : existingKvSecretsUserRoleAssignmentName
   scope: kv
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)

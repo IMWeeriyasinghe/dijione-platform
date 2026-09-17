@@ -103,6 +103,12 @@ param supplierEntraClientId string = ''
 @description('Public HTTPS origin of birthday-supplier-web, e.g. https://birthday-supplier-web.<env-domain>. Backs the supplier Entra redirect URI.')
 param supplierPublicBaseUrl string = ''
 
+@description('Override the Key Vault Secrets User role-assignment name that modules/identity.bicep creates — only needed when that (scope, role, principal) grant already exists in this environment under a different assignment id (created out-of-band before this template first ran here). Leave empty (the default) for a normal deployment.')
+param existingIdentityKvSecretsUserRoleAssignmentName string = ''
+
+@description('Same override, for the bootstrap identity AcrPull role assignment (modules/acr-pull.bicep). Leave empty (the default) for a normal deployment.')
+param existingIdentityAcrPullRoleAssignmentName string = ''
+
 var tags = {
   platform: 'dijione'
   env: environmentName
@@ -131,6 +137,7 @@ module identity 'modules/identity.bicep' = {
     location: location
     tags: tags
     keyVaultName: kvName
+    existingKvSecretsUserRoleAssignmentName: existingIdentityKvSecretsUserRoleAssignmentName
   }
 }
 
@@ -142,6 +149,7 @@ module uamiAcrPull 'modules/acr-pull.bicep' = {
     acrName: imageRegistryName
     granteeName: uamiName
     principalId: identity.outputs.principalId
+    existingAcrPullRoleAssignmentName: existingIdentityAcrPullRoleAssignmentName
   }
 }
 

@@ -16,6 +16,14 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
+// Canonical client-directory sync (talent-api's clients extension rows,
+// keyed on platform_client_id) — a one-time bootstrap task needed for the
+// governed DTC tag -> Client resolution, NOT DEV persona/seeding behavior.
+// seedDevIdentities is deliberately left at its default (false): UAT uses
+// real Microsoft Entra sign-in (authMode=entra below), so the passwordless
+// dev-login persona switcher must never be seeded/exposed here.
+param seedTalentClientExtensions = true
+
 // Lean UAT: all services scale to zero; ceiling of 2.
 param containerCpu = '0.25'
 param containerMemory = '0.5Gi'
@@ -45,3 +53,19 @@ param supplierAuthMode = 'entra'
 param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param supplierEntraClientId = 'bdd98d91-1fe9-4b81-b621-96fa14d2e9b5'
 param supplierPublicBaseUrl = 'https://birthday-supplier-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'
+
+// id-dijione-uat already held "Key Vault Secrets User" on kv-dijione-uat
+// before this template's identity module ever ran here (granted out-of-band
+// during UAT bring-up) — under assignment id b7260736-9c22-4075-b254-95985f11206a,
+// not the deterministic guid(kv.id, uami.id, roleId) modules/identity.bicep
+// computes by default. Without this override, an incremental deployment
+// tries to create a second, colliding assignment for the identical (scope,
+// role, principal) and fails with RoleAssignmentExists. Pointing the module
+// at the existing assignment id makes this idempotent instead.
+param existingIdentityKvSecretsUserRoleAssignmentName = 'b7260736-9c22-4075-b254-95985f11206a'
+
+// Same idempotency situation for id-dijione-uat's AcrPull grant on
+// crdijionenonprod (rg-dijione-shared) — already existed under assignment id
+// e9a143c7-fcbc-44dc-af44-393173e4ce66 before this template's acr-pull
+// module ever ran here.
+param existingIdentityAcrPullRoleAssignmentName = 'e9a143c7-fcbc-44dc-af44-393173e4ce66'
