@@ -28,14 +28,20 @@ param maxReplicasOverrides = {}
 // UAT with the passwordless DEV_IDENTITY_MODE persona switcher exposed
 // instead of real Microsoft Entra ID sign-in. Found during the
 // PLATFORM_JWT_SECRET environment-cleanliness audit; see main.dev.bicepparam
-// for the fully-wired reference (DEV itself already runs authMode=entra).
-// entraTenantId / entraClientId / publicBaseUrl and the supplier equivalents
-// are intentionally left unset here — they require UAT's own Entra app
-// registrations (dijione-uat, dijione-birthday-supplier-uat), a human
-// Entra-tenant action outside this repository's authority (CLAUDE.md). Until
-// those are provisioned and these four params are filled in (plus the
-// entra-client-secret-uat / birthday-supplier-entra-secret-uat Key Vault
-// secrets), a UAT deployment attempt correctly FAILS rather than silently
-// falling back to DEV identity mode.
+// for the sibling DEV wiring.
+//
+// UAT's own Entra app registrations now exist (confirmed values, no secrets
+// here — client secrets live only in kv-dijione-uat as entra-client-secret-uat
+// / birthday-supplier-entra-secret-uat, written by init-secrets.sh, never in
+// source control):
+//   dijione-uat                     (internal DijiOne sign-in)
+//   dijione-birthday-supplier-uat   (Birthday Supplier Portal B2B guest sign-in)
 param authMode = 'entra'
+param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
+param entraClientId = 'f7455106-f91b-42e0-9a6a-2f3dc256727c'
+param publicBaseUrl = 'https://shell-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'
+
 param supplierAuthMode = 'entra'
+param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
+param supplierEntraClientId = 'bdd98d91-1fe9-4b81-b621-96fa14d2e9b5'
+param supplierPublicBaseUrl = 'https://birthday-supplier-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'
