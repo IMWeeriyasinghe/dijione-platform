@@ -29,10 +29,10 @@ param location string = 'southeastasia'
 @secure()
 param pgAdminPassword string
 
-@description('Deploy DijiBirthday databases (people_dev, birthday_dev).')
+@description('Deploy DijiBirthday databases (people_<env>, birthday_<env>).')
 param deployBirthday bool = true
 
-@description('Deploy the commercial_dev database.')
+@description('Deploy the commercial_<env> database.')
 param deployCommercial bool = false
 
 @description('PostgreSQL networking. private = VNet integration (default, all envs). public = escape hatch only.')
@@ -67,15 +67,29 @@ var kvName = 'kv-dijione-${environmentName}'
 var pgName = 'psql-dijione-${environmentName}'
 var caeName = 'cae-dijione-${environmentName}'
 
-var databases = concat(
-  [ 'platform_dev', 'talent_dev', 'recruitment_dev' ],
-  deployBirthday ? [ 'people_dev', 'birthday_dev' ] : [],
-  deployCommercial ? [ 'commercial_dev' ] : []
+// Logical DB-owning domain keys — environment-independent. The actual
+// per-environment database name is always derived as '<key>_${environmentName}'
+// below, never hardcoded to a single environment (this was the DEV-leak bug:
+// these used to be literal 'platform_dev' etc. regardless of environmentName,
+// so a UAT/PROD foundation deployment silently created *_dev databases on
+// its own Postgres server). init-secrets.sh's DBS mapping must stay in sync
+// with this same '<key>_${environmentName}' pattern.
+var dbDomainKeys = concat(
+  [ 'platform', 'talent', 'recruitment' ],
+  deployBirthday ? [ 'people', 'birthday' ] : [],
+  deployCommercial ? [ 'commercial' ] : []
 )
+var databases = map(dbDomainKeys, key => '${key}_${environmentName}')
 
 // Key Vault secret NAMES (contract only — values written by init-secrets.sh).
+// database-url-<domain> stays environment-NEUTRAL by design (main.bicep looks
+// up the same secret name in every environment; only the secret VALUE differs
+// per environment, written by init-secrets.sh from the resolved per-env
+// PostgreSQL FQDN + this same '<key>_${environmentName}' database name).
+// jwt-<env>-secret is deliberately environment-SPECIFIC — each environment
+// gets its own independently-generated signing secret, never shared.
 var kvSecretNamesCore = [
-  'jwt-dev-secret'
+  'jwt-${environmentName}-secret'
   'internal-service-secret'
   'external-session-jwt-secret'
   'database-url-platform'

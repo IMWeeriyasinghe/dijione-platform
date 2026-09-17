@@ -59,7 +59,7 @@ param maxReplicasOverrides object = {}
 @description('DEV only: create a Manual bootstrap-identity job that seeds the 5 staff dev-login personas (no business data). UAT/PROD create real users via the Admin Center.')
 param seedDevIdentities bool = false
 
-@description('Create a Manual bootstrap-talent-clients job that runs talent-api/scripts/seed.py — it pulls the canonical client directory from platform-api (GET /api/platform/internal/clients) and creates ONLY the talent_dev.clients extension rows (platform_client_id + name), idempotent, no business data. Needed for the governed DTC tag -> Client resolution.')
+@description('Create a Manual bootstrap-talent-clients job that runs talent-api/scripts/seed.py — it pulls the canonical client directory from platform-api (GET /api/platform/internal/clients) and creates ONLY the talent-api clients extension rows (platform_client_id + name) in this environment, idempotent, no business data. Needed for the governed DTC tag -> Client resolution.')
 param seedTalentClientExtensions bool = false
 
 @description('Internal identity mode for platform-api. "dev" = the passwordless persona switcher; "entra" = real Microsoft Entra ID OIDC (Authorization Code + PKCE). "entra" also requires entraTenantId, entraClientId, publicBaseUrl, and the entra-client-secret-<env> Key Vault secret.')
@@ -146,24 +146,32 @@ module uamiAcrPull 'modules/acr-pull.bicep' = {
 }
 
 // ---- service catalogue ---------------------------------------------------
+// `db` is a LOGICAL domain key (e.g. 'platform'), never a physical,
+// environment-baked database name. It is used only to build the
+// environment-NEUTRAL Key Vault secret name 'database-url-<key>' below
+// (_apiSecretRefs/_dbFor) — the secret's VALUE, written by
+// init-secrets.sh, is what actually points at this environment's real
+// '<key>_${environmentName}' database. Previously this field held a
+// literal '<key>_dev' string regardless of environmentName, which is the
+// root cause of UAT/PROD deployments resolving DEV-named databases.
 var coreServices = [
-  { name: 'platform-api', kind: 'api', db: 'platform_dev', external: false }
+  { name: 'platform-api', kind: 'api', db: 'platform', external: false }
   { name: 'admin-api', kind: 'api', db: '', external: false }
-  { name: 'talent-api', kind: 'api', db: 'talent_dev', external: false }
-  { name: 'recruitment-api', kind: 'api', db: 'recruitment_dev', external: false }
+  { name: 'talent-api', kind: 'api', db: 'talent', external: false }
+  { name: 'recruitment-api', kind: 'api', db: 'recruitment', external: false }
   { name: 'shell-web', kind: 'web', db: '', external: true }
   { name: 'admin-web', kind: 'web', db: '', external: false }
   { name: 'talent-web', kind: 'web', db: '', external: false }
   { name: 'talentflow-portal-web', kind: 'web', db: '', external: true }
 ]
 var birthdayServices = [
-  { name: 'people-api', kind: 'api', db: 'people_dev', external: false }
-  { name: 'birthday-api', kind: 'api', db: 'birthday_dev', external: false }
+  { name: 'people-api', kind: 'api', db: 'people', external: false }
+  { name: 'birthday-api', kind: 'api', db: 'birthday', external: false }
   { name: 'birthday-web', kind: 'web', db: '', external: false }
   { name: 'birthday-supplier-web', kind: 'web', db: '', external: true }
 ]
 var commercialServices = [
-  { name: 'commercial-api', kind: 'api', db: 'commercial_dev', external: false }
+  { name: 'commercial-api', kind: 'api', db: 'commercial', external: false }
 ]
 var services = concat(
   coreServices,
@@ -288,7 +296,12 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
 // KV secret wiring per API: shared trust anchors + this service's own db url.
 func _apiSecretRefs(svc string, db string, uri string, authMode string, env string, recruitmentMode string, peopleMode string, supplierAuthMode string) array => concat(
   [
-    { name: 'jwt-dev-secret', keyVaultUrl: '${uri}secrets/jwt-dev-secret', envName: 'JWT_DEV_SECRET' }
+    // jwt-<env>-secret: the Key Vault secret NAME is environment-specific
+    // (each environment gets its own independently-generated signing
+    // secret) — but the container env var name it's injected as
+    // (JWT_DEV_SECRET) is a fixed application-code constant across every
+    // environment, read by every service's Settings.jwt_dev_secret field.
+    { name: 'jwt-${env}-secret', keyVaultUrl: '${uri}secrets/jwt-${env}-secret', envName: 'JWT_DEV_SECRET' }
     { name: 'internal-service-secret', keyVaultUrl: '${uri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
   ],
   svc == 'talent-api' ? [
@@ -306,8 +319,12 @@ func _apiSecretRefs(svc string, db string, uri string, authMode string, env stri
   (svc == 'birthday-api' && supplierAuthMode == 'entra') ? [
     { name: 'birthday-supplier-entra-secret-${env}', keyVaultUrl: '${uri}secrets/birthday-supplier-entra-secret-${env}', envName: 'SUPPLIER_ENTRA_CLIENT_SECRET' }
   ] : [],
+  // `db` is already the neutral logical domain key ('platform', 'talent',
+  // …) — no environment-suffix replacement needed. The secret NAME stays
+  // identical across DEV/UAT/PROD; only its VALUE (written by
+  // init-secrets.sh) differs per environment.
   db == '' ? [] : [
-    { name: 'database-url-${replace(db, '_dev', '')}', keyVaultUrl: '${uri}secrets/database-url-${replace(db, '_dev', '')}', envName: 'DATABASE_URL' }
+    { name: 'database-url-${db}', keyVaultUrl: '${uri}secrets/database-url-${db}', envName: 'DATABASE_URL' }
   ]
 )
 
@@ -349,13 +366,18 @@ var migrateTargets = concat(
   deployCommercial ? [ 'commercial-api' ] : []
 )
 
+// Same logical domain keys as the service catalogue's own `db` field above
+// — kept as an explicit mapping (not derived from `services`) because
+// migrateTargets is service-name-only, but never environment-suffixed;
+// _apiSecretRefs's db == '' branch is why platform-api/talent-api/etc.
+// can't just reuse `services[].db` directly without an extra lookup.
 func _dbFor(svc string) string =>
-  svc == 'platform-api' ? 'platform_dev'
-    : svc == 'talent-api' ? 'talent_dev'
-    : svc == 'recruitment-api' ? 'recruitment_dev'
-    : svc == 'people-api' ? 'people_dev'
-    : svc == 'birthday-api' ? 'birthday_dev'
-    : 'commercial_dev'
+  svc == 'platform-api' ? 'platform'
+    : svc == 'talent-api' ? 'talent'
+    : svc == 'recruitment-api' ? 'recruitment'
+    : svc == 'people-api' ? 'people'
+    : svc == 'birthday-api' ? 'birthday'
+    : 'commercial'
 
 module migrateJobs 'modules/job.bicep' = [
   for t in migrateTargets: {
@@ -378,8 +400,8 @@ module migrateJobs 'modules/job.bicep' = [
       envVars: [ { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName } ]
       secretRefs: [
         {
-          name: 'database-url-${replace(_dbFor(t), '_dev', '')}'
-          keyVaultUrl: '${kvUri}secrets/database-url-${replace(_dbFor(t), '_dev', '')}'
+          name: 'database-url-${_dbFor(t)}'
+          keyVaultUrl: '${kvUri}secrets/database-url-${_dbFor(t)}'
           envName: 'DATABASE_URL'
         }
       ]
@@ -416,11 +438,12 @@ module bootstrapIdentityJob 'modules/job.bicep' = if (seedDevIdentities) {
 
 // ---- TalentFlow client-extension bootstrap (Manual) -------------------
 // Runs talent-api/scripts/seed.py: fetches the canonical client directory
-// from platform-api and creates ONLY the talent_dev.clients extension rows
-// (platform_client_id + name). Idempotent, no TalentRequest/Candidate/etc.
-// Enables the governed `DTC - <name>` tag to resolve to a Client
-// (PostingClientMapping VERIFIED). Run after migrate-talent-api +
-// bootstrap-identity/migrations have populated platform_dev.client.
+// from platform-api and creates ONLY the talent-api clients extension rows
+// (platform_client_id + name) in this environment's own talent_${environmentName}
+// database. Idempotent, no TalentRequest/Candidate/etc. Enables the governed
+// `DTC - <name>` tag to resolve to a Client (PostingClientMapping VERIFIED).
+// Run after migrate-talent-api + bootstrap-identity/migrations have
+// populated this environment's own platform_${environmentName}.client table.
 module bootstrapTalentClientsJob 'modules/job.bicep' = if (seedTalentClientExtensions) {
   name: 'job-bootstrap-talent-clients'
   dependsOn: [ uamiAcrPull ]
@@ -443,7 +466,7 @@ module bootstrapTalentClientsJob 'modules/job.bicep' = if (seedTalentClientExten
     secretRefs: [
       { name: 'database-url-talent', keyVaultUrl: '${kvUri}secrets/database-url-talent', envName: 'DATABASE_URL' }
       { name: 'internal-service-secret', keyVaultUrl: '${kvUri}secrets/internal-service-secret', envName: 'INTERNAL_SERVICE_SECRET' }
-      { name: 'jwt-dev-secret', keyVaultUrl: '${kvUri}secrets/jwt-dev-secret', envName: 'JWT_DEV_SECRET' }
+      { name: 'jwt-${environmentName}-secret', keyVaultUrl: '${kvUri}secrets/jwt-${environmentName}-secret', envName: 'JWT_DEV_SECRET' }
     ]
   }
 }

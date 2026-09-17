@@ -35,10 +35,15 @@ PG="psql-dijione-${ENV}"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-true}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 
-# DB-owning services -> logical database (must match foundation.bicep).
-DBS=(platform:platform_dev talent:talent_dev recruitment:recruitment_dev)
-[ "$DEPLOY_BIRTHDAY" = "true" ]   && DBS+=(people:people_dev birthday:birthday_dev)
-[ "$DEPLOY_COMMERCIAL" = "true" ] && DBS+=(commercial:commercial_dev)
+# DB-owning services -> logical database, suffixed with THIS run's own
+# $ENV (must match foundation.bicep's dbDomainKeys -> '<key>_${environmentName}'
+# derivation). This used to hardcode '_dev' regardless of $ENV, which is
+# why an env=uat run could still write connection strings pointing at
+# platform_dev/talent_dev/etc. — the real root cause of the accidental
+# *_dev databases surfacing in UAT.
+DBS=(platform:platform_${ENV} talent:talent_${ENV} recruitment:recruitment_${ENV})
+[ "$DEPLOY_BIRTHDAY" = "true" ]   && DBS+=(people:people_${ENV} birthday:birthday_${ENV})
+[ "$DEPLOY_COMMERCIAL" = "true" ] && DBS+=(commercial:commercial_${ENV})
 
 echo "== resolving PostgreSQL FQDN for $PG =="
 PG_FQDN="$(az postgres flexible-server show -g "$RG" -n "$PG" --query fullyQualifiedDomainName -o tsv)"
@@ -70,7 +75,11 @@ secret_missing() {  # $1 = name -> 0 if absent or the old placeholder
 }
 
 echo "== trust anchors (generated only if absent) =="
-for name in jwt-dev-secret internal-service-secret external-session-jwt-secret; do
+# jwt-<env>-secret: each environment gets its own independently-generated
+# signing secret — previously hardcoded to 'jwt-dev-secret' regardless of
+# $ENV, so a uat/prod run silently left them without their own JWT trust
+# anchor (or, worse, could target DEV's).
+for name in "jwt-${ENV}-secret" internal-service-secret external-session-jwt-secret; do
   if secret_missing "$name"; then
     set_secret "$name" "$(openssl rand -hex 32)"
     echo "   $name  -> generated"

@@ -32,12 +32,8 @@ param backupRetentionDays int = 7
 @allowed([ 'Disabled', 'ZoneRedundant', 'SameZone' ])
 param haMode string = 'Disabled'
 
-@description('Logical databases to create, one per DB-owning domain.')
-param databases array = [
-  'platform_dev'
-  'talent_dev'
-  'recruitment_dev'
-]
+@description('Logical databases to create, one per DB-owning domain. Always pass this explicitly from the caller (foundation.bicep derives it from environmentName) — there is deliberately no environment-specific default here, since this module has no way to know which environment it is being deployed for.')
+param databases array = []
 
 @allowed([ 'public', 'private' ])
 param networkMode string = 'public'
