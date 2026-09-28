@@ -164,6 +164,7 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
     mutationFn: () => addSupplierLocation(supplierId, newLocation),
     onSuccess: () => {
       refetchLocations();
+      queryClient.invalidateQueries({ queryKey: ["birthday-supplier-readiness", supplierId] });
       setLocationOpen(false);
       setNewLocation({ office_location: "", is_primary: false });
     },
@@ -176,6 +177,7 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
         : addSupplierCatalogueItem(supplierId, catalogueForm),
     onSuccess: () => {
       refetchCatalogue();
+      queryClient.invalidateQueries({ queryKey: ["birthday-supplier-readiness", supplierId] });
       setCatalogueOpen(false);
       setEditingItem(null);
       setCatalogueForm({ name: "", description: "", is_active: true });
@@ -206,6 +208,7 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
     },
     onSuccess: () => {
       refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["birthday-supplier-readiness", supplierId] });
       setUserModalOpen(false);
       setEditingUser(null);
       setUserForm(EMPTY_USER_FORM);
@@ -215,7 +218,10 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
   const userStatusToggleMutation = useMutation({
     mutationFn: ({ user, nextStatus }: { user: SupplierUserOut; nextStatus: string }) =>
       updateSupplierUser(supplierId, user.id, { status: nextStatus }),
-    onSuccess: () => refetchUsers(),
+    onSuccess: () => {
+      refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["birthday-supplier-readiness", supplierId] });
+    },
   });
 
   function openUserCreate() {
