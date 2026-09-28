@@ -117,9 +117,15 @@ class SupplierUserRead(BaseModel):
     invited_at: datetime | None = None
     linked_at: datetime | None = None
     last_login_at: datetime | None = None
+    invite_count: int = 0
     onboarding_state: str = "NOT_INVITED"
     created_at: datetime
     updated_at: datetime
+    # Only ever populated on the create-endpoint's response (never on a
+    # plain GET/list) — tells the admin UI exactly what happened to the
+    # optional auto-invite, so "created" and "invited" are never
+    # conflated into one claim unless both actually succeeded.
+    invitation_detail: str | None = None
 
 
 class SupplierUserCreate(BaseModel):
@@ -127,6 +133,15 @@ class SupplierUserCreate(BaseModel):
     full_name: str = ""
     role: str = "SUPPLIER_USER"
     status: str = "ACTIVE"
+    # Defaults ON per the invitation-workflow spec — a newly created
+    # supplier user should reach the portal without a separate manual step
+    # unless the admin explicitly opts out.
+    send_invitation: bool = True
+
+
+class SupplierUserInviteOut(BaseModel):
+    sent: bool
+    detail: str
 
 
 class SupplierSetupReadiness(BaseModel):

@@ -687,9 +687,12 @@ export type SupplierUserOut = {
   invited_at: string | null;
   linked_at: string | null;
   last_login_at: string | null;
+  invite_count: number;
   onboarding_state: SupplierUserOnboardingState;
   created_at: string;
   updated_at: string;
+  /** Only ever populated on the create-endpoint's response. */
+  invitation_detail?: string | null;
 };
 
 export type SupplierUserCreateInput = {
@@ -697,6 +700,8 @@ export type SupplierUserCreateInput = {
   full_name?: string;
   role?: string;
   status?: string;
+  /** Defaults true server-side when omitted. */
+  send_invitation?: boolean;
 };
 
 export type SupplierUserUpdateInput = {
@@ -706,6 +711,11 @@ export type SupplierUserUpdateInput = {
   status?: string;
   entra_object_id?: string | null;
   mark_invited?: boolean;
+};
+
+export type SupplierUserInviteOut = {
+  sent: boolean;
+  detail: string;
 };
 
 export type SupplierSetupReadiness = {

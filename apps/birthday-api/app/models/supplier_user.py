@@ -43,6 +43,12 @@ class SupplierUser(TimestampMixin, Base):
     invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # How many times DIJI has actually sent the branded invitation email
+    # (never incremented by the old manual "mark invited" path) and who
+    # most recently triggered a send — None for an automatic
+    # (order-creation-time) send, an actor id for a manual Send/Resend.
+    invite_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_invited_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     supplier: Mapped[Supplier] = relationship(back_populates="users")  # noqa: F821
 

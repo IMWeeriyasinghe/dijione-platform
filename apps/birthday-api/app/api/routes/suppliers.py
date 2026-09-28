@@ -27,12 +27,18 @@ from app.schemas.supplier import (
     SupplierSetupReadiness,
     SupplierUpdate,
     SupplierUserCreate,
+    SupplierUserInviteOut,
     SupplierUserRead,
     SupplierUserUpdate,
 )
 from app.services.audit_service import AuditService
 from app.services.delivery_date_service import canonicalise_working_days
 from app.services.supplier_auth import mint_supplier_session_token
+from app.services.supplier_invitation_service import (
+    InvitationSendResult,
+    SupplierUserNotEligibleError,
+    send_supplier_invitation,
+)
 
 router = APIRouter(prefix="/api/birthday/suppliers", tags=["birthday-suppliers"])
 
@@ -291,7 +297,7 @@ def create_supplier_user(
     payload: SupplierUserCreate,
     db: Session = Depends(get_db),
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
-) -> SupplierUser:
+) -> SupplierUserRead:
     _get_supplier_or_404(db, supplier_id)
     if payload.role not in _VALID_ROLES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid role: {payload.role!r}")
@@ -311,7 +317,19 @@ def create_supplier_user(
     db.commit()
     db.refresh(user)
     _audit(scope, "birthday.supplier.user_create", supplier_id, new_state={"email": user.email})
-    return user
+
+    invitation_detail: str | None = None
+    if payload.send_invitation and user.status == "ACTIVE":
+        try:
+            result = send_supplier_invitation(db, user, actor_id=scope.user.id, automatic=True)
+            invitation_detail = result.detail
+        except SupplierUserNotEligibleError as exc:
+            invitation_detail = str(exc)
+        db.refresh(user)
+
+    response = SupplierUserRead.model_validate(user)
+    response.invitation_detail = invitation_detail
+    return response
 
 
 @router.patch("/{supplier_id}/users/{user_id}", response_model=SupplierUserRead)
@@ -378,6 +396,29 @@ def update_supplier_user(
         )
     _audit(scope, "birthday.supplier.user_update", supplier_id, new_state=updates)
     return user
+
+
+@router.post("/{supplier_id}/users/{user_id}/invite", response_model=SupplierUserInviteOut)
+def invite_supplier_user(
+    supplier_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
+) -> InvitationSendResult:
+    """Manual Send/Resend Invite — an intentional action every time it is
+    called (unlike the auto-invite-on-create path), so no duplicate-guard
+    suppresses a deliberate resend. Never creates a second SupplierUser or
+    a second Entra guest; only ever updates this row's invite bookkeeping."""
+    _get_supplier_or_404(db, supplier_id)
+    user = SupplierRepository(db).get_user(supplier_id, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Supplier user not found")
+
+    try:
+        result = send_supplier_invitation(db, user, actor_id=scope.user.id, automatic=False)
+    except SupplierUserNotEligibleError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return result
 
 
 @router.post("/{supplier_id}/users/{user_id}/impersonate")
