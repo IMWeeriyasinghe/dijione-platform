@@ -31,7 +31,15 @@ class MailClient:
     def policy(self) -> MailPolicy:
         return self._policy
 
-    def send(self, *, to: str, subject: str, body: str, correlation_id: str | None = None) -> MailResult:
+    def send(
+        self,
+        *,
+        to: str,
+        subject: str,
+        body: str,
+        correlation_id: str | None = None,
+        content_type: str = "Text",
+    ) -> MailResult:
         correlation_id = correlation_id or str(uuid4())
 
         policy_outcome = self._policy.check(to)
@@ -43,4 +51,6 @@ class MailClient:
         # Sender is never taken from the caller — every MailTransport
         # implementation sends as its own configured mailbox only. There is
         # deliberately no `from`/`sender` parameter here to override.
-        return self._transport.send(to=to, subject=subject, body=body, correlation_id=correlation_id)
+        return self._transport.send(
+            to=to, subject=subject, body=body, correlation_id=correlation_id, content_type=content_type
+        )

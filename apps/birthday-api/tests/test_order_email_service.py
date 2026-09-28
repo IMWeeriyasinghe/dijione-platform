@@ -59,24 +59,127 @@ def test_render_supplier_email_includes_order_reference(db):
     from app.services.order_email_service import render_supplier_email
 
     order = _make_order(db)
-    subject, body = render_supplier_email(order)
+    subject, html_body, text_body = render_supplier_email(order)
+    for body in (html_body, text_body):
+        assert order.order_reference in body
+        assert order.employee_name in body
+        assert order.office_location in body
+        assert str(order.quantity) in body
     assert order.order_reference in subject
-    assert order.order_reference in body
-    assert order.employee_name in body
-    assert order.birthday_date.isoformat() in body
-    assert order.office_location in body
-    assert str(order.quantity) in body
+    # Business-format date ("8 October 2026"), never the raw ISO string.
+    expected_date = f"{order.birthday_date.day} {order.birthday_date.strftime('%B %Y')}"
+    assert expected_date in html_body
+    assert expected_date in text_body
+    assert order.birthday_date.isoformat() not in html_body
 
 
 def test_render_supplier_email_excludes_internal_notes(db):
     from app.services.order_email_service import render_supplier_email
 
     order = _make_order(db)
-    subject, body = render_supplier_email(order)
+    subject, html_body, text_body = render_supplier_email(order)
 
-    assert "Write 'Happy Birthday Alex' on the cake" in body
-    assert "allergic to nuts" not in body
+    # Plain text carries the instruction verbatim; the HTML body carries it
+    # HTML-escaped (apostrophes become &#x27;) — check a substring with no
+    # special characters so both are exercised without over-specifying the
+    # HTML escaping's exact form.
+    assert "Write 'Happy Birthday Alex' on the cake" in text_body
+    assert "Happy Birthday Alex" in html_body
+    for body in (html_body, text_body):
+        assert "allergic to nuts" not in body
     assert "allergic to nuts" not in subject
+
+
+def test_render_supplier_email_subject_retains_order_reference_and_says_new(db):
+    from app.services.order_email_service import render_supplier_email
+
+    order = _make_order(db)
+    subject, _html, _text = render_supplier_email(order)
+    assert subject == f"[{order.order_reference}] New Birthday Cake Order — {order.employee_name}"
+
+
+def test_render_supplier_email_omits_special_instructions_section_when_absent(db):
+    from app.services.order_email_service import render_supplier_email
+    from app.models.special_requirement import SpecialRequirement
+
+    order = _make_order(db)
+    # Strip the SUPPLIER_INSTRUCTION row _make_order seeds, keep only the
+    # INTERNAL_NOTE — no supplier-visible instruction should render at all.
+    db.query(SpecialRequirement).filter(
+        SpecialRequirement.order_id == order.id,
+        SpecialRequirement.kind == "SUPPLIER_INSTRUCTION",
+    ).delete()
+    db.commit()
+    db.refresh(order)
+
+    _subject, html_body, text_body = render_supplier_email(order)
+    assert "Special Instructions" not in html_body
+    assert "Special Instructions" not in text_body
+
+
+def test_render_supplier_email_deep_link_uses_supplier_public_base_url(db, monkeypatch):
+    from app.core.config import get_settings
+    from app.services.order_email_service import render_supplier_email
+
+    monkeypatch.setenv("SUPPLIER_PUBLIC_BASE_URL", "https://supplierportal-dev.dijitalteam.com")
+    get_settings.cache_clear()
+    try:
+        order = _make_order(db)
+        _subject, html_body, text_body = render_supplier_email(order)
+        expected_url = f"https://supplierportal-dev.dijitalteam.com/orders/{order.id}"
+        assert expected_url in html_body
+        assert expected_url in text_body
+        assert 'View Order' in html_body
+        # The order's numeric PK, never anything token/secret-shaped, appears
+        # in the link — and nothing resembling a bearer token does.
+        assert "access_token" not in html_body
+        assert "Bearer" not in html_body
+    finally:
+        get_settings.cache_clear()
+
+
+def test_render_supplier_email_no_portal_url_configured_omits_cta_gracefully(db, monkeypatch):
+    from app.core.config import get_settings
+    from app.services.order_email_service import render_supplier_email
+
+    monkeypatch.setenv("SUPPLIER_PUBLIC_BASE_URL", "")
+    get_settings.cache_clear()
+    try:
+        order = _make_order(db)
+        _subject, html_body, _text = render_supplier_email(order)
+        assert "View Order" not in html_body
+        assert "/orders/" not in html_body
+    finally:
+        get_settings.cache_clear()
+
+
+def test_render_supplier_email_unassigned_office_shown_as_to_be_confirmed(db):
+    from app.models.birthday_order import BirthdayOrder
+    from app.services.order_email_service import render_supplier_email
+
+    order = _make_order(db)
+    order.office_location = "Unassigned Office"
+    db.commit()
+    db.refresh(order)
+
+    _subject, html_body, text_body = render_supplier_email(order)
+    assert "Unassigned Office" not in html_body
+    assert "Unassigned Office" not in text_body
+    assert "To be confirmed" in html_body
+    assert "To be confirmed" in text_body
+
+
+def test_render_supplier_email_real_office_location_passed_through(db):
+    """The 'Unassigned Office' substitution must not mask a genuinely-set
+    location — this is a display fix for one specific placeholder value,
+    not a rewrite of whatever the employee's real office happens to be."""
+    from app.services.order_email_service import render_supplier_email
+
+    order = _make_order(db)  # office_location="Colombo" from the fixture
+    _subject, html_body, text_body = render_supplier_email(order)
+    assert "Colombo" in html_body
+    assert "Colombo" in text_body
+    assert "To be confirmed" not in html_body
 
 
 def test_send_order_to_supplier_success(db):

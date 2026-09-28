@@ -18,7 +18,7 @@ class _ToggleClient:
 
     ok = False
 
-    def send(self, *, to, subject, body, correlation_id=None):
+    def send(self, *, to, subject, body, correlation_id=None, content_type="Text"):
         if not self.ok:
             return MailResult(correlation_id="x", outcome=MailOutcome.FAILED, sent=False, error="toggled off")
         return MailResult(correlation_id="ok-msg", outcome=MailOutcome.SUBMITTED, sent=True)

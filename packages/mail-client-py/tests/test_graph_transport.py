@@ -44,6 +44,25 @@ def test_success_202_reports_submitted(mock_post, mock_cred_cls):
     assert mock_post.call_count == 1
     called_url = mock_post.call_args.args[0] if mock_post.call_args.args else mock_post.call_args.kwargs.get("url")
     assert called_url.endswith("/users/appassistant@dijitalteam.com/sendMail")
+    # content_type defaults to "Text" — every existing caller that never
+    # passes it keeps sending exactly what it always sent.
+    assert mock_post.call_args.kwargs["json"]["message"]["body"]["contentType"] == "Text"
+
+
+@patch("mail_client_py.graph_transport.DefaultAzureCredential")
+@patch("mail_client_py.graph_transport.httpx.post")
+def test_content_type_html_is_forwarded_to_graph_payload(mock_post, mock_cred_cls):
+    mock_cred_cls.return_value = _fake_credential()
+    mock_post.return_value = httpx.Response(202, request=httpx.Request("POST", "https://x"))
+
+    transport = GraphMailTransport(sender_mailbox="appassistant@dijitalteam.com")
+    transport.send(
+        to="a@b.com", subject="s", body="<p>b</p>", correlation_id="corr-html", content_type="HTML"
+    )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["message"]["body"]["contentType"] == "HTML"
+    assert payload["message"]["body"]["content"] == "<p>b</p>"
 
 
 @pytest.mark.parametrize("status", [401, 403, 429, 500])
