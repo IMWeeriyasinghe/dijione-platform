@@ -86,7 +86,45 @@ app-specific `RELEASE_DATE` set without first manually capturing
 (`az containerapp show ... --query "properties.template.containers[0].env"`)
 and understanding what would be lost.**
 
-**Second follow-up, same shape of gap — web apps have no `APP_ENV`.**
+**Second follow-up, same shape of gap — custom domain bindings aren't in
+`main.bicep` either.** `az containerapp hostname bind` (the managed-cert
+custom-domain binding — see the custom-domain remediation work) sets
+`properties.configuration.ingress.customDomains` imperatively, out of band.
+Bicep's `ingress` object on a Container App is fully **replaced**, not
+merged, on every deployment (same mechanism as `RELEASE_DATE` above), so a
+full `main.bicep` run against `shell-web`/`birthday-supplier-web` in any
+environment with a custom domain bound **silently un-binds it** — confirmed
+live in UAT: `dijione-uat.dijitalteam.com`/`supplierportal-uat.dijitalteam.com`
+both dropped to `customDomains: []` after an unrelated `main.bicep` deploy,
+while the underlying `managedCertificates` resources themselves survived
+untouched (Bicep doesn't own or delete those). Fix is the same
+`az containerapp hostname bind --hostname <domain> --environment <env>
+--validation-method CNAME` command used originally — it re-attaches the
+still-live certificate immediately, no new cert issuance needed. **Until
+`main.bicep` gets equivalent wrapper logic to `RELEASE_DATE`'s, treat this
+exactly the same way: after any full `main.bicep` deploy to an environment
+with a custom domain bound, immediately verify
+`properties.configuration.ingress.customDomains` on `shell-web` and
+`birthday-supplier-web` and re-bind if empty, before considering the deploy
+done.**
+
+**Third follow-up, same shape of gap — Birthday's outbound mail config
+(`MAIL_TRANSPORT`/`MAIL_POLICY`/`MAIL_SHARED_MAILBOX`) isn't in `main.bicep`
+either.** Set ad hoc on `birthday-api` (see the PROD Birthday-mail
+enablement work); `main.bicep`'s `env` array replaces, not merges, on every
+deploy, so any full redeploy of `birthday-api` **silently resets outbound
+mail back to disabled** (`MAIL_TRANSPORT` unset -> `NullMailTransport`,
+`MAIL_POLICY` unset -> `DisabledPolicy`) — confirmed live in PROD: the
+live-integrations deploy above wiped it without any error, and
+`EMAIL_SENDING_MODE=mock` was the only mail-related var left. Fix is the
+same three `--set-env-vars` used originally — see that work for the exact
+values. **Until `main.bicep` gets equivalent wrapper logic to
+`RELEASE_DATE`'s: after any full redeploy of `birthday-api` in an
+environment where outbound mail was enabled ad hoc, immediately check
+`properties.template.containers[0].env` for `MAIL_TRANSPORT` and restore it
+if missing, before considering the deploy done.**
+
+**Fourth follow-up, same shape of gap — web apps have no `APP_ENV`.**
 `main.bicep`'s `commonApiEnv` (which sets `APP_ENV`) is only applied when
 `s.kind == 'api'`; no equivalent exists for `kind == 'web'`, so no web app
 (`birthday-web` included) receives `APP_ENV` from Bicep at all. This

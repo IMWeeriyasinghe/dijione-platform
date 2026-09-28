@@ -16,6 +16,15 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
+// Phase 4: controlled read-only source integrations. Flip a service to
+// 'live' ONLY after its Key Vault key exists:
+//   recruitment-api  -> lever-api-key-uat        (Lever, GET-only)
+//   people-api       -> bamboohr-api-key-uat  + bamboohrSubdomain (read-only)
+param recruitmentIntegrationsMode = 'live'
+param peopleIntegrationsMode = 'live'
+param birthdayIntegrationsMode = 'live'
+param bamboohrSubdomain = 'dijitalteam'
+
 // Canonical client-directory sync (talent-api's clients extension rows,
 // keyed on platform_client_id) — a one-time bootstrap task needed for the
 // governed DTC tag -> Client resolution, NOT DEV persona/seeding behavior.
@@ -47,12 +56,15 @@ param maxReplicasOverrides = {}
 param authMode = 'entra'
 param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param entraClientId = 'f7455106-f91b-42e0-9a6a-2f3dc256727c'
-param publicBaseUrl = 'https://shell-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'
+// Custom domain (docs/platform/... custom-domain auth remediation). The old
+// shell-web.mangofield-96838df7... callback stays registered in Entra as a
+// rollback fallback but is no longer the primary public URL.
+param publicBaseUrl = 'https://dijione-uat.dijitalteam.com'
 
 param supplierAuthMode = 'entra'
 param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param supplierEntraClientId = 'bdd98d91-1fe9-4b81-b621-96fa14d2e9b5'
-param supplierPublicBaseUrl = 'https://birthday-supplier-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'
+param supplierPublicBaseUrl = 'https://supplierportal-uat.dijitalteam.com'
 
 // id-dijione-uat already held "Key Vault Secrets User" on kv-dijione-uat
 // before this template's identity module ever ran here (granted out-of-band
