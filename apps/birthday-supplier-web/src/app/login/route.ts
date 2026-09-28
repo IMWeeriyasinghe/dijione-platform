@@ -16,14 +16,26 @@ import { NextResponse } from "next/server";
 const BIRTHDAY_API_URL = process.env.BIRTHDAY_API_URL ?? "http://localhost:8003";
 const FLOW_COOKIE = "dijibirthday_supplier_flow";
 
-export async function GET() {
+// Same-origin relative path only — mirrors birthday-api's own
+// _sanitize_return_to (defense in depth, not the only check: the backend
+// re-validates this again before it ever reaches the signed flow token).
+const SAFE_RETURN_TO = /^\/[A-Za-z0-9/_-]*$/;
+
+function sanitizeReturnTo(value: string | null): string | null {
+  if (!value) return null;
+  if (value.startsWith("//") || value.includes(":")) return null;
+  return SAFE_RETURN_TO.test(value) ? value : null;
+}
+
+export async function GET(request: Request) {
   const home = new URL("/", process.env.SUPPLIER_PUBLIC_BASE_URL ?? "http://localhost:3000");
+  const returnTo = sanitizeReturnTo(new URL(request.url).searchParams.get("return_to"));
 
   let resp: Response;
   try {
-    resp = await fetch(`${BIRTHDAY_API_URL}/api/birthday/supplier/auth/login-url`, {
-      cache: "no-store",
-    });
+    const loginUrlEndpoint = new URL(`${BIRTHDAY_API_URL}/api/birthday/supplier/auth/login-url`);
+    if (returnTo) loginUrlEndpoint.searchParams.set("return_to", returnTo);
+    resp = await fetch(loginUrlEndpoint, { cache: "no-store" });
   } catch {
     return NextResponse.redirect(home);
   }

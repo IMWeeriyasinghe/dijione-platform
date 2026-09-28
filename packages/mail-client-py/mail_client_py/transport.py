@@ -69,4 +69,6 @@ class MailTransport(ABC):
     actually attempt the send and report the truthful outcome."""
 
     @abstractmethod
-    def send(self, *, to: str, subject: str, body: str, correlation_id: str) -> MailResult: ...
+    def send(
+        self, *, to: str, subject: str, body: str, correlation_id: str, content_type: str = "Text"
+    ) -> MailResult: ...

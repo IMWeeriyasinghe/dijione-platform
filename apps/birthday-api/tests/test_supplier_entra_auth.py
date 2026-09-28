@@ -124,6 +124,81 @@ def test_login_url_ok_and_pkce_when_configured(api_client, entra_mode):
     assert body["flow_token"]
 
 
+# --- return_to (order deep-link) round trip ----------------------------
+
+def _login_flow_with_return_to(api_client, return_to):
+    resp = api_client.get(
+        "/api/birthday/supplier/auth/login-url", params={"return_to": return_to}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    state = parse_qs(urlparse(body["authorize_url"]).query)["state"][0]
+    return body["flow_token"], state
+
+
+def test_valid_return_to_survives_the_full_login_round_trip(api_client, db, entra_mode, monkeypatch):
+    _seed_supplier_user(db, email="deeplink@supplier.example.com")
+    flow, state = _login_flow_with_return_to(api_client, "/orders/42")
+    _mock_code_exchange(monkeypatch)
+    _mock_verify(monkeypatch, {"oid": "oid-dl", "email": "deeplink@supplier.example.com", "tid": "test-tenant"})
+
+    resp = api_client.post(
+        "/api/birthday/supplier/auth/token",
+        json={"code": "abc", "state": state, "flow_token": flow},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["return_to"] == "/orders/42"
+
+
+def test_no_return_to_yields_none(api_client, db, entra_mode, monkeypatch):
+    _seed_supplier_user(db, email="noreturn@supplier.example.com")
+    flow, state = _login_flow(api_client)
+    _mock_code_exchange(monkeypatch)
+    _mock_verify(monkeypatch, {"oid": "oid-nr", "email": "noreturn@supplier.example.com", "tid": "test-tenant"})
+
+    resp = api_client.post(
+        "/api/birthday/supplier/auth/token",
+        json={"code": "abc", "state": state, "flow_token": flow},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["return_to"] is None
+
+
+@pytest.mark.parametrize(
+    "malicious_return_to",
+    [
+        "https://evil.example.com/phish",
+        "//evil.example.com/phish",
+        "/orders/1;javascript:alert(1)",
+        "orders/1",  # not rooted — must start with "/"
+        "/orders/1\nSet-Cookie: x=1",
+    ],
+)
+def test_unsafe_return_to_is_dropped_not_forwarded(
+    api_client, db, entra_mode, monkeypatch, malicious_return_to
+):
+    """An open-redirect / header-injection attempt must never reach the
+    signed flow token or the token-exchange response — it is silently
+    dropped (falls back to no return_to), never rejected with an error
+    that would leak that the value was inspected."""
+    _seed_supplier_user(db, email="attacker-input@supplier.example.com")
+    flow, state = _login_flow_with_return_to(api_client, malicious_return_to)
+    _mock_code_exchange(monkeypatch)
+    _mock_verify(
+        monkeypatch,
+        {"oid": "oid-atk", "email": "attacker-input@supplier.example.com", "tid": "test-tenant"},
+    )
+
+    resp = api_client.post(
+        "/api/birthday/supplier/auth/token",
+        json={"code": "abc", "state": state, "flow_token": flow},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["return_to"] is None
+    assert "evil.example.com" not in resp.text
+    assert "javascript:" not in resp.text
+
+
 # --- token exchange: success + linking --------------------------------
 
 def test_active_guest_with_supplier_user_gets_working_portal_token(api_client, db, entra_mode, monkeypatch):

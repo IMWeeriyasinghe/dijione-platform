@@ -22,6 +22,18 @@ const FLOW_COOKIE = "dijibirthday_supplier_flow";
 const TOKEN_KEY = "dijibirthday-supplier-token";
 const TOKEN_EVENT = "dijibirthday-supplier-token-change";
 
+// Re-validated a third time (birthday-api's /login-url and /token both
+// already check this) — belt-and-braces before it's ever handed to
+// location.replace(), since that's the one call in this file that could
+// turn a bad value into an open redirect.
+const SAFE_RETURN_TO = /^\/[A-Za-z0-9/_-]*$/;
+
+function sanitizeReturnTo(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  if (value.startsWith("//") || value.includes(":")) return null;
+  return SAFE_RETURN_TO.test(value) ? value : null;
+}
+
 function page(bodyScript: string): NextResponse {
   return new NextResponse(
     `<!doctype html><meta charset="utf-8"><title>Signing in…</title>` +
@@ -73,10 +85,14 @@ export async function GET(request: Request) {
     );
   }
 
-  const { access_token } = (await resp.json()) as { access_token: string };
+  const { access_token, return_to } = (await resp.json()) as {
+    access_token: string;
+    return_to?: string | null;
+  };
+  const destination = sanitizeReturnTo(return_to) ?? "/";
   return page(
     `try{sessionStorage.setItem(${JSON.stringify(TOKEN_KEY)},${JSON.stringify(access_token)});` +
       `window.dispatchEvent(new Event(${JSON.stringify(TOKEN_EVENT)}));}catch(e){}` +
-      `location.replace("/");`,
+      `location.replace(${JSON.stringify(destination)});`,
   );
 }

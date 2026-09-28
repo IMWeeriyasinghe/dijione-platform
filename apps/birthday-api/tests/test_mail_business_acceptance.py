@@ -40,7 +40,7 @@ class _FixedResultClient:
     def __init__(self, result: MailResult):
         self._result = result
 
-    def send(self, *, to, subject, body, correlation_id=None):
+    def send(self, *, to, subject, body, correlation_id=None, content_type="Text"):
         return self._result
 
 

@@ -57,7 +57,9 @@ class GraphMailTransport(MailTransport):
         self._token_expires_at = now + remaining - _TOKEN_EXPIRY_SAFETY_MARGIN_SECONDS
         return self._cached_token
 
-    def send(self, *, to: str, subject: str, body: str, correlation_id: str) -> MailResult:
+    def send(
+        self, *, to: str, subject: str, body: str, correlation_id: str, content_type: str = "Text"
+    ) -> MailResult:
         try:
             access_token = self._get_access_token()
         except Exception as exc:  # noqa: BLE001 - credential resolution failures must not propagate raw
@@ -69,7 +71,7 @@ class GraphMailTransport(MailTransport):
         payload = {
             "message": {
                 "subject": subject,
-                "body": {"contentType": "Text", "content": body},
+                "body": {"contentType": content_type, "content": body},
                 # Sender is always the configured mailbox — sendMail resolves
                 # the "from" from the authenticated mailbox context; there is
                 # no field here that could override it.

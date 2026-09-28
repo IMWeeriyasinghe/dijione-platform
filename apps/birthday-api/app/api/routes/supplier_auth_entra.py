@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -60,6 +61,26 @@ class SupplierTokenExchangeIn(BaseModel):
 
 class SupplierTokenOut(BaseModel):
     access_token: str
+    return_to: str | None = None
+
+
+# Only ever a same-origin relative path within this portal (e.g.
+# "/orders/123") — never an absolute URL, protocol-relative "//host/..."
+# (an open-redirect vector), or anything containing a colon (which could
+# smuggle a scheme past a naive check). Deliberately narrow: the sole
+# legitimate use today is "return to the order the supplier's email linked
+# to", so there is no reason to accept a broader shape.
+_SAFE_RETURN_TO = re.compile(r"^/[A-Za-z0-9/_-]*$")
+
+
+def _sanitize_return_to(value: str | None) -> str | None:
+    if not value:
+        return None
+    if value.startswith("//") or ":" in value:
+        return None
+    if not _SAFE_RETURN_TO.match(value):
+        return None
+    return value
 
 
 def _require_entra_configured() -> None:
@@ -94,21 +115,20 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _sign_flow_token(state: str, nonce: str, verifier: str) -> str:
+def _sign_flow_token(state: str, nonce: str, verifier: str, return_to: str | None) -> str:
     s = get_settings()
     now = datetime.now(UTC)
-    return jwt.encode(
-        {
-            "iss": _FLOW_ISS,
-            "iat": now,
-            "exp": now + timedelta(minutes=_FLOW_TOKEN_TTL_MINUTES),
-            "state": state,
-            "nonce": nonce,
-            "cv": verifier,
-        },
-        s.platform_jwt_secret,
-        algorithm=s.jwt_algorithm,
-    )
+    claims = {
+        "iss": _FLOW_ISS,
+        "iat": now,
+        "exp": now + timedelta(minutes=_FLOW_TOKEN_TTL_MINUTES),
+        "state": state,
+        "nonce": nonce,
+        "cv": verifier,
+    }
+    if return_to:
+        claims["return_to"] = return_to
+    return jwt.encode(claims, s.platform_jwt_secret, algorithm=s.jwt_algorithm)
 
 
 def _read_flow_token(flow_token: str) -> dict:
@@ -131,7 +151,7 @@ def supplier_auth_config() -> SupplierAuthConfigOut:
 
 
 @router.get("/login-url", response_model=SupplierLoginUrlOut)
-def get_login_url() -> SupplierLoginUrlOut:
+def get_login_url(return_to: str | None = Query(default=None)) -> SupplierLoginUrlOut:
     _require_entra_configured()
     s = get_settings()
     state = secrets.token_urlsafe(24)
@@ -150,7 +170,8 @@ def get_login_url() -> SupplierLoginUrlOut:
     }
     authorize_url = f"{s.supplier_entra_authority}/oauth2/v2.0/authorize?{urlencode(params)}"
     return SupplierLoginUrlOut(
-        authorize_url=authorize_url, flow_token=_sign_flow_token(state, nonce, verifier)
+        authorize_url=authorize_url,
+        flow_token=_sign_flow_token(state, nonce, verifier, _sanitize_return_to(return_to)),
     )
 
 
@@ -203,4 +224,10 @@ def exchange_code(payload: SupplierTokenExchangeIn, db: Session = Depends(get_db
 
     token = mint_supplier_session_token(supplier_user)
     record_supplier_login(db, supplier_user)
-    return SupplierTokenOut(access_token=token)
+    # Re-validated here, not just trusted from the signed flow token: the
+    # token is server-signed so it can't be tampered with in transit, but
+    # re-checking costs nothing and keeps this endpoint's own output safe
+    # even if a future flow-token producer is ever less careful.
+    return SupplierTokenOut(
+        access_token=token, return_to=_sanitize_return_to(flow.get("return_to"))
+    )

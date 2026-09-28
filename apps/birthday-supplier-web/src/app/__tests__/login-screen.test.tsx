@@ -18,6 +18,11 @@ vi.mock("@/lib/supplier-auth", () => ({
   useSupplierAuth: () => ({ token: null, setToken: vi.fn(), ready: true }),
 }));
 
+let mockPathname = "/";
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+}));
+
 import { LoginScreen } from "../login-screen";
 
 function renderScreen(node: ReactNode = <LoginScreen />) {
@@ -30,6 +35,7 @@ describe("Supplier LoginScreen — auth-mode aware", () => {
     getSupplierAuthConfig.mockReset();
     listDevSupplierPersonas.mockReset();
     listDevSupplierPersonas.mockResolvedValue([]);
+    mockPathname = "/";
   });
 
   it("shows 'Sign in with Microsoft' and no dev wording when supplier_auth_mode is entra", async () => {
@@ -41,6 +47,24 @@ describe("Supplier LoginScreen — auth-mode aware", () => {
     expect(screen.queryByText(/development mode/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/pick a supplier persona/i)).not.toBeInTheDocument();
     expect(listDevSupplierPersonas).not.toHaveBeenCalled();
+  });
+
+  it("carries the current path as return_to when landed on a deep link while signed out", async () => {
+    mockPathname = "/orders/42";
+    getSupplierAuthConfig.mockResolvedValue({ supplier_auth_mode: "entra" });
+    renderScreen();
+
+    const link = await screen.findByRole("link", { name: /sign in with microsoft/i });
+    expect(link).toHaveAttribute("href", "/login?return_to=%2Forders%2F42");
+  });
+
+  it("omits return_to when already on the portal home", async () => {
+    mockPathname = "/";
+    getSupplierAuthConfig.mockResolvedValue({ supplier_auth_mode: "entra" });
+    renderScreen();
+
+    const link = await screen.findByRole("link", { name: /sign in with microsoft/i });
+    expect(link).toHaveAttribute("href", "/login");
   });
 
   it("shows the persona picker when supplier_auth_mode is dev", async () => {
