@@ -27,10 +27,10 @@ import {
   getSupplier,
   getSupplierReadiness,
   impersonateSupplierUser,
+  inviteSupplierUser,
   listSupplierCatalogue,
   listSupplierLocations,
   listSupplierUsers,
-  markSupplierUserInvited,
   updateSupplier,
   updateSupplierCatalogueItem,
   updateSupplierUser,
@@ -50,6 +50,7 @@ const EMPTY_USER_FORM: SupplierUserForm = {
   role: "SUPPLIER_USER",
   status: "ACTIVE",
   entra_object_id: "",
+  send_invitation: true,
 };
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -77,9 +78,17 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
     queryFn: () => getSupplierReadiness(supplierId),
   });
 
-  const markInvited = useMutation({
-    mutationFn: (userId: number) => markSupplierUserInvited(supplierId, userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["birthday-supplier-users", supplierId] }),
+  // Real send/resend — hits the Graph mail transport (same shared mailbox
+  // as the order-release email), never touches Entra directly: this
+  // tenant already provisions the B2B guest just-in-time on first sign-in.
+  const sendInvite = useMutation({
+    mutationFn: (userId: number) => inviteSupplierUser(supplierId, userId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["birthday-supplier-users", supplierId] });
+      queryClient.invalidateQueries({ queryKey: ["birthday-supplier-readiness", supplierId] });
+      window.alert(result.detail);
+    },
+    onError: () => window.alert("The invitation could not be sent. Please try again."),
   });
 
   // §C — open the real portal in a new tab as this user, read-only. POST
@@ -194,24 +203,27 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
 
   const userMutation = useMutation({
     mutationFn: () => {
-      const { entra_object_id, ...base } = userForm;
+      const { entra_object_id, send_invitation, ...rest } = userForm;
       return editingUser
         ? updateSupplierUser(supplierId, editingUser.id, {
-            ...base,
+            ...rest,
             // Only send the link when the admin actually changed it, and
             // send null (not "") to clear it.
             ...(entra_object_id !== (editingUser.entra_object_id ?? "")
               ? { entra_object_id: entra_object_id?.trim() ? entra_object_id.trim() : null }
               : {}),
           })
-        : createSupplierUser(supplierId, base);
+        : createSupplierUser(supplierId, { ...rest, send_invitation });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["birthday-supplier-readiness", supplierId] });
       setUserModalOpen(false);
       setEditingUser(null);
       setUserForm(EMPTY_USER_FORM);
+      // Only the create path ever returns invitation_detail — nothing to
+      // report on a plain edit, so stay silent there.
+      if (result.invitation_detail) window.alert(result.invitation_detail);
     },
   });
 
@@ -459,19 +471,28 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
                           {user.email} · {user.role.replace(/_/g, " ")}
                           {user.last_login_at &&
                             ` · last sign-in ${new Date(user.last_login_at).toLocaleDateString()}`}
+                          {user.invited_at &&
+                            ` · invite sent ${new Date(user.invited_at).toLocaleDateString()}`}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                         <span className="rounded-full bg-dt-surface-warm px-2 py-0.5 text-[11px] font-medium text-dt-text-secondary">
                           {user.onboarding_state.replace(/_/g, " ")}
                         </span>
-                        {scope?.isAdmin && user.onboarding_state === "NOT_INVITED" && (
+                        {scope?.isAdmin && (
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => markInvited.mutate(user.id)}
+                            disabled={user.status !== "ACTIVE"}
+                            title={
+                              user.status !== "ACTIVE"
+                                ? "Reactivate this supplier user before sending an invitation."
+                                : undefined
+                            }
+                            loading={sendInvite.isPending && sendInvite.variables === user.id}
+                            onClick={() => sendInvite.mutate(user.id)}
                           >
-                            Mark invited
+                            {user.invited_at ? "Resend Invite" : "Send Invite"}
                           </Button>
                         )}
                         <StatusBadge status={user.status} />
@@ -777,6 +798,23 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormField>
+          {!editingUser && (
+            <label className="flex items-start gap-2 text-sm text-dt-text-primary">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={userForm.send_invitation ?? true}
+                onChange={(e) => setUserForm((f) => ({ ...f, send_invitation: e.target.checked }))}
+              />
+              <span>
+                Send Supplier Portal invitation
+                <span className="block text-xs text-dt-text-secondary">
+                  Emails this person a link to sign in — Microsoft handles the guest sign-in on
+                  first access. You can also send this later from Send Invite.
+                </span>
+              </span>
+            </label>
+          )}
           {editingUser && (
             <FormField label="Entra Object ID" htmlFor="user-entra-oid">
               <Input
