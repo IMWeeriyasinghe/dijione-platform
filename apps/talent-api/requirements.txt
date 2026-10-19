@@ -13,5 +13,5 @@ python-dotenv>=1.0
 -e ../../packages/auth-client-py
 
 pytest>=8.3
-pytest-asyncio>=0.24
+pytest-asyncio>=1.4.0
 ruff>=0.7
