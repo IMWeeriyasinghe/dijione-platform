@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^11.16.0",
-    "concurrently": "^9.1.0"
+    "concurrently": "^10.0.5"
   }
 }
