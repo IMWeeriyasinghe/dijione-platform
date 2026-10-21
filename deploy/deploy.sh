@@ -42,18 +42,29 @@ ACR="$NONPROD_ACR"
 
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-true}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
+DEPLOY_ONSITE="${DEPLOY_ONSITE:-false}"
 
 API_SERVICES=(platform-api admin-api talent-api recruitment-api)
 WEB_APPS=(shell-web admin-web talent-web talentflow-portal-web)
 MIGRATE_TARGETS=(platform-api talent-api recruitment-api)
+# people-api is a shared source domain: deployed for any of its consumers.
+if [ "$DEPLOY_BIRTHDAY" = "true" ] || [ "$DEPLOY_ONSITE" = "true" ]; then
+  API_SERVICES+=(people-api)
+  MIGRATE_TARGETS+=(people-api)
+fi
 if [ "$DEPLOY_BIRTHDAY" = "true" ]; then
-  API_SERVICES+=(people-api birthday-api)
+  API_SERVICES+=(birthday-api)
   WEB_APPS+=(birthday-web birthday-supplier-web)
-  MIGRATE_TARGETS+=(people-api birthday-api)
+  MIGRATE_TARGETS+=(birthday-api)
 fi
 if [ "$DEPLOY_COMMERCIAL" = "true" ]; then
   API_SERVICES+=(commercial-api)
   MIGRATE_TARGETS+=(commercial-api)
+fi
+if [ "$DEPLOY_ONSITE" = "true" ]; then
+  API_SERVICES+=(onsite-api)
+  WEB_APPS+=(onsite-web)
+  MIGRATE_TARGETS+=(onsite-api)
 fi
 ALL_IMAGES=("${API_SERVICES[@]}" "${WEB_APPS[@]}")
 

@@ -84,7 +84,9 @@ az deployment group create -g "$TO_RG" -n "dijione-workloads-${GITSHA}" \
 
 echo "== run $TO migrate jobs =="
 MIGRATE_TARGETS=(platform-api talent-api recruitment-api)
-[ "${DEPLOY_BIRTHDAY:-true}" = "true" ] && MIGRATE_TARGETS+=(people-api birthday-api)
+{ [ "${DEPLOY_BIRTHDAY:-true}" = "true" ] || [ "${DEPLOY_ONSITE:-false}" = "true" ]; } && MIGRATE_TARGETS+=(people-api)
+[ "${DEPLOY_BIRTHDAY:-true}" = "true" ] && MIGRATE_TARGETS+=(birthday-api)
+[ "${DEPLOY_ONSITE:-false}" = "true" ] && MIGRATE_TARGETS+=(onsite-api)
 for t in "${MIGRATE_TARGETS[@]}"; do
   echo "  -> migrate-$t"
   az containerapp job start -g "$TO_RG" -n "migrate-$t" -o none

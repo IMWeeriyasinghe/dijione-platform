@@ -33,6 +33,7 @@ jobs:
           - commercial-api
           - birthday-api
           - spark-api
+          - onsite-api
     defaults:
       run:
         working-directory: apps/${{ matrix.service }}

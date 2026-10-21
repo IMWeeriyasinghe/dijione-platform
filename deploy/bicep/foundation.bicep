@@ -35,6 +35,11 @@ param deployBirthday bool = true
 @description('Deploy the commercial_<env> database.')
 param deployCommercial bool = false
 
+@description('Deploy the Diji On-site onsite_<env> database. people_<env> is deployed whenever DijiBirthday or Diji On-site is.')
+param deployOnsite bool = false
+
+var deployPeople = deployBirthday || deployOnsite
+
 @description('PostgreSQL networking. private = VNet integration (default, all envs). public = escape hatch only.')
 @allowed([ 'public', 'private' ])
 param pgNetworkMode string = 'private'
@@ -76,8 +81,10 @@ var caeName = 'cae-dijione-${environmentName}'
 // with this same '<key>_${environmentName}' pattern.
 var dbDomainKeys = concat(
   [ 'platform', 'talent', 'recruitment' ],
-  deployBirthday ? [ 'people', 'birthday' ] : [],
-  deployCommercial ? [ 'commercial' ] : []
+  deployPeople ? [ 'people' ] : [],
+  deployBirthday ? [ 'birthday' ] : [],
+  deployCommercial ? [ 'commercial' ] : [],
+  deployOnsite ? [ 'onsite' ] : []
 )
 var databases = map(dbDomainKeys, key => '${key}_${environmentName}')
 
@@ -98,8 +105,10 @@ var kvSecretNamesCore = [
 ]
 var kvSecretNames = concat(
   kvSecretNamesCore,
-  deployBirthday ? [ 'database-url-people', 'database-url-birthday' ] : [],
-  deployCommercial ? [ 'database-url-commercial' ] : []
+  deployPeople ? [ 'database-url-people' ] : [],
+  deployBirthday ? [ 'database-url-birthday' ] : [],
+  deployCommercial ? [ 'database-url-commercial' ] : [],
+  deployOnsite ? [ 'database-url-onsite' ] : []
 )
 
 // ---- network (private PostgreSQL) --------------------------------------
