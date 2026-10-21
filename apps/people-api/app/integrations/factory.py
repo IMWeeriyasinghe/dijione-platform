@@ -29,4 +29,4 @@ def get_bamboohr_workforce_client() -> BambooHRWorkforceClient:
         return MockBambooHRWorkforceClient()
     from app.integrations.bamboohr.workforce_http_client import BambooHRWorkforceHttpClient
 
-    return BambooHRWorkforceHttpClient()  # raises BambooHRNotConfiguredError if unconfigured
+    return BambooHRWorkforceHttpClient()  # raises WorkforceSourceNotConfiguredError if unconfigured

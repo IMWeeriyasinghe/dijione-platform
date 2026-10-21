@@ -13,8 +13,11 @@ from __future__ import annotations
 import httpx
 
 from app.core.config import get_settings
-from app.integrations.bamboohr.client import BambooHRFetchError, BambooHRNotConfiguredError
-from app.integrations.bamboohr.workforce_client import BambooHRWorkforceClient
+from app.integrations.bamboohr.workforce_client import (
+    BambooHRWorkforceClient,
+    WorkforceSourceFetchError,
+    WorkforceSourceNotConfiguredError,
+)
 from app.integrations.bamboohr.workforce_schemas import BambooHRWorkforceRecord
 
 _WORKFORCE_REPORT_FIELDS = [
@@ -45,7 +48,7 @@ class BambooHRWorkforceHttpClient(BambooHRWorkforceClient):
     def __init__(self):
         settings = get_settings()
         if not (settings.bamboohr_api_key and settings.bamboohr_subdomain):
-            raise BambooHRNotConfiguredError(
+            raise WorkforceSourceNotConfiguredError(
                 "BambooHR is not configured — bamboohr_api_key and bamboohr_subdomain "
                 "must both be set. Set INTEGRATIONS_MODE=mock to continue using "
                 "MockBambooHRWorkforceClient."
@@ -66,7 +69,7 @@ class BambooHRWorkforceHttpClient(BambooHRWorkforceClient):
             response.raise_for_status()
             payload = response.json()
         except Exception as exc:  # noqa: BLE001 - any network/auth/parse failure -> typed error
-            raise BambooHRFetchError("Failed to fetch workforce directory from BambooHR") from exc
+            raise WorkforceSourceFetchError("Failed to fetch workforce directory from BambooHR") from exc
 
         records: list[BambooHRWorkforceRecord] = []
         for row in payload.get("employees", []):
