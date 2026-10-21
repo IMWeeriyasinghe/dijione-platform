@@ -89,14 +89,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 # Every other image is unchanged. The driver's own load is verified at build.
 COPY apps/${SERVICE}/requirements.txt /tmp/service-requirements.txt
 RUN if grep -qE '^pyodbc' /tmp/service-requirements.txt; then \
-        apt-get update \
-     && apt-get install -y --no-install-recommends gnupg ca-certificates \
-     && . /etc/os-release \
-     && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
-     && curl -fsSL "https://packages.microsoft.com/config/debian/${VERSION_ID}/prod.list" -o /etc/apt/sources.list.d/mssql-release.list \
+        . /etc/os-release \
+     && curl -fsSL -o /tmp/packages-microsoft-prod.deb "https://packages.microsoft.com/config/debian/${VERSION_ID}/packages-microsoft-prod.deb" \
+     && dpkg -i /tmp/packages-microsoft-prod.deb && rm -f /tmp/packages-microsoft-prod.deb \
      && apt-get update \
-     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc \
-     && apt-get purge -y gnupg && apt-get autoremove -y \
+     && ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends msodbcsql18 unixodbc \
      && rm -rf /var/lib/apt/lists/* \
      && odbcinst -q -d -n "ODBC Driver 18 for SQL Server"; \
     fi \
