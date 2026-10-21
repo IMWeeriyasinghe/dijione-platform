@@ -2,7 +2,7 @@ from auth_client_py import CorrelationIdMiddleware, assert_trust_anchors_safe
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import health, people
+from app.api.routes import health, people, workforce
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -41,3 +41,4 @@ app.add_middleware(CorrelationIdMiddleware)
 
 app.include_router(health.router)
 app.include_router(people.router)
+app.include_router(workforce.router)
