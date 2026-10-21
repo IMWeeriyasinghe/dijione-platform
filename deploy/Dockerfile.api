@@ -68,7 +68,7 @@ RUN python -c "import fastapi, uvicorn, pydantic, pydantic_settings, httpx, auth
         echo "mail-client-py not used by ${SERVICE}"; \
     fi \
  && if grep -qE '^pyodbc' "apps/${SERVICE}/requirements.txt"; then \
-        python -c "import pyodbc, azure.identity; print('pyodbc + azure-identity OK for ${SERVICE}')"; \
+        python -c "import azure.identity; print('azure-identity OK for ${SERVICE} (pyodbc + ODBC Driver 18 verified in the run stage)')"; \
     else \
         echo "pyodbc not used by ${SERVICE}"; \
     fi
