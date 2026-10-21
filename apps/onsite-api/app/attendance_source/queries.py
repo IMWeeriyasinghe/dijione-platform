@@ -2,8 +2,9 @@
 
 SELECT-only. Column lists are explicit: ``onsite.Sites.ApiKeyHash`` is never
 selected and ``onsite.Batches`` is never read. ``PunchTimeLocal``
-(datetimeoffset) is converted to ISO-8601 text (style 127) so the value is
-mirrored verbatim, offset included.
+(datetimeoffset) is rendered as its own local wall-clock time plus its own
+offset (e.g. ``2025-09-18T16:57:33+05:30``) so it is mirrored verbatim. Do NOT
+use CONVERT style 127: it normalizes a datetimeoffset to UTC (``...Z``).
 """
 
 SITES = """
@@ -13,7 +14,8 @@ FROM onsite.Sites
 
 _EVENT_COLUMNS = """
     EventId, SiteId, SourceEpoch, SourceTransactionId, EmpCode, EmpId,
-    CONVERT(varchar(40), PunchTimeLocal, 127) AS PunchTimeLocal,
+    CONVERT(varchar(19), CAST(PunchTimeLocal AS datetime2(0)), 126)
+        + DATENAME(TZOFFSET, PunchTimeLocal) AS PunchTimeLocal,
     PunchTimeUtc, TimeZone, PunchState, VerifyType, WorkCode, TerminalSn,
     TerminalAlias, AreaAlias, Source, IsAttendance, UploadTimeUtc,
     CapturedAtUtc, ReceivedUtc, BatchId, RecordHash

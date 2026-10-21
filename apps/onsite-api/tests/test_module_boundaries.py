@@ -98,3 +98,13 @@ def test_repository_reads_require_allowed_site_ids():
         param = inspect.signature(m).parameters.get("allowed_site_ids")
         assert param is not None, m.__name__
         assert param.kind is inspect.Parameter.KEYWORD_ONLY and param.default is inspect.Parameter.empty, m.__name__
+
+
+def test_punch_time_local_is_rendered_with_its_own_offset():
+    """Regression (found in DEV): CONVERT(..., 127) turns a datetimeoffset
+    into UTC 'Z', which made site_local_date the UTC date."""
+    from app.attendance_source import queries
+
+    assert ", 127)" not in queries.EVENTS_FROM_START
+    for q in (queries.EVENTS_FROM_START, queries.EVENTS_AFTER_CURSOR):
+        assert "CAST(PunchTimeLocal AS datetime2(0))" in q and "DATENAME(TZOFFSET, PunchTimeLocal)" in q
