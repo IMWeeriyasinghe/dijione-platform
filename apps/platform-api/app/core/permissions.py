@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.constants import MODULE_BIRTHDAY, MODULE_TALENT_FLOW, PlatformRole
+from app.core.constants import MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_TALENT_FLOW, PlatformRole
 
 
 @dataclass(frozen=True)
@@ -364,5 +364,61 @@ BIRTHDAY_ROLES: list[RoleDef] = [
     ),
 ]
 
-ALL_PERMISSIONS: list[PermissionDef] = PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS
-ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES
+
+# --- Diji On-site permissions (module_key="onsite") ------------------------
+# Registration data only: Platform Core resolves these into signed JWT
+# claims at login. It does not implement or call any onsite-api logic (see
+# docs/onsite/architecture.md).
+
+ONSITE_PERMISSIONS: list[PermissionDef] = [
+    PermissionDef(
+        "onsite.dashboard.read", "View Dashboard", "View the Diji On-site dashboard.",
+        MODULE_ONSITE, "Dashboard",
+    ),
+    PermissionDef(
+        "onsite.attendance.read", "View Attendance", "View employee-level attendance activity and history.",
+        MODULE_ONSITE, "Attendance",
+    ),
+    PermissionDef(
+        "onsite.exceptions.read", "View Items Needing Review", "View attendance items flagged for review.",
+        MODULE_ONSITE, "Attendance",
+    ),
+    PermissionDef(
+        "onsite.health.read", "View Site Health", "View site feed health, sync runs and technical details.",
+        MODULE_ONSITE, "Administration",
+    ),
+    PermissionDef(
+        "onsite.identity.read", "View Identity Match Report",
+        "View the attendance EmpCode to Employee Number identity match report.",
+        MODULE_ONSITE, "Administration",
+    ),
+    PermissionDef(
+        "onsite.sync.request", "Request Sync", "Request an on-demand attendance sync.",
+        MODULE_ONSITE, "Administration",
+    ),
+    PermissionDef(
+        "onsite.sites.manage", "Manage Sites", "Enable or disable sites and edit site settings.",
+        MODULE_ONSITE, "Administration",
+    ),
+]
+
+_ONSITE_VIEWER_PERMISSIONS = ("onsite.dashboard.read", "onsite.attendance.read", "onsite.exceptions.read")
+
+ONSITE_ROLES: list[RoleDef] = [
+    RoleDef(
+        "ONSITE_VIEWER", "On-site Viewer", "View the dashboard, attendance activity and items needing review.",
+        MODULE_ONSITE, _ONSITE_VIEWER_PERMISSIONS,
+    ),
+    RoleDef(
+        "ONSITE_ADMIN", "On-site Admin",
+        "Viewer permissions plus site health, identity match report, sync requests and site management.",
+        MODULE_ONSITE,
+        _ONSITE_VIEWER_PERMISSIONS
+        + ("onsite.health.read", "onsite.identity.read", "onsite.sync.request", "onsite.sites.manage"),
+    ),
+]
+
+ALL_PERMISSIONS: list[PermissionDef] = (
+    PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS
+)
+ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES
