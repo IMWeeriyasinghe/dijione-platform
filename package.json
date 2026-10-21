@@ -9,6 +9,7 @@
     "apps/talentflow-portal-web",
     "apps/birthday-web",
     "apps/birthday-supplier-web",
+    "apps/onsite-web",
     "packages/design-system",
     "packages/auth-client-ts",
     "packages/contracts"

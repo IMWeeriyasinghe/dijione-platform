@@ -13,6 +13,7 @@ import { ModuleIcon } from "@/lib/module-icons";
 const MODULE_SUMMARY_PATH: Record<string, string> = {
   "talent-flow": "/api/talent/summary",
   birthday: "/api/birthday/summary",
+  onsite: "/api/onsite/summary",
   spark: "/api/spark/summary",
 };
 

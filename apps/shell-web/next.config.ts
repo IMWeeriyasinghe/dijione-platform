@@ -16,11 +16,13 @@ const up = (name: string, fallback: string): string => process.env[name] ?? fall
 const ADMIN_WEB_URL = up("ADMIN_WEB_URL", "http://localhost:3001");
 const TALENT_WEB_URL = up("TALENT_WEB_URL", "http://localhost:3002");
 const BIRTHDAY_WEB_URL = up("BIRTHDAY_WEB_URL", "http://localhost:3003");
+const ONSITE_WEB_URL = up("ONSITE_WEB_URL", "http://localhost:3004");
 const PLATFORM_API_URL = up("PLATFORM_API_URL", "http://localhost:8000");
 const ADMIN_API_URL = up("ADMIN_API_URL", "http://localhost:8001");
 const TALENT_API_URL = up("TALENT_API_URL", "http://localhost:8002");
 const BIRTHDAY_API_URL = up("BIRTHDAY_API_URL", "http://localhost:8003");
 const SPARK_API_URL = up("SPARK_API_URL", "http://localhost:8004");
+const ONSITE_API_URL = up("ONSITE_API_URL", "http://localhost:8008");
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -42,6 +44,9 @@ const nextConfig: NextConfig = {
       { source: "/talent-flow/:path*", destination: `${TALENT_WEB_URL}/talent-flow/:path*` },
       { source: "/birthday", destination: `${BIRTHDAY_WEB_URL}/birthday` },
       { source: "/birthday/:path*", destination: `${BIRTHDAY_WEB_URL}/birthday/:path*` },
+      // Diji On-site zone — routing only; inert if the module is not deployed.
+      { source: "/onsite", destination: `${ONSITE_WEB_URL}/onsite` },
+      { source: "/onsite/:path*", destination: `${ONSITE_WEB_URL}/onsite/:path*` },
 
       { source: "/api/auth/:path*", destination: `${PLATFORM_API_URL}/api/auth/:path*` },
       { source: "/api/modules", destination: `${PLATFORM_API_URL}/api/modules` },
@@ -50,6 +55,7 @@ const nextConfig: NextConfig = {
       { source: "/api/talent/:path*", destination: `${TALENT_API_URL}/api/talent/:path*` },
       { source: "/api/birthday/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/:path*` },
       { source: "/api/spark/:path*", destination: `${SPARK_API_URL}/api/spark/:path*` },
+      { source: "/api/onsite/:path*", destination: `${ONSITE_API_URL}/api/onsite/:path*` },
     ];
   },
 };
