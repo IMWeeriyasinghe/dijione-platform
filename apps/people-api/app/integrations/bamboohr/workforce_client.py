@@ -14,3 +14,13 @@ class BambooHRWorkforceClient(ABC):
         """Every employee record, Active and Inactive — no status or
         birthday filtering."""
         ...
+
+
+class WorkforceSourceNotConfiguredError(Exception):
+    """Raised by the live workforce client when no BambooHR credential is
+    configured."""
+
+
+class WorkforceSourceFetchError(Exception):
+    """Raised when a workforce directory fetch fails (network/auth/5xx from
+    the provider). Messages carry no employee data."""

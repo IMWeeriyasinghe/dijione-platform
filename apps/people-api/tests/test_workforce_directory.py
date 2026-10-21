@@ -6,8 +6,7 @@ single-flight 202 sync, minimum-data DTO, internal-token gated.
 import pytest
 
 from app.integrations import factory
-from app.integrations.bamboohr.client import BambooHRFetchError
-from app.integrations.bamboohr.workforce_client import BambooHRWorkforceClient
+from app.integrations.bamboohr.workforce_client import BambooHRWorkforceClient, WorkforceSourceFetchError
 from app.integrations.bamboohr.workforce_mock_client import MockBambooHRWorkforceClient
 from app.models.workforce import WorkforceDirectoryEntry, WorkforceSyncRun
 from app.services.workforce_sync_service import WorkforceDirectoryService
@@ -24,7 +23,7 @@ class _ListClient(BambooHRWorkforceClient):
 
 class _FailingClient(BambooHRWorkforceClient):
     def list_workforce_records(self):
-        raise BambooHRFetchError("provider down")
+        raise WorkforceSourceFetchError("provider down")
 
 
 @pytest.fixture()
@@ -106,7 +105,7 @@ def test_failed_run_keeps_previous_directory(api_client, db, use_client):
     assert resp.status_code == 202
     db.expire_all()
     run = db.query(WorkforceSyncRun).one()
-    assert run.status == "FAILED" and "BambooHRFetchError" in run.error_summary
+    assert run.status == "FAILED" and "WorkforceSourceFetchError" in run.error_summary
     assert len(_rows(db)) == 10
 
 
