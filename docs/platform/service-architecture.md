@@ -111,8 +111,10 @@ flowchart TB
 | `birthday-api` | FastAPI | 8003 | BirthdayOrder workflow, suppliers, delivery/approval state, order-time employee snapshots, outbound supplier email |
 | `spark-api` | FastAPI | 8004 | Skeleton only — health/metadata/summary, no business data yet |
 | `recruitment-api` | FastAPI | 8005 | **Sole owner of the Lever integration**: Lever client/adapter, posting + candidacy read models, DTC-tag parsing, sync lifecycle |
-| `people-api` | FastAPI | 8006 | **Sole owner of the BambooHR integration**: BambooHR client/adapter, employee/workforce read model, sync lifecycle |
+| `people-api` | FastAPI | 8006 | **Sole owner of the BambooHR integration**: BambooHR client/adapter, the Birthday-oriented Employee contract, the generic Workforce Directory (`docs/platform/workforce-directory.md`), sync lifecycles |
 | `commercial-api` | FastAPI | 8007 | Skeleton — health/metadata + the relocated HubSpot stub/webhook. Future sole owner of HubSpot; never owns Client identity |
+| `onsite-api` *(planned)* | FastAPI | 8008 | Diji On-site application domain: raw attendance mirror of Azure SQL `onsite.*` (SELECT-only, via its bounded `app/attendance_source/` adapter), site allow-list, sync lifecycle, attendance summaries. Own DB `onsite_<env>` — see `docs/onsite/architecture.md` |
+| `onsite-web` *(planned)* | Next.js | 3004 | Diji On-site pages (`basePath: "/onsite"`) |
 
 Frontend zones use Next.js
 ["Multi Zones"](https://nextjs.org/docs/app/guides/multi-zones): each

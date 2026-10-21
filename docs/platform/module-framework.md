@@ -106,6 +106,26 @@ frontend app — following the pattern `apps/birthday-api` and
 | `talent-flow`  | DijiTalentFlow | ACTIVE      | `talent-api` :8002 | `talent-web` :3002 | First major module — see `docs/talent-flow/*`. |
 | `birthday`     | DijiBirthday   | ACTIVE      | `birthday-api` :8003 | `birthday-web` :3003 | Automated birthday-cake ordering (BambooHR detection, idempotent orders, dashboard/upcoming/orders register/order detail, supplier management, Microsoft Graph email send) — V1 (Phases A–D) complete; see `docs/birthday/requirements.md`. Supplier portal (F), automated reply-capture (E/G), and Cowork hooks (H) are later phases. |
 | `spark`        | DijiSpark      | COMING_SOON | `spark-api` :8004 (skeleton) | none yet | Health/metadata/summary + auth seam only; no business logic (CR §10). |
+| `onsite`       | Diji On-site   | planned (COMING_SOON at registration) | `onsite-api` :8008 | `onsite-web` :3004 | Attendance operations from Azure SQL `onsite.*`, identity via the People Workforce Directory — see `docs/onsite/*`. |
+
+## Module independence
+
+A module must be independently deployable and removable. Concretely (first
+applied to Diji On-site, `docs/onsite/architecture.md`):
+
+- A module owns its API, its database and its UI; nothing else reads its
+  database or calls its API (the shell gateway's routing is the only
+  exception).
+- A module depends only on published platform/source contracts
+  (`platform-api`, source-domain HTTP contracts, generic shared packages) —
+  never on another application module's code, API or database.
+- Module-specific scope interpretation, DTOs and logic stay inside the
+  module; only generic behaviour goes into shared packages.
+- Registration outside the module is data/config only (catalog and registry
+  rows, gateway rewrites, deploy/CI entries) and is inert when the module is
+  absent. Removing a module disables its registry row — it never reverts
+  another service's migration.
+- A module-removal test proves the above (`docs/onsite/module-removal.md`).
 
 ## Design-system inheritance
 
