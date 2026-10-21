@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole  # noqa: E402
+from app.core.constants import MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole  # noqa: E402
 from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.core.real_dev_clients import PERSONA_CLIENTS, REAL_DEV_CLIENTS  # noqa: E402
 from app.db.base import Base  # noqa: E402
@@ -136,6 +136,15 @@ def seed_module_registry(db) -> None:
             description="HR / Spark Hire Workflows", icon="Sparkles",
             route="/spark", status="COMING_SOON", enabled=True,
             display_order=3, required_roles="",
+        ),
+        dict(
+            key=MODULE_ONSITE, name="Diji On-site",
+            description="On-site Attendance Operations", icon="MapPin",
+            route="/onsite", status="COMING_SOON", enabled=True,
+            display_order=4,
+            # Registered ahead of release (docs/onsite/architecture.md): only
+            # users holding an ONSITE_* assignment see the card.
+            required_roles="ANY",
         ),
     ]
     for fields in definitions:
