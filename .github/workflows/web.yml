@@ -32,6 +32,7 @@ jobs:
           - talentflow-portal-web
           - birthday-web
           - birthday-supplier-web
+          - onsite-web
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
