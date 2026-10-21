@@ -51,7 +51,7 @@ Runs on PRs touching `apps/onsite-*`, registration points, `packages/` or
    delete resources removed from the template.
 4. Optionally drop `onsite_<env>` and the `database-url-onsite` Key Vault
    secret.
-5. The On-site SQL Entra admin runs `DROP USER [dijione-onsite-api-<env>]`.
+5. The On-site SQL Entra admin runs `DROP USER [onsite-api-dijione-<env>]`.
 
 The `people-api` Workforce Directory stays: it is a generic People
 capability, not part of the On-site module.
