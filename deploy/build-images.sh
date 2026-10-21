@@ -22,6 +22,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-true}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
+DEPLOY_ONSITE="${DEPLOY_ONSITE:-false}"
 
 # Per-app footer version/build metadata (docs/platform/versioning.md) — the
 # exact commit + timestamp this set of images was built from. The app
@@ -31,12 +32,19 @@ BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 API_SERVICES=(platform-api admin-api talent-api recruitment-api)
 WEB_APPS=(shell-web admin-web talent-web talentflow-portal-web)
+if [ "$DEPLOY_BIRTHDAY" = "true" ] || [ "$DEPLOY_ONSITE" = "true" ]; then
+  API_SERVICES+=(people-api)   # shared People source domain
+fi
 if [ "$DEPLOY_BIRTHDAY" = "true" ]; then
-  API_SERVICES+=(people-api birthday-api)
+  API_SERVICES+=(birthday-api)
   WEB_APPS+=(birthday-web birthday-supplier-web)
 fi
 if [ "$DEPLOY_COMMERCIAL" = "true" ]; then
   API_SERVICES+=(commercial-api)   # spark-api is never deployed and never built
+fi
+if [ "$DEPLOY_ONSITE" = "true" ]; then
+  API_SERVICES+=(onsite-api)
+  WEB_APPS+=(onsite-web)
 fi
 
 : > "$OUT"

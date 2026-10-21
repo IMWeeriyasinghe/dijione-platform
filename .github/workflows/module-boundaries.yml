@@ -1,0 +1,102 @@
+name: module-boundaries
+
+# Diji On-site module-independence gate (docs/onsite/module-removal.md,
+# architecture rule 7). Intended as a REQUIRED status check:
+#   1. guard   — no On-site references outside its own apps and the
+#                allow-listed registration points (zero tolerance elsewhere);
+#   2. removal — physically delete apps/onsite-api + apps/onsite-web, then
+#                prove every remaining service still tests, migrates and builds.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"   # weekly, Monday 03:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: module-boundaries-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Guard self-test
+        run: node --test scripts/check-module-independence.test.js
+      - name: No On-site references outside its module and registration points
+        run: node scripts/check-module-independence.js
+
+  removal-api:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - platform-api
+          - people-api
+          - birthday-api
+          - talent-api
+          - admin-api
+          - recruitment-api
+    env:
+      INTEGRATIONS_MODE: mock
+      EMAIL_SENDING_MODE: mock
+      MAIL_TRANSPORT: "null"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove the Diji On-site module
+        run: rm -rf apps/onsite-api apps/onsite-web
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+      - name: Install
+        working-directory: apps/${{ matrix.service }}
+        run: pip install -r requirements.txt
+      - name: Pytest (module removed)
+        working-directory: apps/${{ matrix.service }}
+        run: pytest -q
+      - name: alembic upgrade head on a fresh database (module removed)
+        working-directory: apps/${{ matrix.service }}
+        run: |
+          if [ -d alembic ]; then
+            DATABASE_URL="sqlite:///./removal-check.db" alembic upgrade head
+          else
+            echo "no database for ${{ matrix.service }}"
+          fi
+
+  removal-web:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Remove the Diji On-site module and its workspace entry
+        run: |
+          rm -rf apps/onsite-api apps/onsite-web
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.workspaces=p.workspaces.filter(w=>!w.startsWith('apps/onsite-'));fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+      - run: npm install --no-audit --no-fund
+      - name: Build every remaining web app (module removed)
+        run: |
+          for app in shell-web admin-web talent-web talentflow-portal-web birthday-web birthday-supplier-web; do
+            echo "::group::$app"
+            npm --workspace apps/$app run test --if-present
+            npm --workspace apps/$app run build
+            echo "::endgroup::"
+          done
+      - name: Guard still clean with the module removed
+        run: node scripts/check-module-independence.js

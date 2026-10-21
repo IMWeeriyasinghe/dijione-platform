@@ -9,6 +9,7 @@ param pgAdminPassword = ''
 // Full platform incl. DijiBirthday for the first DEV (confirmed).
 param deployBirthday = true
 param deployCommercial = false
+param deployOnsite = true
 
 // Private PostgreSQL via VNet integration (Amendment 2). One /21 per env, no peering.
 param pgNetworkMode = 'private'

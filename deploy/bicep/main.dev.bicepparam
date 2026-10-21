@@ -18,6 +18,12 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
+// Diji On-site (docs/onsite/architecture.md). DEV only; UAT/PROD stay off.
+param deployOnsite = true
+param onsiteIntegrationsMode = 'mock'
+param onsiteSqlServer = 'sql-diji-onsite-dev-7d97cf.database.windows.net'
+param onsiteSqlDatabase = 'sqldb-diji-onsite'
+
 // Lean DEV (Amendment 8): smallest container size; EVERY service scales to
 // zero (minReplicas empty => 0); ceiling of 1. Cold start is acceptable in DEV.
 param containerCpu = '0.25'

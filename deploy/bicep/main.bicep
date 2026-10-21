@@ -45,6 +45,22 @@ param deployBirthday bool = true
 @description('Deploy the commercial-api skeleton.')
 param deployCommercial bool = false
 
+@description('Deploy Diji On-site (onsite-api, onsite-web, migrate + sync jobs). Independently deployable/removable; requires people-api (deployed whenever DijiBirthday or Diji On-site is). See docs/onsite/architecture.md.')
+param deployOnsite bool = false
+
+@description('onsite-api source mode. "mock" = MockOnsiteSource; "live" = SELECT-only Azure SQL onsite.* via the Container App system-assigned managed identity (no SQL password).')
+@allowed([ 'mock', 'live' ])
+param onsiteIntegrationsMode string = 'mock'
+
+@description('Azure SQL server host name for the Diji On-site source (ingestion plane). Only used when onsiteIntegrationsMode == live.')
+param onsiteSqlServer string = ''
+
+@description('Azure SQL database name for the Diji On-site source. Only used when onsiteIntegrationsMode == live.')
+param onsiteSqlDatabase string = ''
+
+@description('onsite-sync-job cron (UTC). DEV default every 6 hours (CLAUDE.md rule 10); "Sync now" covers ad hoc.')
+param onsiteSyncCron string = '0 */6 * * *'
+
 @description('Container size — lean floor by default (Amendment 8).')
 param containerCpu string = '0.25'
 param containerMemory string = '0.5Gi'
@@ -102,6 +118,11 @@ param supplierEntraClientId string = ''
 
 @description('Public HTTPS origin of birthday-supplier-web, e.g. https://birthday-supplier-web.<env-domain>. Backs the supplier Entra redirect URI.')
 param supplierPublicBaseUrl string = ''
+
+// People / Workforce is a shared source domain: deployed whenever any
+// consumer is (DijiBirthday's Employee contract, Diji On-site's Workforce
+// Directory), never tied to one application module.
+var deployPeople = deployBirthday || deployOnsite
 
 var tags = {
   platform: 'dijione'
@@ -164,8 +185,10 @@ var coreServices = [
   { name: 'talent-web', kind: 'web', db: '', external: false }
   { name: 'talentflow-portal-web', kind: 'web', db: '', external: true }
 ]
-var birthdayServices = [
+var peopleServices = [
   { name: 'people-api', kind: 'api', db: 'people', external: false }
+]
+var birthdayServices = [
   { name: 'birthday-api', kind: 'api', db: 'birthday', external: false }
   { name: 'birthday-web', kind: 'web', db: '', external: false }
   { name: 'birthday-supplier-web', kind: 'web', db: '', external: true }
@@ -173,10 +196,16 @@ var birthdayServices = [
 var commercialServices = [
   { name: 'commercial-api', kind: 'api', db: 'commercial', external: false }
 ]
+var onsiteServices = [
+  { name: 'onsite-api', kind: 'api', db: 'onsite', external: false }
+  { name: 'onsite-web', kind: 'web', db: '', external: false }
+]
 var services = concat(
   coreServices,
+  deployPeople ? peopleServices : [],
   deployBirthday ? birthdayServices : [],
-  deployCommercial ? commercialServices : []
+  deployCommercial ? commercialServices : [],
+  deployOnsite ? onsiteServices : []
 )
 
 // ---- image ref helper (digest first, tag only for first bring-up) --------
@@ -204,7 +233,7 @@ var commonApiEnv = [
 // http://<app-name>) + module modes. Declarative here so a redeploy does not
 // wipe them (Bicep env is desired-state, not a merge). `AUTH_MODE=dev` on
 // platform-api = the dev-login identity provider (no real Entra in DEV).
-func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string, birthdayMode string) array =>
+func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string, birthdayMode string, onsiteMode string, onsiteSqlServer string, onsiteSqlDatabase string) array =>
   svc == 'shell-web' ? [
     { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
     { name: 'ADMIN_API_URL', value: 'http://admin-api' }
@@ -214,6 +243,8 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
     { name: 'ADMIN_WEB_URL', value: 'http://admin-web' }
     { name: 'TALENT_WEB_URL', value: 'http://talent-web' }
     { name: 'BIRTHDAY_WEB_URL', value: 'http://birthday-web' }
+    { name: 'ONSITE_API_URL', value: 'http://onsite-api' }
+    { name: 'ONSITE_WEB_URL', value: 'http://onsite-web' }
     { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
   ]
   : svc == 'platform-api' ? concat(
@@ -291,6 +322,22 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
   : svc == 'talentflow-portal-web' ? [
       { name: 'TALENT_API_URL', value: 'http://talent-api' }
     ]
+  : svc == 'onsite-api' ? concat(
+      [
+        { name: 'INTEGRATIONS_MODE', value: onsiteMode }
+        { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+        { name: 'PEOPLE_API_URL', value: 'http://people-api' }
+        { name: 'PEOPLE_API_TIMEOUT_SECONDS', value: '30' }
+      ],
+      onsiteMode == 'live' ? [
+        { name: 'ONSITE_SQL_SERVER', value: onsiteSqlServer }
+        { name: 'ONSITE_SQL_DATABASE', value: onsiteSqlDatabase }
+      ] : []
+    )
+  : svc == 'onsite-web' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'ONSITE_API_URL', value: 'http://onsite-api' }
+    ]
   : []
 
 // KV secret wiring per API: shared trust anchors + this service's own db url.
@@ -351,7 +398,7 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode))
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
       //   matching *IntegrationsMode == 'live'
@@ -362,8 +409,10 @@ module apps 'modules/containerapp.bicep' = [
 // ---- migration jobs (one per DB-owning service, on its OWN image) --------
 var migrateTargets = concat(
   [ 'platform-api', 'talent-api', 'recruitment-api' ],
-  deployBirthday ? [ 'people-api', 'birthday-api' ] : [],
-  deployCommercial ? [ 'commercial-api' ] : []
+  deployPeople ? [ 'people-api' ] : [],
+  deployBirthday ? [ 'birthday-api' ] : [],
+  deployCommercial ? [ 'commercial-api' ] : [],
+  deployOnsite ? [ 'onsite-api' ] : []
 )
 
 // Same logical domain keys as the service catalogue's own `db` field above
@@ -377,6 +426,7 @@ func _dbFor(svc string) string =>
     : svc == 'recruitment-api' ? 'recruitment'
     : svc == 'people-api' ? 'people'
     : svc == 'birthday-api' ? 'birthday'
+    : svc == 'onsite-api' ? 'onsite'
     : 'commercial'
 
 module migrateJobs 'modules/job.bicep' = [
@@ -487,6 +537,14 @@ var scheduledJobs = concat(
     // and outbound-email backoff retry + inbound supplier-email poll (~10 min).
     { name: 'birthday-attention-job', image: 'birthday-api', cron: '30 20 * * *', url: 'http://birthday-api/api/birthday/internal/run-attention', timeout: 600 }
     { name: 'birthday-comms-job', image: 'birthday-api', cron: '*/10 * * * *', url: 'http://birthday-api/api/birthday/internal/run-comms', timeout: 600 }
+  ] : [],
+  // Generic People Workforce Directory (docs/platform/workforce-directory.md),
+  // 6-hourly per rule 10 — independent of the Birthday people-sync-job above.
+  deployPeople ? [
+    { name: 'people-workforce-sync-job', image: 'people-api', cron: '15 */6 * * *', url: 'http://people-api/api/people/internal/workforce-directory/scheduled-sync', timeout: 1800 }
+  ] : [],
+  deployOnsite ? [
+    { name: 'onsite-sync-job', image: 'onsite-api', cron: onsiteSyncCron, url: 'http://onsite-api/api/onsite/internal/scheduled-sync', timeout: 1800 }
   ] : []
 )
 

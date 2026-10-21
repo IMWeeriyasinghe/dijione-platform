@@ -38,6 +38,8 @@ ARG SPARK_API_URL=http://spark-api
 ARG ADMIN_WEB_URL=http://admin-web
 ARG TALENT_WEB_URL=http://talent-web
 ARG BIRTHDAY_WEB_URL=http://birthday-web
+ARG ONSITE_API_URL=http://onsite-api
+ARG ONSITE_WEB_URL=http://onsite-web
 ENV PLATFORM_API_URL=${PLATFORM_API_URL} \
     ADMIN_API_URL=${ADMIN_API_URL} \
     TALENT_API_URL=${TALENT_API_URL} \
@@ -45,7 +47,9 @@ ENV PLATFORM_API_URL=${PLATFORM_API_URL} \
     SPARK_API_URL=${SPARK_API_URL} \
     ADMIN_WEB_URL=${ADMIN_WEB_URL} \
     TALENT_WEB_URL=${TALENT_WEB_URL} \
-    BIRTHDAY_WEB_URL=${BIRTHDAY_WEB_URL}
+    BIRTHDAY_WEB_URL=${BIRTHDAY_WEB_URL} \
+    ONSITE_API_URL=${ONSITE_API_URL} \
+    ONSITE_WEB_URL=${ONSITE_WEB_URL}
 
 # Per-app footer version/build metadata (docs/platform/versioning.md). The
 # app VERSION itself is read from each app's own package.json at build time

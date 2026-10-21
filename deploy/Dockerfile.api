@@ -66,6 +66,11 @@ RUN python -c "import fastapi, uvicorn, pydantic, pydantic_settings, httpx, auth
         python -c "import mail_client_py; print('mail-client-py runtime deps OK for ${SERVICE}')"; \
     else \
         echo "mail-client-py not used by ${SERVICE}"; \
+    fi \
+ && if grep -qE '^pyodbc' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import pyodbc, azure.identity; print('pyodbc + azure-identity OK for ${SERVICE}')"; \
+    else \
+        echo "pyodbc not used by ${SERVICE}"; \
     fi
 
 # ---- run ----------------------------------------------------------------
@@ -79,12 +84,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 1000 -m -d /home/app app
 
+# Microsoft ODBC Driver 18 (+ unixODBC) ONLY for services whose requirements
+# declare pyodbc (today: onsite-api's bounded Azure SQL attendance_source).
+# Every other image is unchanged. The driver's own load is verified at build.
+COPY apps/${SERVICE}/requirements.txt /tmp/service-requirements.txt
+RUN if grep -qE '^pyodbc' /tmp/service-requirements.txt; then \
+        apt-get update \
+     && apt-get install -y --no-install-recommends gnupg ca-certificates \
+     && . /etc/os-release \
+     && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+     && curl -fsSL "https://packages.microsoft.com/config/debian/${VERSION_ID}/prod.list" -o /etc/apt/sources.list.d/mssql-release.list \
+     && apt-get update \
+     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc \
+     && apt-get purge -y gnupg && apt-get autoremove -y \
+     && rm -rf /var/lib/apt/lists/* \
+     && odbcinst -q -d -n "ODBC Driver 18 for SQL Server"; \
+    fi \
+    && rm -f /tmp/service-requirements.txt
+
 WORKDIR /app
 COPY --from=build /opt/venv /opt/venv
 COPY --from=build /app/packages/auth-client-py ./packages/auth-client-py
 COPY --from=build /app/packages/mail-client-py ./packages/mail-client-py
 COPY apps/${SERVICE} ./apps/${SERVICE}
-RUN chown -R app:app /app
+RUN chown -R app:app /app \
+ && if grep -qE '^pyodbc' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import pyodbc; assert 'ODBC Driver 18 for SQL Server' in pyodbc.drivers(), pyodbc.drivers(); print('ODBC Driver 18 loadable')"; \
+    fi
 
 USER app
 WORKDIR /app/apps/${SERVICE}

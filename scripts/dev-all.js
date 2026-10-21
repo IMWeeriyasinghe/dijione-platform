@@ -24,7 +24,7 @@ const venvPython = path.join(
 );
 const pythonCmd = fs.existsSync(venvPython) ? venvPython : "python";
 
-const services = [
+const allServices = [
   { name: "platform-api", color: "\x1b[36m", cwd: "apps/platform-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8000", "--reload"] },
   { name: "admin-api", color: "\x1b[35m", cwd: "apps/admin-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8001", "--reload"] },
   { name: "talent-api", color: "\x1b[33m", cwd: "apps/talent-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8002", "--reload"] },
@@ -33,10 +33,12 @@ const services = [
   { name: "recruitment-api", color: "\x1b[38;5;208m", cwd: "apps/recruitment-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8005", "--reload"] },
   { name: "people-api", color: "\x1b[38;5;51m", cwd: "apps/people-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8006", "--reload"] },
   { name: "commercial-api", color: "\x1b[38;5;135m", cwd: "apps/commercial-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8007", "--reload"] },
+  { name: "onsite-api", color: "\x1b[38;5;70m", cwd: "apps/onsite-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8008", "--reload"] },
   { name: "shell-web", color: "\x1b[91m", cwd: "apps/shell-web", cmd: "npm", args: ["run", "dev"] },
   { name: "admin-web", color: "\x1b[95m", cwd: "apps/admin-web", cmd: "npm", args: ["run", "dev"] },
   { name: "talent-web", color: "\x1b[93m", cwd: "apps/talent-web", cmd: "npm", args: ["run", "dev"] },
   { name: "birthday-web", color: "\x1b[92m", cwd: "apps/birthday-web", cmd: "npm", args: ["run", "dev"] },
+  { name: "onsite-web", color: "\x1b[38;5;112m", cwd: "apps/onsite-web", cmd: "npm", args: ["run", "dev"] },
   // External-facing Client Talent Review Workspace (separate app, port
   // 3100). Not proxied through shell-web — external client/prospect users
   // reach it directly via a magic link.
@@ -45,6 +47,14 @@ const services = [
   // through shell-web — it is reached directly by external supplier users.
   { name: "birthday-supplier-web", color: "\x1b[96m", cwd: "apps/birthday-supplier-web", cmd: "npm", args: ["run", "dev"] },
 ];
+
+// An independently removable module (e.g. Diji On-site) may be absent from a
+// checkout: skip any app whose directory does not exist instead of failing.
+const services = allServices.filter((s) => {
+  const present = fs.existsSync(path.join(REPO_ROOT, s.cwd));
+  if (!present) console.log(`[dev-all] skipping ${s.name}: ${s.cwd} not present`);
+  return present;
+});
 
 const RESET = "\x1b[0m";
 const nameWidth = Math.max(...services.map((s) => s.name.length));
