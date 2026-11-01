@@ -17,7 +17,7 @@ from app.core.config import get_settings
 from app.core.constants import IdentityClass, ReviewFlag
 from app.repositories.attendance_repository import AttendanceRepository
 from app.services.identity_match_service import classify
-from app.services.time_derivation import site_today
+from app.services.time_derivation import site_today, to_site_local
 from app.services.workforce_directory import DirectorySnapshot
 
 _IDENTITY_FLAG = {
@@ -31,15 +31,18 @@ _IDENTITY_FLAG = {
 def daily_activity(
     db: Session, *, allowed_site_ids: Collection[str], site_id: str, site_time_zone: str | None,
     date_from: date, date_to: date, directory: DirectorySnapshot, today: date | None = None,
+    emp_codes: Collection[str] | None = None,
 ) -> list[dict]:
     settings = get_settings()
     repo = AttendanceRepository(db)
-    groups = repo.daily_groups(allowed_site_ids=allowed_site_ids, site_id=site_id, date_from=date_from, date_to=date_to)
+    groups = repo.daily_groups(
+        allowed_site_ids=allowed_site_ids, site_id=site_id, date_from=date_from, date_to=date_to, emp_codes=emp_codes
+    )
 
     dup_keys: set[tuple[date, str]] = set()
     previous: dict[tuple[date, str], object] = {}
     for local_date, code, utc in repo.punch_times(
-        allowed_site_ids=allowed_site_ids, site_id=site_id, date_from=date_from, date_to=date_to
+        allowed_site_ids=allowed_site_ids, site_id=site_id, date_from=date_from, date_to=date_to, emp_codes=emp_codes
     ):
         key = (local_date, code)
         prev = previous.get(key)
@@ -68,6 +71,8 @@ def daily_activity(
         out.append({
             "site_id": site_id, "local_date": local_date.isoformat(), "emp_code": code,
             "first_activity_utc": first.isoformat(), "latest_activity_utc": last.isoformat(),
+            "first_activity_local": to_site_local(first, site_time_zone),
+            "latest_activity_local": to_site_local(last, site_time_zone),
             "punch_count": count, "span_minutes": int((last - first).total_seconds() // 60),
             "terminals": terminals, "identity_class": identity.value if identity else None,
             "flags": flags,

@@ -2,7 +2,7 @@ from auth_client_py import CorrelationIdMiddleware, assert_trust_anchors_safe
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, health, onsite
+from app.api.routes import admin, dashboard, health, onsite
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -41,3 +41,4 @@ app.add_middleware(CorrelationIdMiddleware)
 app.include_router(health.router)
 app.include_router(onsite.router)
 app.include_router(admin.router)
+app.include_router(dashboard.router)
