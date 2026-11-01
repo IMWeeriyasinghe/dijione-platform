@@ -78,8 +78,26 @@ def export_activity(site_id: str | None = None, date_from: date | None = None, d
     start, end = svc.resolve_range(date_from, date_to, default_days=7, today=today)
     f = ex.ExportFilters(q=q, emp_code=emp_code, department=department, identity_class=identity_class, review=flag,
                          terminal=terminal)
-    return _attendance_workbook(db, scope, report="Attendance", title="Attendance Activity Report", site=site, tz=tz,
-                                start=start, end=end, f=f)
+    directory = workforce_directory.load()
+    # Exactly the Activity view's selection (all pages), not a re-derivation.
+    total, events = svc.select_activity(db, scope.allowed_site_ids, site, start, end, directory, q=q,
+                                        department=department, terminal=terminal, identity_class=identity_class,
+                                        flag=flag, tz=tz, emp_code=emp_code, offset=0,
+                                        limit=ex.MAX_EXPORT_EVENTS + 1)
+    if total > ex.MAX_EXPORT_EVENTS:
+        raise ex.too_large(total, ex.MAX_EXPORT_EVENTS)
+    pairs = {(e.site_local_date.isoformat(), e.emp_code) for e in events}
+    # Day rows for exactly those employee-days (identity/flags are per day already).
+    days = [r for r in ex.day_rows(db, scope.allowed_site_ids, site, tz, start, end, directory,
+                                   ex.ExportFilters(q=q, emp_code=emp_code, department=department))
+            if (r["local_date"], r["emp_code"]) in pairs]
+    sheets = [ex.attendance_sheet(days), ex.event_sheet(ex.pair_events(events, {(r["local_date"], r["emp_code"]): r
+                                                                                for r in days})),
+              ex.summary_sheet(days, start, end)]
+    label = start.isoformat() if start == end else f"{start.isoformat()} to {end.isoformat()}"
+    meta = ReportMeta(title="Attendance Activity Report", generated_by=scope.user.full_name,
+                      filters=ex.filter_summary(ex.site_name(db, scope.allowed_site_ids, site), label, f))
+    return _xlsx(build_workbook(meta, sheets), ex.filename("Attendance", start, end, department, emp_code))
 
 
 @router.get("/exceptions/export")
