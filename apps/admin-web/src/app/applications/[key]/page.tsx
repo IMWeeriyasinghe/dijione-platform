@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
 import {
   ApiError,
@@ -44,6 +44,11 @@ function useApplicationQueries(moduleKey: string) {
   return { detailQuery, rolesQuery, clientsQuery, usersQuery, groupsQuery };
 }
 
+type ClientScopeIn = { all_clients: boolean; client_ids: number[] };
+
+/** Existing assignment being edited (principal fixed) — absent when assigning. */
+type EditTarget = { principalId: number; label: string; role: string; enabled: boolean; allClients: boolean; clientIds: number[] };
+
 function AssignModal({
   open,
   onClose,
@@ -53,6 +58,8 @@ function AssignModal({
   clients,
   principals,
   principalLabel,
+  supportsClientScope,
+  editing,
   onSubmit,
 }: {
   open: boolean;
@@ -63,18 +70,23 @@ function AssignModal({
   clients: { id: number; name: string }[];
   principals: { id: number; label: string }[];
   principalLabel: string;
-  onSubmit: (principalId: number, role: string, allClients: boolean, clientIds: number[]) => Promise<unknown>;
+  supportsClientScope: boolean;
+  editing?: EditTarget;
+  onSubmit: (principalId: number, role: string, enabled: boolean, clientScope: ClientScopeIn | null) => Promise<unknown>;
 }) {
-  const [principalId, setPrincipalId] = useState<number | "">("");
-  const [role, setRole] = useState(moduleRoles[0]?.key ?? "");
-  const [allClients, setAllClients] = useState(true);
-  const [clientIds, setClientIds] = useState<number[]>([]);
+  const [principalId, setPrincipalId] = useState<number | "">(editing?.principalId ?? "");
+  // No pre-selected role when assigning: the administrator picks one explicitly.
+  const [role, setRole] = useState(editing?.role ?? "");
+  const [enabled, setEnabled] = useState(editing?.enabled ?? true);
+  const [allClients, setAllClients] = useState(editing?.allClients ?? true);
+  const [clientIds, setClientIds] = useState<number[]>(editing?.clientIds ?? []);
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: () => {
       if (!principalId) throw new Error("select-required");
-      return onSubmit(principalId as number, role, allClients, clientIds);
+      const scope = supportsClientScope ? { all_clients: allClients, client_ids: allClients ? [] : clientIds } : null;
+      return onSubmit(principalId as number, role, enabled, scope);
     },
     onSuccess: () => {
       setError(null);
@@ -85,25 +97,34 @@ function AssignModal({
     onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Could not save this assignment."),
   });
 
+  const title = editing ? `Edit ${principalLabel} Assignment` : `Assign ${principalLabel}`;
   return (
-    <Modal open={open} onClose={onClose} title={`Assign ${principalLabel}`}>
+    <Modal open={open} onClose={onClose} title={title}>
       <div className="flex flex-col gap-4">
-        <FormField label={principalLabel} htmlFor={`assign-${moduleKey}-principal`} required>
-          <Select
-            id={`assign-${moduleKey}-principal`}
-            value={principalId}
-            onChange={(e) => setPrincipalId(e.target.value ? Number(e.target.value) : "")}
-          >
-            <option value="">Select…</option>
-            {principals.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </FormField>
+        {editing ? (
+          <div>
+            <p className="text-sm font-medium text-dt-text-primary">{principalLabel}</p>
+            <p className="text-sm text-dt-text-secondary">{editing.label}</p>
+          </div>
+        ) : (
+          <FormField label={principalLabel} htmlFor={`assign-${moduleKey}-principal`} required>
+            <Select
+              id={`assign-${moduleKey}-principal`}
+              value={principalId}
+              onChange={(e) => setPrincipalId(e.target.value ? Number(e.target.value) : "")}
+            >
+              <option value="">Select…</option>
+              {principals.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+        )}
         <FormField label="Role" htmlFor={`assign-${moduleKey}-role`} required>
           <Select id={`assign-${moduleKey}-role`} value={role} onChange={(e) => setRole(e.target.value)}>
+            {!editing && <option value="">Select a role…</option>}
             {moduleRoles.map((r) => (
               <option key={r.key} value={r.key}>
                 {r.name}
@@ -111,27 +132,37 @@ function AssignModal({
             ))}
           </Select>
         </FormField>
-        <FormField label="Client Scope" htmlFor={`assign-${moduleKey}-scope`}>
+        {editing && (
           <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
-            <input type="checkbox" checked={allClients} onChange={(e) => setAllClients(e.target.checked)} />
-            All Clients
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            Enabled
           </label>
-        </FormField>
-        {!allClients && (
-          <div className="flex flex-wrap gap-3 rounded-lg border border-dt-border bg-dt-surface-warm p-3">
-            {clients.map((c) => (
-              <label key={c.id} className="flex items-center gap-1.5 text-sm text-dt-text-primary">
-                <input
-                  type="checkbox"
-                  checked={clientIds.includes(c.id)}
-                  onChange={(e) =>
-                    setClientIds((prev) => (e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)))
-                  }
-                />
-                {c.name}
+        )}
+        {supportsClientScope && (
+          <>
+            <FormField label="Client Scope" htmlFor={`assign-${moduleKey}-scope`}>
+              <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
+                <input type="checkbox" checked={allClients} onChange={(e) => setAllClients(e.target.checked)} />
+                All Clients
               </label>
-            ))}
-          </div>
+            </FormField>
+            {!allClients && (
+              <div className="flex flex-wrap gap-3 rounded-lg border border-dt-border bg-dt-surface-warm p-3">
+                {clients.map((c) => (
+                  <label key={c.id} className="flex items-center gap-1.5 text-sm text-dt-text-primary">
+                    <input
+                      type="checkbox"
+                      checked={clientIds.includes(c.id)}
+                      onChange={(e) =>
+                        setClientIds((prev) => (e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)))
+                      }
+                    />
+                    {c.name}
+                  </label>
+                ))}
+              </div>
+            )}
+          </>
         )}
         {error && <p className="text-sm text-dt-danger">{error}</p>}
         <div className="flex justify-end gap-2">
@@ -139,7 +170,7 @@ function AssignModal({
             Cancel
           </Button>
           <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!principalId || !role}>
-            Assign
+            {editing ? "Save" : "Assign"}
           </Button>
         </div>
       </div>
@@ -155,6 +186,8 @@ export default function AdminApplicationDetailPage() {
   const { detailQuery, rolesQuery, clientsQuery, usersQuery, groupsQuery } = useApplicationQueries(moduleKey);
   const [assignUserOpen, setAssignUserOpen] = useState(false);
   const [assignGroupOpen, setAssignGroupOpen] = useState(false);
+  const [editUser, setEditUser] = useState<EditTarget | null>(null);
+  const [editGroup, setEditGroup] = useState<EditTarget | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["admin", "applications", moduleKey] });
@@ -176,6 +209,14 @@ export default function AdminApplicationDetailPage() {
     .filter((r) => r.module_key === moduleKey)
     .map((r) => ({ key: r.key, name: r.name }));
 
+  const supportsClientScope = app.supports_client_scope !== false;
+  const scopeText = (c: { all_clients: boolean; client_names: string[] }) =>
+    c.all_clients ? "All Clients" : c.client_names.join(", ") || "None";
+  // One upsert per (principal, module): assigning and editing both update in place.
+  const saveUser = (userId: number, role: string, enabled: boolean, client_scope: ClientScopeIn | null) =>
+    upsertModuleAssignment(userId, moduleKey, { role, enabled, client_scope: client_scope ?? undefined });
+  const saveGroup = (groupId: number, role: string, enabled: boolean, client_scope: ClientScopeIn | null) =>
+    upsertGroupModuleAssignment(groupId, moduleKey, { role, enabled, client_scope: client_scope ?? undefined });
   const assignedUserIds = new Set(app.assigned_users.map((u) => u.user_id));
   const assignedGroupIds = new Set(app.assigned_groups.map((g) => g.group_id));
 
@@ -216,8 +257,11 @@ export default function AdminApplicationDetailPage() {
             <tr>
               <Th>User</Th>
               <Th>Role</Th>
-              <Th>Client Scope</Th>
+              {supportsClientScope && <Th>Client Scope</Th>}
               <Th>Status</Th>
+              <Th>
+                <span className="sr-only">Actions</span>
+              </Th>
             </tr>
           </Thead>
           <tbody>
@@ -228,11 +272,24 @@ export default function AdminApplicationDetailPage() {
                   <p className="text-xs text-dt-text-secondary">{u.email}</p>
                 </Td>
                 <Td className="text-sm text-dt-text-secondary">{u.role_name}</Td>
-                <Td className="text-sm text-dt-text-secondary">
-                  {u.client_scope.all_clients ? "All Clients" : u.client_scope.client_names.join(", ") || "None"}
-                </Td>
+                {supportsClientScope && <Td className="text-sm text-dt-text-secondary">{scopeText(u.client_scope)}</Td>}
                 <Td>
                   <StatusBadge status={u.enabled ? "ACTIVE_CLIENT" : "INACTIVE"} label={u.enabled ? "Enabled" : "Disabled"} />
+                </Td>
+                <Td className="text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Edit assignment for ${u.full_name}`}
+                    onClick={() =>
+                      setEditUser({
+                        principalId: u.user_id, label: `${u.full_name} (${u.email})`, role: u.role, enabled: u.enabled,
+                        allClients: u.client_scope.all_clients, clientIds: u.client_scope.client_ids,
+                      })
+                    }
+                  >
+                    <Pencil className="size-4" /> Edit
+                  </Button>
                 </Td>
               </Tr>
             ))}
@@ -254,8 +311,11 @@ export default function AdminApplicationDetailPage() {
             <tr>
               <Th>Group</Th>
               <Th>Role</Th>
-              <Th>Client Scope</Th>
+              {supportsClientScope && <Th>Client Scope</Th>}
               <Th>Status</Th>
+              <Th>
+                <span className="sr-only">Actions</span>
+              </Th>
             </tr>
           </Thead>
           <tbody>
@@ -268,11 +328,24 @@ export default function AdminApplicationDetailPage() {
                   <p className="text-xs text-dt-text-secondary">{g.group_key}</p>
                 </Td>
                 <Td className="text-sm text-dt-text-secondary">{g.role_name}</Td>
-                <Td className="text-sm text-dt-text-secondary">
-                  {g.client_scope.all_clients ? "All Clients" : g.client_scope.client_names.join(", ") || "None"}
-                </Td>
+                {supportsClientScope && <Td className="text-sm text-dt-text-secondary">{scopeText(g.client_scope)}</Td>}
                 <Td>
                   <StatusBadge status={g.enabled ? "ACTIVE_CLIENT" : "INACTIVE"} label={g.enabled ? "Enabled" : "Disabled"} />
+                </Td>
+                <Td className="text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Edit assignment for ${g.group_name}`}
+                    onClick={() =>
+                      setEditGroup({
+                        principalId: g.group_id, label: g.group_name, role: g.role, enabled: g.enabled,
+                        allClients: g.client_scope.all_clients, clientIds: g.client_scope.client_ids,
+                      })
+                    }
+                  >
+                    <Pencil className="size-4" /> Edit
+                  </Button>
                 </Td>
               </Tr>
             ))}
@@ -281,43 +354,67 @@ export default function AdminApplicationDetailPage() {
       )}
 
       <AssignModal
+        key={assignUserOpen ? "assign-user-open" : "assign-user"}
         open={assignUserOpen}
         onClose={() => setAssignUserOpen(false)}
         onAssigned={invalidate}
         moduleKey={moduleKey}
         moduleRoles={moduleRoles}
         clients={clients}
+        supportsClientScope={supportsClientScope}
         principals={users
           .filter((u) => !assignedUserIds.has(u.id))
           .map((u) => ({ id: u.id, label: `${u.full_name} (${u.email})` }))}
         principalLabel="User"
-        onSubmit={(userId, role, allClients, clientIds) =>
-          upsertModuleAssignment(userId, moduleKey, {
-            role,
-            enabled: true,
-            client_scope: { all_clients: allClients, client_ids: allClients ? [] : clientIds },
-          })
-        }
+        onSubmit={saveUser}
       />
       <AssignModal
+        key={assignGroupOpen ? "assign-group-open" : "assign-group"}
         open={assignGroupOpen}
         onClose={() => setAssignGroupOpen(false)}
         onAssigned={invalidate}
         moduleKey={moduleKey}
         moduleRoles={moduleRoles}
         clients={clients}
+        supportsClientScope={supportsClientScope}
         principals={groups
           .filter((g) => !assignedGroupIds.has(g.id))
           .map((g) => ({ id: g.id, label: g.display_name }))}
         principalLabel="Group"
-        onSubmit={(groupId, role, allClients, clientIds) =>
-          upsertGroupModuleAssignment(groupId, moduleKey, {
-            role,
-            enabled: true,
-            client_scope: { all_clients: allClients, client_ids: allClients ? [] : clientIds },
-          })
-        }
+        onSubmit={saveGroup}
       />
+      {editUser && (
+        <AssignModal
+          key={`edit-user-${editUser.principalId}`}
+          open
+          onClose={() => setEditUser(null)}
+          onAssigned={invalidate}
+          moduleKey={moduleKey}
+          moduleRoles={moduleRoles}
+          clients={clients}
+          supportsClientScope={supportsClientScope}
+          principals={[]}
+          principalLabel="User"
+          editing={editUser}
+          onSubmit={saveUser}
+        />
+      )}
+      {editGroup && (
+        <AssignModal
+          key={`edit-group-${editGroup.principalId}`}
+          open
+          onClose={() => setEditGroup(null)}
+          onAssigned={invalidate}
+          moduleKey={moduleKey}
+          moduleRoles={moduleRoles}
+          clients={clients}
+          supportsClientScope={supportsClientScope}
+          principals={[]}
+          principalLabel="Group"
+          editing={editGroup}
+          onSubmit={saveGroup}
+        />
+      )}
     </div>
   );
 }

@@ -46,6 +46,8 @@ export type AdminModuleOut = {
   enabled: boolean;
   display_order: number;
   user_count: number;
+  /** Whether the module's authorization reads client scope (Admin Center shows Client Scope only then). */
+  supports_client_scope?: boolean;
 };
 
 export type AdminRoleOut = {
@@ -179,6 +181,7 @@ export type ApplicationDetailOut = {
   assigned_groups: ApplicationAssignedGroupOut[];
   direct_user_count: number;
   group_count: number;
+  supports_client_scope?: boolean;
 };
 
 export type AdminDashboardOut = {

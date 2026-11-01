@@ -146,6 +146,7 @@ def seed_module_registry(db) -> None:
             # k1l2m3n4o5p6 activates it in DEV only; UAT/PROD stay
             # COMING_SOON). Only users holding an ONSITE_* assignment see it.
             required_roles="ANY",
+            supports_client_scope=False,  # onsite-api never reads client scope
         ),
     ]
     for fields in definitions:
