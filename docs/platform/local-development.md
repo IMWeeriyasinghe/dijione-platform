@@ -96,7 +96,7 @@ real_dev_clients.py`) with stable `public_id`s, and writes every
 `UserModuleClientScope` / `UserModuleRole` row against the real
 `client_ref` string, not a bare integer — client isolation does not depend
 on seed-insertion order lining up across services. It creates only staff
-personas (`madushanka-ta`, `customer-success`, `ta-manager`,
+personas (`ta-member`, `customer-success`, `ta-manager`,
 `platform-admin`, `super-admin`, `ta-portfolio`) — there is **no**
 client-login dev persona. External client/prospect access to DijiTalentFlow
 is the real magic-link flow: a TA generates an access link (talent-web →

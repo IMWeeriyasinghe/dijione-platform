@@ -170,7 +170,7 @@ downgrade`.
 
 1. `for s in platform-api admin-api talent-api recruitment-api people-api commercial-api birthday-api; do curl .../health/deep; done` — every DB-owning service reports DB + migration-head + integration mode; `admin-api`/`spark-api` report liveness only.
 2. Open `https://<shell-web-fqdn>` → Dev Identity Mode persona picker loads.
-3. Sign in as the `madushanka-ta` persona (TA Member) → DijiOne Home renders, module cards show correct health badges.
+3. Sign in as the `ta-member` persona (TA Member) → DijiOne Home renders, module cards show correct health badges.
 4. Open DijiTalentFlow → TA Operations Dashboard loads with seeded data.
 5. Open Admin Center → Users list renders with real client names (proves the platform-owned canonical Client identity path).
 6. Trigger `recruitment-sync-job` manually once → `SUCCEEDED`, postings visible via `talent-web` `/postings`.

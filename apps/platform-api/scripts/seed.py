@@ -140,10 +140,11 @@ def seed_module_registry(db) -> None:
         dict(
             key=MODULE_ONSITE, name="Diji On-site",
             description="On-site Attendance Operations", icon="MapPin",
-            route="/onsite", status="COMING_SOON", enabled=True,
+            route="/onsite", status="ACTIVE", enabled=True,
             display_order=4,
-            # Registered ahead of release (docs/onsite/architecture.md): only
-            # users holding an ONSITE_* assignment see the card.
+            # Dashboard V1 is released for DEV/local testing (migration
+            # k1l2m3n4o5p6 activates it in DEV only; UAT/PROD stay
+            # COMING_SOON). Only users holding an ONSITE_* assignment see it.
             required_roles="ANY",
         ),
     ]
@@ -198,10 +199,14 @@ def seed(*, identity_only: bool = False) -> None:
         # assignments below can be added onto personas that already exist
         # in the local DB from an earlier seed run.
         persona_defs = [
+            # Neutral TalentFlow-only test persona. Deliberately a reserved
+            # `.invalid` address and an obviously synthetic name: dev personas
+            # must never impersonate a real employee's identity (the previous
+            # persona used a fabricated address under a real person's name).
             dict(
-                email="madushanka@dijitalteam.com", full_name="Madushanka Weeriyasinghe",
+                email="ta-member.persona@dijione.invalid", full_name="TA Member (dev persona)",
                 title="Talent Acquisition Specialist", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="madushanka-ta", avatar_color="#c9431d",
+                persona_key="ta-member", avatar_color="#c9431d",
             ),
             dict(
                 email="tharindu.fernando@dijitalteam.com", full_name="Tharindu Fernando",
@@ -252,7 +257,7 @@ def seed(*, identity_only: bool = False) -> None:
             users_by_persona[fields["persona_key"]] = existing
         db.commit()
 
-        madushanka = users_by_persona["madushanka-ta"]
+        ta_member = users_by_persona["ta-member"]
         cs_user = users_by_persona["customer-success"]
         ta_manager = users_by_persona["ta-manager"]
         platform_admin = users_by_persona["platform-admin"]
@@ -263,7 +268,7 @@ def seed(*, identity_only: bool = False) -> None:
         # who is explicitly restricted to a 2-client portfolio (CMS group +
         # Databl.io). Both the persona and its scope are local-dev only.
         module_roles = [
-            (madushanka, MODULE_TALENT_FLOW, "TA_MEMBER", None, None),
+            (ta_member, MODULE_TALENT_FLOW, "TA_MEMBER", None, None),
             (cs_user, MODULE_TALENT_FLOW, "CUSTOMER_SUCCESS", None, None),
             (ta_manager, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
             (platform_admin, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
@@ -308,7 +313,7 @@ def seed(*, identity_only: bool = False) -> None:
         db.commit()
 
         print("Platform Core seed complete." + (" (identity-only)" if identity_only else ""))
-        personas = "madushanka-ta, customer-success, ta-manager, platform-admin, super-admin"
+        personas = "ta-member, customer-success, ta-manager, platform-admin, super-admin"
         if not identity_only:
             personas += ", ta-portfolio (CMS group + Databl.io only)"
         print(f"  Dev personas: {personas}.")
