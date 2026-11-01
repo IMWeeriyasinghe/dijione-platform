@@ -79,6 +79,7 @@ function ModuleAssignmentEditor({
   moduleStatus,
   availableRoles,
   clients,
+  supportsClientScope = true,
   current,
   onSaved,
 }: {
@@ -88,6 +89,8 @@ function ModuleAssignmentEditor({
   moduleStatus: string;
   availableRoles: { key: string; name: string }[];
   clients: { id: number; name: string }[];
+  /** False for modules whose authorization ignores client scope. */
+  supportsClientScope?: boolean;
   current: { role: string; enabled: boolean; all_clients: boolean; client_ids: number[] } | undefined;
   onSaved: () => void;
 }) {
@@ -102,7 +105,7 @@ function ModuleAssignmentEditor({
       upsertModuleAssignment(userId, moduleKey, {
         role,
         enabled,
-        client_scope: { all_clients: allClients, client_ids: allClients ? [] : clientIds },
+        client_scope: supportsClientScope ? { all_clients: allClients, client_ids: allClients ? [] : clientIds } : undefined,
       }),
     onSuccess: () => {
       setError(null);
@@ -149,21 +152,23 @@ function ModuleAssignmentEditor({
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-dt-text-primary">Client Scope</label>
-          <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
-            <input
-              type="checkbox"
-              checked={allClients}
-              onChange={(e) => setAllClients(e.target.checked)}
-              disabled={!enabled}
-            />
-            All Clients
-          </label>
-        </div>
+        {supportsClientScope && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-dt-text-primary">Client Scope</label>
+            <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
+              <input
+                type="checkbox"
+                checked={allClients}
+                onChange={(e) => setAllClients(e.target.checked)}
+                disabled={!enabled}
+              />
+              All Clients
+            </label>
+          </div>
+        )}
       </div>
 
-      {!allClients && (
+      {supportsClientScope && !allClients && (
         <div className="mt-3 flex flex-wrap gap-3 rounded-lg border border-dt-border bg-dt-surface-warm p-3">
           {clients.map((c) => (
             <label key={c.id} className="flex items-center gap-1.5 text-sm text-dt-text-primary">
@@ -366,6 +371,7 @@ export default function AdminUserDetailPage() {
                 moduleName={m.name}
                 moduleStatus={m.status}
                 availableRoles={moduleRoles}
+                supportsClientScope={m.supports_client_scope !== false}
                 clients={clients}
                 current={
                   assignment

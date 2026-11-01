@@ -75,6 +75,7 @@ class AdminModuleOut(BaseModel):
     enabled: bool
     display_order: int
     user_count: int
+    supports_client_scope: bool = True
 
 
 class AdminRoleOut(BaseModel):
@@ -235,6 +236,7 @@ class ApplicationDetailOut(BaseModel):
     assigned_groups: list[ApplicationAssignedGroupOut]
     direct_user_count: int
     group_count: int
+    supports_client_scope: bool = True
 
 
 class AdminDashboardOut(BaseModel):
