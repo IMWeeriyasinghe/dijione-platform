@@ -52,6 +52,8 @@ export type ReconciliationRow = {
 };
 
 export type Freshness = {
+  /** False when no attendance source exists for this environment yet. */
+  source_configured?: boolean;
   last_successful_sync_at: string | null;
   latest_run: SyncRun | null;
   sites: SiteFreshness[];

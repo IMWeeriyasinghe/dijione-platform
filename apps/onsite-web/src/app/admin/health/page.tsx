@@ -40,8 +40,20 @@ function HealthView() {
       <PageHeader
         title="Site Health"
         description="Attendance feed, agent heartbeat, DijiOne mirror sync and source reconciliation."
-        action={<SyncNowButton onDone={refresh} />}
+        action={data.source_configured === false ? undefined : <SyncNowButton onDone={refresh} />}
       />
+
+      {data.source_configured === false && (
+        <Card>
+          <CardContent className="py-4 text-sm">
+            <p className="font-medium text-dt-text-primary">No attendance source is configured for this environment.</p>
+            <p className="mt-1 text-dt-text-secondary">
+              The application is running, but no attendance feed is connected, so nothing is synced and no
+              attendance data is shown. This is expected until an attendance source is provisioned and validated.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle>Mirror</CardTitle></CardHeader>

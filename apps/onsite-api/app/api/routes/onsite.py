@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy.orm import Session
 
 from app.api.deps import OnsiteScope, get_onsite_scope, require_internal_service, require_onsite_permission
+from app.core.config import get_settings
 from app.core.constants import Perm, SyncTriggerType
 from app.db.session import get_db
 from app.repositories.attendance_repository import AttendanceRepository
@@ -44,6 +45,7 @@ def summary(scope: OnsiteScope = Depends(get_onsite_scope), db: Session = Depend
         # module card and the Home Platform Health widget read.
         "status": "ok",
         "service": "onsite-api",
+        "source_configured": get_settings().source_configured,
         "enabled_sites": len(scope.allowed_site_ids),
         "mirrored_events": AttendanceRepository(db).event_count(allowed_site_ids=scope.allowed_site_ids),
         "last_successful_sync_at": data["last_successful_sync_at"],
@@ -61,12 +63,23 @@ def get_freshness(
     return freshness(db, allowed_site_ids=allowed, technical=scope.has(Perm.HEALTH_READ))
 
 
+def _source_not_configured() -> dict | None:
+    """No attendance source in this environment: never create a run, never
+    insert anything — answer clearly instead (the scheduled job stays green)."""
+    if get_settings().source_configured:
+        return None
+    return {"run_id": None, "status": "SOURCE_NOT_CONFIGURED", "started": False,
+            "message": "No attendance source is configured for this environment"}
+
+
 @router.post("/sync", status_code=202)
 def request_sync(
     background: BackgroundTasks,
     scope: OnsiteScope = Depends(require_onsite_permission(Perm.SYNC_REQUEST)),
     db: Session = Depends(get_db),
 ) -> dict:
+    if (skipped := _source_not_configured()) is not None:
+        return skipped
     run, started = MirrorSyncService(db).request_sync(trigger_type=SyncTriggerType.AD_HOC, requested_by_user_id=scope.user.id)
     if started:
         background.add_task(MirrorSyncService.execute_run, run.run_id)
@@ -90,6 +103,8 @@ def sync_history(limit: int = Query(20, ge=1), _scope: OnsiteScope = Depends(req
 
 @router.post("/internal/scheduled-sync", status_code=202, dependencies=[Depends(require_internal_service)])
 def scheduled_sync(background: BackgroundTasks, db: Session = Depends(get_db)) -> dict:
+    if (skipped := _source_not_configured()) is not None:
+        return skipped
     run, started = MirrorSyncService(db).request_sync(trigger_type=SyncTriggerType.SCHEDULED)
     if started:
         background.add_task(MirrorSyncService.execute_run, run.run_id)
