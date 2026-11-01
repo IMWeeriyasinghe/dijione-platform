@@ -69,6 +69,7 @@ def freshness(db: Session, *, allowed_site_ids: Collection[str], technical: bool
         sites.append(site)
 
     return {
+        "source_configured": settings.source_configured,
         "last_successful_sync_at": _iso(last_success_at),
         "latest_run": run_dto(latest) if latest else None,
         "sites": sites,

@@ -37,4 +37,5 @@ def health_deep(db: Session = Depends(get_db)) -> dict:
         checks["migration_revision"] = "unknown"
         checks["migration"] = {"current": "unknown", "head": "unknown", "up_to_date": None}
     checks["integrations_mode"] = settings.integrations_mode
+    checks["attendance_source"] = "configured" if settings.source_configured else "not_configured"
     return {"service": "onsite-api", "status": "healthy" if ok else "degraded", "checks": checks}

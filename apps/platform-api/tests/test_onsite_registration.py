@@ -268,7 +268,7 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
     url = f"sqlite:///{(tmp_path / 'mig.db').as_posix()}"
     up = _alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
-    assert "l2m3n4o5p6q7 (head)" in _alembic(url, "current").stdout
+    assert "m3n4o5p6q7r8 (head)" in _alembic(url, "current").stdout
 
     eng = create_engine(url)
 
@@ -299,12 +299,30 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
 
 
 def test_activation_is_dev_only(tmp_path):
-    """UAT/PROD keep COMING_SOON; only APP_ENV=development activates it."""
+    """k1l2m3n4o5p6 alone: UAT/PROD keep COMING_SOON; only APP_ENV=development
+    activates it (UAT/PROD activation is the later m3n4o5p6q7r8)."""
     for app_env, expected in (("uat", "COMING_SOON"), ("prod", "COMING_SOON"), ("development", "ACTIVE")):
         url = f"sqlite:///{(tmp_path / f'{app_env}.db').as_posix()}"
-        assert _alembic(url, "upgrade", "head", app_env=app_env).returncode == 0
+        assert _alembic(url, "upgrade", "k1l2m3n4o5p6", app_env=app_env).returncode == 0
         eng = create_engine(url)
         with eng.connect() as c:
             status = c.execute(text("SELECT status FROM application_modules WHERE key='onsite'")).scalar()
         eng.dispose()
         assert status == expected, app_env
+
+
+def test_release_activation_uat_prod_only(tmp_path):
+    def status(app_env):
+        url = f"sqlite:///{(tmp_path / f'{app_env}.db').as_posix()}"
+        assert _alembic(url, "upgrade", "head", app_env=app_env).returncode == 0
+        eng = create_engine(url)
+        with eng.connect() as c:
+            rows = dict(c.execute(text("SELECT key, status FROM application_modules")).all())
+        eng.dispose()
+        return rows
+
+    for env in ("uat", "prod"):
+        rows = status(env)
+        assert rows["onsite"] == "ACTIVE"
+        assert rows.get("spark", "COMING_SOON") == "COMING_SOON"  # other modules untouched
+    assert status("development")["onsite"] == "ACTIVE"  # DEV via k1l2m3n4o5p6

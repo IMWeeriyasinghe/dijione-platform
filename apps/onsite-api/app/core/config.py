@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./onsite.db"
 
-    # "mock" (default, CI/local) or "live" (Azure SQL onsite.* via attendance_source).
+    # "mock" (default, CI/local), "live" (Azure SQL onsite.* via attendance_source)
+    # or "none" (no attendance source provisioned for this environment yet:
+    # the app runs, nothing is ever synced and health says so).
     integrations_mode: str = "mock"
     # Azure SQL source (SELECT-only, Entra managed-identity token, no password).
     onsite_sql_server: str = ""  # fully qualified server host name
@@ -53,6 +55,11 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
+
+    @property
+    def source_configured(self) -> bool:
+        """False when no attendance source exists for this environment."""
+        return self.integrations_mode in ("mock", "live")
 
 
 @lru_cache
