@@ -1,0 +1,163 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const scope = vi.hoisted(() => ({ value: { loading: false, scope: { role: "ONSITE_VIEWER", isAdmin: false } as { role: string; isAdmin: boolean } | null } }));
+vi.mock("@/lib/onsite-scope", async (orig) => {
+  const actual = await orig<typeof import("@/lib/onsite-scope")>();
+  return { ...actual, useOnsiteScope: () => scope.value };
+});
+
+const api = vi.hoisted(() => ({
+  getSitesInfo: vi.fn(), getOverview: vi.fn(), getHourly: vi.fn(), getTrend: vi.fn(), getRecent: vi.fn(),
+  getToday: vi.fn(), getActivity: vi.fn(), getEmployees: vi.fn(), getEmployee: vi.fn(), getExceptions: vi.fn(),
+  downloadActivityCsv: vi.fn(),
+}));
+vi.mock("@/lib/dashboard", async (orig) => {
+  const actual = await orig<typeof import("@/lib/dashboard")>();
+  return { ...actual, ...api };
+});
+vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), requestSync: vi.fn(), getSyncRun: vi.fn() }));
+
+const SITE = { site_id: "dev-site", name: "DEV Site (Colombo)", time_zone: "Asia/Colombo", today: "2026-11-01",
+  first_activity_date: "2024-11-27", last_activity_date: "2026-10-21", terminals: ["Main Door"] };
+const FLAGS0 = { SINGLE_PUNCH: 2, POSSIBLE_DUPLICATE_TAP: 1, UNMATCHED_CODE: 1, AMBIGUOUS_CODE: 0, INACTIVE_EMPLOYEE_ACTIVITY: 0,
+  BEFORE_HIRE_ACTIVITY: 0, TZ_INCONSISTENT: 0, HIGH_PUNCH_COUNT: 0 };
+const DAY = { local_date: "2026-10-13", emp_code: "0107", employee_name: "Ishara G", department: "Bench",
+  first_activity_local: "2026-10-13T08:37:00+05:30", latest_activity_local: "2026-10-13T08:37:20+05:30",
+  punch_count: 2, span_minutes: 0, terminal_names: ["Main Door"], identity_class: "MATCHED_ACTIVE", flags: ["POSSIBLE_DUPLICATE_TAP"] };
+
+function renderPage(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
+beforeEach(() => {
+  Object.values(api).forEach((f) => f.mockReset());
+  scope.value = { loading: false, scope: { role: "ONSITE_VIEWER", isAdmin: false } };
+  api.getSitesInfo.mockResolvedValue([SITE]);
+  api.getOverview.mockResolvedValue({ site_id: "dev-site", date: "2026-11-01", time_zone: "Asia/Colombo", directory_available: true,
+    kpis: { employees_with_activity: 4, total_events: 6, employees_needing_review: 3, single_punch_employees: 2, unmatched_codes: 1, feed_state: "STALE" },
+    review_breakdown: FLAGS0, last_successful_sync_at: "2026-10-21T23:42:48Z", latest_received_utc: null, agent_heartbeat_utc: null });
+  api.getHourly.mockResolvedValue({ hours: Array.from({ length: 24 }, (_, h) => ({ hour: h, events: h === 8 ? 5 : 0, employees: 0 })) });
+  api.getTrend.mockResolvedValue({ days: [{ date: "2026-10-31", events: 3, employees: 2 }, { date: "2026-11-01", events: 6, employees: 4 }] });
+  api.getRecent.mockResolvedValue({ total: 1, page: 1, page_size: 12, directory_available: true,
+    items: [{ emp_code: "101", employee_name: "Nimal P", department: "Bench", identity_class: "MATCHED_ACTIVE", local_time: "2026-10-21T15:20:26+05:30",
+      local_date: "2026-10-21", terminal: "Main Door", area: null, punch_state_raw: "255", tz_consistent: true }] });
+});
+
+describe("Overview", () => {
+  it("renders KPIs, charts, breakdown and recent activity from the API", async () => {
+    const { default: Page } = await import("@/app/page");
+    renderPage(<Page />);
+    expect(await screen.findByText("Employees with activity")).toBeInTheDocument();
+    expect(screen.getByText("Activity events")).toBeInTheDocument();
+    expect(screen.getAllByRole("img").length).toBeGreaterThanOrEqual(2); // hourly + trend charts
+    expect(screen.getByLabelText(/Activity by hour on 2026-11-01: 5 events/)).toBeInTheDocument();
+    expect(screen.getByText("Possible duplicate tap")).toBeInTheDocument();
+    expect(await screen.findByText("Nimal P")).toBeInTheDocument();
+    expect(screen.getAllByText("Feed stale").length).toBeGreaterThan(0);
+    expect(api.getOverview).toHaveBeenCalledWith({ site_id: "dev-site", date: "2026-11-01" });
+  });
+
+  it("jumps to the latest activity day and re-queries", async () => {
+    const { default: Page } = await import("@/app/page");
+    renderPage(<Page />);
+    fireEvent.click(await screen.findByText(/Latest activity day \(2026-10-21\)/));
+    await waitFor(() => expect(api.getOverview).toHaveBeenCalledWith({ site_id: "dev-site", date: "2026-10-21" }));
+  });
+
+  it("shows Sync now only to admins", async () => {
+    const { default: Page } = await import("@/app/page");
+    const { unmount } = renderPage(<Page />);
+    await screen.findByText("Employees with activity");
+    expect(screen.queryByRole("button", { name: /sync now/i })).not.toBeInTheDocument();
+    unmount();
+    scope.value = { loading: false, scope: { role: "ONSITE_ADMIN", isAdmin: true } };
+    renderPage(<Page />);
+    expect(await screen.findByRole("button", { name: /sync now/i })).toBeInTheDocument();
+  });
+
+  it("requires an enabled site", async () => {
+    api.getSitesInfo.mockResolvedValue([]);
+    const { default: Page } = await import("@/app/page");
+    renderPage(<Page />);
+    expect(await screen.findByText("No enabled sites")).toBeInTheDocument();
+    expect(api.getOverview).not.toHaveBeenCalled();
+  });
+
+  it("shows an error state when the API fails", async () => {
+    api.getOverview.mockRejectedValue(new Error("boom"));
+    const { default: Page } = await import("@/app/page");
+    renderPage(<Page />);
+    expect(await screen.findByRole("button", { name: /retry|try again/i })).toBeInTheDocument();
+  });
+
+  it("uses a responsive KPI grid", async () => {
+    const { default: Page } = await import("@/app/page");
+    const { container } = renderPage(<Page />);
+    await screen.findByText("Employees with activity");
+    expect(container.querySelector(".grid.grid-cols-1.sm\\:grid-cols-2")).not.toBeNull();
+  });
+});
+
+describe("Today", () => {
+  it("renders rows and applies filters", async () => {
+    api.getToday.mockResolvedValue({ total: 1, page: 1, page_size: 50, date: "2026-11-01", departments: ["Bench"], directory_available: true, items: [DAY] });
+    const { default: Page } = await import("@/app/today/page");
+    renderPage(<Page />);
+    expect(await screen.findByText("Ishara G")).toBeInTheDocument();
+    expect(screen.getAllByText("08:37").length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText("Review status"), { target: { value: "needs_review" } });
+    await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ review: "needs_review", page: 1 })));
+  });
+
+  it("shows the empty state", async () => {
+    api.getToday.mockResolvedValue({ total: 0, page: 1, page_size: 50, date: "2026-11-01", departments: [], directory_available: true, items: [] });
+    const { default: Page } = await import("@/app/today/page");
+    renderPage(<Page />);
+    expect(await screen.findByText("No activity recorded")).toBeInTheDocument();
+  });
+});
+
+describe("Exceptions", () => {
+  it("shows counts and filters by flag", async () => {
+    api.getExceptions.mockResolvedValue({ total: 1, page: 1, page_size: 25, directory_available: true, counts: FLAGS0,
+      items: [{ ...DAY, reasons: [{ flag: "POSSIBLE_DUPLICATE_TAP", reason: "Two activities were recorded within 60 seconds of each other." }] }] });
+    const { default: Page } = await import("@/app/exceptions/page");
+    renderPage(<Page />);
+    expect(await screen.findByText(/within 60 seconds/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Unmatched code \(1\)/ }));
+    await waitFor(() => expect(api.getExceptions).toHaveBeenLastCalledWith(expect.objectContaining({ flag: "UNMATCHED_CODE" })));
+  });
+});
+
+describe("Employees", () => {
+  it("opens the employee detail drawer", async () => {
+    api.getEmployees.mockResolvedValue({ total: 1, page: 1, page_size: 50, date_from: "x", date_to: "y", departments: [], directory_available: true,
+      items: [{ emp_code: "0107", employee_name: "Ishara G", department: "Bench", employment_status: "Active", identity_class: "MATCHED_ACTIVE",
+        in_directory: true, events: 2, activity_days: 1, review_flags: 1, last_activity_local: "2026-10-13T08:37:20+05:30" }] });
+    api.getEmployee.mockResolvedValue({ profile: { emp_code: "0107", employee_name: "Ishara G", department: "Bench", employment_status: "Active",
+      identity_class: "MATCHED_ACTIVE", job_title: "Support Engineer", match_count: 1 }, summary: { activity_days: 1, events: 2, review_flags: 1 },
+      days: [DAY], events: [], directory_available: true });
+    const { default: Page } = await import("@/app/employees/page");
+    renderPage(<Page />);
+    fireEvent.click(await screen.findByText("Ishara G"));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText(/Support Engineer/)).toBeInTheDocument();
+  });
+});
+
+describe("Activity", () => {
+  it("renders raw device state verbatim", async () => {
+    api.getActivity.mockResolvedValue({ total: 1, page: 1, page_size: 50, directory_available: true,
+      items: [{ emp_code: "999", employee_name: null, department: null, identity_class: "UNMATCHED", local_time: "2026-10-13T08:39:00+05:30",
+        local_date: "2026-10-13", terminal: "Main Door", area: null, punch_state_raw: "255", tz_consistent: true }] });
+    const { default: Page } = await import("@/app/activity/page");
+    renderPage(<Page />);
+    expect(await screen.findByText("255")).toBeInTheDocument();
+    expect(screen.getAllByText("Unmatched code").length).toBeGreaterThanOrEqual(2); // badge + filter option
+    expect(screen.queryByText("IN")).not.toBeInTheDocument();
+    expect(screen.queryByText("OUT")).not.toBeInTheDocument();
+  });
+});

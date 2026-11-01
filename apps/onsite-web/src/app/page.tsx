@@ -1,56 +1,189 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, EmptyState, ErrorState, LoadingState, PageHeader } from "@dijione/design-system";
-import { MapPin } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ErrorState,
+  LoadingState,
+  MetricCard,
+  PageHeader,
+  Table,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from "@dijione/design-system";
+import { Activity, AlertTriangle, Fingerprint, Radio, Users, UserX } from "lucide-react";
+import { BreakdownBars, ColumnChart } from "@/components/charts";
+import { DateInput, FilterRow, SiteSelect } from "@/components/FilterBar";
+import { EmployeeCell, IdentityBadge } from "@/components/FlagChips";
+import { SiteProvider, useSite } from "@/components/SiteContext";
+import { SyncNowButton } from "@/components/SyncNowButton";
 import { ToneBadge } from "@/components/ToneBadge";
-import { getFreshness } from "@/lib/api";
+import { getHourly, getOverview, getRecent, getTrend } from "@/lib/dashboard";
+import { localTime } from "@/lib/flags";
 import { FEED_LABEL, FEED_TONE, formatDateTime } from "@/lib/format";
+import { useOnsiteScope } from "@/lib/onsite-scope";
 
-export default function OverviewPage() {
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["onsite-freshness"],
-    queryFn: getFreshness,
-    refetchInterval: 60_000,
+const POLL = 60_000;
+
+function OverviewView() {
+  const { site } = useSite();
+  const { scope } = useOnsiteScope();
+  const queryClient = useQueryClient();
+  const [day, setDay] = useState<string | null>(null);
+  const [trendDays, setTrendDays] = useState(30);
+  const date = day ?? site.today;
+  const params = { site_id: site.site_id, date };
+
+  const overview = useQuery({ queryKey: ["onsite-overview", params], queryFn: () => getOverview(params), refetchInterval: POLL });
+  const hourly = useQuery({ queryKey: ["onsite-hourly", params], queryFn: () => getHourly(params), refetchInterval: POLL });
+  const trend = useQuery({
+    queryKey: ["onsite-trend", site.site_id, trendDays, date],
+    queryFn: () => getTrend({ site_id: site.site_id, days: trendDays, date_to: date }),
+    refetchInterval: POLL,
+  });
+  const recent = useQuery({
+    queryKey: ["onsite-recent", site.site_id],
+    queryFn: () => getRecent({ site_id: site.site_id, limit: 12 }),
+    refetchInterval: POLL,
   });
 
-  if (isLoading) return <LoadingState label="Loading Diji On-site…" />;
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
+  if (overview.isLoading) return <LoadingState label="Loading attendance overview…" />;
+  if (overview.isError || !overview.data) return <ErrorState onRetry={() => overview.refetch()} />;
+  const o = overview.data;
+  const k = o.kpis;
+  const feed = k.feed_state ?? "NOT_SYNCED";
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
-        title="Diji On-site"
-        description="Attendance feed status for enabled sites. Attendance views arrive with Dashboard V1."
+        title="Attendance overview"
+        description={`Activity recorded at ${site.name}, in site-local time${site.time_zone ? ` (${site.time_zone})` : ""}.`}
+        action={scope?.isAdmin ? <SyncNowButton onDone={() => queryClient.invalidateQueries()} /> : undefined}
       />
-      {data.sites.length === 0 ? (
-        <EmptyState
-          icon={MapPin}
-          title="No enabled sites"
-          description="An On-site administrator enables sites from Admin → Sites. Sites stay hidden until enabled."
-        />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {data.sites.map((site) => (
-            <Card key={site.site_id}>
-              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-                <CardTitle>{site.site_id}</CardTitle>
-                <ToneBadge tone={FEED_TONE[site.feed_state]}>{FEED_LABEL[site.feed_state]}</ToneBadge>
-              </CardHeader>
-              <CardContent className="space-y-1 text-sm text-dt-text-secondary">
-                <p>Latest activity received: <span className="text-dt-text-primary">{formatDateTime(site.latest_received_utc)}</span></p>
-                <p>Agent heartbeat: <span className="text-dt-text-primary">{formatDateTime(site.agent_heartbeat_utc)}</span></p>
-                {site.feed_state !== "FRESH" && (
-                  <p className="text-dt-burnt-orange">
-                    The feed may be incomplete — &ldquo;No activity recorded&rdquo; is not reliable until it is current.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-      <p className="mt-4 text-xs text-dt-text-secondary">Last DijiOne sync: {formatDateTime(data.last_successful_sync_at)}</p>
+      <FilterRow>
+        <SiteSelect />
+        <DateInput label="Date" value={date} onChange={setDay} />
+        {site.last_activity_date && site.last_activity_date !== date && (
+          <button
+            type="button"
+            className="text-sm font-medium text-dt-burnt-orange underline underline-offset-2"
+            onClick={() => setDay(site.last_activity_date)}
+          >
+            Latest activity day ({site.last_activity_date})
+          </button>
+        )}
+      </FilterRow>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dt-border bg-dt-surface px-4 py-3 text-sm text-dt-text-secondary">
+        <ToneBadge tone={FEED_TONE[feed]}>{FEED_LABEL[feed]}</ToneBadge>
+        <span>Last DijiOne sync: <span className="text-dt-text-primary">{formatDateTime(o.last_successful_sync_at)}</span></span>
+        <span>Latest activity received: <span className="text-dt-text-primary">{formatDateTime(o.latest_received_utc)}</span></span>
+        {feed !== "FRESH" && (
+          <span className="text-dt-burnt-orange">The feed may be incomplete — treat “No activity recorded” with care.</span>
+        )}
+        {!o.directory_available && <span className="text-dt-burnt-orange">Employee details unavailable — showing codes only.</span>}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <MetricCard label="Employees with activity" value={k.employees_with_activity} icon={Users} tone="brand" />
+        <MetricCard label="Activity events" value={k.total_events} icon={Activity} />
+        <MetricCard label="Employees needing review" value={k.employees_needing_review} icon={AlertTriangle} />
+        <MetricCard label="Single-activity employees" value={k.single_punch_employees} icon={UserX} />
+        <MetricCard label="Unmatched codes" value={k.unmatched_codes} icon={Fingerprint} />
+        <MetricCard label="Feed freshness" value={FEED_LABEL[feed]} icon={Radio} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Activity by hour</CardTitle></CardHeader>
+          <CardContent>
+            {hourly.data ? (
+              <ColumnChart
+                label={`Activity by hour on ${date}`}
+                valueLabel="events"
+                xLabel={(h) => `${h.padStart(2, "0")}:00`}
+                data={hourly.data.hours.map((h) => ({ key: String(h.hour), value: h.events, tick: h.hour % 3 === 0 ? `${String(h.hour).padStart(2, "0")}` : "" }))}
+              />
+            ) : (
+              <LoadingState label="Loading…" />
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle>Activity trend</CardTitle>
+            <div className="flex gap-1" role="group" aria-label="Trend range">
+              {[7, 30].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={trendDays === d}
+                  onClick={() => setTrendDays(d)}
+                  className={`rounded-md px-2 py-1 text-xs font-medium ${trendDays === d ? "bg-dt-cream text-dt-burnt-orange" : "text-dt-text-secondary hover:bg-dt-surface-warm"}`}
+                >
+                  {d} days
+                </button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {trend.data ? (
+              <ColumnChart
+                label={`Daily activity, ${trendDays} days to ${date}`}
+                valueLabel="events"
+                highlightLast
+                data={trend.data.days.map((d) => ({ key: d.date, value: d.events }))}
+                xLabel={(d) => d.slice(5)}
+              />
+            ) : (
+              <LoadingState label="Loading…" />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_3fr]">
+        <Card>
+          <CardHeader><CardTitle>Needs review</CardTitle></CardHeader>
+          <CardContent><BreakdownBars counts={o.review_breakdown} /></CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Recent activity</CardTitle></CardHeader>
+          <CardContent>
+            {recent.data && recent.data.items.length > 0 ? (
+              <Table>
+                <Thead><Tr><Th>Employee</Th><Th>Local time</Th><Th>Terminal</Th><Th>Identity</Th></Tr></Thead>
+                <tbody>
+                  {recent.data.items.map((e, i) => (
+                    <Tr key={`${e.emp_code}-${e.local_time}-${i}`}>
+                      <Td><EmployeeCell name={e.employee_name} code={e.emp_code} /></Td>
+                      <Td>{e.local_date} {localTime(e.local_time)}</Td>
+                      <Td>{e.terminal ?? "—"}</Td>
+                      <Td><IdentityBadge cls={e.identity_class} /></Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              <p className="text-sm text-dt-text-secondary">No activity recorded in the last 92 days.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
+  );
+}
+
+export default function OverviewPage() {
+  return (
+    <SiteProvider>
+      <OverviewView />
+    </SiteProvider>
   );
 }
