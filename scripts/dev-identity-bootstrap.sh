@@ -2,7 +2,7 @@
 # DEV IDENTITY BOOTSTRAP — legitimate development identity / RBAC / persona
 # prerequisites only.
 #
-# Creates the DijiOne staff dev-login personas (madushanka-ta,
+# Creates the DijiOne staff dev-login personas (ta-member,
 # customer-success, ta-manager, platform-admin, super-admin) and their
 # platform-role / module-role assignments, so `AUTH_MODE=dev` persona
 # switching works for internal authorization testing behind the Easy Auth

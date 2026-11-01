@@ -132,8 +132,8 @@ def test_admin_generic_discovery_and_assignment(api_client, db, two_tenant_world
     assert set(_claims(api_client, "test-ta")["module_roles"]["onsite"]["permissions"]) == VIEWER
 
 
-def _alembic(db_url, *args):
-    env = {**os.environ, "DATABASE_URL": db_url}
+def _alembic(db_url, *args, app_env="development"):
+    env = {**os.environ, "DATABASE_URL": db_url, "APP_ENV": app_env}
     return subprocess.run([sys.executable, "-m", "alembic", *args], cwd=APP_ROOT, env=env,
                           capture_output=True, text=True)
 
@@ -142,7 +142,7 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
     url = f"sqlite:///{(tmp_path / 'mig.db').as_posix()}"
     up = _alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
-    assert "i9j0k1l2m3n4" in _alembic(url, "current").stdout
+    assert "k1l2m3n4o5p6 (head)" in _alembic(url, "current").stdout
 
     eng = create_engine(url)
 
@@ -158,7 +158,7 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
             )
 
     first = snapshot()
-    assert first[0] == [("onsite", "Diji On-site", "/onsite", "COMING_SOON", 1, "ANY")]
+    assert first[0] == [("onsite", "Diji On-site", "/onsite", "ACTIVE", 1, "ANY")]  # DEV (APP_ENV=development)
     assert first[1] == ["ONSITE_ADMIN", "ONSITE_VIEWER"]
     assert set(first[2]) == ADMIN
 
@@ -167,3 +167,15 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
     assert _alembic(url, "upgrade", "head").returncode == 0
     assert snapshot() == first
     eng.dispose()
+
+
+def test_activation_is_dev_only(tmp_path):
+    """UAT/PROD keep COMING_SOON; only APP_ENV=development activates it."""
+    for app_env, expected in (("uat", "COMING_SOON"), ("prod", "COMING_SOON"), ("development", "ACTIVE")):
+        url = f"sqlite:///{(tmp_path / f'{app_env}.db').as_posix()}"
+        assert _alembic(url, "upgrade", "head", app_env=app_env).returncode == 0
+        eng = create_engine(url)
+        with eng.connect() as c:
+            status = c.execute(text("SELECT status FROM application_modules WHERE key='onsite'")).scalar()
+        eng.dispose()
+        assert status == expected, app_env

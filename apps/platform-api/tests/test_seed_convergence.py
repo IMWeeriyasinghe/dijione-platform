@@ -67,9 +67,9 @@ def test_seed_grants_super_admin_birthday_admin_role(db):
         # Regression guard: a TalentFlow-only staff persona must NOT pick up
         # birthday access as a side effect of this change. (Was the
         # cms-group-client persona before the TALENT_CLIENT dev logins were
-        # removed — magic-link plan B.15; madushanka-ta is the equivalent
+        # removed — magic-link plan B.15; ta-member is the equivalent
         # single-module persona now.)
-        talent_only = session.query(User).filter_by(persona_key="madushanka-ta").one()
+        talent_only = session.query(User).filter_by(persona_key="ta-member").one()
         talent_only_birthday_role = (
             session.query(UserModuleRole)
             .filter_by(user_id=talent_only.id, module_key=MODULE_BIRTHDAY)

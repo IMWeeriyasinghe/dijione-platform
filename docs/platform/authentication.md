@@ -36,7 +36,7 @@ rejected at login with 403, matching production behavior.
 
 | Persona key       | Name                     | Platform role   | DijiTalentFlow role |
 |--------------------|--------------------------|-----------------|----------------------|
-| `madushanka-ta`    | Madushanka Weeriyasinghe | PLATFORM_USER   | TA_MEMBER (all clients) |
+| `ta-member`    | Madushanka Weeriyasinghe | PLATFORM_USER   | TA_MEMBER (all clients) |
 | `customer-success` | Tharindu Fernando        | PLATFORM_USER   | CUSTOMER_SUCCESS (all clients) |
 | `ta-manager`       | Sanduni Wickrama         | PLATFORM_USER   | TA_MANAGER (all clients) |
 | `platform-admin`   | Dilani Rathnayake        | PLATFORM_ADMIN  | TA_MANAGER (all clients) |
