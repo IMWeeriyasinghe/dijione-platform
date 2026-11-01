@@ -106,6 +106,9 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
                         page=page, page_size=page_size, technical=technical, tz=tz, emp_code=emp_code)
     if fmt == "json":
         return data
+    if data["total"] > page_size:  # never silently truncate the CSV
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            "Too many rows for CSV — narrow the date range or add filters.")
     cols = ["local_time", "emp_code", "employee_name", "department", "terminal", "area", "identity_class",
             "punch_state_raw", "tz_consistent"]
     if technical:

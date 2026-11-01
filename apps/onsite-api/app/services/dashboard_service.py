@@ -223,29 +223,57 @@ def _event_out(e: AttendanceEvent, ident: Identity, *, technical: bool) -> dict:
     return out
 
 
+# Upper bound for one filtered event scan (the 92-day range cap keeps real
+# selections far below this; exports apply their own, smaller limit).
+_SCAN_LIMIT = 250_000
+
+
+def select_activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
+                    q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
+                    flag: str | None, tz: str | None, emp_code: str | None = None, offset: int = 0,
+                    limit: int = 50) -> tuple[int, list[AttendanceEvent]]:
+    """The single Activity selection shared by the paged UI and the Excel
+    export (newest first). Identity class and review flags are evaluated per
+    employee-day — the same values each row displays — never per code."""
+    repo = AttendanceRepository(db)
+    ident = Identity(directory)
+    codes = {emp_code} if emp_code else None
+    if q or department:
+        candidates = repo.distinct_codes(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end)
+        if q:
+            candidates = [c for c in candidates if _search_hit(ident.describe(c), q)]
+        matched = ident.codes_matching(candidates, department=department, identity_class=None)
+        codes = matched if codes is None else codes & matched
+    tz_only = flag == ReviewFlag.TZ_INCONSISTENT.value
+    day_flag = flag if flag and not tz_only else None
+    if not identity_class and not day_flag:
+        return repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
+                                emp_codes=codes, terminal=terminal, tz_inconsistent_only=tz_only,
+                                offset=offset, limit=limit)
+    pairs = {(r["local_date"], r["emp_code"]) for r in daily_activity(
+        db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start, date_to=end,
+        directory=directory, emp_codes=codes)
+        if (not identity_class or r["identity_class"] == identity_class) and (not day_flag or day_flag in r["flags"])}
+    if not pairs:
+        return 0, []
+    scanned, events = repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
+                                       emp_codes={c for _, c in pairs}, terminal=terminal,
+                                       tz_inconsistent_only=tz_only, offset=0, limit=_SCAN_LIMIT)
+    if scanned > _SCAN_LIMIT:  # never silently drop rows
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Too much activity for these filters — "
+                            "narrow the date range or add filters.")
+    selected = [e for e in events if (e.site_local_date.isoformat(), e.emp_code) in pairs]
+    return len(selected), selected[offset:offset + limit]
+
+
 def activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
              q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
              flag: str | None, page: int, page_size: int, technical: bool, tz: str | None = None,
              emp_code: str | None = None) -> dict:
-    repo = AttendanceRepository(db)
     ident = Identity(directory)
-    codes = {emp_code} if emp_code else None
-    if q or department or identity_class:
-        candidates = repo.distinct_codes(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end)
-        if q:
-            candidates = [c for c in candidates if _search_hit(ident.describe(c), q)]
-        matched = ident.codes_matching(candidates, department=department, identity_class=identity_class)
-        codes = matched if codes is None else codes & matched
-    if flag and flag != ReviewFlag.TZ_INCONSISTENT.value:
-        flagged = {(r["emp_code"]) for r in daily_activity(
-            db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start, date_to=end,
-            directory=directory, emp_codes=codes) if flag in r["flags"]}
-        codes = flagged if codes is None else codes & flagged
-    total, rows = repo.events_page(
-        allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end, emp_codes=codes, terminal=terminal,
-        tz_inconsistent_only=flag == ReviewFlag.TZ_INCONSISTENT.value,
-        offset=(page - 1) * page_size, limit=page_size,
-    )
+    total, rows = select_activity(db, allowed, site_id, start, end, directory, q=q, department=department,
+                                  terminal=terminal, identity_class=identity_class, flag=flag, tz=tz,
+                                  emp_code=emp_code, offset=(page - 1) * page_size, limit=page_size)
     return {"total": total, "page": page, "page_size": page_size, "directory_available": ident.available,
             "items": [_event_out(e, ident, technical=technical) for e in rows]}
 

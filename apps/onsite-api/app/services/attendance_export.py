@@ -105,16 +105,21 @@ def event_rows(db: Session, allowed, site_id: str, start: date, end: date, days:
     """Raw events belonging to the selected employee-days, oldest first."""
     if not days:
         return []
-    flags = {(r["local_date"], r["emp_code"]): r for r in days}
+    by_day = {(r["local_date"], r["emp_code"]): r for r in days}
     total, events = AttendanceRepository(db).events_page(
         allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
         emp_codes={r["emp_code"] for r in days}, terminal=terminal, offset=0, limit=MAX_EXPORT_EVENTS + 1,
     )
     if total > MAX_EXPORT_EVENTS:
         raise too_large(total, MAX_EXPORT_EVENTS)
+    return pair_events(events, by_day)
+
+
+def pair_events(events, by_day: dict) -> list[dict]:
+    """Attach each event's employee-day row; oldest first."""
     out = []
     for e in reversed(events):
-        day = flags.get((e.site_local_date.isoformat(), e.emp_code))
+        day = by_day.get((e.site_local_date.isoformat(), e.emp_code))
         if day is not None:
             out.append({"event": e, "day": day})
     return out

@@ -183,6 +183,27 @@ describe("Excel export", () => {
     expect(params).not.toHaveProperty("sort");
   });
 
+  it("ignores the current page: page 2 exports the same filtered dataset, filters still change it", async () => {
+    api.getSitesInfo.mockResolvedValue([{ ...SITE, departments: ["Finance", "Bench"] }]);
+    api.getToday.mockImplementation(async (p: { page: number }) => ({ ...TODAY, total: 137, page: p.page }));
+    api.downloadExport.mockResolvedValue(undefined);
+    const { default: Page } = await import("@/app/today/page");
+    renderPage(<Page />);
+    await screen.findByText("Ishara G");
+    fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Finance" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, department: "Finance" })));
+    fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
+    await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(1));
+    const onPage2 = api.downloadExport.mock.calls[0][1];
+    expect(onPage2).toEqual({ site_id: "dev-site", date: "2026-11-01", department: "Finance" });
+    for (const k of ["page", "page_size", "sort"]) expect(onPage2).not.toHaveProperty(k);
+    fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Bench" } });
+    fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
+    await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(2));
+    expect(api.downloadExport.mock.calls[1][1]).toMatchObject({ department: "Bench" });
+  });
+
   it("shows the server's message when an export is too large", async () => {
     api.getActivity.mockResolvedValue({ total: 0, page: 1, page_size: 50, directory_available: true, items: [] });
     api.downloadExport.mockRejectedValue(new Error("This export would contain 60,000 rows, above the limit of 50,000. Narrow the date range or add filters and try again."));
