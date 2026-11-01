@@ -44,3 +44,14 @@ def site_today(site_time_zone: str | None, now_utc: datetime | None = None) -> d
         return now.astimezone(ZoneInfo(site_time_zone)).date() if site_time_zone else now.date()
     except (ZoneInfoNotFoundError, ValueError):
         return now.date()
+
+
+def to_site_local(utc: datetime | None, site_time_zone: str | None) -> str | None:
+    """ISO local wall-clock time (with offset) for display in the site's zone."""
+    if utc is None:
+        return None
+    aware = utc if utc.tzinfo else utc.replace(tzinfo=ZoneInfo("UTC"))
+    try:
+        return aware.astimezone(ZoneInfo(site_time_zone)).isoformat() if site_time_zone else aware.isoformat()
+    except (ZoneInfoNotFoundError, ValueError):
+        return aware.isoformat()

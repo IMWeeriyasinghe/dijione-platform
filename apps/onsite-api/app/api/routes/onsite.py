@@ -31,6 +31,10 @@ def metadata() -> dict:
 def summary(scope: OnsiteScope = Depends(get_onsite_scope), db: Session = Depends(get_db)) -> dict:
     data = freshness(db, allowed_site_ids=scope.allowed_site_ids)
     return {
+        # status/service: the shared module-summary contract every DijiOne
+        # module card and the Home Platform Health widget read.
+        "status": "ok",
+        "service": "onsite-api",
         "enabled_sites": len(scope.allowed_site_ids),
         "mirrored_events": AttendanceRepository(db).event_count(allowed_site_ids=scope.allowed_site_ids),
         "last_successful_sync_at": data["last_successful_sync_at"],
