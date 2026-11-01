@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Card, CardContent, ErrorState, LoadingState, MetricCard, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { CircleAlert, CircleCheck, CircleHelp, CircleSlash, Clock } from "lucide-react";
 import { AdminOnly } from "@/components/AdminOnly";
+import { PERM } from "@/lib/onsite-scope";
 import { downloadIdentityCsv, getIdentityReport } from "@/lib/api";
 import { IDENTITY_LABEL } from "@/lib/format";
 import type { IdentityClass } from "@/lib/types";
@@ -92,5 +93,5 @@ function IdentityView() {
 }
 
 export default function IdentityMatchPage() {
-  return <AdminOnly><IdentityView /></AdminOnly>;
+  return <AdminOnly permission={PERM.IDENTITY}><IdentityView /></AdminOnly>;
 }

@@ -10,7 +10,7 @@ import { EmployeeCell, IdentityBadge } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { getActivity, REVIEW_FLAGS } from "@/lib/dashboard";
 import { addDays, FLAG_LABEL, localTime } from "@/lib/flags";
-import { useOnsiteScope } from "@/lib/onsite-scope";
+import { hasPermission, PERM, useOnsiteScope } from "@/lib/onsite-scope";
 
 function ActivityView() {
   const { site } = useSite();
@@ -30,7 +30,7 @@ function ActivityView() {
     identity_class: identity || undefined, flag: flag || undefined };
   const query = useQuery({ queryKey: ["onsite-activity", filters, page], queryFn: () => getActivity({ ...filters, page, page_size: 50 }) });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
-  const technical = Boolean(scope?.isAdmin);
+  const technical = hasPermission(scope, PERM.HEALTH); // same rule as onsite-api
 
   return (
     <div>

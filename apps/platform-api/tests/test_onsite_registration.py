@@ -193,6 +193,71 @@ def test_group_assignment_both_roles(api_client, db, two_tenant_world):
     assert [(g["role"], g["client_scope"]["all_clients"]) for g in detail["assigned_groups"]] == [("ONSITE_ADMIN", True)]
 
 
+def _group_world(db, *, direct=None, group_role=None, group_enabled=True, group_status="ACTIVE"):
+    from app.models.access_group import AccessGroup, GroupModuleRole, UserGroupMembership
+
+    _register_module(db)
+    user = User(email="grp@example.com", full_name="Group Member", platform_role="PLATFORM_USER", persona_key="test-grp")
+    db.add(user)
+    db.flush()
+    if direct:
+        db.add(UserModuleRole(user_id=user.id, module_key="onsite", role=direct))
+    if group_role:
+        group = AccessGroup(key="grp-onsite", display_name="Group", status=group_status)
+        db.add(group)
+        db.flush()
+        db.add(UserGroupMembership(user_id=user.id, access_group_id=group.id))
+        db.add(GroupModuleRole(access_group_id=group.id, module_key="onsite", role=group_role, enabled=group_enabled))
+    db.commit()
+
+
+def _home(api_client):
+    return [m["key"] for m in api_client.get("/api/modules", headers=auth_headers(api_client, "test-grp")).json()]
+
+
+def test_home_direct_only(api_client, db):
+    _group_world(db, direct="ONSITE_VIEWER")
+    assert _home(api_client).count("onsite") == 1
+
+
+def test_home_group_only_viewer(api_client, db):
+    _group_world(db, group_role="ONSITE_VIEWER")
+    claim = _claims(api_client, "test-grp")["module_roles"]["onsite"]
+    assert claim["role"] == "ONSITE_VIEWER" and set(claim["permissions"]) == VIEWER
+    assert _home(api_client).count("onsite") == 1
+
+
+def test_home_group_only_admin(api_client, db):
+    _group_world(db, group_role="ONSITE_ADMIN")
+    assert set(_claims(api_client, "test-grp")["module_roles"]["onsite"]["permissions"]) == ADMIN
+    assert "onsite" in _home(api_client)
+
+
+def test_home_disabled_group_assignment_hidden(api_client, db):
+    _group_world(db, group_role="ONSITE_VIEWER", group_enabled=False)
+    assert "onsite" not in _home(api_client)
+    assert "onsite" not in _claims(api_client, "test-grp")["module_roles"]
+
+
+def test_home_inactive_group_hidden(api_client, db):
+    _group_world(db, group_role="ONSITE_ADMIN", group_status="INACTIVE")
+    assert "onsite" not in _home(api_client)
+    assert "onsite" not in _claims(api_client, "test-grp")["module_roles"]
+
+
+def test_home_direct_plus_group_once_and_deterministic(api_client, db):
+    _group_world(db, direct="ONSITE_VIEWER", group_role="ONSITE_ADMIN")
+    assert _home(api_client).count("onsite") == 1
+    claim = _claims(api_client, "test-grp")["module_roles"]["onsite"]
+    assert claim["role"] == "ONSITE_VIEWER"  # direct grant is the primary role (existing claims rule)
+    assert set(claim["permissions"]) == ADMIN  # permissions are the union across sources
+
+
+def test_home_no_assignment_hidden(api_client, db):
+    _group_world(db)
+    assert "onsite" not in _home(api_client)
+
+
 def _alembic(db_url, *args, app_env="development"):
     env = {**os.environ, "DATABASE_URL": db_url, "APP_ENV": app_env}
     return subprocess.run([sys.executable, "-m", "alembic", *args], cwd=APP_ROOT, env=env,

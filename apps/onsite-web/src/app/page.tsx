@@ -28,7 +28,7 @@ import { ToneBadge } from "@/components/ToneBadge";
 import { getHourly, getOverview, getRecent, getTrend } from "@/lib/dashboard";
 import { localTime } from "@/lib/flags";
 import { FEED_LABEL, FEED_TONE, formatDateTime } from "@/lib/format";
-import { useOnsiteScope } from "@/lib/onsite-scope";
+import { hasPermission, PERM, useOnsiteScope } from "@/lib/onsite-scope";
 
 const POLL = 60_000;
 
@@ -68,7 +68,7 @@ function OverviewView() {
         action={
           <div className="flex flex-wrap items-start gap-2">
             <ExportButton path="dashboard/overview" params={params} label="Export summary" />
-            {scope?.isAdmin && <SyncNowButton onDone={() => queryClient.invalidateQueries()} />}
+            {hasPermission(scope, PERM.SYNC) && <SyncNowButton onDone={() => queryClient.invalidateQueries()} />}
           </div>
         }
       />

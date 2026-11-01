@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const scope = vi.hoisted(() => ({ value: { loading: false, scope: { role: "ONSITE_VIEWER", isAdmin: false } as { role: string; isAdmin: boolean } | null } }));
+const scope = vi.hoisted(() => ({ value: { loading: false, scope: { role: "ONSITE_VIEWER", permissions: ["onsite.attendance.read", "onsite.dashboard.read", "onsite.exceptions.read"] } as { role: string; permissions: string[] } | null } }));
 vi.mock("@/lib/onsite-scope", async (orig) => {
   const actual = await orig<typeof import("@/lib/onsite-scope")>();
   return { ...actual, useOnsiteScope: () => scope.value };
@@ -34,7 +34,7 @@ function renderPage(ui: React.ReactElement) {
 
 beforeEach(() => {
   Object.values(api).forEach((f) => f.mockReset());
-  scope.value = { loading: false, scope: { role: "ONSITE_VIEWER", isAdmin: false } };
+  scope.value = { loading: false, scope: { role: "ONSITE_VIEWER", permissions: ["onsite.attendance.read", "onsite.dashboard.read", "onsite.exceptions.read"] } };
   api.getSitesInfo.mockResolvedValue([SITE]);
   api.getOverview.mockResolvedValue({ site_id: "dev-site", date: "2026-11-01", time_zone: "Asia/Colombo", directory_available: true,
     kpis: { employees_with_activity: 4, total_events: 6, employees_needing_review: 3, single_punch_employees: 2, unmatched_codes: 1, feed_state: "STALE" },
@@ -73,7 +73,7 @@ describe("Overview", () => {
     await screen.findByText("Employees with activity");
     expect(screen.queryByRole("button", { name: /sync now/i })).not.toBeInTheDocument();
     unmount();
-    scope.value = { loading: false, scope: { role: "ONSITE_ADMIN", isAdmin: true } };
+    scope.value = { loading: false, scope: { role: "ONSITE_ADMIN", permissions: ["onsite.attendance.read", "onsite.dashboard.read", "onsite.exceptions.read", "onsite.health.read", "onsite.identity.read", "onsite.sites.manage", "onsite.sync.request"] } };
     renderPage(<Page />);
     expect(await screen.findByRole("button", { name: /sync now/i })).toBeInTheDocument();
   });

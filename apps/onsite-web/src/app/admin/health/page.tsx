@@ -16,6 +16,7 @@ import {
   Tr,
 } from "@dijione/design-system";
 import { AdminOnly } from "@/components/AdminOnly";
+import { PERM } from "@/lib/onsite-scope";
 import { ToneBadge } from "@/components/ToneBadge";
 import { getHealth, getSyncHistory } from "@/lib/api";
 import { SyncNowButton } from "@/components/SyncNowButton";
@@ -135,5 +136,5 @@ function HealthView() {
 }
 
 export default function SiteHealthPage() {
-  return <AdminOnly><HealthView /></AdminOnly>;
+  return <AdminOnly permission={PERM.HEALTH}><HealthView /></AdminOnly>;
 }

@@ -5,7 +5,7 @@ import type { IdentityReport, OnsiteSite, SiteHealth } from "@/lib/types";
 
 vi.mock("@/lib/onsite-scope", async (orig) => {
   const actual = await orig<typeof import("@/lib/onsite-scope")>();
-  return { ...actual, useOnsiteScope: () => ({ loading: false, scope: { role: "ONSITE_ADMIN", isAdmin: true } }) };
+  return { ...actual, useOnsiteScope: () => ({ loading: false, scope: { role: "ONSITE_ADMIN", permissions: ["onsite.attendance.read", "onsite.dashboard.read", "onsite.exceptions.read", "onsite.health.read", "onsite.identity.read", "onsite.sites.manage", "onsite.sync.request"] } }) };
 });
 
 const api = vi.hoisted(() => ({

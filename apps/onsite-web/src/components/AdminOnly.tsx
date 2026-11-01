@@ -2,13 +2,13 @@
 
 import { EmptyState } from "@dijione/design-system";
 import { ShieldAlert } from "lucide-react";
-import { useOnsiteScope } from "@/lib/onsite-scope";
+import { hasPermission, useOnsiteScope } from "@/lib/onsite-scope";
 
-/** Hides admin pages from viewers. Convenience only — onsite-api enforces
- *  every admin permission independently (403). */
-export function AdminOnly({ children }: { children: React.ReactNode }) {
+/** Hides an admin page unless the caller holds ``permission``. Convenience
+ *  only — onsite-api enforces the same permission independently (403). */
+export function AdminOnly({ permission, children }: { permission: string; children: React.ReactNode }) {
   const { scope } = useOnsiteScope();
-  if (!scope?.isAdmin) {
+  if (!hasPermission(scope, permission)) {
     return (
       <EmptyState
         icon={ShieldAlert}

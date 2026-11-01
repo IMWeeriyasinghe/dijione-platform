@@ -95,7 +95,11 @@ function ModuleAssignmentEditor({
   onSaved: () => void;
 }) {
   const [enabled, setEnabled] = useState(current?.enabled ?? false);
-  const [role, setRole] = useState(current?.role ?? availableRoles[0]?.key ?? "");
+  const [role, setRole] = useState(
+    // Least privilege: a new assignment never inherits the first (often most
+    // privileged) role — the administrator picks one, unless there is only one.
+    current?.role ?? (availableRoles.length === 1 ? availableRoles[0].key : ""),
+  );
   const [allClients, setAllClients] = useState(current?.all_clients ?? true);
   const [clientIds, setClientIds] = useState<number[]>(current?.client_ids ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -144,6 +148,7 @@ function ModuleAssignmentEditor({
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-dt-text-primary">Role</label>
           <Select value={role} onChange={(e) => setRole(e.target.value)} disabled={!enabled}>
+            {!current && availableRoles.length > 1 && <option value="">Select a role…</option>}
             {availableRoles.map((r) => (
               <option key={r.key} value={r.key}>
                 {r.name}
@@ -191,7 +196,7 @@ function ModuleAssignmentEditor({
       {error && <p className="mt-3 text-sm text-dt-danger">{error}</p>}
 
       <div className="mt-4">
-        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending}>
+        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!role}>
           Save {moduleName} Access
         </Button>
       </div>

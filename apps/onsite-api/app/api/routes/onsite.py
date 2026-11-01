@@ -24,7 +24,16 @@ def _accepted(run, started: bool) -> dict:
 @router.get("/metadata")
 def metadata() -> dict:
     return {"key": "onsite", "name": "Diji On-site", "description": "On-site Attendance Operations",
-            "product_status": "COMING_SOON"}
+            "product_status": "ACTIVE"}
+
+
+@router.get("/me")
+def me(scope: OnsiteScope = Depends(get_onsite_scope)) -> dict:
+    """The caller's effective Diji On-site role and permissions, read from the
+    verified JWT ``module_roles.onsite`` claim — which already combines direct
+    and access-group grants. onsite-web uses it for navigation only; every
+    route still checks its own permission."""
+    return {"role": scope.role, "permissions": sorted(scope.permissions)}
 
 
 @router.get("/summary")

@@ -93,3 +93,14 @@ def test_freshness_states(api_client, db, audit_calls, monkeypatch):
     assert fs.freshness(db, allowed_site_ids=("dev-site",), now=now)["sites"][0]["feed_state"] == "DELAYED"
 
     assert datetime.now(UTC)  # (sanity)
+
+
+def test_me_reports_effective_role_and_permissions(api_client, db):
+    from tests.conftest import ADMIN, VIEWER
+
+    assert api_client.get("/api/onsite/me").status_code == 401
+    assert api_client.get("/api/onsite/me", headers=headers_for(role=None)).status_code == 403
+    viewer = api_client.get("/api/onsite/me", headers=headers_for("ONSITE_VIEWER")).json()
+    assert viewer == {"role": "ONSITE_VIEWER", "permissions": sorted(VIEWER)}
+    admin = api_client.get("/api/onsite/me", headers=headers_for("ONSITE_ADMIN")).json()
+    assert admin == {"role": "ONSITE_ADMIN", "permissions": sorted(ADMIN)}
