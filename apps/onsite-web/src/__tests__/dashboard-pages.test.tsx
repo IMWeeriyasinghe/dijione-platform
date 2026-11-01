@@ -11,7 +11,7 @@ vi.mock("@/lib/onsite-scope", async (orig) => {
 const api = vi.hoisted(() => ({
   getSitesInfo: vi.fn(), getOverview: vi.fn(), getHourly: vi.fn(), getTrend: vi.fn(), getRecent: vi.fn(),
   getToday: vi.fn(), getActivity: vi.fn(), getEmployees: vi.fn(), getEmployee: vi.fn(), getExceptions: vi.fn(),
-  downloadActivityCsv: vi.fn(),
+  downloadExport: vi.fn(),
 }));
 vi.mock("@/lib/dashboard", async (orig) => {
   const actual = await orig<typeof import("@/lib/dashboard")>();
@@ -159,5 +159,52 @@ describe("Activity", () => {
     expect(screen.getAllByText("Unmatched code").length).toBeGreaterThanOrEqual(2); // badge + filter option
     expect(screen.queryByText("IN")).not.toBeInTheDocument();
     expect(screen.queryByText("OUT")).not.toBeInTheDocument();
+  });
+});
+
+describe("Excel export", () => {
+  const TODAY = { total: 1, page: 1, page_size: 50, date: "2026-11-01", departments: ["Finance"], directory_available: true, items: [DAY] };
+
+  it("exports exactly the filters on screen (no paging/sort)", async () => {
+    api.getSitesInfo.mockResolvedValue([{ ...SITE, departments: ["Finance", "Bench"] }]);
+    api.getToday.mockResolvedValue(TODAY);
+    api.downloadExport.mockResolvedValue(undefined);
+    const { default: Page } = await import("@/app/today/page");
+    renderPage(<Page />);
+    await screen.findByText("Ishara G");
+    fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Finance" } });
+    fireEvent.change(screen.getByLabelText("Employee Number"), { target: { value: "0107" } });
+    fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
+    await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(1));
+    const [path, params] = api.downloadExport.mock.calls[0];
+    expect(path).toBe("today");
+    expect(params).toMatchObject({ site_id: "dev-site", date: "2026-11-01", department: "Finance", emp_code: "0107" });
+    expect(params).not.toHaveProperty("page");
+    expect(params).not.toHaveProperty("sort");
+  });
+
+  it("shows the server's message when an export is too large", async () => {
+    api.getActivity.mockResolvedValue({ total: 0, page: 1, page_size: 50, directory_available: true, items: [] });
+    api.downloadExport.mockRejectedValue(new Error("This export would contain 60,000 rows, above the limit of 50,000. Narrow the date range or add filters and try again."));
+    const { default: Page } = await import("@/app/activity/page");
+    renderPage(<Page />);
+    fireEvent.click(await screen.findByRole("button", { name: /export to excel/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Narrow the date range/);
+  });
+
+  it("is offered on every operational page", async () => {
+    api.getToday.mockResolvedValue(TODAY);
+    api.getActivity.mockResolvedValue({ total: 0, page: 1, page_size: 50, directory_available: true, items: [] });
+    api.getEmployees.mockResolvedValue({ total: 0, page: 1, page_size: 50, date_from: "x", date_to: "y", departments: [], directory_available: true, items: [] });
+    api.getExceptions.mockResolvedValue({ total: 0, page: 1, page_size: 25, directory_available: true, counts: FLAGS0, items: [] });
+    for (const mod of ["today", "activity", "employees", "exceptions"]) {
+      const { default: Page } = await import(`@/app/${mod}/page`);
+      const { unmount } = renderPage(<Page />);
+      expect(await screen.findByRole("button", { name: /export to excel/i })).toBeInTheDocument();
+      unmount();
+    }
+    const { default: Overview } = await import("@/app/page");
+    renderPage(<Overview />);
+    expect(await screen.findByRole("button", { name: /export summary/i })).toBeInTheDocument();
   });
 });

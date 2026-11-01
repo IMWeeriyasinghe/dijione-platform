@@ -2,18 +2,15 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
+import { EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { Activity } from "lucide-react";
-import { DateInput, FilterRow, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
+import { ExportButton } from "@/components/ExportButton";
+import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, IdentityBadge } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
-import { downloadActivityCsv, getActivity, REVIEW_FLAGS } from "@/lib/dashboard";
+import { getActivity, REVIEW_FLAGS } from "@/lib/dashboard";
 import { addDays, FLAG_LABEL, localTime } from "@/lib/flags";
-import { IDENTITY_LABEL } from "@/lib/format";
 import { useOnsiteScope } from "@/lib/onsite-scope";
-import type { IdentityClass } from "@/lib/types";
-
-const IDENTITY: IdentityClass[] = ["MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE", "AMBIGUOUS", "UNMATCHED"];
 
 function ActivityView() {
   const { site } = useSite();
@@ -22,12 +19,14 @@ function ActivityView() {
   const [from, setFrom] = useState(addDays(end0, -6));
   const [to, setTo] = useState(end0);
   const [q, setQ] = useState("");
+  const [empCode, setEmpCode] = useState("");
+  const [department, setDepartment] = useState("");
   const [terminal, setTerminal] = useState("");
   const [identity, setIdentity] = useState("");
   const [flag, setFlag] = useState("");
   const [page, setPage] = useState(1);
-  const [exportError, setExportError] = useState(false);
-  const filters = { site_id: site.site_id, date_from: from, date_to: to, q: q || undefined, terminal: terminal || undefined,
+  const filters = { site_id: site.site_id, date_from: from, date_to: to, q: q || undefined, emp_code: empCode.trim() || undefined,
+    department: department || undefined, terminal: terminal || undefined,
     identity_class: identity || undefined, flag: flag || undefined };
   const query = useQuery({ queryKey: ["onsite-activity", filters, page], queryFn: () => getActivity({ ...filters, page, page_size: 50 }) });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
@@ -38,14 +37,8 @@ function ActivityView() {
       <PageHeader
         title="Activity"
         description="Every recorded attendance activity, newest first. The raw device state is shown as recorded and is not interpreted."
-        action={
-          <Button variant="secondary" onClick={async () => {
-            setExportError(false);
-            try { await downloadActivityCsv(filters, `onsite-activity-${from}-${to}.csv`); } catch { setExportError(true); }
-          }}>Export CSV</Button>
-        }
+        action={<ExportButton path="activity" params={filters} />}
       />
-      {exportError && <p className="mb-2 text-sm text-dt-danger">Export failed. Please try again.</p>}
       <FilterRow>
         <SiteSelect />
         <DateInput label="From" value={from} onChange={reset(setFrom)} />
@@ -53,10 +46,11 @@ function ActivityView() {
       </FilterRow>
       <FilterRow>
         <TextFilter label="Search employee or code" value={q} onChange={reset(setQ)} />
+        <TextFilter label="Employee Number" value={empCode} onChange={reset(setEmpCode)} />
+        <DepartmentSelect value={department} onChange={reset(setDepartment)} />
         <SelectFilter label="Terminal" value={terminal} onChange={reset(setTerminal)}
           options={[{ value: "", label: "All terminals" }, ...site.terminals.map((t) => ({ value: t, label: t }))]} />
-        <SelectFilter label="Identity" value={identity} onChange={reset(setIdentity)}
-          options={[{ value: "", label: "All identities" }, ...IDENTITY.map((c) => ({ value: c, label: IDENTITY_LABEL[c] }))]} />
+        <IdentitySelect value={identity} onChange={reset(setIdentity)} />
         <SelectFilter label="Review flag" value={flag} onChange={reset(setFlag)}
           options={[{ value: "", label: "Any review status" }, ...REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
       </FilterRow>

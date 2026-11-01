@@ -22,6 +22,7 @@ import { BreakdownBars, ColumnChart } from "@/components/charts";
 import { DateInput, FilterRow, SiteSelect } from "@/components/FilterBar";
 import { EmployeeCell, IdentityBadge } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
+import { ExportButton } from "@/components/ExportButton";
 import { SyncNowButton } from "@/components/SyncNowButton";
 import { ToneBadge } from "@/components/ToneBadge";
 import { getHourly, getOverview, getRecent, getTrend } from "@/lib/dashboard";
@@ -64,7 +65,12 @@ function OverviewView() {
       <PageHeader
         title="Attendance overview"
         description={`Activity recorded at ${site.name}, in site-local time${site.time_zone ? ` (${site.time_zone})` : ""}.`}
-        action={scope?.isAdmin ? <SyncNowButton onDone={() => queryClient.invalidateQueries()} /> : undefined}
+        action={
+          <div className="flex flex-wrap items-start gap-2">
+            <ExportButton path="dashboard/overview" params={params} label="Export summary" />
+            {scope?.isAdmin && <SyncNowButton onDone={() => queryClient.invalidateQueries()} />}
+          </div>
+        }
       />
       <FilterRow>
         <SiteSelect />

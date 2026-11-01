@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { CalendarDays } from "lucide-react";
-import { DateInput, FilterRow, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
+import { ExportButton } from "@/components/ExportButton";
+import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, FlagChips } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { getToday, REVIEW_FLAGS } from "@/lib/dashboard";
@@ -23,18 +24,23 @@ function TodayView() {
   const { site } = useSite();
   const [day, setDay] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [empCode, setEmpCode] = useState("");
   const [department, setDepartment] = useState("");
+  const [identity, setIdentity] = useState("");
   const [review, setReview] = useState("");
   const [sort, setSort] = useState("first_activity");
   const [page, setPage] = useState(1);
   const date = day ?? site.today;
-  const params = { site_id: site.site_id, date, q: q || undefined, department: department || undefined, review: review || undefined, sort, page, page_size: 50 };
+  const filters = { site_id: site.site_id, date, q: q || undefined, emp_code: empCode.trim() || undefined, department: department || undefined,
+    identity_class: identity || undefined, review: review || undefined };
+  const params = { ...filters, sort, page, page_size: 50 };
   const query = useQuery({ queryKey: ["onsite-today", params], queryFn: () => getToday(params), refetchInterval: 60_000 });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   return (
     <div>
-      <PageHeader title="Today" description="First activity, latest activity and activity count per employee, in site-local time." />
+      <PageHeader title="Today" description="First activity, latest activity and activity count per employee, in site-local time."
+        action={<ExportButton path="today" params={filters} />} />
       <FilterRow>
         <SiteSelect />
         <DateInput label="Date" value={date} onChange={reset(setDay)} />
@@ -46,8 +52,9 @@ function TodayView() {
       </FilterRow>
       <FilterRow>
         <TextFilter label="Search employee or code" value={q} onChange={reset(setQ)} />
-        <SelectFilter label="Department" value={department} onChange={reset(setDepartment)}
-          options={[{ value: "", label: "All departments" }, ...(query.data?.departments ?? []).map((d) => ({ value: d, label: d }))]} />
+        <TextFilter label="Employee Number" value={empCode} onChange={reset(setEmpCode)} />
+        <DepartmentSelect value={department} onChange={reset(setDepartment)} />
+        <IdentitySelect value={identity} onChange={reset(setIdentity)} />
         <SelectFilter label="Review status" value={review} onChange={reset(setReview)}
           options={[{ value: "", label: "All activity" }, { value: "needs_review", label: "Needs review" }, { value: "no_flags", label: "No review flags" },
             ...REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />

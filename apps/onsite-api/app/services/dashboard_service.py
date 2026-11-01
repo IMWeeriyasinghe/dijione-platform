@@ -102,6 +102,25 @@ def _search_hit(row: dict, q: str | None) -> bool:
     return q in row["emp_code"].lower() or q in (row.get("employee_name") or "").lower()
 
 
+def _match(row: dict, *, q: str | None = None, emp_code: str | None = None, department: str | None = None,
+           identity_class: str | None = None, employment_status: str | None = None) -> bool:
+    """Shared row filter. ``emp_code`` is exact, case-sensitive equality (the
+    identity rule); ``q`` is a display-only search over name and code."""
+    return (_search_hit(row, q)
+            and (not emp_code or row["emp_code"] == emp_code)
+            and (not department or (row.get("department") or "") == department)
+            and (not identity_class or row.get("identity_class") == identity_class)
+            and (not employment_status or (row.get("employment_status") or "") == employment_status))
+
+
+def _review_hit(row: dict, review: str | None) -> bool:
+    if review == "needs_review":
+        return bool(row["flags"])
+    if review == "no_flags":
+        return not row["flags"]
+    return not review or review in row["flags"]
+
+
 def _page(items: list, page: int, page_size: int) -> dict:
     total = len(items)
     start = (page - 1) * page_size
@@ -206,15 +225,17 @@ def _event_out(e: AttendanceEvent, ident: Identity, *, technical: bool) -> dict:
 
 def activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
              q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
-             flag: str | None, page: int, page_size: int, technical: bool, tz: str | None = None) -> dict:
+             flag: str | None, page: int, page_size: int, technical: bool, tz: str | None = None,
+             emp_code: str | None = None) -> dict:
     repo = AttendanceRepository(db)
     ident = Identity(directory)
-    codes = None
+    codes = {emp_code} if emp_code else None
     if q or department or identity_class:
         candidates = repo.distinct_codes(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end)
         if q:
             candidates = [c for c in candidates if _search_hit(ident.describe(c), q)]
-        codes = ident.codes_matching(candidates, department=department, identity_class=identity_class)
+        matched = ident.codes_matching(candidates, department=department, identity_class=identity_class)
+        codes = matched if codes is None else codes & matched
     if flag and flag != ReviewFlag.TZ_INCONSISTENT.value:
         flagged = {(r["emp_code"]) for r in daily_activity(
             db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start, date_to=end,
@@ -242,20 +263,16 @@ def _with_terminals(db, allowed, site_id, start, end, rows: list[dict], emp_code
 
 
 def today_view(db: Session, allowed, site_id: str, tz: str | None, day: date, directory: DirectorySnapshot, *,
-               q: str | None, department: str | None, review: str | None, sort: str, page: int, page_size: int) -> dict:
+               q: str | None, department: str | None, review: str | None, sort: str, page: int, page_size: int,
+               emp_code: str | None = None, identity_class: str | None = None) -> dict:
     ident = Identity(directory)
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
                           date_from=day, date_to=day, directory=directory)
     rows = [{**r, **{k: v for k, v in ident.describe(r["emp_code"], day, day).items() if k != "identity_class"}}
             for r in rows]
     departments = sorted({r["department"] for r in rows if r.get("department")})
-    rows = [r for r in rows if _search_hit(r, q) and (not department or r.get("department") == department)]
-    if review == "needs_review":
-        rows = [r for r in rows if r["flags"]]
-    elif review == "no_flags":
-        rows = [r for r in rows if not r["flags"]]
-    elif review:
-        rows = [r for r in rows if review in r["flags"]]
+    rows = [r for r in rows if _match(r, q=q, emp_code=emp_code, department=department, identity_class=identity_class)
+            and _review_hit(r, review)]
     key, reverse = (sort.lstrip("-"), sort.startswith("-"))
     sort_keys = {
         "first_activity": lambda r: r["first_activity_utc"], "latest_activity": lambda r: r["latest_activity_utc"],
@@ -271,7 +288,7 @@ def today_view(db: Session, allowed, site_id: str, tz: str | None, day: date, di
 
 def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date, directory: DirectorySnapshot,
               *, q: str | None, department: str | None, status_filter: str | None, activity_filter: str | None,
-              page: int, page_size: int) -> dict:
+              page: int, page_size: int, emp_code: str | None = None, identity_class: str | None = None) -> dict:
     repo = AttendanceRepository(db)
     ident = Identity(directory)
     act = {c: (n, days, last) for c, n, days, last in repo.employee_activity(
@@ -304,8 +321,8 @@ def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, e
         })
         out.append(r)
     departments = sorted({r["department"] for r in out if r.get("department")})
-    out = [r for r in out if _search_hit(r, q) and (not department or r.get("department") == department)
-           and (not status_filter or (r.get("employment_status") or "") == status_filter)]
+    out = [r for r in out if _match(r, q=q, emp_code=emp_code, department=department, identity_class=identity_class,
+                                    employment_status=status_filter)]
     if activity_filter == "with_activity":
         out = [r for r in out if r["events"]]
     elif activity_filter == "no_activity":
@@ -355,7 +372,8 @@ _FLAG_REASON = {
 
 
 def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date, directory: DirectorySnapshot,
-               *, flag: str | None, q: str | None, page: int, page_size: int) -> dict:
+               *, flag: str | None, q: str | None, page: int, page_size: int, emp_code: str | None = None,
+               department: str | None = None, identity_class: str | None = None) -> dict:
     ident = Identity(directory)
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
                           date_from=start, date_to=end, directory=directory)
@@ -366,8 +384,9 @@ def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, 
             continue
         d = ident.describe(r["emp_code"], date.fromisoformat(r["local_date"]), date.fromisoformat(r["local_date"]))
         item = {**r, "employee_name": d["employee_name"], "department": d["department"],
+                "employment_status": d["employment_status"],
                 "reasons": [{"flag": f, "reason": _FLAG_REASON[f]} for f in r["flags"]]}
-        if _search_hit(item, q):
+        if _match(item, q=q, emp_code=emp_code, department=department, identity_class=identity_class):
             items.append(item)
     items.sort(key=lambda r: (r["local_date"], r["first_activity_utc"]), reverse=True)
     paged = _page(items, page, page_size)

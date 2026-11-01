@@ -49,7 +49,7 @@ def test_attendance_source_never_reads_batches_or_api_key_hash():
 
 _THIRD_PARTY = {
     "fastapi", "starlette", "pydantic", "pydantic_settings", "sqlalchemy", "alembic", "httpx",
-    "pyodbc", "azure", "jose", "uvicorn",
+    "pyodbc", "azure", "jose", "uvicorn", "openpyxl",
 }
 _FIRST_PARTY_ALLOWED = {"app", "auth_client_py"}
 

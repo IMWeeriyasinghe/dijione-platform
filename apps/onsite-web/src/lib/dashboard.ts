@@ -25,6 +25,7 @@ export type OnsiteSiteInfo = {
   first_activity_date: string | null;
   last_activity_date: string | null;
   terminals: string[];
+  departments?: string[];
 };
 
 export type Overview = {
@@ -128,17 +129,30 @@ export const getEmployee = (code: string, p: Params) =>
   request<EmployeeDetail>(`${ONSITE_API}/employees/${encodeURIComponent(code)}${qs(p)}`);
 export const getExceptions = (p: Params) => request<ExceptionsResponse>(`${ONSITE_API}/exceptions${qs(p)}`);
 
-/** Downloads a CSV with the caller's bearer token (a plain link would not send it). */
-export async function downloadActivityCsv(p: Params, filename: string): Promise<void> {
+export type ExportPath = "today" | "activity" | "employees" | "exceptions" | "dashboard/overview";
+
+/** Downloads a server-generated .xlsx with the caller's bearer token (a plain
+ *  link would not send it). The server re-applies scope and every filter. */
+export async function downloadExport(path: ExportPath, p: Params): Promise<void> {
   const token = getToken();
-  const resp = await fetch(`${ONSITE_API}/activity${qs({ ...p, format: "csv" })}`, {
+  const resp = await fetch(`${ONSITE_API}/${path}/export${qs(p)}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
+  if (!resp.ok) {
+    let detail = `Export failed (${resp.status}). Please try again.`;
+    try {
+      const body = await resp.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      /* keep the generic message */
+    }
+    throw new Error(detail);
+  }
+  const match = /filename="([^"]+)"/.exec(resp.headers.get("Content-Disposition") ?? "");
   const url = URL.createObjectURL(await resp.blob());
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = match?.[1] ?? "Diji-Onsite_Export.xlsx";
   a.click();
   URL.revokeObjectURL(url);
 }

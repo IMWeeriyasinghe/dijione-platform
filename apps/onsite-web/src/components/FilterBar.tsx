@@ -1,5 +1,7 @@
 "use client";
 
+import { IDENTITY_LABEL } from "@/lib/format";
+import type { IdentityClass } from "@/lib/types";
 import { useSite } from "./SiteContext";
 
 const fieldClass =
@@ -85,5 +87,27 @@ export function Pager({ page, pageSize, total, onPage }: {
         </button>
       </div>
     </div>
+  );
+}
+
+const IDENTITY_CLASSES: IdentityClass[] = ["MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE", "AMBIGUOUS", "UNMATCHED"];
+
+export function IdentitySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <SelectFilter label="Identity" value={value} onChange={onChange}
+      options={[{ value: "", label: "All identities" }, ...IDENTITY_CLASSES.map((c) => ({ value: c, label: IDENTITY_LABEL[c] }))]} />
+  );
+}
+
+/** Departments come from the Workforce Directory (via onsite-api); used for
+ *  filtering and display only, never for identity matching. */
+export function DepartmentSelect({ value, onChange, departments }: {
+  value: string; onChange: (v: string) => void; departments?: string[];
+}) {
+  const { site } = useSite();
+  const list = departments ?? site.departments ?? [];
+  return (
+    <SelectFilter label="Department" value={value} onChange={onChange}
+      options={[{ value: "", label: "All departments" }, ...list.map((d) => ({ value: d, label: d }))]} />
   );
 }

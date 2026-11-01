@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { Users, X } from "lucide-react";
 import { ColumnChart } from "@/components/charts";
-import { DateInput, FilterRow, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
+import { ExportButton } from "@/components/ExportButton";
+import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, FlagChips, IdentityBadge } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { getEmployee, getEmployees } from "@/lib/dashboard";
@@ -91,19 +92,24 @@ function EmployeesView() {
   const [from, setFrom] = useState(addDays(end0, -29));
   const [to, setTo] = useState(end0);
   const [q, setQ] = useState("");
+  const [empCode, setEmpCode] = useState("");
   const [department, setDepartment] = useState("");
+  const [identity, setIdentity] = useState("");
   const [status, setStatus] = useState("");
   const [activity, setActivity] = useState("with_activity");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
-  const params = { site_id: site.site_id, date_from: from, date_to: to, q: q || undefined, department: department || undefined,
-    employment_status: status || undefined, activity: activity || undefined, page, page_size: 50 };
+  const filters = { site_id: site.site_id, date_from: from, date_to: to, q: q || undefined, emp_code: empCode.trim() || undefined,
+    department: department || undefined, identity_class: identity || undefined, employment_status: status || undefined,
+    activity: activity || undefined };
+  const params = { ...filters, page, page_size: 50 };
   const query = useQuery({ queryKey: ["onsite-employees", params], queryFn: () => getEmployees(params) });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   return (
     <div>
-      <PageHeader title="Employees" description="Attendance activity per employee. Employees are matched by exact Employee Number." />
+      <PageHeader title="Employees" description="Attendance activity per employee. Employees are matched by exact Employee Number."
+        action={<ExportButton path="employees" params={filters} />} />
       <FilterRow>
         <SiteSelect />
         <DateInput label="From" value={from} onChange={reset(setFrom)} />
@@ -111,8 +117,9 @@ function EmployeesView() {
       </FilterRow>
       <FilterRow>
         <TextFilter label="Search employee or code" value={q} onChange={reset(setQ)} />
-        <SelectFilter label="Department" value={department} onChange={reset(setDepartment)}
-          options={[{ value: "", label: "All departments" }, ...(query.data?.departments ?? []).map((d) => ({ value: d, label: d }))]} />
+        <TextFilter label="Employee Number" value={empCode} onChange={reset(setEmpCode)} />
+        <DepartmentSelect value={department} onChange={reset(setDepartment)} />
+        <IdentitySelect value={identity} onChange={reset(setIdentity)} />
         <SelectFilter label="Employment status" value={status} onChange={reset(setStatus)}
           options={[{ value: "", label: "Any status" }, { value: "Active", label: "Active" }, { value: "Inactive", label: "Inactive" }]} />
         <SelectFilter label="Activity" value={activity} onChange={reset(setActivity)}
