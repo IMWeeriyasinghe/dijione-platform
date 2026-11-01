@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, EmptyState, ErrorState, LoadingState, PageHeader } from "@dijione/design-system";
 import { CheckCircle2 } from "lucide-react";
-import { DateInput, FilterRow, Pager, SiteSelect, TextFilter } from "@/components/FilterBar";
+import { ExportButton } from "@/components/ExportButton";
+import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, FlagChips } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { getExceptions, REVIEW_FLAGS, type ReviewFlag } from "@/lib/dashboard";
@@ -17,19 +18,30 @@ function ExceptionsView() {
   const [to, setTo] = useState(end0);
   const [flag, setFlag] = useState<ReviewFlag | "">("");
   const [q, setQ] = useState("");
+  const [empCode, setEmpCode] = useState("");
+  const [department, setDepartment] = useState("");
+  const [identity, setIdentity] = useState("");
   const [page, setPage] = useState(1);
-  const params = { site_id: site.site_id, date_from: from, date_to: to, flag: flag || undefined, q: q || undefined, page, page_size: 25 };
+  const filters = { site_id: site.site_id, date_from: from, date_to: to, flag: flag || undefined, q: q || undefined,
+    emp_code: empCode.trim() || undefined, department: department || undefined, identity_class: identity || undefined };
+  const params = { ...filters, page, page_size: 25 };
   const query = useQuery({ queryKey: ["onsite-exceptions", params], queryFn: () => getExceptions(params) });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   return (
     <div>
-      <PageHeader title="Exceptions" description="Activity that may need a closer look. Flags are prompts for review only — nothing is changed automatically." />
+      <PageHeader title="Exceptions" description="Activity that may need a closer look. Flags are prompts for review only — nothing is changed automatically."
+        action={<ExportButton path="exceptions" params={filters} />} />
       <FilterRow>
         <SiteSelect />
         <DateInput label="From" value={from} onChange={reset(setFrom)} />
         <DateInput label="To" value={to} onChange={reset(setTo)} />
+      </FilterRow>
+      <FilterRow>
         <TextFilter label="Search employee or code" value={q} onChange={reset(setQ)} />
+        <TextFilter label="Employee Number" value={empCode} onChange={reset(setEmpCode)} />
+        <DepartmentSelect value={department} onChange={reset(setDepartment)} />
+        <IdentitySelect value={identity} onChange={reset(setIdentity)} />
       </FilterRow>
       {query.data && (
         <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filter by review flag">

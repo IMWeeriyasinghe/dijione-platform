@@ -32,7 +32,9 @@ def _site_and_day(db, scope: OnsiteScope, site_id: str | None, day: date | None)
 
 @router.get("/sites")
 def sites(scope: OnsiteScope = Depends(require_onsite_permission(Perm.DASHBOARD_READ)), db: Session = Depends(get_db)):
-    return svc.list_sites(db, scope.allowed_site_ids)
+    directory = workforce_directory.load()
+    departments = sorted({e["department"] for e in directory.entries if e.get("department")}) if directory.available else []
+    return [{**s, "departments": departments} for s in svc.list_sites(db, scope.allowed_site_ids)]
 
 
 @router.get("/dashboard/overview")
@@ -73,7 +75,8 @@ def recent_activity(site_id: str | None = None, limit: int = Query(15, ge=1, le=
 
 @router.get("/today")
 def today(site_id: str | None = None, date_: date | None = Query(None, alias="date"), q: str | None = None,
-          department: str | None = None, review: str | None = None,
+          department: str | None = None, review: str | None = None, emp_code: str | None = None,
+          identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
           sort: str = Query("first_activity", pattern="^-?(first_activity|latest_activity|punch_count|span|employee|flags)$"),
           page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
           scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)), db: Session = Depends(get_db)):
@@ -81,13 +84,14 @@ def today(site_id: str | None = None, date_: date | None = Query(None, alias="da
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown review filter")
     site, tz, day = _site_and_day(db, scope, site_id, date_)
     return svc.today_view(db, scope.allowed_site_ids, site, tz, day, workforce_directory.load(), q=q,
-                          department=department, review=review, sort=sort, page=page, page_size=page_size)
+                          department=department, review=review, sort=sort, page=page, page_size=page_size,
+                          emp_code=emp_code, identity_class=identity_class)
 
 
 @router.get("/activity")
 def activity(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
              q: str | None = None, department: str | None = None, terminal: str | None = None,
-             identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
+             emp_code: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
              flag: str | None = Query(None, pattern=_FLAG_PATTERN),
              page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
              fmt: str = Query("json", alias="format", pattern="^(json|csv)$"),
@@ -99,7 +103,7 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
         page, page_size = 1, 50_000  # bounded by the 92-day range cap
     data = svc.activity(db, scope.allowed_site_ids, site, start, end, workforce_directory.load(), q=q,
                         department=department, terminal=terminal, identity_class=identity_class, flag=flag,
-                        page=page, page_size=page_size, technical=technical, tz=tz)
+                        page=page, page_size=page_size, technical=technical, tz=tz, emp_code=emp_code)
     if fmt == "json":
         return data
     cols = ["local_time", "emp_code", "employee_name", "department", "terminal", "area", "identity_class",
@@ -118,6 +122,7 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
 @router.get("/employees")
 def employees(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
               q: str | None = None, department: str | None = None, employment_status: str | None = None,
+              emp_code: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
               activity: str | None = Query(None, pattern="^(with_activity|no_activity)$"),
               page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
               scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)), db: Session = Depends(get_db)):
@@ -125,7 +130,7 @@ def employees(site_id: str | None = None, date_from: date | None = None, date_to
     start, end = svc.resolve_range(date_from, date_to, default_days=30, today=today_)
     return svc.employees(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), q=q,
                          department=department, status_filter=employment_status, activity_filter=activity,
-                         page=page, page_size=page_size)
+                         page=page, page_size=page_size, emp_code=emp_code, identity_class=identity_class)
 
 
 @router.get("/employees/{emp_code}")
@@ -142,9 +147,12 @@ def employee_detail(emp_code: str, site_id: str | None = None, date_from: date |
 @router.get("/exceptions")
 def exceptions(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
                flag: str | None = Query(None, pattern=_FLAG_PATTERN), q: str | None = None,
+               emp_code: str | None = None, department: str | None = None,
+               identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
                page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
                scope: OnsiteScope = Depends(require_onsite_permission(Perm.EXCEPTIONS_READ)), db: Session = Depends(get_db)):
     site, tz, today_ = _site_and_day(db, scope, site_id, None)
     start, end = svc.resolve_range(date_from, date_to, default_days=7, today=today_)
     return svc.exceptions(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), flag=flag, q=q,
-                          page=page, page_size=page_size)
+                          page=page, page_size=page_size, emp_code=emp_code, department=department,
+                          identity_class=identity_class)
