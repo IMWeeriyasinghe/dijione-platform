@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { MapPin } from "lucide-react";
 import { AdminOnly } from "@/components/AdminOnly";
+import { PERM } from "@/lib/onsite-scope";
 import { ToneBadge } from "@/components/ToneBadge";
 import { getSites, setSiteEnabled } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -61,5 +62,5 @@ function SitesView() {
 }
 
 export default function SitesPage() {
-  return <AdminOnly><SitesView /></AdminOnly>;
+  return <AdminOnly permission={PERM.SITES}><SitesView /></AdminOnly>;
 }

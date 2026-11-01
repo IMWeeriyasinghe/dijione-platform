@@ -12,9 +12,9 @@ import {
   MapPin,
   Users,
 } from "lucide-react";
-import { useOnsiteScope } from "@/lib/onsite-scope";
+import { hasPermission, PERM, useOnsiteScope, type OnsiteScope } from "@/lib/onsite-scope";
 
-export function buildSections(isAdmin: boolean): NavSection[] {
+export function buildSections(scope: OnsiteScope | null): NavSection[] {
   const sections: NavSection[] = [
     {
       items: [
@@ -26,16 +26,13 @@ export function buildSections(isAdmin: boolean): NavSection[] {
       ],
     },
   ];
-  if (isAdmin) {
-    sections.push({
-      label: "Admin",
-      items: [
-        { label: "Site Health", href: "/admin/health", icon: HeartPulse },
-        { label: "Identity Match", href: "/admin/identity", icon: Fingerprint },
-        { label: "Sites", href: "/admin/sites", icon: MapPin },
-      ],
-    });
-  }
+  // Each admin page appears only with the permission onsite-api checks for it.
+  const admin = [
+    hasPermission(scope, PERM.HEALTH) && { label: "Site Health", href: "/admin/health", icon: HeartPulse },
+    hasPermission(scope, PERM.IDENTITY) && { label: "Identity Match", href: "/admin/identity", icon: Fingerprint },
+    hasPermission(scope, PERM.SITES) && { label: "Sites", href: "/admin/sites", icon: MapPin },
+  ].filter((i) => i !== false);
+  if (admin.length) sections.push({ label: "Admin", items: admin });
   return sections;
 }
 
@@ -66,7 +63,7 @@ export function OnsiteContent({ children }: { children: React.ReactNode }) {
       eyebrow="by Dijital Team"
       title="Diji On-site"
       topNavTitle="On-site Attendance Operations"
-      sections={buildSections(scope.isAdmin)}
+      sections={buildSections(scope)}
       homeHref="/"
       footer={
         <VersionFooter
