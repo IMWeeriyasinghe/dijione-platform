@@ -1,8 +1,8 @@
 -- Diji On-site — DijiOne read principal for the Azure SQL onsite schema.
 --
--- Run by the On-site SQL Entra admin, connected to the On-site database
--- (DEV: sql-diji-onsite-dev-7d97cf / sqldb-diji-onsite), once per DijiOne
--- environment. Replace the two placeholders first:
+-- Run by the On-site SQL Entra admin, connected to the ONE shared Diji On-site
+-- Attendance database (sql-diji-onsite-attendance / sqldb-diji-onsite-attendance),
+-- once per DijiOne environment (dev, uat, prod). Replace the two placeholders first:
 --
 --   <ENV>           dijione environment name, e.g. dev
 --   <PRINCIPAL_ID>  the onsite-api Container App's SYSTEM-ASSIGNED managed

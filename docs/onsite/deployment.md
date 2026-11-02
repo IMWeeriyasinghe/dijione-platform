@@ -19,7 +19,20 @@ deployed. The Birthday `people-sync-job` stays gated by `deployBirthday`,
 unchanged. Scripts read `DEPLOY_ONSITE=true` the same way they read
 `DEPLOY_BIRTHDAY`.
 
-DEV sets `deployOnsite = true`; UAT and PROD stay off.
+DEV sets `deployOnsite = true` in `main.dev.bicepparam`; UAT and PROD run the
+On-site footprint through `deploy/bicep/onsite-release.bicep`. All three use
+`onsiteIntegrationsMode = live` against the **same** source:
+
+| Setting | Value (every environment) |
+|---|---|
+| `onsiteSqlServer` | `sql-diji-onsite-attendance.database.windows.net` |
+| `onsiteSqlDatabase` | `sqldb-diji-onsite-attendance` |
+| SQL user | `onsite-api-dijione-<env>` (SELECT only) |
+| Mirror | `onsite_<env>` (environment-specific, derived) |
+
+Diji On-site Attendance (resource group `rg-diji-onsite-attendance`) is owned
+by the Diji On-site Agent repository (`deploy/azure/attendance/`); DijiOne
+never writes to it.
 
 ## Images
 
@@ -34,7 +47,8 @@ other API image is built exactly as before.
 (`DefaultAzureCredential`). It never uses a SQL password, the shared
 `id-dijione-<env>` UAMI, or the ingestion API's identity. The On-site SQL
 Entra admin runs `docs/onsite/sql-principal.sql` (SELECT only on the approved
-tables/columns; no `Batches`, no `ApiKeyHash`).
+tables/columns; no `Batches`, no `ApiKeyHash`), or equivalently the Agent
+repository's `deploy/azure/attendance/grant-dijione-reader.ps1 -Env <env>`.
 
 ## First deployment sequence (per environment)
 

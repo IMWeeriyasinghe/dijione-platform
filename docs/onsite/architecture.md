@@ -83,8 +83,10 @@ shell-web gateway: routing registration per module; a missing module's routes fa
 ## Data flow
 
 ```
-Azure SQL sqldb-diji-onsite  (onsite.Sites · onsite.AttendanceEvents · onsite.AgentStatus)
-   │ SELECT-only · Entra token from onsite-api's system-assigned managed identity
+Diji On-site Attendance (Azure SQL sql-diji-onsite-attendance / sqldb-diji-onsite-attendance)
+   │   onsite.Sites · onsite.AttendanceEvents · onsite.AgentStatus — ONE authoritative source shared by
+   │   DijiOne DEV, UAT and PROD; written only by its ingestion service (Diji On-site Agent -> HTTPS)
+   │ SELECT-only · Entra token from onsite-api's system-assigned managed identity (one user per environment)
    ▼                                   [ingestion API: separate plane, unchanged, not used]
 onsite-api/app/attendance_source/      incremental mirror: EventId insert-if-absent,
    │                                   ReceivedUtc high-water mark with a 10-minute overlap
@@ -101,8 +103,9 @@ onsite-web (/onsite via shell-web)
 
 ## Key design decisions
 
-- **Raw mirror, not live queries.** The DEV source database is serverless on
-  the Azure SQL free offer and auto-pauses when the allowance is used.
+- **One source, one mirror per environment.** Diji On-site Attendance is the
+  single authoritative attendance store; DEV, UAT and PROD each keep their own
+  derived `onsite_<env>` mirror of the same facts and can never write the source.
   Dashboards read only `onsite_<env>`; Azure SQL is touched only by the sync
   (scheduled Container Apps Job + authorized "Sync now"), following the
   CLAUDE.md source-synchronization lifecycle (rules 10–18). A failed sync
