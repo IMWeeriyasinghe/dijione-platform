@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     integrations_mode: str = "mock"
     # Azure SQL source (SELECT-only, Entra managed-identity token, no password).
     onsite_sql_server: str = ""  # fully qualified server host name
-    onsite_sql_database: str = ""  # e.g. sqldb-diji-onsite
+    onsite_sql_database: str = ""  # e.g. sqldb-diji-onsite-attendance
 
     # Mirror sync (docs/onsite/architecture.md "Data flow").
     sync_page_size: int = 5000

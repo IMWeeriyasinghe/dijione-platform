@@ -18,11 +18,12 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
-// Diji On-site (docs/onsite/architecture.md). DEV only; UAT/PROD stay off.
+// Diji On-site (docs/onsite/architecture.md). Reads the ONE shared Diji On-site Attendance source
+// (rg-diji-onsite-attendance), exactly like UAT and PROD (deploy/bicep/onsite-release.bicep).
 param deployOnsite = true
-param onsiteIntegrationsMode = 'mock'
-param onsiteSqlServer = 'sql-diji-onsite-dev-7d97cf.database.windows.net'
-param onsiteSqlDatabase = 'sqldb-diji-onsite'
+param onsiteIntegrationsMode = 'live'
+param onsiteSqlServer = 'sql-diji-onsite-attendance.database.windows.net'
+param onsiteSqlDatabase = 'sqldb-diji-onsite-attendance'
 
 // Lean DEV (Amendment 8): smallest container size; EVERY service scales to
 // zero (minReplicas empty => 0); ceiling of 1. Cold start is acceptable in DEV.
