@@ -155,23 +155,55 @@ def list_sites(db: Session, allowed_site_ids: Collection[str]) -> list[dict]:
 
 # --- views -----------------------------------------------------------------
 
+EMPLOYEE_SORTS = {
+    "events": lambda r: r["events"],
+    "activity_days": lambda r: r["activity_days"],
+    "review_flags": lambda r: r["review_flags"],
+    "employee": lambda r: ((r.get("employee_name") or "~").lower(), r["emp_code"]),
+    "last_activity": lambda r: r.get("last_activity_local") or "",
+}
+EXCEPTION_SORTS = {
+    "date": lambda r: (r["local_date"], r.get("first_activity_utc") or ""),
+    "employee": lambda r: ((r.get("employee_name") or "~").lower(), r["emp_code"]),
+    "flags": lambda r: len(r["flags"]),
+    "punch_count": lambda r: r["punch_count"],
+}
 
-def overview(db: Session, allowed, site_id: str, tz: str | None, day: date, directory: DirectorySnapshot) -> dict:
+
+def _sort_rows(rows: list[dict], sort: str, keys: dict) -> None:
+    """In-place stable sort by ``field`` or ``-field`` (descending)."""
+    field = sort.lstrip("-")
+    if field in keys:
+        rows.sort(key=keys[field], reverse=sort.startswith("-"))
+
+
+def overview(db: Session, allowed, site_id: str, tz: str | None, day: date, directory: DirectorySnapshot,
+             date_to: date | None = None) -> dict:
+    """KPIs for one site-local day, or an inclusive range (``day``..``date_to``).
+    Employee KPIs count distinct employees; ``review_breakdown`` counts
+    employee-days per flag (for a single day the two are the same)."""
     ident = Identity(directory)
+    end = date_to or day
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
-                          date_from=day, date_to=day, directory=directory)
+                          date_from=day, date_to=end, directory=directory)
     breakdown = Counter(f for r in rows for f in r["flags"])
+
+    def flagged(flag: str) -> int:
+        return len({r["emp_code"] for r in rows if flag in r["flags"]})
+
     fresh = freshness(db, allowed_site_ids=(site_id,))
     site_fresh = fresh["sites"][0] if fresh["sites"] else {}
     return {
-        "site_id": site_id, "date": day.isoformat(), "time_zone": tz,
+        "site_id": site_id, "date": day.isoformat(), "date_from": day.isoformat(), "date_to": end.isoformat(),
+        "time_zone": tz,
         "directory_available": ident.available,
         "kpis": {
-            "employees_with_activity": len(rows),
+            "employees_with_activity": len({r["emp_code"] for r in rows}),
             "total_events": sum(r["punch_count"] for r in rows),
-            "employees_needing_review": sum(1 for r in rows if r["flags"]),
-            "single_punch_employees": breakdown.get(ReviewFlag.SINGLE_PUNCH.value, 0),
-            "unmatched_codes": breakdown.get(ReviewFlag.UNMATCHED_CODE.value, 0),
+            "activity_days": len({r["local_date"] for r in rows}),
+            "employees_needing_review": len({r["emp_code"] for r in rows if r["flags"]}),
+            "single_punch_employees": flagged(ReviewFlag.SINGLE_PUNCH.value),
+            "unmatched_codes": flagged(ReviewFlag.UNMATCHED_CODE.value),
             "feed_state": site_fresh.get("feed_state"),
         },
         "review_breakdown": {f: breakdown.get(f, 0) for f in REVIEW_FLAGS},
@@ -181,11 +213,12 @@ def overview(db: Session, allowed, site_id: str, tz: str | None, day: date, dire
     }
 
 
-def hourly(db: Session, allowed, site_id: str, day: date) -> dict:
+def hourly(db: Session, allowed, site_id: str, day: date, date_to: date | None = None) -> dict:
     counts = {h: (e, p) for h, e, p in AttendanceRepository(db).hourly_counts(
-        allowed_site_ids=allowed, site_id=site_id, local_date=day)}
+        allowed_site_ids=allowed, site_id=site_id, local_date=day, date_to=date_to)}
     return {
-        "site_id": site_id, "date": day.isoformat(),
+        "site_id": site_id, "date": day.isoformat(), "date_from": day.isoformat(),
+        "date_to": (date_to or day).isoformat(),
         "hours": [{"hour": h, "events": counts.get(f"{h:02d}", (0, 0))[0], "employees": counts.get(f"{h:02d}", (0, 0))[1]}
                   for h in range(24)],
     }
@@ -316,7 +349,8 @@ def today_view(db: Session, allowed, site_id: str, tz: str | None, day: date, di
 
 def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date, directory: DirectorySnapshot,
               *, q: str | None, department: str | None, status_filter: str | None, activity_filter: str | None,
-              page: int, page_size: int, emp_code: str | None = None, identity_class: str | None = None) -> dict:
+              page: int, page_size: int, emp_code: str | None = None, identity_class: str | None = None,
+              sort: str = "-events") -> dict:
     repo = AttendanceRepository(db)
     ident = Identity(directory)
     act = {c: (n, days, last) for c, n, days, last in repo.employee_activity(
@@ -351,13 +385,24 @@ def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, e
     departments = sorted({r["department"] for r in out if r.get("department")})
     out = [r for r in out if _match(r, q=q, emp_code=emp_code, department=department, identity_class=identity_class,
                                     employment_status=status_filter)]
+    summary = {  # the filtered population for the period, before the activity filter
+        "employees": len(out),
+        "with_activity": sum(1 for r in out if r["events"]),
+        "active": sum(1 for r in out if (r.get("employment_status") or "").lower() == "active"),
+        "inactive": sum(1 for r in out if (r.get("employment_status") or "").lower() == "inactive"),
+        "not_in_directory": sum(1 for r in out if not r["in_directory"]),
+        "needing_review": sum(1 for r in out if r["review_flags"]),
+        "matched": sum(1 for r in out if (r.get("identity_class") or "").startswith("MATCHED")),
+    }
     if activity_filter == "with_activity":
         out = [r for r in out if r["events"]]
     elif activity_filter == "no_activity":
         out = [r for r in out if not r["events"]]
-    out.sort(key=lambda r: (-r["events"], r.get("employee_name") or "~", r["emp_code"]))
+    out.sort(key=lambda r: (r.get("employee_name") or "~", r["emp_code"]))  # stable tie-break
+    _sort_rows(out, sort, EMPLOYEE_SORTS)
     return {**_page(out, page, page_size), "site_id": site_id, "date_from": start.isoformat(),
-            "date_to": end.isoformat(), "departments": departments, "directory_available": ident.available}
+            "date_to": end.isoformat(), "departments": departments, "directory_available": ident.available,
+            "summary": summary}
 
 
 def employee_detail(db: Session, allowed, site_id: str, tz: str | None, code: str, start: date, end: date,
@@ -401,7 +446,7 @@ _FLAG_REASON = {
 
 def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date, directory: DirectorySnapshot,
                *, flag: str | None, q: str | None, page: int, page_size: int, emp_code: str | None = None,
-               department: str | None = None, identity_class: str | None = None) -> dict:
+               department: str | None = None, identity_class: str | None = None, sort: str = "-date") -> dict:
     ident = Identity(directory)
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
                           date_from=start, date_to=end, directory=directory)
@@ -417,6 +462,7 @@ def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, 
         if _match(item, q=q, emp_code=emp_code, department=department, identity_class=identity_class):
             items.append(item)
     items.sort(key=lambda r: (r["local_date"], r["first_activity_utc"]), reverse=True)
+    _sort_rows(items, sort, EXCEPTION_SORTS)
     paged = _page(items, page, page_size)
     _with_terminals(db, allowed, site_id, start, end, paged["items"], {r["emp_code"] for r in paged["items"]})
     return {**paged, "site_id": site_id, "date_from": start.isoformat(), "date_to": end.isoformat(),
