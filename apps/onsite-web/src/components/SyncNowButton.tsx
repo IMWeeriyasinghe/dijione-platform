@@ -5,7 +5,7 @@ import { Button } from "@dijione/design-system";
 import { getSyncRun, requestSync } from "@/lib/api";
 
 const POLL_MS = 3_000;
-const MAX_POLLS = 100; // bounded: ~5 minutes, then stop and let the 60s refresh take over
+const MAX_POLLS = 100; // bounded: ~5 minutes, then stop and let the 30s refresh take over
 
 export function SyncNowButton({ onDone }: { onDone: () => void }) {
   const [runId, setRunId] = useState<string | null>(null);

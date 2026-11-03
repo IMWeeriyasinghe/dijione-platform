@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { CalendarDays } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
+import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, FlagChips } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
+import { liveQuery } from "@/lib/live-refresh";
 import { getToday, REVIEW_FLAGS } from "@/lib/dashboard";
 import { FLAG_LABEL, formatSpan, localTime } from "@/lib/flags";
 
@@ -34,13 +36,14 @@ function TodayView() {
   const filters = { site_id: site.site_id, date, q: q || undefined, emp_code: empCode.trim() || undefined, department: department || undefined,
     identity_class: identity || undefined, review: review || undefined };
   const params = { ...filters, sort, page, page_size: 50 };
-  const query = useQuery({ queryKey: ["onsite-today", params], queryFn: () => getToday(params), refetchInterval: 60_000 });
+  const query = useQuery({ queryKey: ["onsite-today", params], queryFn: () => getToday(params), ...liveQuery });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   return (
     <div>
       <PageHeader title="Today" description="First activity, latest activity and activity count per employee, in site-local time."
         action={<ExportButton path="today" params={filters} />} />
+      <FreshnessIndicator siteId={site.site_id} queries={[query]} />
       <FilterRow>
         <SiteSelect />
         <DateInput label="Date" value={date} onChange={reset(setDay)} />
@@ -60,7 +63,7 @@ function TodayView() {
             ...REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
         <SelectFilter label="Sort" value={sort} onChange={reset(setSort)} options={SORTS} />
       </FilterRow>
-      {query.isLoading ? <LoadingState label="Loading activity…" /> : query.isError || !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
+      {query.isLoading ? <LoadingState label="Loading activity…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
         query.data.total === 0 ? (
           <EmptyState icon={CalendarDays} title="No activity recorded" description={`No attendance activity is recorded for ${date} with the current filters.`} />
         ) : (

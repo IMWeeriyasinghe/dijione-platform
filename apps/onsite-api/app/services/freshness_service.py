@@ -45,7 +45,7 @@ def freshness(db: Session, *, allowed_site_ids: Collection[str], technical: bool
             state = FeedState.NOT_SYNCED
         elif heartbeat is None or now - heartbeat > timedelta(minutes=settings.heartbeat_stale_minutes):
             state = FeedState.STALE
-        elif (agent and agent.pending_count > 0) or now - last_success_at > timedelta(minutes=2 * settings.sync_cadence_minutes):
+        elif (agent and agent.pending_count > 0) or now - last_success_at > timedelta(minutes=settings.sync_delayed_minutes):
             state = FeedState.DELAYED
         else:
             state = FeedState.FRESH

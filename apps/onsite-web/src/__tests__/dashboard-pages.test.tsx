@@ -17,7 +17,11 @@ vi.mock("@/lib/dashboard", async (orig) => {
   const actual = await orig<typeof import("@/lib/dashboard")>();
   return { ...actual, ...api };
 });
-vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), requestSync: vi.fn(), getSyncRun: vi.fn() }));
+vi.mock("@/lib/api", async (orig) => ({
+  ...(await orig<typeof import("@/lib/api")>()), requestSync: vi.fn(), getSyncRun: vi.fn(),
+  getFreshness: vi.fn().mockResolvedValue({ source_configured: true, last_successful_sync_at: new Date().toISOString(), latest_run: null,
+    sites: [{ site_id: "dev-site", feed_state: "FRESH", latest_received_utc: null, latest_punch_utc: null, agent_heartbeat_utc: null, agent_health: null }] }),
+}));
 
 const SITE = { site_id: "dev-site", name: "DEV Site (Colombo)", time_zone: "Asia/Colombo", today: "2026-11-01",
   first_activity_date: "2024-11-27", last_activity_date: "2026-10-21", terminals: ["Main Door"] };

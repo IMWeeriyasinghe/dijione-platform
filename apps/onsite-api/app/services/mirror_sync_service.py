@@ -4,6 +4,12 @@ CLAUDE.md source-sync lifecycle: single-flight, asynchronous (202 +
 run_id), durable run state, idempotent, a failed run keeps the previous
 mirror intact. Never deletes mirrored rows.
 
+Runs every minute (scheduled) plus "Sync now". Single-flight holds across
+replicas: run creation is serialized by a PostgreSQL advisory lock, and a
+run left QUEUED/RUNNING longer than ``sync_stale_run_minutes`` (its replica
+stopped mid-run) is marked FAILED so it can never block later syncs. Even a
+duplicate concurrent run cannot duplicate rows: EventId is the primary key.
+
 Algorithm:
 1. Discover sites (safe columns); a new site gets ``site_settings.enabled =
    False`` — existing settings are never changed by a sync.
@@ -11,7 +17,8 @@ Algorithm:
    starting at (high-water mark − ``sync_overlap_minutes``); insert only
    EventIds not already mirrored; commit per page; advance the high-water mark.
 3. Replace the agent-status snapshot.
-4. Reconcile source vs mirror per (SiteId, SourceEpoch) and record drift.
+4. Reconcile source vs mirror per (SiteId, SourceEpoch) and record drift —
+   when the run inserted rows, otherwise at most every ``sync_reconcile_minutes``.
 """
 
 from __future__ import annotations
@@ -21,7 +28,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.attendance_source.client import SourceUnavailableError
@@ -33,6 +40,9 @@ from app.models.mirror import AgentStatus, AttendanceEvent, OnsiteSyncRun, SiteS
 from app.services.time_derivation import site_local_date, tz_consistent
 
 logger = logging.getLogger("onsite-api.mirror_sync")
+
+# pg_advisory_xact_lock key serializing run creation ("onsite" sync).
+_RUN_LOCK_KEY = 0x0D51_7E01
 
 
 class MirrorSyncService:
@@ -55,6 +65,14 @@ class MirrorSyncService:
             .order_by(OnsiteSyncRun.completed_at.desc(), OnsiteSyncRun.id.desc()).limit(1)
         ).scalars().first()
 
+    def last_reconciled(self) -> OnsiteSyncRun | None:
+        return self.db.execute(
+            select(OnsiteSyncRun)
+            .where(OnsiteSyncRun.status.in_([SyncStatus.SUCCEEDED.value, SyncStatus.PARTIAL.value]),
+                   OnsiteSyncRun.reconciliation_json.is_not(None))
+            .order_by(OnsiteSyncRun.completed_at.desc(), OnsiteSyncRun.id.desc()).limit(1)
+        ).scalars().first()
+
     def history(self, limit: int = 20) -> list[OnsiteSyncRun]:
         return list(self.db.execute(
             select(OnsiteSyncRun).order_by(OnsiteSyncRun.requested_at.desc(), OnsiteSyncRun.id.desc()).limit(limit)
@@ -63,11 +81,15 @@ class MirrorSyncService:
     def request_sync(
         self, *, trigger_type: SyncTriggerType, requested_by_user_id: int | None = None
     ) -> tuple[OnsiteSyncRun, bool]:
+        if self.db.get_bind().dialect.name == "postgresql":
+            self.db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _RUN_LOCK_KEY})  # released at commit
+        self._abandon_stale_runs()
         active = self.db.execute(
             select(OnsiteSyncRun).where(OnsiteSyncRun.status.in_([s.value for s in ACTIVE_STATUSES]))
             .order_by(OnsiteSyncRun.requested_at.desc()).limit(1)
         ).scalars().first()
         if active is not None:
+            self.db.commit()
             return active, False
         run = OnsiteSyncRun(
             run_id=str(uuid.uuid4()), trigger_type=trigger_type.value, requested_by_user_id=requested_by_user_id,
@@ -76,6 +98,22 @@ class MirrorSyncService:
         self.db.add(run)
         self.db.commit()
         return run, True
+
+    def _abandon_stale_runs(self) -> None:
+        cutoff = datetime.now(UTC) - timedelta(minutes=get_settings().sync_stale_run_minutes)
+        stale = self.db.execute(
+            select(OnsiteSyncRun).where(OnsiteSyncRun.status.in_([s.value for s in ACTIVE_STATUSES]))
+        ).scalars().all()
+        for run in stale:
+            began = run.started_at or run.requested_at
+            if began.tzinfo is None:
+                began = began.replace(tzinfo=UTC)
+            if began < cutoff:
+                run.status = SyncStatus.FAILED.value
+                run.completed_at = datetime.now(UTC)
+                run.error_summary = "Abandoned: the run did not finish (its replica stopped); the mirror was kept."
+                logger.warning("onsite mirror sync %s abandoned after %s", run.run_id, began.isoformat())
+        self.db.flush()
 
     @staticmethod
     def execute_run(run_id: str) -> None:
@@ -100,7 +138,8 @@ class MirrorSyncService:
             run.sites_discovered = self._discover_sites(source)
             self._mirror_events(source, run)
             self._snapshot_agent_status(source)
-            run.reconciliation_json = json.dumps(self._reconcile(source), default=str)
+            if run.events_inserted or self._reconcile_due():
+                run.reconciliation_json = json.dumps(self._reconcile(source), default=str)
         except SourceUnavailableError as exc:
             self.db.rollback()
             run.source_unavailable = True
@@ -178,6 +217,13 @@ class MirrorSyncService:
             self.db.commit()  # per-page commit: progress is durable, nothing is ever deleted
             if len(page) < settings.sync_page_size:
                 break
+
+    def _reconcile_due(self) -> bool:
+        last = self.last_reconciled()
+        if last is None or last.completed_at is None:
+            return True
+        done = last.completed_at if last.completed_at.tzinfo else last.completed_at.replace(tzinfo=UTC)
+        return datetime.now(UTC) - done >= timedelta(minutes=get_settings().sync_reconcile_minutes)
 
     def _snapshot_agent_status(self, source) -> None:
         now = datetime.now(UTC)

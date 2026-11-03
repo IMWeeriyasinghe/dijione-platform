@@ -26,7 +26,7 @@ function readStored(): string | null {
 /** Shares the selected enabled site across the dashboard pages. Only sites
  *  an On-site Admin has enabled are ever listed (the API enforces it). */
 export function SiteProvider({ children }: { children: React.ReactNode }) {
-  const query = useQuery({ queryKey: ["onsite-sites"], queryFn: getSitesInfo, refetchInterval: 60_000 });
+  const query = useQuery({ queryKey: ["onsite-sites-info"], queryFn: getSitesInfo, refetchInterval: 60_000 });
   const [siteId, setSiteIdState] = useState<string | null>(() => (typeof window === "undefined" ? null : readStored()));
 
   const value = useMemo<SiteContextValue | null>(() => {

@@ -120,8 +120,11 @@ onsite-web (/onsite via shell-web)
 - **Summaries on read.** Daily first/latest activity and punch counts are
   computed by `GROUP BY site_id, site_local_date, emp_code`; nothing derived
   is persisted in V1.
-- **Refresh.** TanStack Query polling (60 s) against `onsite-api` only; no
-  websockets/SSE.
+- **Refresh.** Near-real-time: the mirror syncs every minute
+  (`onsite-sync-job`, `* * * * *`) and dashboards refetch every 30 s
+  (TanStack Query) against `onsite-api` only; no websockets/SSE. Expected
+  punch-to-dashboard delay ~1–2 minutes. See `deployment.md` "Refresh
+  cadence".
 
 ## Removal
 

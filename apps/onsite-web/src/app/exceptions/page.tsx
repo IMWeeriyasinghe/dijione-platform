@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, EmptyState, ErrorState, LoadingState, PageHeader } from "@dijione/design-system";
 import { CheckCircle2 } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
+import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, FlagChips } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
+import { liveQuery } from "@/lib/live-refresh";
 import { getExceptions, REVIEW_FLAGS, type ReviewFlag } from "@/lib/dashboard";
 import { addDays, FLAG_LABEL, formatSpan, localTime } from "@/lib/flags";
 
@@ -25,13 +27,14 @@ function ExceptionsView() {
   const filters = { site_id: site.site_id, date_from: from, date_to: to, flag: flag || undefined, q: q || undefined,
     emp_code: empCode.trim() || undefined, department: department || undefined, identity_class: identity || undefined };
   const params = { ...filters, page, page_size: 25 };
-  const query = useQuery({ queryKey: ["onsite-exceptions", params], queryFn: () => getExceptions(params) });
+  const query = useQuery({ queryKey: ["onsite-exceptions", params], queryFn: () => getExceptions(params), ...liveQuery });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   return (
     <div>
       <PageHeader title="Exceptions" description="Activity that may need a closer look. Flags are prompts for review only — nothing is changed automatically."
         action={<ExportButton path="exceptions" params={filters} />} />
+      <FreshnessIndicator siteId={site.site_id} queries={[query]} />
       <FilterRow>
         <SiteSelect />
         <DateInput label="From" value={from} onChange={reset(setFrom)} />
@@ -57,7 +60,7 @@ function ExceptionsView() {
           ))}
         </div>
       )}
-      {query.isLoading ? <LoadingState label="Loading review queue…" /> : query.isError || !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
+      {query.isLoading ? <LoadingState label="Loading review queue…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
         query.data.total === 0 ? <EmptyState icon={CheckCircle2} title="Nothing needs review" description="No activity in this range matches the selected review flags." /> : (
           <>
             <ul className="space-y-3">

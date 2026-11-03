@@ -7,7 +7,8 @@ export { ApiError } from "@dijione/auth-client";
 // application module's endpoints (guarded by src/__tests__/boundaries.test.ts).
 export const ONSITE_API = "/api/onsite";
 
-export const getFreshness = () => request<Freshness>(`${ONSITE_API}/freshness`);
+export const getFreshness = (siteId?: string) =>
+  request<Freshness>(`${ONSITE_API}/freshness${siteId ? `?site_id=${encodeURIComponent(siteId)}` : ""}`);
 export const getHealth = () => request<SiteHealth>(`${ONSITE_API}/admin/health`);
 export const getSyncHistory = () => request<SyncRun[]>(`${ONSITE_API}/sync/history?limit=10`);
 export const getSyncRun = (runId: string) => request<SyncRun>(`${ONSITE_API}/sync/runs/${encodeURIComponent(runId)}`);

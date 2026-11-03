@@ -23,14 +23,13 @@ import { DateInput, FilterRow, SiteSelect } from "@/components/FilterBar";
 import { EmployeeCell, IdentityBadge } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { ExportButton } from "@/components/ExportButton";
+import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { SyncNowButton } from "@/components/SyncNowButton";
-import { ToneBadge } from "@/components/ToneBadge";
 import { getHourly, getOverview, getRecent, getTrend } from "@/lib/dashboard";
 import { localTime } from "@/lib/flags";
-import { FEED_LABEL, FEED_TONE, formatDateTime } from "@/lib/format";
+import { FEED_LABEL, formatDateTime } from "@/lib/format";
+import { liveQuery } from "@/lib/live-refresh";
 import { hasPermission, PERM, useOnsiteScope } from "@/lib/onsite-scope";
-
-const POLL = 60_000;
 
 function OverviewView() {
   const { site } = useSite();
@@ -41,21 +40,21 @@ function OverviewView() {
   const date = day ?? site.today;
   const params = { site_id: site.site_id, date };
 
-  const overview = useQuery({ queryKey: ["onsite-overview", params], queryFn: () => getOverview(params), refetchInterval: POLL });
-  const hourly = useQuery({ queryKey: ["onsite-hourly", params], queryFn: () => getHourly(params), refetchInterval: POLL });
+  const overview = useQuery({ queryKey: ["onsite-overview", params], queryFn: () => getOverview(params), ...liveQuery });
+  const hourly = useQuery({ queryKey: ["onsite-hourly", params], queryFn: () => getHourly(params), ...liveQuery });
   const trend = useQuery({
     queryKey: ["onsite-trend", site.site_id, trendDays, date],
     queryFn: () => getTrend({ site_id: site.site_id, days: trendDays, date_to: date }),
-    refetchInterval: POLL,
+    ...liveQuery,
   });
   const recent = useQuery({
     queryKey: ["onsite-recent", site.site_id],
     queryFn: () => getRecent({ site_id: site.site_id, limit: 12 }),
-    refetchInterval: POLL,
+    ...liveQuery,
   });
 
   if (overview.isLoading) return <LoadingState label="Loading attendance overview…" />;
-  if (overview.isError || !overview.data) return <ErrorState onRetry={() => overview.refetch()} />;
+  if (!overview.data) return <ErrorState onRetry={() => overview.refetch()} />;
   const o = overview.data;
   const k = o.kpis;
   const feed = k.feed_state ?? "NOT_SYNCED";
@@ -87,8 +86,7 @@ function OverviewView() {
       </FilterRow>
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dt-border bg-dt-surface px-4 py-3 text-sm text-dt-text-secondary">
-        <ToneBadge tone={FEED_TONE[feed]}>{FEED_LABEL[feed]}</ToneBadge>
-        <span>Last DijiOne sync: <span className="text-dt-text-primary">{formatDateTime(o.last_successful_sync_at)}</span></span>
+        <FreshnessIndicator siteId={site.site_id} queries={[overview, hourly, trend, recent]} />
         <span>Latest activity received: <span className="text-dt-text-primary">{formatDateTime(o.latest_received_utc)}</span></span>
         {feed !== "FRESH" && (
           <span className="text-dt-burnt-orange">The feed may be incomplete — treat “No activity recorded” with care.</span>

@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { Activity } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
+import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, IdentityBadge } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
+import { liveQuery } from "@/lib/live-refresh";
 import { getActivity, REVIEW_FLAGS } from "@/lib/dashboard";
 import { addDays, FLAG_LABEL, localTime } from "@/lib/flags";
 import { hasPermission, PERM, useOnsiteScope } from "@/lib/onsite-scope";
@@ -28,7 +30,7 @@ function ActivityView() {
   const filters = { site_id: site.site_id, date_from: from, date_to: to, q: q || undefined, emp_code: empCode.trim() || undefined,
     department: department || undefined, terminal: terminal || undefined,
     identity_class: identity || undefined, flag: flag || undefined };
-  const query = useQuery({ queryKey: ["onsite-activity", filters, page], queryFn: () => getActivity({ ...filters, page, page_size: 50 }) });
+  const query = useQuery({ queryKey: ["onsite-activity", filters, page], queryFn: () => getActivity({ ...filters, page, page_size: 50 }), ...liveQuery });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
   const technical = hasPermission(scope, PERM.HEALTH); // same rule as onsite-api
 
@@ -39,6 +41,7 @@ function ActivityView() {
         description="Every recorded attendance activity, newest first. The raw device state is shown as recorded and is not interpreted."
         action={<ExportButton path="activity" params={filters} />}
       />
+      <FreshnessIndicator siteId={site.site_id} queries={[query]} />
       <FilterRow>
         <SiteSelect />
         <DateInput label="From" value={from} onChange={reset(setFrom)} />
@@ -54,7 +57,7 @@ function ActivityView() {
         <SelectFilter label="Review flag" value={flag} onChange={reset(setFlag)}
           options={[{ value: "", label: "Any review status" }, ...REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
       </FilterRow>
-      {query.isLoading ? <LoadingState label="Loading activity…" /> : query.isError || !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
+      {query.isLoading ? <LoadingState label="Loading activity…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
         query.data.total === 0 ? <EmptyState icon={Activity} title="No activity recorded" description="No attendance activity matches the current filters." /> : (
           <>
             <Table>
