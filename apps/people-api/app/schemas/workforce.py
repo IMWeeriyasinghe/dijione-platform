@@ -17,6 +17,9 @@ class WorkforceEntryOut(BaseModel):
     hire_date: str | None = None
     termination_date: str | None = None
     present_in_source: bool
+    # True when a profile photo can be requested from
+    # GET /api/people/workforce-directory/{bamboohr_id}/photo (the link itself is never exposed).
+    has_photo: bool = False
     synced_at: str | None = None
 
 

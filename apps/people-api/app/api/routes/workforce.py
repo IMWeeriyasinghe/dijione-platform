@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_internal_service
@@ -21,6 +22,7 @@ from app.schemas.workforce import (
     WorkforceSyncRequestIn,
     WorkforceSyncRunOut,
 )
+from app.services import workforce_photo
 from app.services.workforce_sync_service import WorkforceDirectoryService, WorkforceSyncService, run_dto
 
 router = APIRouter(
@@ -38,7 +40,7 @@ def _entry_out(e: WorkforceDirectoryEntry) -> WorkforceEntryOut:
         department=e.department, job_title=e.job_title, location=e.location,
         employment_status=e.employment_status, hire_date=_iso(e.hire_date),
         termination_date=_iso(e.termination_date), present_in_source=e.present_in_source,
-        synced_at=_iso(e.last_synced_at),
+        has_photo=bool(e.photo_url), synced_at=_iso(e.last_synced_at),
     )
 
 
@@ -54,6 +56,25 @@ def list_workforce_directory(
     status: Literal["all", "active", "inactive"] = "all", db: Session = Depends(get_db)
 ) -> list[WorkforceEntryOut]:
     return [_entry_out(e) for e in WorkforceDirectoryService(db).list_entries(status)]
+
+
+@router.get("/workforce-directory/{bamboohr_id}/photo")
+def workforce_photo_bytes(bamboohr_id: str, db: Session = Depends(get_db)) -> Response:
+    """Profile photo for one directory entry (internal token only). 404 for
+    no photo, an unknown id, or any upstream failure — callers fall back to
+    initials. 503 + Retry-After only when BambooHR throttles."""
+    entry = db.execute(
+        select(WorkforceDirectoryEntry).where(WorkforceDirectoryEntry.bamboohr_id == bamboohr_id)
+    ).scalars().first()
+    if entry is None or not entry.photo_url:
+        raise HTTPException(404, "No photo available")
+    result = workforce_photo.fetch(entry.photo_url)
+    if result.throttled:
+        raise HTTPException(503, "Photo source throttled", headers={"Retry-After": str(result.retry_after)})
+    if result.content is None:
+        raise HTTPException(404, "Photo unavailable")
+    return Response(result.content, media_type=result.content_type,
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.get("/workforce-directory/freshness", response_model=WorkforceFreshnessOut)

@@ -159,7 +159,8 @@ def test_list_status_filter_and_minimum_data_dto(api_client, db):
     keys = set(all_rows[0])
     assert keys == {
         "bamboohr_id", "employee_number", "display_name", "department", "job_title", "location",
-        "employment_status", "hire_date", "termination_date", "present_in_source", "synced_at",
+        "employment_status", "hire_date", "termination_date", "present_in_source", "has_photo", "synced_at",
     }
+    assert "photo_url" not in keys  # the BambooHR link itself is never exposed
     forbidden = {"birth_month", "birth_day", "birthday", "work_email", "address_line1", "city", "postal_code"}
     assert not keys & forbidden

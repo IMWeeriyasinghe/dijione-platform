@@ -39,6 +39,7 @@ Table `workforce_directory`, keyed on the stable BambooHR internal id:
 | `hire_date`, `termination_date` | ISO dates; BambooHR's `0000-00-00` sentinel normalized to null |
 | `present_in_source` | `false` once a record stops appearing in BambooHR; rows are never deleted |
 | `first_synced_at`, `last_synced_at` | Sync metadata |
+| `photo_url` | BambooHR `photoUrl` from `GET /employees/directory` (https only; best-effort — a failed read never fails the sync). **Internal**: never returned; the DTO exposes only `has_photo` |
 
 Never requested or stored here: birthday, address, email, phone,
 compensation.
@@ -52,6 +53,7 @@ compensation.
 | GET | `/api/people/workforce-directory/sync/history?limit=` | Max 50 |
 | POST | `/api/people/internal/workforce-directory/sync` | `202 {run_id, status, started}`; body requires `requested_by_application` |
 | POST | `/api/people/internal/workforce-directory/scheduled-sync` | `202`; for the scheduled job |
+| GET | `/api/people/workforce-directory/{bamboohr_id}/photo` | Profile photo bytes, proxied server-side (https-only incl. redirects, image type sniffed, 2 MB cap, `private, max-age=86400`). `404` = no photo / unavailable; `503` + `Retry-After` = BambooHR throttling. Consumers apply their own authorization and caching (e.g. Diji On-site: `docs/onsite/photos-pagination-drilldown.md`) |
 
 Python consumers use `auth_client_py.WorkforceDirectoryClient`.
 

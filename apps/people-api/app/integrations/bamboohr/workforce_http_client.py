@@ -10,6 +10,8 @@ Never writes to BambooHR.
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from app.core.config import get_settings
@@ -19,6 +21,8 @@ from app.integrations.bamboohr.workforce_client import (
     WorkforceSourceNotConfiguredError,
 )
 from app.integrations.bamboohr.workforce_schemas import BambooHRWorkforceRecord
+
+logger = logging.getLogger("people-api.workforce_http")
 
 _WORKFORCE_REPORT_FIELDS = [
     "id",
@@ -71,6 +75,7 @@ class BambooHRWorkforceHttpClient(BambooHRWorkforceClient):
         except Exception as exc:  # noqa: BLE001 - any network/auth/parse failure -> typed error
             raise WorkforceSourceFetchError("Failed to fetch workforce directory from BambooHR") from exc
 
+        photos = self._directory_photos()
         records: list[BambooHRWorkforceRecord] = []
         for row in payload.get("employees", []):
             record_id = str(row.get("id") or "")
@@ -88,6 +93,25 @@ class BambooHRWorkforceHttpClient(BambooHRWorkforceClient):
                     employment_status=(row.get("status") or "").strip(),
                     hire_date=row.get("hireDate") or None,
                     termination_date=row.get("terminationDate") or None,
+                    photo_url=photos.get(record_id),
                 )
             )
         return records
+
+    def _directory_photos(self) -> dict[str, str]:
+        """``photoUrl`` per BambooHR id from GET /employees/directory.
+        Best-effort: photos are optional, so a failure here never fails the
+        workforce sync — entries simply keep no photo."""
+        try:
+            response = httpx.get(
+                f"{self._base_url}/employees/directory",
+                auth=(self._api_key, "x"),
+                headers={"Accept": "application/json"},
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            rows = response.json().get("employees", [])
+        except Exception:  # noqa: BLE001 - optional enrichment
+            logger.warning("BambooHR directory photo read failed; continuing without photos")
+            return {}
+        return {str(r.get("id")): r["photoUrl"] for r in rows if r.get("id") and r.get("photoUrl")}
