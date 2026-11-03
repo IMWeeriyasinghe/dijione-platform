@@ -31,3 +31,20 @@ export function addDays(isoDate: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** What each flag means — the same neutral wording onsite-api uses for the
+ *  Exceptions "reasons". A flag is a prompt to look, never a policy breach. */
+export const FLAG_HELP: Record<ReviewFlag, string> = {
+  SINGLE_PUNCH: "Only one activity was recorded on this completed day.",
+  POSSIBLE_DUPLICATE_TAP: "Two activities were recorded within 60 seconds of each other.",
+  UNMATCHED_CODE: "The Employee Code has no matching Employee Number in the Workforce Directory.",
+  AMBIGUOUS_CODE: "More than one Workforce Directory employee has this Employee Number.",
+  INACTIVE_EMPLOYEE_ACTIVITY: "Activity is recorded for an employee who is inactive or past their termination date.",
+  BEFORE_HIRE_ACTIVITY: "Activity is recorded before the employee's hire date.",
+  TZ_INCONSISTENT: "The source local time does not match the site's configured time zone.",
+  HIGH_PUNCH_COUNT: "An unusually high number of activities was recorded on this day.",
+};
+
+/** Data-quality flags concern identity/source data rather than the day's
+ *  activity pattern; shown in a cooler tone. */
+export const DATA_QUALITY_FLAGS = new Set<ReviewFlag>(["UNMATCHED_CODE", "AMBIGUOUS_CODE", "TZ_INCONSISTENT"]);

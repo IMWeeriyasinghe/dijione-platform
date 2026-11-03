@@ -15,4 +15,10 @@ expect.extend(matchers);
 // `globals: false` in vitest.config.ts means RTL's own auto-cleanup
 // registration (which looks for a global `afterEach`) never fires —
 // without this, DOM from one test's render() leaks into the next.
-afterEach(() => cleanup());
+afterEach(async () => {
+  cleanup();
+  (await import("./src/test-navigation")).setTestUrl("/");
+});
+
+import { vi } from "vitest";
+vi.mock("next/navigation", async () => (await import("./src/test-navigation")).navigationMock);

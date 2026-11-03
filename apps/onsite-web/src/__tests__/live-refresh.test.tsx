@@ -5,6 +5,10 @@ import { LIVE_REFRESH_MS, liveQuery } from "@/lib/live-refresh";
 
 const api = vi.hoisted(() => ({ getFreshness: vi.fn() }));
 vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), ...api }));
+vi.mock("@/lib/onsite-scope", async (orig) => ({
+  ...(await orig<typeof import("@/lib/onsite-scope")>()),
+  useOnsiteScope: () => ({ loading: false, scope: { role: "ONSITE_VIEWER", permissions: ["onsite.dashboard.read"] } }),
+}));
 
 import { ago, FreshnessIndicator } from "@/components/FreshnessIndicator";
 
