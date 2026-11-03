@@ -100,8 +100,18 @@ scheduled Job.
 container (seconds of 0.25 vCPU) — inside or near the Container Apps free
 grant. Because the job calls `onsite-api` every minute, `onsite-api` no
 longer scales to zero; that always-on replica is the main cost increase.
-Azure SQL load per tick is a single indexed-range read of a few minutes of
-events plus small `Sites`/`AgentStatus` reads.
+Azure SQL load per tick is one index seek on `IX_AttendanceEvents_Received`
+(added in the Agent repository's `schema.sql`) plus small `Sites`/`AgentStatus`
+reads. Measured 2026-11-03: 9 logical reads per tick (was ~4,125, a full scan +
+sort taking up to 4.7 s); DEV+UAT+PROD at one tick a minute kept the Basic
+(5 DTU) database at 0–1.25 % average DTU (peak 5 %); sync runs averaged ~0.65 s
+(max ~4.7 s) and job executions finished in 23–34 s, so ticks never overlap.
+
+**Measured stage latency (real punches, 2026-11-03):** punch → ZKBioTime 4–5 s,
+ZKBioTime → Agent capture 1–9 s, Agent capture → Diji On-site Attendance
+**62 s** (batch created within 30 ms of capture, received ~62 s later — an
+Agent/ingestion delivery-path delay under investigation by the Agent owner),
+then ≤60 s to the mirror and ≤30 s to the dashboard.
 
 ## Images
 
