@@ -30,6 +30,14 @@ def _site_and_day(db, scope: OnsiteScope, site_id: str | None, day: date | None)
     return site, tz, day or site_today(tz)
 
 
+def _optional_range(date_from: date | None, date_to: date | None, day: date) -> tuple[date, date]:
+    """A period (``date_from``..``date_to``, capped at MAX_RANGE_DAYS) when
+    given, otherwise the single day ``day``."""
+    if date_from is None and date_to is None:
+        return day, day
+    return svc.resolve_range(date_from, date_to, default_days=1, today=day)
+
+
 @router.get("/sites")
 def sites(scope: OnsiteScope = Depends(require_onsite_permission(Perm.DASHBOARD_READ)), db: Session = Depends(get_db)):
     directory = workforce_directory.load()
@@ -39,17 +47,21 @@ def sites(scope: OnsiteScope = Depends(require_onsite_permission(Perm.DASHBOARD_
 
 @router.get("/dashboard/overview")
 def overview(site_id: str | None = None, date_: date | None = Query(None, alias="date"),
+             date_from: date | None = None, date_to: date | None = None,
              scope: OnsiteScope = Depends(require_onsite_permission(Perm.DASHBOARD_READ)), db: Session = Depends(get_db)):
     site, tz, day = _site_and_day(db, scope, site_id, date_)
-    return svc.overview(db, scope.allowed_site_ids, site, tz, day, workforce_directory.load())
+    start, end = _optional_range(date_from, date_to, day)
+    return svc.overview(db, scope.allowed_site_ids, site, tz, start, workforce_directory.load(), date_to=end)
 
 
 @router.get("/dashboard/hourly-activity")
 def hourly_activity(site_id: str | None = None, date_: date | None = Query(None, alias="date"),
+                    date_from: date | None = None, date_to: date | None = None,
                     scope: OnsiteScope = Depends(require_onsite_permission(Perm.DASHBOARD_READ)),
                     db: Session = Depends(get_db)):
     site, _tz, day = _site_and_day(db, scope, site_id, date_)
-    return svc.hourly(db, scope.allowed_site_ids, site, day)
+    start, end = _optional_range(date_from, date_to, day)
+    return svc.hourly(db, scope.allowed_site_ids, site, start, end)
 
 
 @router.get("/dashboard/activity-trend")
@@ -127,13 +139,15 @@ def employees(site_id: str | None = None, date_from: date | None = None, date_to
               q: str | None = None, department: str | None = None, employment_status: str | None = None,
               emp_code: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
               activity: str | None = Query(None, pattern="^(with_activity|no_activity)$"),
+              sort: str = Query("-events", pattern="^-?(events|activity_days|review_flags|employee|last_activity)$"),
               page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
               scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)), db: Session = Depends(get_db)):
     site, tz, today_ = _site_and_day(db, scope, site_id, None)
     start, end = svc.resolve_range(date_from, date_to, default_days=30, today=today_)
     return svc.employees(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), q=q,
                          department=department, status_filter=employment_status, activity_filter=activity,
-                         page=page, page_size=page_size, emp_code=emp_code, identity_class=identity_class)
+                         page=page, page_size=page_size, emp_code=emp_code, identity_class=identity_class,
+                         sort=sort)
 
 
 @router.get("/employees/{emp_code}")
@@ -152,10 +166,11 @@ def exceptions(site_id: str | None = None, date_from: date | None = None, date_t
                flag: str | None = Query(None, pattern=_FLAG_PATTERN), q: str | None = None,
                emp_code: str | None = None, department: str | None = None,
                identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
+               sort: str = Query("-date", pattern="^-?(date|employee|flags|punch_count)$"),
                page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
                scope: OnsiteScope = Depends(require_onsite_permission(Perm.EXCEPTIONS_READ)), db: Session = Depends(get_db)):
     site, tz, today_ = _site_and_day(db, scope, site_id, None)
     start, end = svc.resolve_range(date_from, date_to, default_days=7, today=today_)
     return svc.exceptions(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), flag=flag, q=q,
                           page=page, page_size=page_size, emp_code=emp_code, department=department,
-                          identity_class=identity_class)
+                          identity_class=identity_class, sort=sort)

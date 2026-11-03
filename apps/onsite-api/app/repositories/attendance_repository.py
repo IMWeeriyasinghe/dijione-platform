@@ -109,9 +109,10 @@ class AttendanceRepository:
     # --- Dashboard V1 aggregates -------------------------------------------
 
     def hourly_counts(
-        self, *, allowed_site_ids: Collection[str], site_id: str, local_date: date
+        self, *, allowed_site_ids: Collection[str], site_id: str, local_date: date, date_to: date | None = None
     ) -> list[tuple[str, int, int]]:
-        """(local hour "HH", events, distinct employees) for one site-local day.
+        """(local hour "HH", events, distinct employees) for one site-local day
+        or an inclusive site-local date range (summed per hour of day).
         The hour comes from the source's own local wall clock
         (punch_time_local "YYYY-MM-DDTHH:..."), never from UTC."""
         if site_id not in allowed_site_ids:
@@ -119,7 +120,7 @@ class AttendanceRepository:
         hour = func.substr(AttendanceEvent.punch_time_local, 12, 2)
         return [tuple(r) for r in self.db.execute(
             select(hour, func.count(), func.count(func.distinct(AttendanceEvent.emp_code)))
-            .where(*self._range(site_id, local_date, local_date))
+            .where(*self._range(site_id, local_date, date_to or local_date))
             .group_by(hour).order_by(hour)
         ).all()]
 
