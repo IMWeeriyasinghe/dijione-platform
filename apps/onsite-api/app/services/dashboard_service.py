@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Collection
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -80,6 +81,8 @@ class Identity:
             "employee_name": single.get("display_name") if single else None,
             "department": single.get("department") if single else None,
             "employment_status": single.get("employment_status") if single else None,
+            # A photo is only offered for an unambiguous directory match.
+            "has_photo": bool(single and single.get("has_photo")),
             "identity_class": cls,
         }
 
@@ -261,10 +264,26 @@ def _event_out(e: AttendanceEvent, ident: Identity, *, technical: bool) -> dict:
 _SCAN_LIMIT = 250_000
 
 
+def hour_windows(start: date, end: date, hour: int, tz: str | None) -> list[tuple[datetime, datetime]]:
+    """UTC [start, end) of one site-local clock hour on every date in the
+    range — converted with the site's own time zone (Asia/Colombo has no DST;
+    other zones are handled by zoneinfo)."""
+    zone = ZoneInfo(tz) if tz else UTC
+    out = []
+    d = start
+    while d <= end:
+        local = datetime(d.year, d.month, d.day, hour, tzinfo=zone)
+        begin = local.astimezone(UTC)
+        out.append((begin.replace(tzinfo=None), (begin + timedelta(hours=1)).replace(tzinfo=None)))
+        d += timedelta(days=1)
+    return out
+
+
 def select_activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
                     q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
                     flag: str | None, tz: str | None, emp_code: str | None = None, offset: int = 0,
-                    limit: int = 50) -> tuple[int, list[AttendanceEvent]]:
+                    limit: int = 50, hour: int | None = None,
+                    oldest_first: bool = False) -> tuple[int, list[AttendanceEvent]]:
     """The single Activity selection shared by the paged UI and the Excel
     export (newest first). Identity class and review flags are evaluated per
     employee-day — the same values each row displays — never per code."""
@@ -279,10 +298,11 @@ def select_activity(db: Session, allowed, site_id: str, start: date, end: date, 
         codes = matched if codes is None else codes & matched
     tz_only = flag == ReviewFlag.TZ_INCONSISTENT.value
     day_flag = flag if flag and not tz_only else None
+    windows = hour_windows(start, end, hour, tz) if hour is not None else None
     if not identity_class and not day_flag:
         return repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
                                 emp_codes=codes, terminal=terminal, tz_inconsistent_only=tz_only,
-                                offset=offset, limit=limit)
+                                offset=offset, limit=limit, utc_windows=windows, oldest_first=oldest_first)
     pairs = {(r["local_date"], r["emp_code"]) for r in daily_activity(
         db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start, date_to=end,
         directory=directory, emp_codes=codes)
@@ -291,7 +311,8 @@ def select_activity(db: Session, allowed, site_id: str, start: date, end: date, 
         return 0, []
     scanned, events = repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
                                        emp_codes={c for _, c in pairs}, terminal=terminal,
-                                       tz_inconsistent_only=tz_only, offset=0, limit=_SCAN_LIMIT)
+                                       tz_inconsistent_only=tz_only, offset=0, limit=_SCAN_LIMIT,
+                                       utc_windows=windows, oldest_first=oldest_first)
     if scanned > _SCAN_LIMIT:  # never silently drop rows
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Too much activity for these filters — "
                             "narrow the date range or add filters.")
@@ -302,13 +323,23 @@ def select_activity(db: Session, allowed, site_id: str, start: date, end: date, 
 def activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
              q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
              flag: str | None, page: int, page_size: int, technical: bool, tz: str | None = None,
-             emp_code: str | None = None) -> dict:
+             emp_code: str | None = None, hour: int | None = None, oldest_first: bool = False) -> dict:
     ident = Identity(directory)
     total, rows = select_activity(db, allowed, site_id, start, end, directory, q=q, department=department,
                                   terminal=terminal, identity_class=identity_class, flag=flag, tz=tz,
-                                  emp_code=emp_code, offset=(page - 1) * page_size, limit=page_size)
+                                  emp_code=emp_code, offset=(page - 1) * page_size, limit=page_size,
+                                  hour=hour, oldest_first=oldest_first)
+    items = [_event_out(e, ident, technical=technical) for e in rows]
+    # Review flags of each row's employee-day — computed for this page's rows only.
+    if rows:
+        days = {(r["local_date"], r["emp_code"]): r["flags"] for r in daily_activity(
+            db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
+            date_from=min(e.site_local_date for e in rows), date_to=max(e.site_local_date for e in rows),
+            directory=directory, emp_codes={e.emp_code for e in rows})}
+        for item in items:
+            item["review_flags"] = days.get((item["local_date"], item["emp_code"]), [])
     return {"total": total, "page": page, "page_size": page_size, "directory_available": ident.available,
-            "items": [_event_out(e, ident, technical=technical) for e in rows]}
+            "items": items}
 
 
 def _with_terminals(db, allowed, site_id, start, end, rows: list[dict], emp_codes=None) -> list[dict]:
@@ -367,12 +398,14 @@ def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, e
         if code is None or not str(code).strip() or code in rows:
             continue
         rows[code] = {"emp_code": code, "employee_name": e.get("display_name"), "department": e.get("department"),
-                      "employment_status": e.get("employment_status"), "in_directory": True}
+                      "employment_status": e.get("employment_status"), "in_directory": True,
+                      "has_photo": bool(e.get("has_photo")) and len(ident.index.get(code, [])) == 1}
     for code in act:  # attendance codes with no (or ambiguous) directory entry stay visible
         if code not in rows:
             d = ident.describe(code)
             rows[code] = {"emp_code": code, "employee_name": d["employee_name"], "department": d["department"],
-                          "employment_status": d["employment_status"], "in_directory": False}
+                          "employment_status": d["employment_status"], "in_directory": False,
+                          "has_photo": d["has_photo"]}
     out = []
     for code, r in rows.items():
         n, days, last = act.get(code, (0, 0, None))
@@ -406,14 +439,16 @@ def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, e
 
 
 def employee_detail(db: Session, allowed, site_id: str, tz: str | None, code: str, start: date, end: date,
-                    directory: DirectorySnapshot, *, technical: bool) -> dict:
+                    directory: DirectorySnapshot, *, technical: bool, include_events: bool = True) -> dict:
     repo = AttendanceRepository(db)
     ident = Identity(directory)
     days = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
                           date_from=start, date_to=end, directory=directory, emp_codes=[code])
     _with_terminals(db, allowed, site_id, start, end, days, [code])
-    _, events = repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
-                                 emp_codes=[code], offset=0, limit=2000)
+    # Raw events are optional: the profile loads them per selected day via
+    # /activity (paged) instead of downloading the whole period up front.
+    events = repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
+                              emp_codes=[code], offset=0, limit=2000)[1] if include_events else []
     profile = ident.describe(code, start, end)
     matches = ident.index.get(code, [])
     if not days and not matches:
@@ -457,7 +492,7 @@ def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, 
             continue
         d = ident.describe(r["emp_code"], date.fromisoformat(r["local_date"]), date.fromisoformat(r["local_date"]))
         item = {**r, "employee_name": d["employee_name"], "department": d["department"],
-                "employment_status": d["employment_status"],
+                "employment_status": d["employment_status"], "has_photo": d["has_photo"],
                 "reasons": [{"flag": f, "reason": _FLAG_REASON[f]} for f in r["flags"]]}
         if _match(item, q=q, emp_code=emp_code, department=department, identity_class=identity_class):
             items.append(item)

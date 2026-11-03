@@ -89,12 +89,21 @@ def site_health(scope: OnsiteScope = Depends(require_onsite_permission(Perm.HEAL
 
 @router.get("/identity-match")
 def identity_match(fmt: str = Query("json", alias="format", pattern="^(json|csv)$"),
+                   identity_class: str | None = None, q: str | None = None,
+                   page: int | None = Query(None, ge=1), page_size: int = Query(10, ge=1, le=200),
                    scope: OnsiteScope = Depends(require_onsite_permission(Perm.IDENTITY_READ)),
                    db: Session = Depends(get_db)):
     activity = AttendanceRepository(db).emp_code_activity(allowed_site_ids=scope.allowed_site_ids)
     report = build_report(activity, workforce_directory.load())
     if fmt == "json":
-        return report
+        if page is None:  # legacy: whole report (small; kept for compatibility)
+            return report
+        rows = [r for r in report["rows"] if (not identity_class or r["identity_class"] == identity_class)
+                and (not q or q.lower() in r["emp_code"].lower()
+                     or any(q.lower() in (m.get("display_name") or "").lower() for m in r["matches"]))]
+        start = (page - 1) * page_size
+        return {**report, "rows": rows[start:start + page_size], "total": len(rows), "page": page,
+                "page_size": page_size}
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(CSV_COLUMNS)
