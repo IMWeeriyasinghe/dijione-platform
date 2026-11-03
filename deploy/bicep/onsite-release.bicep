@@ -35,7 +35,7 @@ param onsiteSqlDatabase string = ''
 
 @description('Create the scheduled onsite-sync-job. Leave false until a real attendance source exists for this environment.')
 param deployOnsiteSyncJob bool = false
-param onsiteSyncCron string = '0 */6 * * *'
+param onsiteSyncCron string = '* * * * *'
 
 @description('Create the generic people-workforce-sync-job (Workforce Directory refresh, 6-hourly).')
 param deployWorkforceSyncJob bool = true
@@ -152,7 +152,7 @@ var scheduled = concat(
     { name: 'people-workforce-sync-job', image: 'people-api', cron: '15 */6 * * *', url: 'http://people-api/api/people/internal/workforce-directory/scheduled-sync', timeout: 1800 }
   ] : [],
   deployOnsiteSyncJob ? [
-    { name: 'onsite-sync-job', image: 'onsite-api', cron: onsiteSyncCron, url: 'http://onsite-api/api/onsite/internal/scheduled-sync', timeout: 1800 }
+    { name: 'onsite-sync-job', image: 'onsite-api', cron: onsiteSyncCron, url: 'http://onsite-api/api/onsite/internal/scheduled-sync', timeout: 120 }
   ] : []
 )
 

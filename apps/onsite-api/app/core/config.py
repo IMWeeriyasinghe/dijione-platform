@@ -26,8 +26,16 @@ class Settings(BaseSettings):
     sync_overlap_minutes: int = 10
     # Total time to keep retrying a source connection (serverless resume).
     sync_source_retry_seconds: float = 90.0
-    # Expected scheduled cadence — drives the "Delayed" freshness state.
-    sync_cadence_minutes: int = 360
+    # Scheduled cadence (onsite-sync-job cron ``* * * * *``; docs/onsite/deployment.md).
+    sync_cadence_minutes: int = 1
+    # Last successful mirror sync older than this => "Delayed" (a few missed ticks).
+    sync_delayed_minutes: int = 5
+    # A QUEUED/RUNNING run older than this was abandoned (replica stopped
+    # mid-run); the next request marks it FAILED instead of waiting forever.
+    sync_stale_run_minutes: int = 10
+    # Source-vs-mirror reconciliation (a full per-epoch aggregate on Azure SQL)
+    # runs when a sync inserted rows, otherwise at most this often.
+    sync_reconcile_minutes: int = 15
     # Agent heartbeat older than this => "Stale" (On-site alert threshold).
     heartbeat_stale_minutes: int = 10
     # Neutral review flags.

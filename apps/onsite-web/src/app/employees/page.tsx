@@ -6,9 +6,11 @@ import { Button, EmptyState, ErrorState, LoadingState, PageHeader, Table, Td, Th
 import { Users, X } from "lucide-react";
 import { ColumnChart } from "@/components/charts";
 import { ExportButton } from "@/components/ExportButton";
+import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { DateInput, DepartmentSelect, FilterRow, IdentitySelect, Pager, SelectFilter, SiteSelect, TextFilter } from "@/components/FilterBar";
 import { EmployeeCell, FlagChips, IdentityBadge } from "@/components/FlagChips";
 import { SiteProvider, useSite } from "@/components/SiteContext";
+import { liveQuery } from "@/lib/live-refresh";
 import { getEmployee, getEmployees } from "@/lib/dashboard";
 import { addDays, formatSpan, localTime } from "@/lib/flags";
 
@@ -17,6 +19,7 @@ function EmployeeDrawer({ code, from, to, onClose }: { code: string; from: strin
   const query = useQuery({
     queryKey: ["onsite-employee", site.site_id, code, from, to],
     queryFn: () => getEmployee(code, { site_id: site.site_id, date_from: from, date_to: to }),
+    ...liveQuery,
   });
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/30" role="dialog" aria-modal="true" aria-label={`Activity for ${code}`}>
@@ -33,7 +36,7 @@ function EmployeeDrawer({ code, from, to, onClose }: { code: string; from: strin
           </div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close"><X className="size-4" /></Button>
         </div>
-        {query.isLoading ? <LoadingState label="Loading activity…" /> : query.isError || !query.data ? <ErrorState onRetry={() => query.refetch()} /> : (
+        {query.isLoading ? <LoadingState label="Loading activity…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> : (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-3 text-sm text-dt-text-secondary">
               <IdentityBadge cls={query.data.profile.identity_class} />
@@ -103,13 +106,14 @@ function EmployeesView() {
     department: department || undefined, identity_class: identity || undefined, employment_status: status || undefined,
     activity: activity || undefined };
   const params = { ...filters, page, page_size: 50 };
-  const query = useQuery({ queryKey: ["onsite-employees", params], queryFn: () => getEmployees(params) });
+  const query = useQuery({ queryKey: ["onsite-employees", params], queryFn: () => getEmployees(params), ...liveQuery });
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   return (
     <div>
       <PageHeader title="Employees" description="Attendance activity per employee. Employees are matched by exact Employee Number."
         action={<ExportButton path="employees" params={filters} />} />
+      <FreshnessIndicator siteId={site.site_id} queries={[query]} />
       <FilterRow>
         <SiteSelect />
         <DateInput label="From" value={from} onChange={reset(setFrom)} />
@@ -125,7 +129,7 @@ function EmployeesView() {
         <SelectFilter label="Activity" value={activity} onChange={reset(setActivity)}
           options={[{ value: "with_activity", label: "Activity recorded" }, { value: "no_activity", label: "No activity recorded" }, { value: "", label: "Everyone" }]} />
       </FilterRow>
-      {query.isLoading ? <LoadingState label="Loading employees…" /> : query.isError || !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
+      {query.isLoading ? <LoadingState label="Loading employees…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
         query.data.total === 0 ? <EmptyState icon={Users} title="No employees match" description="Try a different date range or filters." /> : (
           <>
             {!query.data.directory_available && <p className="mb-2 text-sm text-dt-burnt-orange">Employee details unavailable — showing attendance codes only.</p>}

@@ -82,7 +82,7 @@ def update_site(site_id: str, payload: SiteUpdateIn,
 def site_health(scope: OnsiteScope = Depends(require_onsite_permission(Perm.HEALTH_READ)),
                 db: Session = Depends(get_db)) -> dict:
     data = freshness(db, allowed_site_ids=scope.allowed_site_ids, technical=True)
-    latest = MirrorSyncService(db).last_successful()
+    latest = MirrorSyncService(db).last_reconciled()
     data["reconciliation"] = json.loads(latest.reconciliation_json) if latest and latest.reconciliation_json else []
     return data
 

@@ -58,8 +58,8 @@ param onsiteSqlServer string = ''
 @description('Azure SQL database name for the Diji On-site source. Only used when onsiteIntegrationsMode == live.')
 param onsiteSqlDatabase string = ''
 
-@description('onsite-sync-job cron (UTC). DEV default every 6 hours (CLAUDE.md rule 10); "Sync now" covers ad hoc.')
-param onsiteSyncCron string = '0 */6 * * *'
+@description('onsite-sync-job cron (UTC). Every minute in every environment for near-real-time attendance (docs/onsite/deployment.md "Refresh cadence"); the run is single-flight and incremental.')
+param onsiteSyncCron string = '* * * * *'
 
 @description('Container size — lean floor by default (Amendment 8).')
 param containerCpu string = '0.25'
@@ -552,7 +552,7 @@ var scheduledJobs = concat(
     { name: 'people-workforce-sync-job', image: 'people-api', cron: '15 */6 * * *', url: 'http://people-api/api/people/internal/workforce-directory/scheduled-sync', timeout: 1800 }
   ] : [],
   deployOnsite ? [
-    { name: 'onsite-sync-job', image: 'onsite-api', cron: onsiteSyncCron, url: 'http://onsite-api/api/onsite/internal/scheduled-sync', timeout: 1800 }
+    { name: 'onsite-sync-job', image: 'onsite-api', cron: onsiteSyncCron, url: 'http://onsite-api/api/onsite/internal/scheduled-sync', timeout: 120 }
   ] : []
 )
 

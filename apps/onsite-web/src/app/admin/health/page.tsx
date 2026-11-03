@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { liveQuery } from "@/lib/live-refresh";
 import {
   Card,
   CardContent,
@@ -24,11 +25,11 @@ import { FEED_LABEL, FEED_TONE, formatDateTime } from "@/lib/format";
 
 function HealthView() {
   const queryClient = useQueryClient();
-  const health = useQuery({ queryKey: ["onsite-health"], queryFn: getHealth, refetchInterval: 60_000 });
-  const history = useQuery({ queryKey: ["onsite-sync-history"], queryFn: getSyncHistory, refetchInterval: 60_000 });
+  const health = useQuery({ queryKey: ["onsite-health"], queryFn: getHealth, ...liveQuery });
+  const history = useQuery({ queryKey: ["onsite-sync-history"], queryFn: getSyncHistory, ...liveQuery });
 
   if (health.isLoading) return <LoadingState label="Loading site health…" />;
-  if (health.isError || !health.data) return <ErrorState onRetry={() => health.refetch()} />;
+  if (!health.data) return <ErrorState onRetry={() => health.refetch()} />;
   const data = health.data;
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["onsite-health"] });

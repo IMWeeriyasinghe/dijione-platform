@@ -14,7 +14,10 @@ function SitesView() {
   const sites = useQuery({ queryKey: ["onsite-sites"], queryFn: getSites, refetchInterval: 60_000 });
   const toggle = useMutation({
     mutationFn: ({ siteId, enabled }: { siteId: string; enabled: boolean }) => setSiteEnabled(siteId, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["onsite-sites"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onsite-sites"] });
+      queryClient.invalidateQueries({ queryKey: ["onsite-sites-info"] });
+    },
   });
 
   if (sites.isLoading) return <LoadingState label="Loading sites…" />;

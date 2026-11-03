@@ -132,6 +132,8 @@ def test_mirror_never_deletes_rows_missing_from_source(api_client, db, monkeypat
     _use_source(monkeypatch, source)
     run_sync(api_client)
     source.events = [e for e in source.events if e.site_id != "syd-site"]
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "sync_reconcile_minutes", 0)  # reconcile even with nothing inserted
     run_sync(api_client)
     assert db.query(AttendanceEvent).count() == 13
     recon = json.loads(_latest_run(db).reconciliation_json)
