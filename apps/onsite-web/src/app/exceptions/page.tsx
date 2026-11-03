@@ -19,9 +19,10 @@ import { IDENTITY_LABEL } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
 import { fmtDay, fmtNum, fmtPeriod } from "@/lib/period";
 import type { IdentityClass } from "@/lib/types";
+import { parsePageSize, storedPageSize } from "@/lib/page-size";
+import { usePaging } from "@/lib/paging";
 import { hrefWith, useUrlState } from "@/lib/url-state";
 
-const PAGE_SIZE = 25;
 const SORTS = [
   { value: "-date", label: "Newest day first" },
   { value: "date", label: "Oldest day first" },
@@ -32,15 +33,17 @@ const SORTS = [
 
 function ExceptionsView() {
   const { site } = useSite();
-  const [s, set] = useUrlState({ from: addDays(site.today, -6), to: site.today, flag: "", q: "", emp: "", dept: "", id: "", sort: "-date", page: "1", open: "" });
-  const page = Number(s.page) || 1;
+  const [s, set] = useUrlState({ from: addDays(site.today, -6), to: site.today, flag: "", q: "", emp: "", dept: "", id: "", sort: "-date", page: "1", size: storedPageSize("exceptions"), open: "" });
+  const page = Math.max(1, Number(s.page) || 1);
+  const pageSize = parsePageSize(s.size);
   const filters = { site_id: site.site_id, date_from: s.from, date_to: s.to, flag: s.flag || undefined, q: s.q || undefined,
     emp_code: s.emp.trim() || undefined, department: s.dept || undefined, identity_class: s.id || undefined };
-  const params = { ...filters, sort: s.sort, page, page_size: PAGE_SIZE };
+  const params = { ...filters, sort: s.sort, page, page_size: pageSize };
   const query = useQuery({ queryKey: ["onsite-exceptions", params], queryFn: () => getExceptions(params), ...liveQuery });
   const counts = query.data?.counts;
   const totalFlags = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
 
+  const paging = usePaging("exceptions", s, set, query.data?.total);
   const chips: Chip[] = [
     s.q && { key: "q", label: `Search: ${s.q}`, onClear: () => set({ q: "" }) },
     s.emp && { key: "emp", label: `Employee Number: ${s.emp}`, onClear: () => set({ emp: "" }) },
@@ -114,7 +117,7 @@ function ExceptionsView() {
               rowLabel={(i) => `${i.employee_name ?? i.emp_code} on ${i.local_date}`} sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
                 { key: "date", header: "Date", sort: "date", cell: (i) => <span className="whitespace-nowrap font-medium">{fmtDay(i.local_date, true)}</span> },
-                { key: "emp", header: "Employee", sort: "employee", cell: (i) => <Person name={i.employee_name} code={i.emp_code} meta={i.department ?? undefined} size="sm" /> },
+                { key: "emp", header: "Employee", sort: "employee", cell: (i) => <Person photo={i.has_photo} name={i.employee_name} code={i.emp_code} meta={i.department ?? undefined} size="sm" /> },
                 { key: "flags", header: "Review flags", sort: "flags", cell: (i) => <FlagChips flags={i.flags} /> },
                 { key: "times", header: "First · Latest", minWidth: "lg", cell: (i) => <span className="tabular-nums">{localTime(i.first_activity_local)} · {localTime(i.latest_activity_local)}</span> },
                 { key: "count", header: "Events", sort: "punch_count", align: "right", cell: (i) => i.punch_count },
@@ -123,7 +126,7 @@ function ExceptionsView() {
               card={(i) => (
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
-                    <Person name={i.employee_name} code={i.emp_code} meta={i.department ?? undefined} size="sm" />
+                    <Person photo={i.has_photo} name={i.employee_name} code={i.emp_code} meta={i.department ?? undefined} size="sm" />
                     <span className="shrink-0 text-xs font-medium text-dt-text-primary">{fmtDay(i.local_date)}</span>
                   </div>
                   <FlagChips flags={i.flags} />
@@ -138,7 +141,7 @@ function ExceptionsView() {
                   {actions(i)}
                 </div>
               )} />
-            <Pager page={page} pageSize={PAGE_SIZE} total={query.data.total} onPage={(p) => set({ page: String(p) })} noun="employee-day" />
+            <Pager page={page} pageSize={pageSize} total={query.data.total} onPage={paging.onPage} onPageSize={paging.onPageSize} busy={query.isFetching} noun="employee-day" />
           </>
         )}
       {s.open && <EmployeeProfile code={s.open} to={s.to} onClose={() => set({ open: "", page: s.page })} />}

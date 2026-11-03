@@ -32,7 +32,7 @@ function niceMax(max: number): number {
   return (n <= 2 ? 2 : n <= 4 ? 4 : n <= 5 ? 5 : 10) * mag;
 }
 
-export function BarChart({ data, measure, summary, selected, onSelect, highlight, tickEvery = [1, 1], average, empty, height = 176 }: {
+export function BarChart({ data, measure, summary, selected, onSelect, highlight, tickEvery = [1, 1], average, empty, height = 176, minBarPx }: {
   data: Bar[];
   /** Plural unit, e.g. "events". */
   measure: string;
@@ -48,6 +48,9 @@ export function BarChart({ data, measure, summary, selected, onSelect, highlight
   average?: { value: number; label: string } | null;
   empty?: React.ReactNode;
   height?: number;
+  /** Minimum width per bar; narrower screens scroll the chart sideways so
+   *  every bar stays a comfortable touch target. */
+  minBarPx?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -66,6 +69,8 @@ export function BarChart({ data, measure, summary, selected, onSelect, highlight
   const tip = hover !== null ? data[hover] : null;
   return (
     <figure className="min-w-0">
+      <div data-scroll-x className="dt-scrollbar overflow-x-auto pb-1">
+      <div style={minBarPx ? { minWidth: data.length * minBarPx + 40 } : undefined}>
       <div className="flex gap-2">
         <div className="flex shrink-0 flex-col justify-between text-right text-[11px] tabular-nums text-dt-text-secondary" style={{ height }} aria-hidden>
           {ticks.map((t) => <span key={t} className="-translate-y-1/2 first:translate-y-0 last:translate-y-0">{fmtNum(Math.round(t))}</span>)}
@@ -125,6 +130,8 @@ export function BarChart({ data, measure, summary, selected, onSelect, highlight
               selected === d.key && "font-semibold text-dt-red")}>{d.tick}</span>
           </span>
         ))}
+      </div>
+      </div>
       </div>
       <figcaption className="sr-only">{summary}. Total {fmtNum(total)} {measure}.</figcaption>
     </figure>

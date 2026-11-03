@@ -60,6 +60,8 @@ export type EmployeeRef = {
   department: string | null;
   employment_status?: string | null;
   identity_class: IdentityClass | null;
+  /** A profile photo may be requested (exact single directory match). */
+  has_photo?: boolean;
 };
 
 export type ActivityEvent = EmployeeRef & {
@@ -72,6 +74,8 @@ export type ActivityEvent = EmployeeRef & {
   event_id?: string;
   source_epoch?: number;
   verify_type?: number | null;
+  /** Review flags of this event's employee-day. */
+  review_flags?: ReviewFlag[];
 };
 
 export type DayActivity = {
@@ -79,6 +83,7 @@ export type DayActivity = {
   emp_code: string;
   employee_name?: string | null;
   department?: string | null;
+  has_photo?: boolean;
   first_activity_local: string | null;
   latest_activity_local: string | null;
   punch_count: number;
@@ -140,6 +145,19 @@ export const getRecent = (p: Params) => request<ActivityResponse>(`${ONSITE_API}
 export const getToday = (p: Params) => request<TodayResponse>(`${ONSITE_API}/today${qs(p)}`);
 export const getActivity = (p: Params) => request<ActivityResponse>(`${ONSITE_API}/activity${qs(p)}`);
 export const getEmployees = (p: Params) => request<EmployeesResponse>(`${ONSITE_API}/employees${qs(p)}`);
+/** Profile photo as an object URL, or null when there is none (404 is a
+ *  normal answer, never an error). Fetched with the bearer token, because a
+ *  plain <img src> cannot send it. */
+export async function getEmployeePhoto(code: string): Promise<string | null> {
+  const token = getToken();
+  const resp = await fetch(`${ONSITE_API}/employees/${encodeURIComponent(code)}/photo`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!resp.ok) return null;
+  const blob = await resp.blob();
+  return blob.size ? URL.createObjectURL(blob) : null;
+}
+
 export const getEmployee = (code: string, p: Params) =>
   request<EmployeeDetail>(`${ONSITE_API}/employees/${encodeURIComponent(code)}${qs(p)}`);
 export const getExceptions = (p: Params) => request<ExceptionsResponse>(`${ONSITE_API}/exceptions${qs(p)}`);

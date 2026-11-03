@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, MapPin, Search } from "lucide-react";
 import { addDays } from "@/lib/flags";
 import { IDENTITY_LABEL } from "@/lib/format";
@@ -104,14 +104,27 @@ export function DayControl({ value, onChange, today, latest }: {
   );
 }
 
+/** Text search, debounced (300 ms) so typing does not send a request per
+ *  keystroke; the search itself always runs server-side on the full dataset. */
 export function SearchField({ label, value, onChange, placeholder }: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
+  const [text, setText] = useState(value);
+  const [prev, setPrev] = useState(value);
+  if (value !== prev) { // external change (chip removed, clear all, back/forward)
+    setPrev(value);
+    setText(value);
+  }
+  useEffect(() => {
+    if (text === value) return;
+    const t = setTimeout(() => onChange(text), 300);
+    return () => clearTimeout(t);
+  }, [text, value, onChange]);
   return (
     <Field label={label}>
       <span className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-dt-text-secondary" aria-hidden />
-        <input type="search" aria-label={label} placeholder={placeholder ?? label} value={value} onChange={(e) => onChange(e.target.value)}
+        <input type="search" aria-label={label} placeholder={placeholder ?? label} value={text} onChange={(e) => setText(e.target.value)}
           className={cx(fieldClass, "pl-8")} />
       </span>
     </Field>

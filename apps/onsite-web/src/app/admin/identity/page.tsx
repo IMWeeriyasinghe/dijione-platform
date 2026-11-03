@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Button, Card, CardContent, ErrorState, LoadingState, MetricCard, PageHeader } from "@dijione/design-system";
 import { CircleAlert, CircleCheck, CircleHelp, CircleSlash, Clock } from "lucide-react";
 import { AdminOnly } from "@/components/AdminOnly";
 import { DataView, Facts } from "@/components/DataView";
 import { IdentityBadge } from "@/components/FlagChips";
-import { Person } from "@/components/kit";
+import { Pager, Person } from "@/components/kit";
+import { SearchField } from "@/components/FilterBar";
+import { parsePageSize, rememberPageSize, storedPageSize } from "@/lib/page-size";
 import { fmtNum } from "@/lib/period";
 import type { IdentityRow } from "@/lib/types";
 import { PERM } from "@/lib/onsite-scope";
@@ -25,13 +27,16 @@ const CLASSES: { key: IdentityClass; icon: typeof CircleCheck }[] = [
 
 function IdentityView() {
   const [filter, setFilter] = useState<IdentityClass | "ALL">("ALL");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(() => parsePageSize(storedPageSize("identity")));
   const [exportError, setExportError] = useState(false);
-  const report = useQuery({ queryKey: ["onsite-identity"], queryFn: getIdentityReport });
+  const params = { page, page_size: size, identity_class: filter === "ALL" ? undefined : filter, q: q || undefined };
+  const report = useQuery({ queryKey: ["onsite-identity", params], queryFn: () => getIdentityReport(params), placeholderData: keepPreviousData });
 
   if (report.isLoading) return <LoadingState label="Matching attendance codes…" />;
   if (report.isError || !report.data) return <ErrorState onRetry={() => report.refetch()} />;
-  const { summary, rows, directory_available } = report.data;
-  const visible = filter === "ALL" ? rows : rows.filter((r) => r.identity_class === filter);
+  const { summary, rows: visible, directory_available } = report.data;
 
   return (
     <div className="space-y-4">
@@ -62,7 +67,7 @@ function IdentityView() {
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
             {CLASSES.map(({ key, icon }) => (
-              <button key={key} type="button" className="text-left" onClick={() => setFilter(filter === key ? "ALL" : key)}>
+              <button key={key} type="button" className="text-left" aria-pressed={filter === key} onClick={() => { setFilter(filter === key ? "ALL" : key); setPage(1); }}>
                 <MetricCard label={IDENTITY_LABEL[key]} value={summary[key] ?? 0} icon={icon} tone={filter === key ? "brand" : "neutral"} />
               </button>
             ))}
@@ -76,9 +81,12 @@ function IdentityView() {
         </>
       )}
 
+      <div className="max-w-sm">
+        <SearchField label="Search code or name" value={q} onChange={(v) => { setQ(v); setPage(1); }} />
+      </div>
       <DataView<IdentityRow> caption="Attendance codes and their directory match" rows={visible} rowKey={(r) => r.emp_code}
         columns={[
-          { key: "code", header: "Employee Code", cell: (r) => <Person name={matchName(r)} code={r.emp_code} meta={r.matches[0]?.department ?? undefined} size="sm" /> },
+          { key: "code", header: "Employee Code", cell: (r) => <Person photo={r.matches.length === 1 && !!r.matches[0].has_photo} name={matchName(r)} code={r.emp_code} meta={r.matches[0]?.department ?? undefined} size="sm" /> },
           { key: "match", header: "Match", cell: (r) => <IdentityBadge cls={r.identity_class} /> },
           { key: "events", header: "Events", align: "right", cell: (r) => fmtNum(r.event_count) },
           { key: "first", header: "First seen", minWidth: "lg", cell: (r) => r.first_seen },
@@ -88,12 +96,14 @@ function IdentityView() {
         card={(r) => (
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
-              <Person name={matchName(r)} code={r.emp_code} meta={r.matches[0]?.department ?? undefined} size="sm" />
+              <Person photo={r.matches.length === 1 && !!r.matches[0].has_photo} name={matchName(r)} code={r.emp_code} meta={r.matches[0]?.department ?? undefined} size="sm" />
               <IdentityBadge cls={r.identity_class} />
             </div>
             <Facts cols={3} items={[["Events", fmtNum(r.event_count)], ["First seen", r.first_seen], ["Last seen", r.last_seen]]} />
           </div>
         )} />
+      <Pager page={page} pageSize={size} total={report.data.total ?? visible.length} noun="code" busy={report.isFetching}
+        onPage={setPage} onPageSize={(n) => { rememberPageSize("identity", n); setSize(n); setPage(1); }} />
     </div>
   );
 }

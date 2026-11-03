@@ -19,9 +19,10 @@ import { IDENTITY_LABEL } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
 import { fmtNum, fmtPeriod, fmtShortDay } from "@/lib/period";
 import type { IdentityClass } from "@/lib/types";
+import { parsePageSize, storedPageSize } from "@/lib/page-size";
+import { usePaging } from "@/lib/paging";
 import { useUrlState } from "@/lib/url-state";
 
-const PAGE_SIZE = 50;
 const ACTIVITY_LABEL: Record<string, string> = { with_activity: "Activity recorded", no_activity: "No activity recorded", all: "Everyone" };
 
 function lastActivity(r: EmployeeRow): string {
@@ -58,15 +59,17 @@ function SummaryTiles({ s, period }: { s: EmployeesSummary; period: string }) {
 function EmployeesView() {
   const { site } = useSite();
   const [s, set] = useUrlState({ from: addDays(site.today, -29), to: site.today, q: "", emp: "", dept: "", id: "", status: "", act: "with_activity",
-    sort: "-events", page: "1", open: "" });
-  const page = Number(s.page) || 1;
+    sort: "-events", page: "1", size: storedPageSize("employees"), open: "" });
+  const page = Math.max(1, Number(s.page) || 1);
+  const pageSize = parsePageSize(s.size);
   const filters = { site_id: site.site_id, date_from: s.from, date_to: s.to, q: s.q || undefined, emp_code: s.emp.trim() || undefined,
     department: s.dept || undefined, identity_class: s.id || undefined, employment_status: s.status || undefined,
     activity: s.act === "all" ? undefined : s.act };
-  const params = { ...filters, sort: s.sort, page, page_size: PAGE_SIZE };
+  const params = { ...filters, sort: s.sort, page, page_size: pageSize };
   const query = useQuery({ queryKey: ["onsite-employees", params], queryFn: () => getEmployees(params), ...liveQuery });
   const periodLabel = fmtPeriod({ from: s.from, to: s.to }, site.today);
 
+  const paging = usePaging("employees", s, set, query.data?.total);
   const chips: Chip[] = [
     s.q && { key: "q", label: `Search: ${s.q}`, onClear: () => set({ q: "" }) },
     s.emp && { key: "emp", label: `Employee Number: ${s.emp}`, onClear: () => set({ emp: "" }) },
@@ -118,7 +121,7 @@ function EmployeesView() {
               rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.emp_code, page: s.page })}
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
-                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <Person name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} /> },
+                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <Person photo={r.has_photo} name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} /> },
                 { key: "status", header: "Status", cell: (r) => <StatusBadge r={r} /> },
                 { key: "id", header: "Identity", minWidth: "xl", cell: (r) => <IdentityBadge cls={r.identity_class} /> },
                 { key: "last", header: "Last activity", sort: "last_activity", minWidth: "lg", cell: (r) => <span className="whitespace-nowrap tabular-nums">{lastActivity(r)}</span> },
@@ -130,7 +133,7 @@ function EmployeesView() {
               card={(r) => (
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
-                    <Person name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} />
+                    <Person photo={r.has_photo} name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} />
                     <StatusBadge r={r} />
                   </div>
                   <Facts cols={3} items={[["Activity days", fmtNum(r.activity_days)], ["Events", fmtNum(r.events)],
@@ -138,7 +141,7 @@ function EmployeesView() {
                   <p className="text-xs text-dt-text-secondary">Last activity: {lastActivity(r)}</p>
                 </div>
               )} />
-            <Pager page={page} pageSize={PAGE_SIZE} total={query.data.total} onPage={(p) => set({ page: String(p) })} noun="employee" />
+            <Pager page={page} pageSize={pageSize} total={query.data.total} onPage={paging.onPage} onPageSize={paging.onPageSize} busy={query.isFetching} noun="employee" />
           </>
         )}
       {s.open && <EmployeeProfile code={s.open} to={s.to} onClose={() => set({ open: "", page: s.page })} />}

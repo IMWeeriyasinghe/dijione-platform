@@ -87,11 +87,15 @@ export type IdentityRow = {
   event_count: number;
   first_seen: string;
   last_seen: string;
-  matches: { bamboohr_id: string; display_name: string | null; employment_status: string | null; department: string | null }[];
+  matches: { bamboohr_id: string; display_name: string | null; employment_status: string | null; department: string | null; has_photo?: boolean }[];
 };
 
 export type IdentityReport = {
   directory_available: boolean;
   summary: Record<string, number>;
   rows: IdentityRow[];
+  /** Present when requested with page/page_size (server-side paging). */
+  total?: number;
+  page?: number;
+  page_size?: number;
 };

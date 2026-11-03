@@ -57,7 +57,7 @@ describe("Overview", () => {
     expect(await screen.findByText("Employees with activity")).toBeInTheDocument();
     expect(screen.getByText("Activity events")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: /Activity events by hour, Today · Sun 1 Nov, DEV Site/ })).toBeInTheDocument();
-    expect(screen.getByLabelText(/08:00–08:59: 5 events/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /08:00–08:59 \(Asia\/Colombo\): 5 events/ })).toBeInTheDocument();
     expect(screen.getByText("Possible duplicate tap")).toBeInTheDocument();
     expect(await screen.findByText("Nimal P")).toBeInTheDocument();
     expect(screen.getAllByText("Feed stale").length).toBeGreaterThan(0);
@@ -184,6 +184,8 @@ describe("Excel export", () => {
     await screen.findByText("Ishara G");
     fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Finance" } });
     fireEvent.change(screen.getByLabelText("Employee Number"), { target: { value: "0107" } });
+    // search input is debounced: wait until the filter reaches the query
+    await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ emp_code: "0107" })));
     fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
     await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(1));
     const [path, params] = api.downloadExport.mock.calls[0];
