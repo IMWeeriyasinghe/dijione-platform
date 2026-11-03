@@ -72,6 +72,7 @@ def export_activity(site_id: str | None = None, date_from: date | None = None, d
                     q: str | None = None, emp_code: str | None = None, department: str | None = None,
                     terminal: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY),
                     flag: str | None = Query(None, pattern=_FLAG),
+                    hour: int | None = Query(None, ge=0, le=23),
                     scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)),
                     db: Session = Depends(get_db)):
     site, tz, today = _site(db, scope, site_id)
@@ -83,7 +84,7 @@ def export_activity(site_id: str | None = None, date_from: date | None = None, d
     total, events = svc.select_activity(db, scope.allowed_site_ids, site, start, end, directory, q=q,
                                         department=department, terminal=terminal, identity_class=identity_class,
                                         flag=flag, tz=tz, emp_code=emp_code, offset=0,
-                                        limit=ex.MAX_EXPORT_EVENTS + 1)
+                                        limit=ex.MAX_EXPORT_EVENTS + 1, hour=hour)
     if total > ex.MAX_EXPORT_EVENTS:
         raise ex.too_large(total, ex.MAX_EXPORT_EVENTS)
     pairs = {(e.site_local_date.isoformat(), e.emp_code) for e in events}

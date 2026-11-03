@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from datetime import date, datetime
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.mirror import AgentStatus, AttendanceEvent
@@ -140,8 +140,12 @@ class AttendanceRepository:
         self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,
         emp_codes: Collection[str] | None = None, terminal: str | None = None,
         tz_inconsistent_only: bool = False, offset: int = 0, limit: int = 50,
+        utc_windows: Collection[tuple[datetime, datetime]] | None = None, oldest_first: bool = False,
     ) -> tuple[int, list[AttendanceEvent]]:
-        """Newest-first raw events (verbatim mirror rows) plus the total count."""
+        """Newest-first (or oldest-first) raw events plus the total count.
+        ``utc_windows`` keeps only events with ``start <= punch_time_utc < end``
+        in any window (exact hour drill-down, no double counting at the edges).
+        Ordering is total and stable: (punch_time_utc, event_id)."""
         if site_id not in allowed_site_ids:
             return 0, []
         where = [*self._range(site_id, date_from, date_to), *self._emp_filter(emp_codes)]
@@ -149,10 +153,17 @@ class AttendanceRepository:
             where.append(AttendanceEvent.terminal_alias == terminal)
         if tz_inconsistent_only:
             where.append(AttendanceEvent.tz_consistent.is_(False))
+        if utc_windows is not None:
+            if not utc_windows:
+                return 0, []
+            where.append(or_(*[and_(AttendanceEvent.punch_time_utc >= s, AttendanceEvent.punch_time_utc < e)
+                               for s, e in utc_windows]))
+        order = (AttendanceEvent.punch_time_utc.asc(), AttendanceEvent.event_id.asc()) if oldest_first else \
+            (AttendanceEvent.punch_time_utc.desc(), AttendanceEvent.event_id.desc())
         total = int(self.db.execute(select(func.count()).select_from(AttendanceEvent).where(*where)).scalar_one())
         rows = list(self.db.execute(
             select(AttendanceEvent).where(*where)
-            .order_by(AttendanceEvent.punch_time_utc.desc(), AttendanceEvent.event_id.desc())
+            .order_by(*order)
             .offset(offset).limit(limit)
         ).scalars())
         return total, rows

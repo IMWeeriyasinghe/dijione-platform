@@ -59,7 +59,8 @@ def build_report(activity: list[tuple[str, int, date, date]], directory: Directo
             "last_seen": last.isoformat(),
             "matches": [
                 {"bamboohr_id": m["bamboohr_id"], "display_name": m.get("display_name"),
-                 "employment_status": m.get("employment_status"), "department": m.get("department")}
+                 "employment_status": m.get("employment_status"), "department": m.get("department"),
+                 "has_photo": bool(m.get("has_photo"))}
                 for m in matches
             ],
         })
