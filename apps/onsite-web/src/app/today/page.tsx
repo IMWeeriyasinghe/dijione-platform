@@ -18,6 +18,8 @@ import { IDENTITY_LABEL } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
 import { fmtDay, fmtNum } from "@/lib/period";
 import type { IdentityClass } from "@/lib/types";
+import { parsePageSize, storedPageSize } from "@/lib/page-size";
+import { usePaging } from "@/lib/paging";
 import { useUrlState } from "@/lib/url-state";
 
 const SORTS = [
@@ -28,17 +30,18 @@ const SORTS = [
   { value: "employee", label: "Employee (A–Z)" },
   { value: "-flags", label: "Review flags (most)" },
 ];
-const PAGE_SIZE = 50;
 
 function TodayView() {
   const { site } = useSite();
-  const [s, set] = useUrlState({ date: site.today, q: "", emp: "", dept: "", id: "", review: "", sort: "first_activity", page: "1", open: "" });
-  const page = Number(s.page) || 1;
+  const [s, set] = useUrlState({ date: site.today, q: "", emp: "", dept: "", id: "", review: "", sort: "first_activity", page: "1", size: storedPageSize("today"), open: "" });
+  const page = Math.max(1, Number(s.page) || 1);
+  const pageSize = parsePageSize(s.size);
   const filters = { site_id: site.site_id, date: s.date, q: s.q || undefined, emp_code: s.emp.trim() || undefined, department: s.dept || undefined,
     identity_class: s.id || undefined, review: s.review || undefined };
-  const params = { ...filters, sort: s.sort, page, page_size: PAGE_SIZE };
+  const params = { ...filters, sort: s.sort, page, page_size: pageSize };
   const query = useQuery({ queryKey: ["onsite-today", params], queryFn: () => getToday(params), ...liveQuery });
 
+  const paging = usePaging("today", s, set, query.data?.total);
   const chips: Chip[] = [
     s.q && { key: "q", label: `Search: ${s.q}`, onClear: () => set({ q: "" }) },
     s.emp && { key: "emp", label: `Employee Number: ${s.emp}`, onClear: () => set({ emp: "" }) },
@@ -102,7 +105,7 @@ function TodayView() {
               rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.emp_code, page: s.page })}
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
-                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <Person name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} /> },
+                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <Person photo={r.has_photo} name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} /> },
                 { key: "first", header: "First", sort: "first_activity", cell: (r) => <span className="tabular-nums">{localTime(r.first_activity_local)}</span> },
                 { key: "latest", header: "Latest", sort: "latest_activity", cell: (r) => <span className="tabular-nums">{localTime(r.latest_activity_local)}</span> },
                 { key: "count", header: "Events", sort: "punch_count", align: "right", cell: (r) => r.punch_count },
@@ -113,14 +116,14 @@ function TodayView() {
               card={(r) => (
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
-                    <Person name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} />
+                    <Person photo={r.has_photo} name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} />
                     <span className="shrink-0 rounded-full bg-dt-surface-warm px-2 py-0.5 text-xs font-medium tabular-nums text-dt-text-primary">{r.punch_count} events</span>
                   </div>
                   <Facts cols={3} items={[["First", localTime(r.first_activity_local)], ["Latest", localTime(r.latest_activity_local)], ["Span", formatSpan(r.span_minutes)]]} />
                   {r.flags.length > 0 && <FlagChips flags={r.flags} />}
                 </div>
               )} />
-            <Pager page={page} pageSize={PAGE_SIZE} total={query.data.total} onPage={(p) => set({ page: String(p) })} noun="employee" />
+            <Pager page={page} pageSize={pageSize} total={query.data.total} onPage={paging.onPage} onPageSize={paging.onPageSize} busy={query.isFetching} noun="employee" />
           </>
         )}
       {s.open && <EmployeeProfile code={s.open} to={s.date} onClose={() => set({ open: "", page: s.page })} />}

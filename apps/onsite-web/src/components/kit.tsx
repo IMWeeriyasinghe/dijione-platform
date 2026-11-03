@@ -6,10 +6,14 @@
 // and a touch-friendly pager.
 
 import { useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ChevronDown, ChevronLeft, ChevronRight, Info, SlidersHorizontal, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { getEmployeePhoto } from "@/lib/dashboard";
 import { fmtNum } from "@/lib/period";
+import { PAGE_SIZES } from "@/lib/page-size";
+import { useInView } from "@/lib/use-in-view";
 
 export function cx(...c: (string | false | null | undefined)[]): string {
   return c.filter(Boolean).join(" ");
@@ -147,26 +151,62 @@ export function DeltaText({ value, previous, label }: { value: number; previous:
 const AVATAR_TONES = ["bg-dt-red/10 text-dt-red", "bg-dt-orange/15 text-dt-burnt-orange", "bg-dt-amber/25 text-dt-warning",
   "bg-dt-success/10 text-dt-success", "bg-dt-info/10 text-dt-info"];
 
-export function Initials({ name, code, size = "md" }: { name: string | null | undefined; code: string; size?: "sm" | "md" | "lg" }) {
+export function Initials({ name, code, size = "md", photo = false, alt }: {
+  name: string | null | undefined; code: string; size?: "sm" | "md" | "lg";
+  /** Request the profile photo (only when the API reports one may exist). */
+  photo?: boolean;
+  /** Alt text when the photo stands alone; omit when the name is shown beside it. */
+  alt?: string;
+}) {
   const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
   const text = words.length ? (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase() : "#";
   let h = 0;
   for (const ch of code) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const dim = { sm: "size-8 text-xs", md: "size-9 text-sm", lg: "size-12 text-base" }[size];
   return (
-    <span aria-hidden className={cx("grid shrink-0 place-items-center rounded-full font-semibold", dim,
+    <span className={cx("relative grid shrink-0 place-items-center overflow-hidden rounded-full font-semibold", dim,
       name ? AVATAR_TONES[h % AVATAR_TONES.length] : "border border-dashed border-dt-border text-dt-text-secondary")}>
-      {text}
+      <span aria-hidden>{text}</span>
+      {photo && <EmployeePhoto code={code} alt={alt} />}
     </span>
   );
 }
 
-export function Person({ name, code, meta, size = "md" }: {
-  name: string | null | undefined; code: string; meta?: React.ReactNode; size?: "sm" | "md" | "lg";
+/** Lazy profile photo layered over the initials: requested only once the
+ *  avatar is near the viewport, cached per employee for the session (never
+ *  refetched by the 30-second dashboard refresh), and silently absent on any
+ *  failure — the initials underneath simply stay visible. */
+function EmployeePhoto({ code, alt }: { code: string; alt?: string }) {
+  const [ref, inView] = useInView<HTMLSpanElement>();
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const query = useQuery({
+    queryKey: ["onsite-photo", code],
+    queryFn: () => getEmployeePhoto(code),
+    enabled: inView,
+    staleTime: Infinity,
+    gcTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  return (
+    <span ref={ref} className="absolute inset-0">
+      {query.data && !failed && (
+        // eslint-disable-next-line @next/next/no-img-element -- blob URL from an authenticated fetch
+        <img src={query.data} alt={alt ?? ""} aria-hidden={alt ? undefined : true} onError={() => setFailed(true)} onLoad={() => setLoaded(true)}
+          className={cx("size-full rounded-full object-cover motion-safe:transition-opacity", loaded ? "opacity-100" : "opacity-0")} />
+      )}
+    </span>
+  );
+}
+
+export function Person({ name, code, meta, size = "md", photo = false }: {
+  name: string | null | undefined; code: string; meta?: React.ReactNode; size?: "sm" | "md" | "lg"; photo?: boolean;
 }) {
   return (
     <span className="flex min-w-0 items-center gap-2.5">
-      <Initials name={name} code={code} size={size} />
+      <Initials name={name} code={code} size={size} photo={photo} />
       <span className="min-w-0">
         <span className="block truncate font-medium text-dt-text-primary">{name ?? "Unmatched code"}</span>
         <span className="block truncate text-xs text-dt-text-secondary">
@@ -321,28 +361,44 @@ export function FilterPanel({ children, chips, onClearAll, summary }: {
 
 /* -------------------------------------------------------------------- pager */
 
-export function Pager({ page, pageSize, total, onPage, noun = "result" }: {
-  page: number; pageSize: number; total: number; onPage: (p: number) => void; noun?: string;
+/** Server-side pagination controls: range ("1–10 of 506 employees"),
+ *  previous/next, page x of y and a page-size choice (10/20/50/100). On
+ *  phones the page counter is condensed; nothing is removed. */
+export function Pager({ page, pageSize, total, onPage, onPageSize, noun = "result", busy = false }: {
+  page: number; pageSize: number; total: number; onPage: (p: number) => void;
+  onPageSize?: (size: number) => void; noun?: string; busy?: boolean;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const first = total ? (page - 1) * pageSize + 1 : 0;
   const last = Math.min(total, page * pageSize);
   return (
-    <nav aria-label="Pagination" className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-dt-text-secondary">
-      <span>{total ? `${fmtNum(first)}–${fmtNum(last)} of ${fmtNum(total)} ${noun}${total === 1 ? "" : "s"}` : `0 ${noun}s`}</span>
-      {pages > 1 && (
+    <nav aria-label="Pagination" aria-busy={busy || undefined}
+      className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-dt-text-secondary">
+      <span aria-live="polite">{total ? `${fmtNum(first)}–${fmtNum(last)} of ${fmtNum(total)} ${noun}${total === 1 ? "" : "s"}` : `0 ${noun}s`}</span>
+      <span className="flex flex-wrap items-center gap-2">
+        {onPageSize && (
+          <label className="flex items-center gap-1.5 whitespace-nowrap text-xs">
+            <span className="hidden sm:inline">Rows per page</span><span className="sm:hidden">Rows</span>
+            <select aria-label="Rows per page" value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}
+              className={cx(fieldClass, "w-auto")}>
+              {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
         <span className="flex items-center gap-1">
           <button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => onPage(page - 1)}
             className={cx(buttonClass("secondary"), "px-2 disabled:opacity-40")}>
             <ChevronLeft className="size-4" aria-hidden />
           </button>
-          <span className="px-2 tabular-nums">Page {page} of {pages}</span>
+          <span className="px-1 tabular-nums" aria-current="page">
+            <span className="hidden sm:inline">Page </span>{page}<span className="hidden sm:inline"> of </span><span className="sm:hidden">/</span>{pages}
+          </span>
           <button type="button" aria-label="Next page" disabled={page >= pages} onClick={() => onPage(page + 1)}
             className={cx(buttonClass("secondary"), "px-2 disabled:opacity-40")}>
             <ChevronRight className="size-4" aria-hidden />
           </button>
         </span>
-      )}
+      </span>
     </nav>
   );
 }

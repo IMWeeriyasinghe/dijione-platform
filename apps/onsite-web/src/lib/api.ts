@@ -1,4 +1,4 @@
-import { getToken, request } from "@dijione/auth-client";
+import { getToken, qs, request } from "@dijione/auth-client";
 import type { Freshness, IdentityReport, OnsiteSite, SiteHealth, SyncAccepted, SyncRun } from "./types";
 
 export { ApiError } from "@dijione/auth-client";
@@ -22,7 +22,8 @@ export const setSiteEnabled = (siteId: string, enabled: boolean) =>
     body: JSON.stringify({ enabled }),
   });
 
-export const getIdentityReport = () => request<IdentityReport>(`${ONSITE_API}/admin/identity-match`);
+export const getIdentityReport = (p: { page: number; page_size: number; identity_class?: string; q?: string }) =>
+  request<IdentityReport>(`${ONSITE_API}/admin/identity-match${qs(p)}`);
 
 export const IDENTITY_CSV_PATH = `${ONSITE_API}/admin/identity-match?format=csv`;
 

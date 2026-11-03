@@ -2,7 +2,6 @@
 
 import { Suspense, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorState } from "@dijione/design-system";
 import { Activity, AlertTriangle, ChevronRight, Clock, Fingerprint, Radio, Users, UserX } from "lucide-react";
@@ -14,6 +13,8 @@ import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { buttonClass, InlineAlert, KpiCard, Panel, PageTop, Person, Segmented, Skeleton } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { SyncNowButton } from "@/components/SyncNowButton";
+import { EmployeeProfile } from "@/components/EmployeeProfile";
+import { HourActivitySheet } from "@/components/HourActivitySheet";
 import { getHourly, getOverview, getRecent, getTrend, type Overview } from "@/lib/dashboard";
 import { addDays, localTime } from "@/lib/flags";
 import { FEED_LABEL } from "@/lib/format";
@@ -32,11 +33,12 @@ const HELP = {
 };
 
 function OverviewView() {
-  const router = useRouter();
   const { site } = useSite();
   const { scope } = useOnsiteScope();
   const queryClient = useQueryClient();
-  const [s, set] = useUrlState({ from: site.today, to: site.today, trend: "30" });
+  const [s, set] = useUrlState({ from: site.today, to: site.today, trend: "30", hour: "", open: "" });
+  // Changing the period always clears an hour selection, so no widget shows a different range.
+  const setPeriod = (p: Period) => set({ from: p.from, to: p.to, hour: "" });
   const period: Period = { from: s.from, to: s.to };
   const single = isSingleDay(period);
   const inProgress = period.to >= site.today;
@@ -93,19 +95,30 @@ function OverviewView() {
       >
         <div className="flex flex-wrap items-center gap-2">
           <SiteSelect />
-          <PeriodControl value={period} today={site.today} onChange={(p) => set({ from: p.from, to: p.to })} />
+          <PeriodControl value={period} today={site.today} onChange={setPeriod} />
         </div>
         <FreshnessIndicator siteId={site.site_id} queries={[overview, hourly, trend, recent]} />
       </PageTop>
 
-      <p className="text-sm text-dt-text-secondary">
-        Showing <span className="font-semibold text-dt-text-primary">{periodLabel}</span>
-        {inProgress && <span> · day in progress, figures grow as activity is recorded</span>}
-      </p>
+      {single && period.from !== site.today ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dt-orange/40 bg-dt-cream px-3 py-2 text-sm" role="status">
+          <span>Selected day: <span className="font-semibold text-dt-text-primary">{fmtDay(period.from, true)}</span>
+            <span className="text-dt-text-secondary"> · every widget below shows this day</span></span>
+          <span className="flex flex-wrap gap-2">
+            <Link href={hrefWith("/activity", { from: period.from, to: period.from })} className={buttonClass("secondary")}>View all events</Link>
+            <button type="button" className={buttonClass("ghost")} onClick={() => setPeriod({ from: site.today, to: site.today })}>Clear selection</button>
+          </span>
+        </div>
+      ) : (
+        <p className="text-sm text-dt-text-secondary">
+          Showing <span className="font-semibold text-dt-text-primary">{periodLabel}</span>
+          {inProgress && <span> · day in progress, figures grow as activity is recorded</span>}
+        </p>
+      )}
 
       {emptyToday && (
         <InlineAlert tone="info" action={site.last_activity_date && site.last_activity_date !== site.today ? (
-          <button type="button" className={buttonClass("secondary")} onClick={() => set({ from: site.last_activity_date!, to: site.last_activity_date! })}>
+          <button type="button" className={buttonClass("secondary")} onClick={() => setPeriod({ from: site.last_activity_date!, to: site.last_activity_date! })}>
             View {fmtDay(site.last_activity_date)}
           </button>
         ) : undefined}>
@@ -142,10 +155,17 @@ function OverviewView() {
         <Panel title="Activity by hour of day" subtitle={`Recorded events per site-local hour · ${periodLabel} · ${site.name}`}
           action={peak.size ? <span className="text-xs text-dt-text-secondary">Busiest: <span className="font-medium text-dt-red">{[...peak].map((h) => `${h.padStart(2, "0")}:00`).join(", ")}</span></span> : undefined}>
           {hourly.data ? (
-            <BarChart measure="events" summary={`Activity events by hour, ${periodLabel}, ${site.name}`} highlight={peak} tickEvery={[6, 3]}
-              data={hours.map((h) => ({ key: String(h.hour), value: h.events, tick: String(h.hour).padStart(2, "0"),
-                label: `${String(h.hour).padStart(2, "0")}:00–${String(h.hour).padStart(2, "0")}:59`, note: `${fmtNum(h.employees)} employees` }))}
-              empty={emptyToday ? "No activity recorded yet today." : "No activity recorded in this period."} />
+            <>
+              <BarChart measure="events" summary={`Activity events by hour, ${periodLabel}, ${site.name}`} highlight={peak} tickEvery={[6, 3]}
+                selected={s.hour || null} onSelect={(h) => set({ hour: h })} minBarPx={18}
+                data={hours.map((h) => ({ key: String(h.hour), value: h.events, tick: String(h.hour).padStart(2, "0"),
+                  label: `${String(h.hour).padStart(2, "0")}:00–${String(h.hour).padStart(2, "0")}:59${site.time_zone ? ` (${site.time_zone})` : ""}${single ? "" : ", all days"}`,
+                  note: `${fmtNum(h.employees)} employees` }))}
+                empty={emptyToday ? "No activity recorded yet today." : "No activity recorded in this period."} />
+              <p className="mt-2 text-xs text-dt-text-secondary">
+                {single ? "Select an hour to see its recorded events." : `Each bar combines that hour across all ${dayCount(period)} days. Select one to see its events.`}
+              </p>
+            </>
           ) : <Skeleton className="h-44 w-full" />}
         </Panel>
         <Panel title="Daily activity trend"
@@ -155,7 +175,7 @@ function OverviewView() {
           {trend.data ? (
             <>
               <BarChart measure="events" summary={`Daily activity events, ${trendDays} days to ${period.to}, ${site.name}`}
-                selected={single ? period.from : null} onSelect={(d) => set({ from: d, to: d })} tickEvery={trendDays === 7 ? [1, 1] : [7, 3]}
+                selected={single ? period.from : null} onSelect={(d) => setPeriod({ from: d, to: d })} tickEvery={trendDays === 7 ? [1, 1] : [7, 3]}
                 average={avg ? { value: avg, label: `avg ${fmtNum(avg)}` } : null}
                 data={trendData.map((d) => ({ key: d.date, value: d.events, tick: trendDays === 7 ? fmtDay(d.date).slice(0, 3) : fmtShortDay(d.date),
                   label: fmtDay(d.date, true), note: `${fmtNum(d.employees)} employees${avg && d.events ? ` · ${d.events >= avg ? "+" : "−"}${fmtNum(Math.abs(d.events - avg))} vs average` : ""}` }))} />
@@ -181,9 +201,9 @@ function OverviewView() {
             <ul className="divide-y divide-dt-border/60">
               {recent.data.items.map((e, i) => (
                 <li key={e.event_id ?? `${e.emp_code}-${e.local_time}-${i}`}>
-                  <button type="button" onClick={() => router.push(hrefWith("/employees", { open: e.emp_code, from: addDays(e.local_date, -29), to: e.local_date }))}
+                  <button type="button" onClick={() => set({ open: e.emp_code })}
                     className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-left hover:bg-dt-surface-warm/60 focus-visible:bg-dt-surface-warm focus-visible:outline-none sm:grid-cols-[minmax(10rem,1fr)_minmax(0,auto)_auto]">
-                    <Person name={e.employee_name} code={e.emp_code} meta={e.department ?? undefined} size="sm" />
+                    <Person photo={e.has_photo} name={e.employee_name} code={e.emp_code} meta={e.department ?? undefined} size="sm" />
                     <span className="min-w-0 text-right text-sm sm:text-left">
                       <span className="flex items-center justify-end gap-1 tabular-nums text-dt-text-primary sm:justify-start">
                         <Clock className="size-3.5 text-dt-text-secondary" aria-hidden />
@@ -201,6 +221,13 @@ function OverviewView() {
           ) : <div className="p-4"><Skeleton className="h-40 w-full" /></div>}
         </Panel>
       </div>
+
+      {s.hour !== "" && (
+        <HourActivitySheet period={period} hour={Number(s.hour)}
+          employees={hours.find((h) => String(h.hour) === s.hour)?.employees ?? null}
+          onHour={(h) => set({ hour: String(h) })} onClose={() => set({ hour: "" })} onOpenEmployee={(code) => set({ open: code })} />
+      )}
+      {s.open && <EmployeeProfile code={s.open} to={period.to} onClose={() => set({ open: "" })} />}
     </div>
   );
 }

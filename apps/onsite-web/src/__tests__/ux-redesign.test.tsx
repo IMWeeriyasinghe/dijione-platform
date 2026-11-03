@@ -111,10 +111,9 @@ describe("Overview", () => {
     renderPage(<Page />);
     await screen.findByText("Employees with activity");
     expect(screen.getByText("09:00")).toBeInTheDocument();
-    const bar = screen.getByLabelText(/09:00–09:59: 7 events/);
-    expect(bar).toHaveAttribute("tabindex", "0");
+    const bar = screen.getByRole("button", { name: /09:00–09:59 \(Asia\/Colombo\): 7 events/ });
     fireEvent.focus(bar);
-    expect(screen.getAllByRole("tooltip").some((t) => /09:00–09:59\s*7 events/.test(t.textContent ?? ""))).toBe(true);
+    expect(screen.getAllByRole("tooltip").some((t) => /09:00–09:59 \(Asia\/Colombo\)\s*7 events/.test(t.textContent ?? ""))).toBe(true);
   });
 
   it("explains an empty current day instead of implying absence", async () => {

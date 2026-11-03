@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ErrorState } from "@dijione/design-system";
 import { AlertTriangle, ArrowLeft, CalendarDays, ExternalLink, X } from "lucide-react";
-import { getEmployee, type ActivityEvent, type DayActivity, type ReviewFlag } from "@/lib/dashboard";
+import { getActivity, getEmployee, type ActivityEvent, type DayActivity, type ReviewFlag } from "@/lib/dashboard";
 import { addDays, FLAG_HELP, FLAG_LABEL, formatSpan, localTime } from "@/lib/flags";
+import { useDialogLayer } from "@/lib/dialog-stack";
 import { liveQuery } from "@/lib/live-refresh";
 import { eachDay, fmtDay, fmtNum, fmtPeriod, fmtShortDay, type Period } from "@/lib/period";
 import { hrefWith } from "@/lib/url-state";
 import { BarChart } from "./charts";
 import { DataView, Facts } from "./DataView";
 import { FlagChips, IdentityBadge } from "./FlagChips";
-import { cx, EmptyPanel, focusRing, InfoTip, Initials, Panel, Segmented, Skeleton } from "./kit";
+import { cx, EmptyPanel, focusRing, InfoTip, Initials, Pager, Panel, Segmented, Skeleton } from "./kit";
 import { useSite } from "./SiteContext";
 import { ToneBadge } from "./ToneBadge";
 
@@ -29,38 +30,21 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
   const period: Period = { from: addDays(to, -(Number(days) - 1)), to };
   const [tab, setTab] = useState<Tab>("overview");
   const [day, setDay] = useState<string | null>(null);
+  const [daysPage, setDaysPage] = useState(1);
+  const [daysSize, setDaysSize] = useState(10);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useDialogLayer(onClose, closeRef);
 
+  // Essentials + the selected period's daily summary only; raw events are
+  // fetched per day when shown (DayEvents).
   const query = useQuery({
     queryKey: ["onsite-employee", site.site_id, code, period.from, period.to],
-    queryFn: () => getEmployee(code, { site_id: site.site_id, date_from: period.from, date_to: period.to }),
+    queryFn: () => getEmployee(code, { site_id: site.site_id, date_from: period.from, date_to: period.to, include_events: false }),
     ...liveQuery,
   });
 
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCloseRef.current(); };
-    document.addEventListener("keydown", onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      opener?.focus?.();
-    };
-  }, []);
-
   const data = query.data;
   const byDay = useMemo(() => new Map((data?.days ?? []).map((d) => [d.local_date, d])), [data]);
-  const eventsByDay = useMemo(() => {
-    const m = new Map<string, ActivityEvent[]>();
-    for (const e of data?.events ?? []) m.set(e.local_date, [...(m.get(e.local_date) ?? []), e]);
-    for (const list of m.values()) list.sort((a, b) => a.local_time.localeCompare(b.local_time));
-    return m;
-  }, [data]);
   const selected = day ?? data?.days[0]?.local_date ?? null;
   const flagged = (data?.days ?? []).filter((d) => d.flags.length);
   const name = data?.profile.employee_name ?? null;
@@ -76,7 +60,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
               className={cx("-ml-1 grid size-10 shrink-0 place-items-center rounded-lg text-dt-text-secondary hover:bg-dt-surface-warm lg:hidden", focusRing)}>
               <ArrowLeft className="size-5" aria-hidden />
             </button>
-            <Initials name={name} code={code} size="lg" />
+            <Initials name={name} code={code} size="lg" photo={data?.profile.has_photo} alt={name ? `Profile photo of ${name}` : undefined} />
             <div className="min-w-0 flex-1">
               <h2 id="employee-profile-title" className="truncate text-lg font-semibold text-dt-text-primary">{name ?? "Unmatched code"}</h2>
               <p className="text-sm text-dt-text-secondary">
@@ -138,7 +122,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
                         note: byDay.get(d)?.flags.length ? `${byDay.get(d)!.flags.length} review flag(s)` : undefined }))}
                       empty="No activity recorded for this employee in the selected period." />
                   </Panel>
-                  {selected && <DayDetail day={byDay.get(selected) ?? null} date={selected} events={eventsByDay.get(selected) ?? []} code={code} />}
+                  {selected && <DayDetail day={byDay.get(selected) ?? null} date={selected} code={code} />}
                 </div>
               )}
               {tab === "days" && (
@@ -146,7 +130,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
                   {data.days.length === 0 ? (
                     <EmptyPanel icon={CalendarDays} title="No activity recorded" description="No activity is recorded for this employee in the selected period. This is not an absence record." />
                   ) : (
-                    <DataView caption="Daily activity" rows={data.days} rowKey={(d) => d.local_date} rowLabel={(d) => fmtDay(d.local_date)}
+                    <DataView caption="Daily activity" rows={data.days.slice((daysPage - 1) * daysSize, daysPage * daysSize)} rowKey={(d) => d.local_date} rowLabel={(d) => fmtDay(d.local_date)}
                       columns={[
                         { key: "date", header: "Date", cell: (d) => <span className="whitespace-nowrap font-medium">{fmtDay(d.local_date, true)}</span> },
                         { key: "first", header: "First", cell: (d) => localTime(d.first_activity_local) },
@@ -167,8 +151,12 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
                           <FlagChips flags={d.flags} empty="No review flags" />
                         </div>
                       )}
-                      detail={(d) => <EventList events={eventsByDay.get(d.local_date) ?? []} />}
+                      detail={(d) => <DayEvents code={code} date={d.local_date} />}
                     />
+                  )}
+                  {data.days.length > 0 && (
+                    <Pager page={daysPage} pageSize={daysSize} total={data.days.length} noun="day"
+                      onPage={setDaysPage} onPageSize={(n) => { setDaysSize(n); setDaysPage(1); }} />
                   )}
                 </div>
               )}
@@ -186,7 +174,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
                               <div className="min-w-0">
                                 <p className="font-medium text-dt-text-primary">{fmtDay(d.local_date, true)}</p>
                                 <p className="text-xs text-dt-text-secondary">
-                                  Events: {(eventsByDay.get(d.local_date) ?? []).map((e) => localTime(e.local_time)).join(", ") || `${d.punch_count}`}
+                                  {d.punch_count} events · first {localTime(d.first_activity_local)} · latest {localTime(d.latest_activity_local)}
                                 </p>
                               </div>
                               <Link href={hrefWith("/activity", { emp: code, from: d.local_date, to: d.local_date })}
@@ -238,7 +226,7 @@ function Summary({ days, events, flags }: { days: DayActivity[]; events: number;
   );
 }
 
-function DayDetail({ day, date, events, code }: { day: DayActivity | null; date: string; events: ActivityEvent[]; code: string }) {
+function DayDetail({ day, date, code }: { day: DayActivity | null; date: string; code: string }) {
   return (
     <Panel title={fmtDay(date, true)} subtitle={day ? `${day.punch_count} recorded events` : "No activity recorded on this day"}
       action={day ? <Link href={hrefWith("/activity", { emp: code, from: date, to: date })} className="inline-flex min-h-9 items-center text-xs font-medium text-dt-burnt-orange">Open in Activity</Link> : undefined}>
@@ -248,25 +236,40 @@ function DayDetail({ day, date, events, code }: { day: DayActivity | null; date:
             [<span key="s" className="inline-flex items-center gap-1">Activity span <InfoTip text={SPAN_HELP} /></span>, formatSpan(day.span_minutes)],
             ["Terminals", day.terminal_names.join(", ") || "—"]]} />
           <FlagChips flags={day.flags} empty="No review flags" />
-          <EventList events={events} />
+          <DayEvents code={code} date={date} />
         </div>
       ) : <p className="text-sm text-dt-text-secondary">Nothing recorded. This is not an absence record.</p>}
     </Panel>
   );
 }
 
-function EventList({ events }: { events: ActivityEvent[] }) {
-  if (!events.length) return <p className="text-sm text-dt-text-secondary">Event details are not available for this day.</p>;
+/** One day's recorded events, fetched only when shown (Activity API, paged,
+ *  oldest first) — opening a profile never downloads the whole history. */
+function DayEvents({ code, date }: { code: string; date: string }) {
+  const { site } = useSite();
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(10);
+  const params = { site_id: site.site_id, emp_code: code, date_from: date, date_to: date, sort: "time", page, page_size: size };
+  const query = useQuery({ queryKey: ["onsite-activity", params], queryFn: () => getActivity(params), ...liveQuery });
+  if (query.isLoading) return <Skeleton className="h-16 w-full" />;
+  if (!query.data) return <p className="text-sm text-dt-text-secondary">Events could not be loaded. <button type="button" className="underline" onClick={() => query.refetch()}>Retry</button></p>;
+  const events = query.data.items;
+  if (!events.length) return <p className="text-sm text-dt-text-secondary">No recorded events on this day.</p>;
   return (
-    <ol className="relative space-y-2 border-l-2 border-dt-border pl-4" aria-label="Recorded events">
-      {events.map((e, i) => (
-        <li key={e.event_id ?? `${e.local_time}-${i}`} className="relative text-sm">
-          <span aria-hidden className="absolute -left-[1.4rem] top-1.5 size-2.5 rounded-full border-2 border-dt-surface bg-dt-orange" />
-          <span className="font-medium tabular-nums text-dt-text-primary">{localTime(e.local_time)}</span>
-          <span className="text-dt-text-secondary"> · {e.terminal ?? "Unknown terminal"}{e.area ? ` · ${e.area}` : ""}</span>
-          <span className="ml-1 font-mono text-xs text-dt-text-secondary" title="Raw device state, recorded as-is (not interpreted)">state {e.punch_state_raw ?? "—"}</span>
-        </li>
-      ))}
-    </ol>
+    <div>
+      <ol className="relative space-y-2 border-l-2 border-dt-border pl-4" aria-label="Recorded events">
+        {events.map((e: ActivityEvent, i: number) => (
+          <li key={e.event_id ?? `${e.local_time}-${i}`} className="relative text-sm">
+            <span aria-hidden className="absolute left-[-1.4rem] top-1.5 size-2.5 rounded-full border-2 border-dt-surface bg-dt-orange" />
+            <span className="font-medium tabular-nums text-dt-text-primary">{localTime(e.local_time)}</span>
+            <span className="text-dt-text-secondary"> · {e.terminal ?? "Unknown terminal"}{e.area ? ` · ${e.area}` : ""}</span>
+            <span className="ml-1 font-mono text-xs text-dt-text-secondary" title="Raw device state, recorded as-is (not interpreted)">state {e.punch_state_raw ?? "—"}</span>
+          </li>
+        ))}
+      </ol>
+      {query.data.total > size && (
+        <Pager page={page} pageSize={size} total={query.data.total} noun="event" onPage={setPage} onPageSize={(n) => { setSize(n); setPage(1); }} />
+      )}
+    </div>
   );
 }
