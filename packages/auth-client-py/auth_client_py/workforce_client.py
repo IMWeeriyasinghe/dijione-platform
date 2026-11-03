@@ -28,6 +28,14 @@ class WorkforceDirectoryClient:
         """``status`` is ``all`` (default), ``active`` or ``inactive``."""
         return self._get("/api/people/workforce-directory", params={"status": status}).json()
 
+    def get_photo(self, bamboohr_id: str) -> httpx.Response:
+        """Profile photo bytes for one directory entry. Returns the raw
+        response so callers can tell 200 (image) / 404 (no photo) /
+        503 + Retry-After (source throttled) apart; never raises on status."""
+        from urllib.parse import quote
+
+        return self._request("GET", f"/api/people/workforce-directory/{quote(bamboohr_id, safe='')}/photo")
+
     def get_freshness(self) -> dict:
         return self._get("/api/people/workforce-directory/freshness").json()
 

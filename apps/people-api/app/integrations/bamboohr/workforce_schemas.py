@@ -23,3 +23,7 @@ class BambooHRWorkforceRecord(BaseModel):
     employment_status: str  # "Active" / "Inactive" — BambooHR ``status``
     hire_date: str | None = None  # raw ISO "YYYY-MM-DD" or BambooHR's sentinel
     termination_date: str | None = None
+    # Plain https:// image link from GET /employees/directory (same source
+    # and merge rule Customer Portal V2 verified live). Never sent to
+    # consumers; people-api proxies the bytes (routes/workforce.py).
+    photo_url: str | None = None
