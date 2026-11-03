@@ -56,19 +56,19 @@ describe("Overview", () => {
     renderPage(<Page />);
     expect(await screen.findByText("Employees with activity")).toBeInTheDocument();
     expect(screen.getByText("Activity events")).toBeInTheDocument();
-    expect(screen.getAllByRole("img").length).toBeGreaterThanOrEqual(2); // hourly + trend charts
-    expect(screen.getByLabelText(/Activity by hour on 2026-11-01: 5 events/)).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: /Activity events by hour, Today · Sun 1 Nov, DEV Site/ })).toBeInTheDocument();
+    expect(screen.getByLabelText(/08:00–08:59: 5 events/)).toBeInTheDocument();
     expect(screen.getByText("Possible duplicate tap")).toBeInTheDocument();
     expect(await screen.findByText("Nimal P")).toBeInTheDocument();
     expect(screen.getAllByText("Feed stale").length).toBeGreaterThan(0);
     expect(api.getOverview).toHaveBeenCalledWith({ site_id: "dev-site", date: "2026-11-01" });
   });
 
-  it("jumps to the latest activity day and re-queries", async () => {
+  it("drills into a day from the trend chart and re-queries", async () => {
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    fireEvent.click(await screen.findByText(/Latest activity day \(2026-10-21\)/));
-    await waitFor(() => expect(api.getOverview).toHaveBeenCalledWith({ site_id: "dev-site", date: "2026-10-21" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Sat 31 Oct 2026: 3 events/ }));
+    await waitFor(() => expect(api.getOverview).toHaveBeenCalledWith({ site_id: "dev-site", date: "2026-10-31" }));
   });
 
   it("shows Sync now only to admins", async () => {
@@ -101,7 +101,7 @@ describe("Overview", () => {
     const { default: Page } = await import("@/app/page");
     const { container } = renderPage(<Page />);
     await screen.findByText("Employees with activity");
-    expect(container.querySelector(".grid.grid-cols-1.sm\\:grid-cols-2")).not.toBeNull();
+    expect(container.querySelector(".grid.grid-cols-2.sm\\:grid-cols-3")).not.toBeNull();
   });
 });
 
@@ -112,7 +112,7 @@ describe("Today", () => {
     renderPage(<Page />);
     expect(await screen.findByText("Ishara G")).toBeInTheDocument();
     expect(screen.getAllByText("08:37").length).toBeGreaterThan(0);
-    fireEvent.change(screen.getByLabelText("Review status"), { target: { value: "needs_review" } });
+    fireEvent.click(screen.getByRole("button", { name: "Needs review" }));
     await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ review: "needs_review", page: 1 })));
   });
 
@@ -120,7 +120,10 @@ describe("Today", () => {
     api.getToday.mockResolvedValue({ total: 0, page: 1, page_size: 50, date: "2026-11-01", departments: [], directory_available: true, items: [] });
     const { default: Page } = await import("@/app/today/page");
     renderPage(<Page />);
-    expect(await screen.findByText("No activity recorded")).toBeInTheDocument();
+    expect(await screen.findByText("No activity recorded yet today")).toBeInTheDocument();
+    expect(screen.getByText(/This is not an absence record/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Go to latest activity day/ }));
+    await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ date: "2026-10-21" })));
   });
 });
 
@@ -130,8 +133,11 @@ describe("Exceptions", () => {
       items: [{ ...DAY, reasons: [{ flag: "POSSIBLE_DUPLICATE_TAP", reason: "Two activities were recorded within 60 seconds of each other." }] }] });
     const { default: Page } = await import("@/app/exceptions/page");
     renderPage(<Page />);
-    expect(await screen.findByText(/within 60 seconds/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Unmatched code \(1\)/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Show details for Ishara G/ }));
+    expect(await screen.findByText("Possible duplicate tap:")).toBeInTheDocument();
+    expect(screen.getAllByText(/within 60 seconds/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /View supporting events/ })).toHaveAttribute("href", expect.stringContaining("emp=0107"));
+    fireEvent.click(screen.getByRole("button", { name: /^Unmatched code\s*1/ }));
     await waitFor(() => expect(api.getExceptions).toHaveBeenLastCalledWith(expect.objectContaining({ flag: "UNMATCHED_CODE" })));
   });
 });
@@ -195,7 +201,7 @@ describe("Excel export", () => {
     renderPage(<Page />);
     await screen.findByText("Ishara G");
     fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Finance" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Next page" }));
     await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, department: "Finance" })));
     fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
     await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(1));
@@ -230,6 +236,6 @@ describe("Excel export", () => {
     }
     const { default: Overview } = await import("@/app/page");
     renderPage(<Overview />);
-    expect(await screen.findByRole("button", { name: /export summary/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /export day summary/i })).toBeInTheDocument();
   });
 });

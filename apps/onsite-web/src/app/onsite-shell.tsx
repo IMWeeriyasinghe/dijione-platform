@@ -12,6 +12,7 @@ import {
   MapPin,
   Users,
 } from "lucide-react";
+import { MobileNav } from "@/components/MobileNav";
 import { hasPermission, PERM, useOnsiteScope, type OnsiteScope } from "@/lib/onsite-scope";
 
 export function buildSections(scope: OnsiteScope | null): NavSection[] {
@@ -73,7 +74,8 @@ export function OnsiteContent({ children }: { children: React.ReactNode }) {
         />
       }
     >
-      {children}
+      <div className="pb-20 md:pb-0">{children}</div>
+      <MobileNav />
     </AppShell>
   );
 }

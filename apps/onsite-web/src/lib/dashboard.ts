@@ -31,11 +31,15 @@ export type OnsiteSiteInfo = {
 export type Overview = {
   site_id: string;
   date: string;
+  date_from?: string;
+  date_to?: string;
   time_zone: string | null;
   directory_available: boolean;
   kpis: {
     employees_with_activity: number;
     total_events: number;
+    /** Days in the period with any recorded activity. */
+    activity_days?: number;
     employees_needing_review: number;
     single_punch_employees: number;
     unmatched_codes: number;
@@ -96,7 +100,18 @@ export type EmployeeRow = EmployeeRef & {
   review_flags: number;
   last_activity_local: string | null;
 };
+export type EmployeesSummary = {
+  employees: number;
+  with_activity: number;
+  active: number;
+  inactive: number;
+  not_in_directory: number;
+  needing_review: number;
+  matched: number;
+};
+
 export type EmployeesResponse = Paged<EmployeeRow> & {
+  summary?: EmployeesSummary;
   date_from: string;
   date_to: string;
   departments: string[];

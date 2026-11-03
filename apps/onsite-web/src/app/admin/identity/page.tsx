@@ -2,9 +2,14 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Card, CardContent, ErrorState, LoadingState, MetricCard, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
+import { Button, Card, CardContent, ErrorState, LoadingState, MetricCard, PageHeader } from "@dijione/design-system";
 import { CircleAlert, CircleCheck, CircleHelp, CircleSlash, Clock } from "lucide-react";
 import { AdminOnly } from "@/components/AdminOnly";
+import { DataView, Facts } from "@/components/DataView";
+import { IdentityBadge } from "@/components/FlagChips";
+import { Person } from "@/components/kit";
+import { fmtNum } from "@/lib/period";
+import type { IdentityRow } from "@/lib/types";
 import { PERM } from "@/lib/onsite-scope";
 import { downloadIdentityCsv, getIdentityReport } from "@/lib/api";
 import { IDENTITY_LABEL } from "@/lib/format";
@@ -55,7 +60,7 @@ function IdentityView() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
             {CLASSES.map(({ key, icon }) => (
               <button key={key} type="button" className="text-left" onClick={() => setFilter(filter === key ? "ALL" : key)}>
                 <MetricCard label={IDENTITY_LABEL[key]} value={summary[key] ?? 0} icon={icon} tone={filter === key ? "brand" : "neutral"} />
@@ -71,25 +76,30 @@ function IdentityView() {
         </>
       )}
 
-      <Table>
-        <Thead>
-          <Tr><Th>EmpCode</Th><Th>Match</Th><Th>Events</Th><Th>First seen</Th><Th>Last seen</Th><Th>Matches</Th></Tr>
-        </Thead>
-        <tbody>
-          {visible.map((r) => (
-            <Tr key={r.emp_code}>
-              <Td className="font-mono">{r.emp_code}</Td>
-              <Td>{r.identity_class ? IDENTITY_LABEL[r.identity_class] : "Employee details unavailable"}</Td>
-              <Td>{r.event_count.toLocaleString()}</Td>
-              <Td>{r.first_seen}</Td>
-              <Td>{r.last_seen}</Td>
-              <Td>{r.matches.length}</Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Table>
+      <DataView<IdentityRow> caption="Attendance codes and their directory match" rows={visible} rowKey={(r) => r.emp_code}
+        columns={[
+          { key: "code", header: "Employee Code", cell: (r) => <Person name={matchName(r)} code={r.emp_code} meta={r.matches[0]?.department ?? undefined} size="sm" /> },
+          { key: "match", header: "Match", cell: (r) => <IdentityBadge cls={r.identity_class} /> },
+          { key: "events", header: "Events", align: "right", cell: (r) => fmtNum(r.event_count) },
+          { key: "first", header: "First seen", minWidth: "lg", cell: (r) => r.first_seen },
+          { key: "last", header: "Last seen", cell: (r) => r.last_seen },
+          { key: "matches", header: "Directory records", align: "right", cell: (r) => r.matches.length },
+        ]}
+        card={(r) => (
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <Person name={matchName(r)} code={r.emp_code} meta={r.matches[0]?.department ?? undefined} size="sm" />
+              <IdentityBadge cls={r.identity_class} />
+            </div>
+            <Facts cols={3} items={[["Events", fmtNum(r.event_count)], ["First seen", r.first_seen], ["Last seen", r.last_seen]]} />
+          </div>
+        )} />
     </div>
   );
+}
+
+function matchName(r: IdentityRow): string | null {
+  return r.matches.length === 1 ? r.matches[0].display_name : null;
 }
 
 export default function IdentityMatchPage() {
