@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockButtonProps, MockFieldProps, MockHeadingProps, MockInputProps, MockLinkProps, MockSelectProps, MockSortableThProps, MockStatusProps, MockTdProps, MockThProps, MockTrProps } from "@/test-support/mock-props";
 
 // Phase 1.6 §15 (R14) — Cake Orders gets whole-row click (the one table
 // that didn't have it) and a Days-Until-Birthday display column.
@@ -15,7 +16,7 @@ vi.mock("next/navigation", () => ({
 const pushMock = vi.fn();
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, onClick }: any) => (
+  default: ({ href, children, onClick }: MockLinkProps) => (
     <a href={href} onClick={onClick}>{children}</a>
   ),
 }));
@@ -29,23 +30,23 @@ vi.mock("@dijione/contracts", () => ({
 vi.mock("@dijione/design-system", () => {
   const P = ({ children }: { children: ReactNode }) => <div>{children}</div>;
   return {
-    Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+    Button: ({ children, ...props }: MockButtonProps) => <button {...props}>{children}</button>,
     EmptyState: () => <p>empty</p>,
     ErrorState: () => <p>error</p>,
-    FormField: ({ children }: any) => <div>{children}</div>,
-    Input: (props: any) => <input {...props} />,
+    FormField: ({ children }: MockFieldProps) => <div>{children}</div>,
+    Input: (props: MockInputProps) => <input {...props} />,
     LoadingState: () => <p>loading</p>,
     Pagination: () => <div>pagination</div>,
-    PageHeader: ({ title }: any) => <h1>{title}</h1>,
-    SearchInput: (props: any) => <input {...props} />,
-    Select: ({ children, ...props }: any) => <select {...props}>{children}</select>,
-    SortableTh: ({ label }: any) => <th>{label}</th>,
-    StatusBadge: ({ status }: any) => <span>{status}</span>,
+    PageHeader: ({ title }: MockHeadingProps) => <h1>{title}</h1>,
+    SearchInput: (props: MockInputProps) => <input {...props} />,
+    Select: ({ children, ...props }: MockSelectProps) => <select {...props}>{children}</select>,
+    SortableTh: ({ label }: MockSortableThProps) => <th>{label}</th>,
+    StatusBadge: ({ status }: MockStatusProps) => <span>{status}</span>,
     Table: P,
-    Td: ({ children, ...rest }: any) => <td {...rest}>{children}</td>,
-    Th: ({ children }: any) => <th>{children}</th>,
+    Td: ({ children, ...rest }: MockTdProps) => <td {...rest}>{children}</td>,
+    Th: ({ children }: MockThProps) => <th>{children}</th>,
     Thead: P,
-    Tr: ({ children, ...rest }: any) => <tr {...rest}>{children}</tr>,
+    Tr: ({ children, ...rest }: MockTrProps) => <tr {...rest}>{children}</tr>,
     useSortToggle: (
       _sortBy: string | null,
       _sortDirection: string,

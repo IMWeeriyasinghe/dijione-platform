@@ -2,20 +2,21 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockButtonProps, MockFieldProps, MockHeadingProps, MockInputProps } from "@/test-support/mock-props";
 
 vi.mock("@dijione/design-system", () => {
   const P = ({ children }: { children: ReactNode }) => <div>{children}</div>;
   return {
-    Button: ({ children, onClick, disabled }: any) => (
+    Button: ({ children, onClick, disabled }: MockButtonProps) => (
       <button onClick={onClick} disabled={disabled}>{children}</button>
     ),
     Card: P, CardContent: P, CardHeader: P, CardTitle: P,
-    EmptyState: ({ title }: any) => <p>{title}</p>,
+    EmptyState: ({ title }: MockHeadingProps) => <p>{title}</p>,
     ErrorState: () => <p>error</p>,
     LoadingState: () => <p>loading</p>,
-    PageHeader: ({ title }: any) => <h1>{title}</h1>,
-    FormField: ({ children, label }: any) => <label>{label}{children}</label>,
-    Input: (props: any) => <input {...props} />,
+    PageHeader: ({ title }: MockHeadingProps) => <h1>{title}</h1>,
+    FormField: ({ children, label }: MockFieldProps) => <label>{label}{children}</label>,
+    Input: (props: MockInputProps) => <input {...props} />,
   };
 });
 

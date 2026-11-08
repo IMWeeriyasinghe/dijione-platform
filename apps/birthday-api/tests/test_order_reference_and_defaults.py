@@ -21,6 +21,21 @@ from app.services.detection_service import resolve_supplier_for_office, run_dail
 from tests.conftest import headers_for
 
 
+def _weekday_days_ahead(days_ahead: int) -> int:
+    """Largest offset <= days_ahead landing on Mon-Fri, so a test about the
+    un-shifted default never hits the prior-working-day shift by calendar luck."""
+    while (date.today() + timedelta(days=days_ahead)).weekday() >= 5:
+        days_ahead -= 1
+    return days_ahead
+
+
+def _weekend_days_ahead(days_ahead: int) -> int:
+    """Smallest offset >= days_ahead landing on a Saturday."""
+    while (date.today() + timedelta(days=days_ahead)).weekday() != 5:
+        days_ahead += 1
+    return days_ahead
+
+
 def _config() -> BirthdayDetectionConfig:
     return BirthdayDetectionConfig(
         normal_threshold_days=10, short_notice_threshold_days=5, urgent_threshold_days=2,
@@ -181,7 +196,9 @@ def test_manual_create_auto_assigns_sole_active_supplier(api_client, db):
 # --- C. Delivery date default ------------------------------------------------
 
 def test_detection_defaults_delivery_date_to_birthday_occurrence(db):
-    client, occ = _one_employee_client(internal_id="900", employee_number="900b")
+    client, occ = _one_employee_client(
+        internal_id="900", employee_number="900b", days_ahead=_weekday_days_ahead(9)
+    )
     run_daily_scan(db, client, _config())
     order = db.query(BirthdayOrder).filter_by(employee_id="900").one()
     assert order.delivery_date == occ
@@ -189,13 +206,24 @@ def test_detection_defaults_delivery_date_to_birthday_occurrence(db):
 
 def test_manual_create_defaults_delivery_date_to_birthday(api_client, db):
     headers = headers_for(502, role="BIRTHDAY_ADMIN")
-    bday = date.today() + timedelta(days=20)
+    bday = date.today() + timedelta(days=_weekday_days_ahead(20))
     payload = {
         "employee_id": "910", "employee_number": "910b", "employee_name": "M",
         "employee_email": "m@example.com", "birthday_date": str(bday), "office_location": "Colombo",
     }
     created = api_client.post("/api/birthday/orders", json=payload, headers=headers).json()
     assert created["delivery_date"] == str(bday)
+
+
+def test_manual_create_shifts_weekend_birthday_to_preceding_working_day(api_client, db):
+    headers = headers_for(504, role="BIRTHDAY_ADMIN")
+    saturday = date.today() + timedelta(days=_weekend_days_ahead(20))
+    payload = {
+        "employee_id": "913", "employee_number": "913b", "employee_name": "M",
+        "employee_email": "m@example.com", "birthday_date": str(saturday), "office_location": "Colombo",
+    }
+    created = api_client.post("/api/birthday/orders", json=payload, headers=headers).json()
+    assert created["delivery_date"] == str(saturday - timedelta(days=1))
 
 
 def test_delivery_date_manual_override_is_preserved(api_client, db):
