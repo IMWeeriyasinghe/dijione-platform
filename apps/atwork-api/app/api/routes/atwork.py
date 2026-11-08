@@ -6,8 +6,8 @@ Attendance, employee linking and administration are later stages.
 from auth_client_py import AuthClaims
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_claims
-from app.core.constants import MODULE_ATWORK, SERVICE_NAME
+from app.api.deps import get_claims, require_atwork_permission
+from app.core.constants import MODULE_ATWORK, PERM_MANAGEMENT_ACCESS, SERVICE_NAME
 from app.schemas.atwork import AtworkMeOut
 
 router = APIRouter(prefix="/api/atwork", tags=["atwork"])
@@ -41,3 +41,9 @@ def me(claims: AuthClaims = Depends(get_claims)) -> AtworkMeOut:
         role=module_claim.role if module_claim else None,
         permissions=sorted(module_claim.permissions) if module_claim else [],
     )
+
+
+@router.get("/management/access")
+def management_access(_claims: AuthClaims = Depends(require_atwork_permission(PERM_MANAGEMENT_ACCESS))) -> dict:
+    """Access check for the future Management area; it returns no business data."""
+    return {"allowed": True}

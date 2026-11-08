@@ -7,7 +7,8 @@ import { request, useAuth } from "@dijione/auth-client";
 // The role and permissions come from atwork-api's /me, which reads the
 // verified token. This drives navigation only; the API enforces access.
 export const PERM = {
-  ADMIN_AREA: "atwork.overview.read",
+  ACCESS: "atwork.access",
+  MANAGEMENT: "atwork.management.access",
 } as const;
 
 export type AtworkScope = {
@@ -24,7 +25,7 @@ export type AtworkMe = {
 };
 
 export function resolveAtworkScope(me: AtworkMe | null | undefined): AtworkScope | null {
-  if (!me?.module_access || me.permissions.length === 0) return null;
+  if (!me?.module_access || !me.permissions.includes(PERM.ACCESS)) return null;
   return { role: me.role, permissions: [...me.permissions].sort() };
 }
 

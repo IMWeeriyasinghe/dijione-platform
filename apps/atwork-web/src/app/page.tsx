@@ -11,8 +11,8 @@ const AREAS = [
 
 export default function HomePage() {
   const { scope } = useAtworkScope();
-  const areas = hasPermission(scope, PERM.ADMIN_AREA)
-    ? [...AREAS, { href: "/admin", title: "Administration", description: "Oversight tools for administrators." }]
+  const areas = hasPermission(scope, PERM.MANAGEMENT)
+    ? [...AREAS, { href: "/management", title: "Management", description: "DijiAtWork management tools." }]
     : AREAS;
 
   return (

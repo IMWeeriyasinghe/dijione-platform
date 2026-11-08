@@ -15,8 +15,8 @@ export function buildSections(scope: AtworkScope | null): NavSection[] {
       ],
     },
   ];
-  if (hasPermission(scope, PERM.ADMIN_AREA)) {
-    sections.push({ label: "Admin", items: [{ label: "Administration", href: "/admin", icon: ShieldCheck }] });
+  if (hasPermission(scope, PERM.MANAGEMENT)) {
+    sections.push({ items: [{ label: "Management", href: "/management", icon: ShieldCheck }] });
   }
   return sections;
 }

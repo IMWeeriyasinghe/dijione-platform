@@ -107,6 +107,7 @@ frontend app — following the pattern `apps/birthday-api` and
 | `birthday`     | DijiBirthday   | ACTIVE      | `birthday-api` :8003 | `birthday-web` :3003 | Automated birthday-cake ordering (BambooHR detection, idempotent orders, dashboard/upcoming/orders register/order detail, supplier management, Microsoft Graph email send) — V1 (Phases A–D) complete; see `docs/birthday/requirements.md`. Supplier portal (F), automated reply-capture (E/G), and Cowork hooks (H) are later phases. |
 | `spark`        | DijiSpark      | COMING_SOON | `spark-api` :8004 (skeleton) | none yet | Health/metadata/summary + auth seam only; no business logic (CR §10). |
 | `onsite`       | Diji On-site   | planned (COMING_SOON at registration) | `onsite-api` :8008 | `onsite-web` :3004 | Attendance operations from Azure SQL `onsite.*`, identity via the People Workforce Directory — see `docs/onsite/*`. |
+| `atwork`      | DijiAtWork     | COMING_SOON | `atwork-api` :8009 | `atwork-web` :3005 | Work check-in and attendance; foundation only — see `docs/atwork/*`. |
 
 ## Module independence
 

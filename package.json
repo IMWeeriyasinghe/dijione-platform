@@ -10,6 +10,7 @@
     "apps/birthday-web",
     "apps/birthday-supplier-web",
     "apps/onsite-web",
+    "apps/atwork-web",
     "packages/design-system",
     "packages/auth-client-ts",
     "packages/contracts"

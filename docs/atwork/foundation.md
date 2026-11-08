@@ -16,6 +16,7 @@ administration or database yet.
 | `GET /api/atwork/metadata` | Public | Module identity |
 | `GET /api/atwork/summary` | Public | DijiOne Home status card |
 | `GET /api/atwork/me` | Bearer token | Caller identity, role and permissions from verified claims |
+| `GET /api/atwork/management/access` | `atwork.management.access` | Access check for the future Management area |
 
 A valid token without a DijiAtWork role receives `module_access: false` and no
 permissions. Outside development, the service refuses to start with the default
@@ -23,13 +24,11 @@ secrets.
 
 ## Frontend pages
 
-`/` (landing) plus placeholders at `/today`, `/history` and `/admin`. The
-Administration area is shown only with `atwork.overview.read`; `atwork-api` will
-enforce that permission when administrative endpoints exist.
+`/` (landing) plus placeholders at `/today`, `/history` and `/management`. The
+Management area is shown only with `atwork.management.access`, which `atwork-api`
+also enforces.
 
-## Not registered yet
+## Platform registration
 
-Stage B2 registers the module with the platform: permission catalog, module
-registry row, gateway rewrites, Home card, `dev-all`, root workspace, CI and the
-independence guard. Until then, no user holds a DijiAtWork role, so every
-signed-in user sees the "No DijiAtWork access" state.
+The module is registered as `COMING_SOON`. See `administration.md` for the
+central and local responsibilities and `module-removal.md` for the removal gate.

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.constants import MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_TALENT_FLOW, PlatformRole
+from app.core.constants import MODULE_ATWORK, MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_TALENT_FLOW, PlatformRole
 
 
 @dataclass(frozen=True)
@@ -418,7 +418,25 @@ ONSITE_ROLES: list[RoleDef] = [
     ),
 ]
 
+# DijiAtWork: minimum access catalog only. Business permissions are added
+# when their features are approved; enforcement lives in atwork-api.
+ATWORK_PERMISSIONS: list[PermissionDef] = [
+    PermissionDef("atwork.access", "Access DijiAtWork", "Open the DijiAtWork application.", MODULE_ATWORK, "Access"),
+    PermissionDef(
+        "atwork.management.access", "Access Management", "Open the DijiAtWork Management area.",
+        MODULE_ATWORK, "Management",
+    ),
+]
+
+ATWORK_ROLES: list[RoleDef] = [
+    RoleDef("ATWORK_USER", "DijiAtWork User", "Access DijiAtWork.", MODULE_ATWORK, ("atwork.access",)),
+    RoleDef(
+        "ATWORK_MANAGER", "DijiAtWork Manager", "User access plus the DijiAtWork Management area.",
+        MODULE_ATWORK, ("atwork.access", "atwork.management.access"),
+    ),
+]
+
 ALL_PERMISSIONS: list[PermissionDef] = (
-    PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS
+    PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS + ATWORK_PERMISSIONS
 )
-ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES
+ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES + ATWORK_ROLES

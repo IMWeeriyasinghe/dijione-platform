@@ -77,6 +77,29 @@ def test_me_rejects_invalid_credentials(api_client):
         assert api_client.get("/api/atwork/me", headers=bearer(token)).status_code == 401
 
 
+def _module_role(*permissions):
+    return {"atwork": {"role": "R", "client_id": None, "client_ids": None, "permissions": list(permissions)}}
+
+
+def test_management_access_needs_the_management_permission(api_client):
+    url = "/api/atwork/management/access"
+    assert api_client.get(url).status_code == 401
+    assert api_client.get(url, headers=bearer("not-a-jwt")).status_code == 401
+    assert api_client.get(url, headers=bearer(issue_token())).status_code == 403
+    user = issue_token(module_roles=_module_role("atwork.access"))
+    assert api_client.get(url, headers=bearer(user)).status_code == 403
+    manager = issue_token(module_roles=_module_role("atwork.access", "atwork.management.access"))
+    resp = api_client.get(url, headers=bearer(manager))
+    assert resp.status_code == 200
+    assert resp.json() == {"allowed": True}
+
+
+def test_management_access_ignores_the_role_name(api_client):
+    module_roles = {"atwork": {"role": "ATWORK_MANAGER", "client_id": None, "client_ids": None, "permissions": []}}
+    token = issue_token(module_roles=module_roles)
+    assert api_client.get("/api/atwork/management/access", headers=bearer(token)).status_code == 403
+
+
 def test_cors_allows_only_listed_origins(api_client):
     allowed = api_client.get("/health", headers={"Origin": "http://localhost:3000"})
     assert allowed.headers["access-control-allow-origin"] == "http://localhost:3000"

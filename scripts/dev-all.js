@@ -34,11 +34,13 @@ const allServices = [
   { name: "people-api", color: "\x1b[38;5;51m", cwd: "apps/people-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8006", "--reload"] },
   { name: "commercial-api", color: "\x1b[38;5;135m", cwd: "apps/commercial-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8007", "--reload"] },
   { name: "onsite-api", color: "\x1b[38;5;70m", cwd: "apps/onsite-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8008", "--reload"] },
+  { name: "atwork-api", color: "\x1b[38;5;173m", cwd: "apps/atwork-api", cmd: pythonCmd, args: ["-m", "uvicorn", "app.main:app", "--port", "8009", "--reload"] },
   { name: "shell-web", color: "\x1b[91m", cwd: "apps/shell-web", cmd: "npm", args: ["run", "dev"] },
   { name: "admin-web", color: "\x1b[95m", cwd: "apps/admin-web", cmd: "npm", args: ["run", "dev"] },
   { name: "talent-web", color: "\x1b[93m", cwd: "apps/talent-web", cmd: "npm", args: ["run", "dev"] },
   { name: "birthday-web", color: "\x1b[92m", cwd: "apps/birthday-web", cmd: "npm", args: ["run", "dev"] },
   { name: "onsite-web", color: "\x1b[38;5;112m", cwd: "apps/onsite-web", cmd: "npm", args: ["run", "dev"] },
+  { name: "atwork-web", color: "\x1b[38;5;179m", cwd: "apps/atwork-web", cmd: "npm", args: ["run", "dev"] },
   // External-facing Client Talent Review Workspace (separate app, port
   // 3100). Not proxied through shell-web — external client/prospect users
   // reach it directly via a magic link.

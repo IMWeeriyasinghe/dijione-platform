@@ -100,8 +100,9 @@ def test_seed_is_idempotent_on_rerun(db):
 
     session = SessionLocal()
     try:
-        module_count = session.query(ApplicationModule).count()
-        assert module_count == 4  # talent-flow, birthday, spark, onsite — no duplicates
+        keys = [row.key for row in session.query(ApplicationModule).all()]
+        assert len(keys) == len(set(keys))  # no duplicates, however many modules exist
+        assert {"talent-flow", "birthday", "spark", "onsite"} <= set(keys)
 
         birthday_role_count = (
             session.query(UserModuleRole).filter_by(module_key=MODULE_BIRTHDAY).count()

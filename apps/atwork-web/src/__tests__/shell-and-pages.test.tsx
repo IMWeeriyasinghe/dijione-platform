@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AtworkContent, buildSections } from "@/app/atwork-shell";
-import AdminPage from "@/app/admin/page";
+import ManagementPage from "@/app/management/page";
 import HistoryPage from "@/app/history/page";
 import HomePage from "@/app/page";
 import TodayPage from "@/app/today/page";
 import { PERM, resolveAtworkScope, type AtworkMe, type AtworkScope } from "@/lib/atwork-scope";
 
-const EMPLOYEE: AtworkScope = { role: "EMPLOYEE", permissions: ["atwork.self.read"] };
-const ADMIN: AtworkScope = { role: "ADMIN", permissions: ["atwork.self.read", PERM.ADMIN_AREA] };
+const USER: AtworkScope = { role: "ATWORK_USER", permissions: [PERM.ACCESS] };
+const MANAGER: AtworkScope = { role: "ATWORK_MANAGER", permissions: [PERM.ACCESS, PERM.MANAGEMENT] };
 
 const retry = vi.fn();
 const scopeMock = vi.hoisted(() => ({ value: {} as { loading: boolean; failed: boolean; scope: AtworkScope | null } }));
@@ -28,12 +28,12 @@ const set = (scope: AtworkScope | null, over: Partial<{ loading: boolean; failed
   scopeMock.value = { loading: false, failed: false, scope, ...over };
 };
 const me = (over: Partial<AtworkMe>): AtworkMe => ({
-  user_id: 1, full_name: "A", module_access: true, role: "R", permissions: ["atwork.self.read"], ...over,
+  user_id: 1, full_name: "A", module_access: true, role: "R", permissions: [PERM.ACCESS], ...over,
 });
 
 beforeEach(() => {
   retry.mockClear();
-  set(EMPLOYEE);
+  set(USER);
 });
 
 describe("resolveAtworkScope", () => {
@@ -41,20 +41,21 @@ describe("resolveAtworkScope", () => {
     expect(resolveAtworkScope(undefined)).toBeNull();
     expect(resolveAtworkScope(me({ module_access: false }))).toBeNull();
     expect(resolveAtworkScope(me({ permissions: [] }))).toBeNull();
+    expect(resolveAtworkScope(me({ permissions: ["atwork.other"] }))).toBeNull();
   });
   it("keeps role and permissions", () => {
-    expect(resolveAtworkScope(me({}))).toEqual({ role: "R", permissions: ["atwork.self.read"] });
+    expect(resolveAtworkScope(me({}))).toEqual({ role: "R", permissions: [PERM.ACCESS] });
   });
 });
 
 describe("navigation", () => {
   const labels = (scope: AtworkScope | null) => buildSections(scope).flatMap((s) => s.items.map((i) => i.label));
-  it("hides Admin without the permission, even for an admin-named role", () => {
-    expect(labels(EMPLOYEE)).toEqual(["Home", "Today", "My History"]);
-    expect(labels({ role: "ADMIN", permissions: ["atwork.self.read"] })).not.toContain("Administration");
+  it("hides Management without the permission, even for a manager-named role", () => {
+    expect(labels(USER)).toEqual(["Home", "Today", "My History"]);
+    expect(labels({ role: "ATWORK_MANAGER", permissions: [PERM.ACCESS] })).not.toContain("Management");
   });
-  it("shows Admin with the permission", () => {
-    expect(labels(ADMIN)).toContain("Administration");
+  it("shows Management with the permission", () => {
+    expect(labels(MANAGER)).toContain("Management");
   });
 });
 
@@ -88,11 +89,11 @@ describe("access states", () => {
 });
 
 describe("pages are placeholders only", () => {
-  it("home lists the sections and omits Admin for employees", () => {
+  it("home lists the sections and omits Management for users", () => {
     render(<HomePage />);
     expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "My History" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Administration" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Management" })).not.toBeInTheDocument();
   });
   it.each([["Today", TodayPage], ["My History", HistoryPage]])("%s is not functional yet", (title, Page) => {
     render(<Page />);
@@ -100,14 +101,14 @@ describe("pages are placeholders only", () => {
     expect(screen.getByText("Not available yet")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
-  it("Admin is restricted without the permission", () => {
-    render(<AdminPage />);
-    expect(screen.getByText("Administrator access required")).toBeInTheDocument();
+  it("Management is restricted without the permission", () => {
+    render(<ManagementPage />);
+    expect(screen.getByText("Management access required")).toBeInTheDocument();
     expect(screen.queryByText("Not available yet")).not.toBeInTheDocument();
   });
-  it("Admin shows its placeholder with the permission", () => {
-    set(ADMIN);
-    render(<AdminPage />);
+  it("Management shows its placeholder with the permission", () => {
+    set(MANAGER);
+    render(<ManagementPage />);
     expect(screen.getByText("Not available yet")).toBeInTheDocument();
   });
 });

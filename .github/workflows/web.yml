@@ -33,6 +33,7 @@ jobs:
           - birthday-web
           - birthday-supplier-web
           - onsite-web
+          - atwork-web
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
