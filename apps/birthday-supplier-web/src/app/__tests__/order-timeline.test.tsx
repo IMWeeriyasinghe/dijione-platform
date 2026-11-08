@@ -2,15 +2,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockButtonProps, MockTextareaProps } from "@/test-support/mock-props";
 
 vi.mock("@dijione/design-system", () => {
   const P = ({ children }: { children: ReactNode }) => <div>{children}</div>;
   return {
-    Button: ({ children, onClick, disabled }: any) => (
+    Button: ({ children, onClick, disabled }: MockButtonProps) => (
       <button onClick={onClick} disabled={disabled}>{children}</button>
     ),
     Card: P, CardContent: P, CardHeader: P, CardTitle: P,
-    Textarea: (props: any) => <textarea {...props} />,
+    Textarea: (props: MockTextareaProps) => <textarea {...props} />,
   };
 });
 
