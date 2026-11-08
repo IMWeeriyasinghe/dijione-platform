@@ -66,13 +66,17 @@ def test_scan_health_stale_when_no_recent_run(db):
 def test_attention_sweep_emits_digests(db, platform_calls):
     from app.services.attention_service import run_attention_sweep
 
-    now = datetime.now(UTC)
+    # One fixed clock for both the seeded dates and the sweep: the sweep's
+    # "today" is now.date() (UTC), so mixing in the machine-local date.today()
+    # made this test fail whenever the two calendar dates differed.
+    now = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
+    today = now.date()
     # verification overdue
-    _order(db, status="PENDING_VERIFICATION", verify_by=date.today() - timedelta(days=2))
+    _order(db, status="PENDING_VERIFICATION", verify_by=today - timedelta(days=2))
     # on hold
     _order(db, status="ON_HOLD")
     # overdue delivery
-    _order(db, status="CONFIRMED", delivery_date=date.today() - timedelta(days=1))
+    _order(db, status="CONFIRMED", delivery_date=today - timedelta(days=1))
 
     res = run_attention_sweep(db, now=now)
     assert res["counts"]["verification_overdue"] == 1

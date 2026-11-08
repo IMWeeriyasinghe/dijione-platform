@@ -99,8 +99,8 @@ def test_render_supplier_email_subject_retains_order_reference_and_says_new(db):
 
 
 def test_render_supplier_email_omits_special_instructions_section_when_absent(db):
-    from app.services.order_email_service import render_supplier_email
     from app.models.special_requirement import SpecialRequirement
+    from app.services.order_email_service import render_supplier_email
 
     order = _make_order(db)
     # Strip the SUPPLIER_INSTRUCTION row _make_order seeds, keep only the
@@ -154,7 +154,6 @@ def test_render_supplier_email_no_portal_url_configured_omits_cta_gracefully(db,
 
 
 def test_render_supplier_email_unassigned_office_shown_as_to_be_confirmed(db):
-    from app.models.birthday_order import BirthdayOrder
     from app.services.order_email_service import render_supplier_email
 
     order = _make_order(db)
