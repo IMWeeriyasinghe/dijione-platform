@@ -11,6 +11,9 @@ param deployBirthday = true
 param deployCommercial = false
 param deployOnsite = true
 
+// DijiAtWork stays off until DEV deployment is separately authorized (docs/atwork/deployment.md).
+param deployAtwork = false
+
 // Private PostgreSQL via VNet integration (Amendment 2). One /21 per env, no peering.
 param pgNetworkMode = 'private'
 param vnetCidr = '10.60.0.0/21'

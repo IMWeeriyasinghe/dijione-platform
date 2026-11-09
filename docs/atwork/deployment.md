@@ -32,15 +32,45 @@ Health: `GET /health` (liveness), `GET /health/deep` (database and migration hea
 signed claims. DEV sign-in follows `authMode` on `platform-api`. Roles are assigned
 in the Admin Center.
 
-## Order of operations (after approval)
+## DEV deployment commands (only after authorization)
 
-1. Build every changed image: `platform-api` and `shell-web` must be redeployed
-   too. `shell-web` needs a rebuild because rewrites are fixed at build time.
-2. `DEPLOY_ATWORK=true`, and `deployAtwork = true` in the DEV parameters for both
-   templates. Deploy the foundation and run `init-secrets.sh`.
-3. Migrate `platform-api` first (`n4o5p6q7r8s9`), then `atwork-api`
-   (`0003_atwork_notifications`).
-4. Deploy workloads and run the smoke test. Change `COMING_SOON` only when approved.
+Run from a clean checkout of the approved commit, signed in to Azure, with bash 4
+or later (`deploy.sh` uses `mapfile`; the macOS system bash is too old).
+
+1. Read the current state first. Stop if `platform_dev`'s `alembic_version` is not on
+   the chain in "Platform Core migration integration".
+2. In `foundation.dev.bicepparam` and `main.dev.bicepparam`, set `deployAtwork = true`
+   as a reviewed change.
+3. Create the database and the `database-url-atwork` secret:
+
+   ```bash
+   az deployment group create -g rg-dijione-dev -f deploy/bicep/foundation.bicep \
+     -p deploy/bicep/foundation.dev.bicepparam
+   DEPLOY_ONSITE=true DEPLOY_ATWORK=true deploy/init-secrets.sh dev
+   ```
+
+4. Deploy. `DEPLOY_ONSITE=true` is required because DEV runs Diji On-site, and
+   `deploy.sh` rebuilds and redeploys every DEV application, not only DijiAtWork:
+
+   ```bash
+   DEPLOY_ONSITE=true DEPLOY_ATWORK=true deploy/deploy.sh dev "$(git rev-parse HEAD)"
+   ```
+
+5. Confirm the `migrate-platform-api` and `migrate-atwork-api` executions succeeded:
+
+   ```bash
+   az containerapp job execution list -g rg-dijione-dev -n migrate-atwork-api -o table
+   ```
+
+6. Run the smoke test as a restricted group. The module card stays static while
+   `COMING_SOON`, so testers use `/atwork` directly.
+
+## DEV-only activation (separate approval)
+
+Follow `k1l2m3n4o5p6_activate_onsite_module_dev.py`: a new data migration that
+sets only the `atwork` row to `ACTIVE`, only when `APP_ENV` is `development`. UAT and
+Production keep `COMING_SOON`. Assign `ATWORK_USER` and, for the restricted test
+group only, `ATWORK_MANAGER` in the Admin Center.
 
 ## DEV smoke test
 
@@ -83,18 +113,26 @@ generic and stay.
 - Deployment stays disabled and the module stays `COMING_SOON` until separately
   authorized.
 
-## Platform Core migration integration precautions
+## Platform Core migration integration
 
 The unmerged branch `local/talent-module-admin` adds platform revision
-`j0k1l2m3n4o5`, with `down_revision` `h8i9j0k1l2m3`. This branch's single head is
-`n4o5p6q7r8s9`, which descends from that same `h8i9j0k1l2m3` through other revisions.
+`j0k1l2m3n4o5`, with `down_revision` `h8i9j0k1l2m3`. It exists on no remote branch.
+This line's single head is `n4o5p6q7r8s9`, which descends from the same
+`h8i9j0k1l2m3` through other revisions.
 
-- When that branch is integrated, repoint `j0k1l2m3n4o5` to the head current at that
-  time, so there is one head. Do not add a merge revision to hide the fork.
-- Confirm one head with `alembic heads` and test on disposable PostgreSQL before
-  merging. Repointing changes the migration order, so also test that the seed is idempotent.
-- A local database stamped `j0k1l2m3n4o5`, such as the old local `platform.db`, has
-  not run the later revisions. After repointing, Alembic would treat them as already
-  applied and silently skip them. Do not upgrade such a database in place: rebuild a
-  copy from migrations and seed data, and keep the original.
-- Check every hosted environment's `alembic_version` before integration.
+Keep every revision file unchanged. When that branch is integrated:
+
+1. Add `j0k1l2m3n4o5` exactly as it is.
+2. Add one empty Alembic merge revision with
+   `down_revision = ("j0k1l2m3n4o5", "<current head>")`.
+3. Confirm one head with `alembic heads`, then run `alembic upgrade head`.
+
+Do not repoint `j0k1l2m3n4o5`, reset `alembic_version` or stamp a database forward. A
+database already at `j0k1l2m3n4o5` would then skip the revisions that follow it.
+
+Tested on disposable PostgreSQL 16, all ending at the merge revision with the expected
+schema: empty; at `h8i9j0k1l2m3`; at `m3n4o5p6q7r8`; at `n4o5p6q7r8s9`; at
+`j0k1l2m3n4o5`. A copy of a local SQLite database stamped `j0k1l2m3n4o5` also upgraded.
+
+Before any hosted upgrade, read that environment's `alembic_version`. The expected
+value is on this line's chain. Stop and investigate if it is anything else.
