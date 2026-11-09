@@ -6,9 +6,8 @@ Prepared, not executed. Every command needs separate approval. Do not run a full
 
 ## Source
 
-Build from the final approved commit on `fix/talent-phase2-security`, after CI
-passes on that commit. Local stabilization changes made after `b6013de` must be
-committed first, so `b6013de` is not the build source unless they are dropped.
+Build from commit `ac4a04dc6f0484555d91d4939d6000060121106f` on `fix/talent-phase2-security`, after CI passes on the
+PR head. The later commit that records this SHA changes documentation only.
 
 ## Services and rollback images
 
@@ -25,8 +24,11 @@ Current DEV digests, read on 2026-11-09. Registry: `crdijionenonprod.azurecr.io/
 Backends go first because the new API fields are additive for the current web
 apps. Unchanged: `platform-api`, all other apps, schedules and secrets.
 
-`shell-web` is shared, and the DEV image may contain other work. Build it from
-this commit only after comparing routes with the current DEV image.
+**`shell-web` compatibility.** DEV runs image tag `fd98c09`. Between that commit
+and this release, `apps/shell-web` differs only in the auth callback fix and its
+test, and `next.config.ts` is identical, so module routes do not change. Shared
+changes are the `UserMenu` accessibility attributes and contract types.
+`fd98c09` is not an ancestor of this branch, but no other shell source differs.
 
 ## Jobs
 
@@ -51,7 +53,9 @@ DEV revisions were not confirmed in the audit.
 ## Commands (template)
 
 ```bash
-az acr build -r crdijionenonprod -t dijione/<app>:<sha> -f <dockerfile> .
+# APIs: -f deploy/Dockerfile.api --build-arg SERVICE=<app>
+# Web:  -f deploy/Dockerfile.web --build-arg APP=<app> --build-arg GIT_SHA=<sha> --build-arg BUILD_DATE=<date>
+az acr build -r crdijionenonprod -t dijione/<app>:<sha> <flags above> .
 az containerapp update -g rg-dijione-dev -n <app> --image crdijionenonprod.azurecr.io/dijione/<app>@sha256:<new>
 az containerapp update -g rg-dijione-dev -n talent-api --set-env-vars EXTERNAL_PORTAL_BASE_URL=<url>
 ```
