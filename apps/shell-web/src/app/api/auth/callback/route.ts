@@ -16,6 +16,9 @@ import { NextResponse } from "next/server";
 const PLATFORM_API_URL = process.env.PLATFORM_API_URL ?? "http://localhost:8000";
 const TOKEN_STORAGE_KEY = "dijione.devToken";
 
+// Same-origin paths only, so a stored value can never send someone off-site.
+const RETURN_SCRIPT = String.raw`var t="/";try{var r=sessionStorage.getItem("dijione.returnTo");sessionStorage.removeItem("dijione.returnTo");if(r&&/^\/(?![\/\\])[^\\\x00-\x1f]*$/.test(r))t=r;}catch(e){}location.replace(t);`;
+
 function page(script: string): NextResponse {
   // The <script> must be inside <body>, not <head>: an error branch sets
   // `document.body.textContent`, and without an explicit <body> the parser
@@ -69,6 +72,6 @@ export async function GET(request: Request) {
 
   const { access_token } = (await resp.json()) as { access_token: string };
   return page(
-    `try{localStorage.setItem(${JSON.stringify(TOKEN_STORAGE_KEY)},${JSON.stringify(access_token)});}catch(e){}location.replace("/");`,
+    `try{localStorage.setItem(${JSON.stringify(TOKEN_STORAGE_KEY)},${JSON.stringify(access_token)});}catch(e){}${RETURN_SCRIPT}`,
   );
 }
