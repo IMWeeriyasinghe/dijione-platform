@@ -7,7 +7,7 @@ from pathlib import Path
 from app.core.config import Settings
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
-ALLOWED_THIRD_PARTY = {"app", "auth_client_py", "fastapi", "pydantic", "pydantic_settings"}
+ALLOWED_THIRD_PARTY = {"app", "auth_client_py", "fastapi", "pydantic", "pydantic_settings", "sqlalchemy"}
 
 
 def test_refuses_to_start_outside_development_with_default_secrets():
@@ -31,7 +31,6 @@ def test_only_imports_stdlib_shared_auth_and_its_own_code():
                 assert top in ALLOWED_THIRD_PARTY or top in sys.stdlib_module_names, f"{path}: {name}"
 
 
-def test_has_no_setting_pointing_at_another_service_or_database():
+def test_has_no_setting_pointing_at_another_service():
     for field in Settings.model_fields:
         assert not field.endswith("_api_url"), field
-        assert field != "database_url"

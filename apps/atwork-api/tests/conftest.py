@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -8,6 +9,8 @@ os.environ["PLATFORM_JWT_SECRET"] = "test-only-secret"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTEGRATIONS_MODE"] = "mock"
+os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp(prefix='atwork-test-')}/test.db"
+os.environ["BUSINESS_TIME_ZONE"] = "Asia/Colombo"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -15,7 +18,9 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from jose import jwt  # noqa: E402
 
+from app.db.session import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models import Base  # noqa: E402
 
 ISSUER = "dijione-dev-identity"
 
@@ -47,6 +52,21 @@ def issue_token(
 
 def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def clean_database():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def db():
+    session = SessionLocal()
+    yield session
+    session.close()
 
 
 @pytest.fixture()

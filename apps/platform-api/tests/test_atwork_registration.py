@@ -17,6 +17,10 @@ from tests.conftest import auth_headers
 
 ACCESS = "atwork.access"
 MANAGEMENT = "atwork.management.access"
+READ_OWN = "atwork.attendance.read_own"
+RECORD_OWN = "atwork.attendance.record_own"
+USER_PERMS = {ACCESS, READ_OWN, RECORD_OWN}
+MANAGER_PERMS = USER_PERMS | {MANAGEMENT}
 APP_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = APP_ROOT / "alembic" / "versions" / "atw1reg0b2c3_register_atwork_module.py"
 
@@ -46,15 +50,15 @@ def _claims(api_client, persona):
 
 
 def test_catalog_is_minimal_and_scoped_to_the_module():
-    assert {p.key for p in ATWORK_PERMISSIONS} == {ACCESS, MANAGEMENT}
+    assert {p.key for p in ATWORK_PERMISSIONS} == MANAGER_PERMS
     assert all(p.module_key == "atwork" for p in ATWORK_PERMISSIONS)
     roles = {r.key: set(r.permissions) for r in ATWORK_ROLES}
-    assert roles == {"ATWORK_USER": {ACCESS}, "ATWORK_MANAGER": {ACCESS, MANAGEMENT}}
+    assert roles == {"ATWORK_USER": USER_PERMS, "ATWORK_MANAGER": MANAGER_PERMS}
     assert all(r.module_key == "atwork" for r in ATWORK_ROLES)
 
 
 def test_direct_roles_resolve_into_claims(api_client, db):
-    for persona, role, expected in (("aw-user", "ATWORK_USER", {ACCESS}), ("aw-mgr", "ATWORK_MANAGER", {ACCESS, MANAGEMENT})):
+    for persona, role, expected in (("aw-user", "ATWORK_USER", USER_PERMS), ("aw-mgr", "ATWORK_MANAGER", MANAGER_PERMS)):
         db.add(UserModuleRole(user_id=_user(db, persona).id, module_key="atwork", role=role))
         db.commit()
         claim = _claims(api_client, persona)["module_roles"]["atwork"]
@@ -70,7 +74,7 @@ def test_access_group_grant_resolves_through_effective_permissions(api_client, d
     db.add(UserGroupMembership(user_id=user.id, access_group_id=group.id))
     db.add(GroupModuleRole(access_group_id=group.id, module_key="atwork", role="ATWORK_MANAGER", enabled=True))
     db.commit()
-    assert set(_claims(api_client, "aw-group")["module_roles"]["atwork"]["permissions"]) == {ACCESS, MANAGEMENT}
+    assert set(_claims(api_client, "aw-group")["module_roles"]["atwork"]["permissions"]) == MANAGER_PERMS
 
 
 def test_no_assignment_means_no_claim(api_client, db):
@@ -97,7 +101,7 @@ def test_admin_center_assigns_roles_without_client_scope(api_client, db, two_ten
     url = f"/api/platform/admin/users/{two_tenant_world['ta_user'].id}/modules/atwork"
     assert api_client.put(url, json={"role": "ATWORK_MANAGER"}, headers=headers).status_code == 200
     assert api_client.put(url, json={"role": "BIRTHDAY_ADMIN"}, headers=headers).status_code in (400, 422)
-    assert set(_claims(api_client, "test-ta")["module_roles"]["atwork"]["permissions"]) == {ACCESS, MANAGEMENT}
+    assert set(_claims(api_client, "test-ta")["module_roles"]["atwork"]["permissions"]) == MANAGER_PERMS
 
 
 def _alembic(url, *args):
@@ -124,7 +128,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     url = f"sqlite:///{tmp_path / 'atwork-migration.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["atw1reg0b2c3", "(head)"]
+    assert heads.stdout.split() == ["atw2att0c3d4", "(head)"]
     up = _alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)
@@ -132,7 +136,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     assert len(first["module"]) == 1
     assert first["module"][0][0] == "COMING_SOON"
     assert not first["module"][0][2]
-    assert (first["perms"], first["roles"], first["links"]) == (2, 2, 3)
+    assert (first["perms"], first["roles"], first["links"]) == (4, 2, 7)
 
     # An administrator's later status is preserved when the migration re-runs.
     with engine.begin() as conn:
@@ -142,4 +146,20 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     assert again.returncode == 0, again.stderr
     second = _snapshot(engine)
     assert not second["module"][0][1]
-    assert (second["perms"], second["roles"], second["links"]) == (2, 2, 3)
+    assert (second["perms"], second["roles"], second["links"]) == (4, 2, 7)
+
+
+def test_attendance_permissions_reach_existing_role_assignments(tmp_path):
+    """A database already at atw1reg0b2c3 gains the links on its existing roles."""
+    url = f"sqlite:///{tmp_path / 'atwork-existing.db'}"
+    assert _alembic(url, "upgrade", "head").returncode == 0
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        ids = "SELECT id FROM permissions WHERE key LIKE 'atwork.attendance.%'"
+        conn.execute(text(f"DELETE FROM role_permissions WHERE permission_id IN ({ids})"))
+        conn.execute(text("DELETE FROM permissions WHERE key LIKE 'atwork.attendance.%'"))
+    assert _alembic(url, "stamp", "atw1reg0b2c3").returncode == 0
+    upgraded = _alembic(url, "upgrade", "head")
+    assert upgraded.returncode == 0, upgraded.stderr
+    snapshot = _snapshot(engine)
+    assert (snapshot["perms"], snapshot["roles"], snapshot["links"]) == (4, 2, 7)

@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "development"
+    database_url: str = "sqlite:///./atwork.db"
+    business_time_zone: str = "Asia/Colombo"
 
     api_cors_origins: str = "http://localhost:3000,http://localhost:3005,http://127.0.0.1:3000,http://127.0.0.1:3005"
 
@@ -19,6 +21,10 @@ class Settings(BaseSettings):
 
     # The foundation has no external integrations.
     integrations_mode: str = "mock"
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.database_url.startswith("sqlite")
 
     @property
     def cors_origins_list(self) -> list[str]:

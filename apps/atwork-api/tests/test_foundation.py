@@ -16,10 +16,12 @@ def test_health(api_client):
     assert resp.json() == {"service": "atwork-api", "status": "healthy"}
 
 
-def test_health_deep_reports_mode_and_no_database(api_client):
+def test_health_deep_reports_mode_and_database(api_client):
     body = api_client.get("/health/deep").json()
     assert body["status"] == "healthy"
-    assert body["checks"] == {"app_env": "test", "integrations_mode": "mock", "database": "none (foundation)"}
+    assert body["checks"]["app_env"] == "test"
+    assert body["checks"]["integrations_mode"] == "mock"
+    assert body["checks"]["database"] == "ok"
 
 
 def test_metadata(api_client):

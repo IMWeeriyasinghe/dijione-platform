@@ -426,13 +426,23 @@ ATWORK_PERMISSIONS: list[PermissionDef] = [
         "atwork.management.access", "Access Management", "Open the DijiAtWork Management area.",
         MODULE_ATWORK, "Management",
     ),
+    PermissionDef(
+        "atwork.attendance.read_own", "View Own Attendance", "View your own attendance status and history.",
+        MODULE_ATWORK, "Attendance",
+    ),
+    PermissionDef(
+        "atwork.attendance.record_own", "Record Own Attendance", "Check in, check out and record your own breaks.",
+        MODULE_ATWORK, "Attendance",
+    ),
 ]
 
+_ATWORK_EMPLOYEE_PERMISSIONS = ("atwork.access", "atwork.attendance.read_own", "atwork.attendance.record_own")
+
 ATWORK_ROLES: list[RoleDef] = [
-    RoleDef("ATWORK_USER", "DijiAtWork User", "Access DijiAtWork.", MODULE_ATWORK, ("atwork.access",)),
+    RoleDef("ATWORK_USER", "DijiAtWork User", "Access DijiAtWork.", MODULE_ATWORK, _ATWORK_EMPLOYEE_PERMISSIONS),
     RoleDef(
         "ATWORK_MANAGER", "DijiAtWork Manager", "User access plus the DijiAtWork Management area.",
-        MODULE_ATWORK, ("atwork.access", "atwork.management.access"),
+        MODULE_ATWORK, _ATWORK_EMPLOYEE_PERMISSIONS + ("atwork.management.access",),
     ),
 ]
 
