@@ -21,8 +21,14 @@ READ_OWN = "atwork.attendance.read_own"
 RECORD_OWN = "atwork.attendance.record_own"
 USER_PERMS = {ACCESS, READ_OWN, RECORD_OWN, "atwork.corrections.request_own"}
 MANAGER_PERMS = USER_PERMS | {
-    MANAGEMENT, "atwork.attendance.read", "atwork.corrections.review", "atwork.corrections.approve",
-    "atwork.reports.read", "atwork.reports.export", "atwork.settings.manage", "atwork.audit.read",
+    MANAGEMENT,
+    "atwork.attendance.read",
+    "atwork.corrections.review",
+    "atwork.corrections.approve",
+    "atwork.reports.read",
+    "atwork.reports.export",
+    "atwork.settings.manage",
+    "atwork.audit.read",
 }
 APP_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = APP_ROOT / "alembic" / "versions" / "atw1reg0b2c3_register_atwork_module.py"
@@ -121,9 +127,9 @@ def _snapshot(engine):
             ).all(),
             "perms": conn.execute(text("SELECT count(*) FROM permissions WHERE module_key='atwork'")).scalar(),
             "roles": conn.execute(text("SELECT count(*) FROM roles WHERE module_key='atwork'")).scalar(),
-            "links": conn.execute(text(
-                "SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.module_key='atwork'"
-            )).scalar(),
+            "links": conn.execute(
+                text("SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.module_key='atwork'")
+            ).scalar(),
         }
 
 
@@ -131,7 +137,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     url = f"sqlite:///{tmp_path / 'atwork-migration.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["n4o5p6q7r8s9", "(head)"]
+    assert heads.stdout.split() == ["o5p6q7r8s9t0", "(head)"]
     up = _alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)
@@ -166,3 +172,28 @@ def test_attendance_permissions_reach_existing_role_assignments(tmp_path):
     assert upgraded.returncode == 0, upgraded.stderr
     snapshot = _snapshot(engine)
     assert (snapshot["perms"], snapshot["roles"], snapshot["links"]) == (12, 2, 16)
+
+
+def test_home_card_activates_in_dev_only_and_touches_only_atwork(tmp_path):
+    for app_env, expected in (("uat", "COMING_SOON"), ("prod", "COMING_SOON"), ("development", "ACTIVE")):
+        url = f"sqlite:///{tmp_path}/{app_env}.db"
+        env = {**os.environ, "DATABASE_URL": url, "APP_ENV": app_env}
+        env.pop("PYTHONPATH", None)
+
+        def run(target, env=env):
+            command = [sys.executable, "-m", "alembic", "upgrade", target]
+            return subprocess.run(command, cwd=APP_ROOT, env=env, capture_output=True, text=True)
+
+        assert run("n4o5p6q7r8s9").returncode == 0
+        engine = create_engine(url)
+        query = text("SELECT key, status FROM application_modules")
+        grants = text("SELECT COUNT(*) FROM user_module_roles")
+        with engine.connect() as conn:
+            before, granted = dict(conn.execute(query).all()), conn.execute(grants).scalar()
+        result = run("head")
+        assert result.returncode == 0, result.stderr
+        with engine.connect() as conn:
+            after = dict(conn.execute(query).all())
+            assert conn.execute(grants).scalar() == granted
+        assert after["atwork"] == expected
+        assert {k: v for k, v in after.items() if k != "atwork"} == {k: v for k, v in before.items() if k != "atwork"}
