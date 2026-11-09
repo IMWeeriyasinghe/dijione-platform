@@ -8,7 +8,7 @@ import { formatDate } from "@dijione/design-system";
 import { Button } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { Card } from "@dijione/design-system";
-import { Modal } from "@dijione/design-system";
+import { Modal } from "@/components/talent/Modal";
 import { FormField, Input, Select } from "@dijione/design-system";
 
 const CATEGORIES = ["CV", "CONTRACT", "REQUIREMENT", "OFFER_LETTER", "OTHER"] as const;
@@ -82,7 +82,7 @@ export function DocumentsTab({ requestId }: { requestId: number }) {
           }}
           className="flex flex-col gap-4"
         >
-          <FormField label="File Name" htmlFor="file-name" required hint="Local MVP — metadata only, no real upload storage yet.">
+          <FormField label="File Name" htmlFor="file-name" required hint="Records the document details only. The file itself is not uploaded.">
             <Input
               id="file-name"
               required
@@ -100,6 +100,11 @@ export function DocumentsTab({ requestId }: { requestId: number }) {
               ))}
             </Select>
           </FormField>
+          {mutation.isError && (
+            <p role="alert" className="text-sm text-dt-danger">
+              The document could not be added. Please try again.
+            </p>
+          )}
           <div className="flex justify-end gap-3 pt-1">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Cancel

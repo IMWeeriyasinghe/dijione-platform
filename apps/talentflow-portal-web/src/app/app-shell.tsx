@@ -85,6 +85,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             same VersionFooter architecture as the internal apps, styled
             (tone="light") to sit quietly under the existing client-facing
             message rather than compete with it. */}
+        <div className="[&_p]:!text-dt-text-secondary">
         <VersionFooter
           appName="Client Talent Review Workspace"
           version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
@@ -93,6 +94,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           // RELEASE_DATE source yet (round 3 only did this for birthday-web).
           tone="light"
         />
+        </div>
       </footer>
     </div>
   );

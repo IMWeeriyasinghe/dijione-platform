@@ -10,6 +10,12 @@ import { StatusBadge } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { Table, Thead, Th, Tr, Td } from "@dijione/design-system";
 
+// Lever-sourced applications carry the offer as their stage, not their status.
+function matchesStatus(a: { status: string; current_stage: string }, filter: string) {
+  if (a.status === filter) return true;
+  return filter === "OFFER" && a.current_stage === "OFFER" && ["ACTIVE", "SHORTLISTED", "CLIENT_REVIEW"].includes(a.status);
+}
+
 export function ApplicationsView({
   initialSearch = "",
   initialStatus = "",
@@ -23,12 +29,13 @@ export function ApplicationsView({
   // filter applied after fetch, used by the Operations Dashboard's "Offers
   // in Progress" click-through (?status=OFFER).
   const [statusFilter, setStatusFilter] = useState(initialStatus);
+  const [shareError, setShareError] = useState(false);
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["applications", "all", search],
     queryFn: () => listApplications({ search: search || undefined }),
   });
 
-  const rows = statusFilter ? data?.filter((a) => a.status === statusFilter) : data;
+  const rows = statusFilter ? data?.filter((a) => matchesStatus(a, statusFilter)) : data;
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ["applications"] });
@@ -65,6 +72,11 @@ export function ApplicationsView({
 
       {isLoading && <LoadingState label="Loading applications…" />}
       {isError && <ErrorState onRetry={() => refetch()} />}
+      {shareError && (
+        <p role="alert" className="mb-3 text-sm text-dt-danger">
+          Candidate sharing could not be updated. Please try again.
+        </p>
+      )}
       {rows && rows.length === 0 && <EmptyState title="No applications found" />}
 
       {rows && rows.length > 0 && (
@@ -106,8 +118,15 @@ export function ApplicationsView({
                       type="checkbox"
                       defaultChecked={app.is_client_visible}
                       onChange={async (e) => {
-                        await updateApplicationVisibility(app.id, e.target.checked);
-                        invalidate();
+                        const box = e.target;
+                        setShareError(false);
+                        try {
+                          await updateApplicationVisibility(app.id, box.checked);
+                          invalidate();
+                        } catch {
+                          box.checked = !box.checked;
+                          setShareError(true);
+                        }
                       }}
                       className="size-4 accent-[var(--dt-orange)]"
                     />

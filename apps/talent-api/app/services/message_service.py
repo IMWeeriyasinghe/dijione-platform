@@ -5,6 +5,7 @@ from app.models.message import Message
 from app.repositories.message_repo import MessageRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.message import MessageOut
+from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 
 
@@ -17,6 +18,7 @@ class MessageService:
         self.db = db
         self.repo = MessageRepository(db)
         self.request_repo = TalentRequestRepository(db)
+        self.audit = AuditService()
         self.notifications = NotificationService()
 
     def send_message(
@@ -33,6 +35,13 @@ class MessageService:
             body=body,
         )
         self.repo.add(message)
+        self.audit.log(
+            actor_id=sender_id,
+            action="message.sent",
+            entity_type="Message",
+            entity_id=message.id,
+            new_state={"talent_request_id": talent_request_id, "sender_role": sender_role},
+        )
 
         if sender_role == TalentFlowRole.TALENT_CLIENT.value:
             self.notifications.notify_module_role(

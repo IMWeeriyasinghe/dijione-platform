@@ -24,6 +24,8 @@ export function UserMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-label="User menu"
+        aria-expanded={open}
         className="flex items-center gap-2 rounded-full p-0.5 hover:bg-dt-surface-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange"
       >
         <Avatar name={user.full_name} color={user.avatar_color} size={32} />

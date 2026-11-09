@@ -52,6 +52,23 @@ class TalentRequestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ExternalTalentRequestOut(BaseModel):
+    """What the external portal may see. An allowlist: a field added to the
+    staff DTO stays internal until it is added here on purpose."""
+
+    id: int
+    request_code: str
+    designation: str
+    location: str
+    current_stage: str
+    client_safe_status_text: str
+    progress_percent: int
+    stage_timeline: list[StageProgressOut]
+    active_application_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
 class TalentRequestReviewDecision(BaseModel):
     decision: str  # APPROVED | REJECTED | CLARIFICATION_REQUIRED
     reason: str = ""
