@@ -15,7 +15,7 @@ unavailable. See docs/platform/failure-isolation.md.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -142,6 +142,50 @@ def broadcast_notification(
     )
     db.commit()
     return {"status": "ok"}
+
+
+class NotificationDeliverIn(BaseModel):
+    dedupe_key: str = Field(min_length=1, max_length=200)
+    type: str = Field(max_length=64)
+    title: str = Field(max_length=255)
+    body: str = Field(default="", max_length=2000)
+    link_url: str | None = Field(default=None, max_length=500, pattern=r"^/[^/\\]")
+    user_id: int | None = None
+    module_key: str | None = None
+    required_permissions: list[str] = Field(default_factory=list)
+    exclude_user_ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _one_target(self) -> NotificationDeliverIn:
+        by_permission = bool(self.module_key and self.required_permissions)
+        if (self.user_id is not None) == by_permission:
+            raise ValueError("Give either user_id or module_key with required_permissions.")
+        return self
+
+
+@router.post("/notifications/deliver", status_code=201)
+def deliver_notification(
+    payload: NotificationDeliverIn,
+    db: Session = Depends(get_db),
+    _service: None = Depends(require_internal_service),
+) -> dict:
+    """Idempotent, permission-aware delivery for services with a retrying outbox."""
+    service = NotificationService(db)
+    recipients = (
+        service.active_users({payload.user_id})
+        if payload.user_id is not None
+        else service.holders_of(payload.module_key, set(payload.required_permissions))
+    ) - set(payload.exclude_user_ids)
+    created = service.create_once(
+        user_ids=recipients,
+        dedupe_key=payload.dedupe_key,
+        type=payload.type,
+        title=payload.title,
+        body=payload.body,
+        link_url=payload.link_url,
+    )
+    db.commit()
+    return {"status": "ok", "recipients": len(recipients), "created": created}
 
 
 class ModuleRoleHoldersOut(BaseModel):

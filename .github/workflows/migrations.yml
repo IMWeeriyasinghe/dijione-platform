@@ -11,6 +11,7 @@ on:
       - "apps/people-api/alembic/**"
       - "apps/birthday-api/alembic/**"
       - "apps/onsite-api/alembic/**"
+      - "apps/atwork-api/alembic/**"
       - "apps/*-api/app/models/**"
       - ".github/workflows/migrations.yml"
 
@@ -35,6 +36,7 @@ jobs:
           - commercial-api
           - birthday-api
           - onsite-api
+          - atwork-api
     defaults:
       run:
         working-directory: apps/${{ matrix.service }}

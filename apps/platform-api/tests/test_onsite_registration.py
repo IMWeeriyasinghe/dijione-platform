@@ -52,9 +52,14 @@ def test_onsite_roles_have_exact_permissions():
 
 
 def test_other_modules_catalog_unchanged():
-    # No other module's catalog gained or lost anything: On-site is appended.
-    assert ALL_PERMISSIONS == PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS
-    assert ALL_ROLES == PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES
+    # No earlier catalog gained, lost or reordered anything: On-site follows
+    # them, and any later module may only be appended after it.
+    permissions = PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS
+    roles = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES
+    assert ALL_PERMISSIONS[: len(permissions)] == permissions
+    assert ALL_ROLES[: len(roles)] == roles
+    assert not any(p.module_key == "onsite" for p in ALL_PERMISSIONS[len(permissions) :])
+    assert not any(r.module_key == "onsite" for r in ALL_ROLES[len(roles) :])
     for defs in (PLATFORM_PERMISSIONS, TALENT_PERMISSIONS, BIRTHDAY_PERMISSIONS):
         assert not any(p.key.startswith("onsite.") or p.module_key == "onsite" for p in defs)
     for defs in (PLATFORM_ROLES, TALENT_ROLES, BIRTHDAY_ROLES):
@@ -268,7 +273,7 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
     url = f"sqlite:///{(tmp_path / 'mig.db').as_posix()}"
     up = _alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
-    assert "m3n4o5p6q7r8 (head)" in _alembic(url, "current").stdout
+    assert "(head)" in _alembic(url, "current").stdout  # later modules may extend the chain
 
     eng = create_engine(url)
 
@@ -289,7 +294,8 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
     assert set(first[2]) == ADMIN
     with eng.connect() as c:
         caps = dict(c.execute(text("SELECT key, supports_client_scope FROM application_modules")).all())
-    assert caps.pop("onsite") in (0, False) and all(v in (1, True) for v in caps.values())
+    # Only the modules registered before On-site; later ones declare their own.
+    assert caps.pop("onsite") in (0, False) and all(caps[k] in (1, True) for k in ("talent-flow", "birthday", "spark"))
 
     # Downgrade one step is a no-op data migration (repo convention); re-upgrade converges, no duplicates.
     assert _alembic(url, "downgrade", "-1").returncode == 0

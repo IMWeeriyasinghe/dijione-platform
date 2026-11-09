@@ -115,6 +115,8 @@ flowchart TB
 | `commercial-api` | FastAPI | 8007 | Skeleton — health/metadata + the relocated HubSpot stub/webhook. Future sole owner of HubSpot; never owns Client identity |
 | `onsite-api` *(planned)* | FastAPI | 8008 | Diji On-site application domain: raw attendance mirror of Azure SQL `onsite.*` (SELECT-only, via its bounded `app/attendance_source/` adapter), site allow-list, sync lifecycle, attendance summaries. Own DB `onsite_<env>` — see `docs/onsite/architecture.md` |
 | `onsite-web` *(planned)* | Next.js | 3004 | Diji On-site pages (`basePath: "/onsite"`) |
+| `atwork-api` | FastAPI | 8009 | DijiAtWork application domain. Foundation only: no database yet — see `docs/atwork/administration.md` |
+| `atwork-web` | Next.js | 3005 | DijiAtWork pages (`basePath: "/atwork"`) |
 
 Frontend zones use Next.js
 ["Multi Zones"](https://nextjs.org/docs/app/guides/multi-zones): each

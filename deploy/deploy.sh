@@ -43,6 +43,7 @@ ACR="$NONPROD_ACR"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-true}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 DEPLOY_ONSITE="${DEPLOY_ONSITE:-false}"
+DEPLOY_ATWORK="${DEPLOY_ATWORK:-false}"
 
 API_SERVICES=(platform-api admin-api talent-api recruitment-api)
 WEB_APPS=(shell-web admin-web talent-web talentflow-portal-web)
@@ -65,6 +66,11 @@ if [ "$DEPLOY_ONSITE" = "true" ]; then
   API_SERVICES+=(onsite-api)
   WEB_APPS+=(onsite-web)
   MIGRATE_TARGETS+=(onsite-api)
+fi
+if [ "$DEPLOY_ATWORK" = "true" ]; then
+  API_SERVICES+=(atwork-api)
+  WEB_APPS+=(atwork-web)
+  MIGRATE_TARGETS+=(atwork-api)
 fi
 ALL_IMAGES=("${API_SERVICES[@]}" "${WEB_APPS[@]}")
 

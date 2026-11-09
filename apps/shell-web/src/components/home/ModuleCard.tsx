@@ -14,6 +14,7 @@ const MODULE_SUMMARY_PATH: Record<string, string> = {
   "talent-flow": "/api/talent/summary",
   birthday: "/api/birthday/summary",
   onsite: "/api/onsite/summary",
+  atwork: "/api/atwork/summary",
   spark: "/api/spark/summary",
 };
 

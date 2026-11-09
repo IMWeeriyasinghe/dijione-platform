@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { listNotifications, markNotificationRead } from "@dijione/auth-client";
+import type { NotificationOut } from "@dijione/contracts";
 import { cn, formatDateTime } from "../utils";
 
 export function NotificationsPanel() {
@@ -30,6 +31,15 @@ export function NotificationsPanel() {
   async function handleMarkRead(id: number) {
     await markNotificationRead(id);
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  }
+
+  // A full navigation: the link may belong to another zone behind the gateway.
+  async function handleOpen(n: NotificationOut) {
+    try {
+      if (!n.is_read) await handleMarkRead(n.id);
+    } finally {
+      if (n.link_url && /^\/(?![/\\])/.test(n.link_url)) window.location.assign(n.link_url);
+    }
   }
 
   return (
@@ -60,7 +70,7 @@ export function NotificationsPanel() {
               notifications.slice(0, 15).map((n) => (
                 <button
                   key={n.id}
-                  onClick={() => !n.is_read && handleMarkRead(n.id)}
+                  onClick={() => handleOpen(n)}
                   className={cn(
                     "flex w-full flex-col gap-0.5 rounded-xl px-3 py-2.5 text-left transition hover:bg-dt-surface-warm",
                     !n.is_read && "bg-dt-cream/50"

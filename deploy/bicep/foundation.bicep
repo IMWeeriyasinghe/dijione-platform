@@ -38,6 +38,9 @@ param deployCommercial bool = false
 @description('Deploy the Diji On-site onsite_<env> database. people_<env> is deployed whenever DijiBirthday or Diji On-site is.')
 param deployOnsite bool = false
 
+@description('Deploy the DijiAtWork atwork_<env> database.')
+param deployAtwork bool = false
+
 var deployPeople = deployBirthday || deployOnsite
 
 @description('PostgreSQL networking. private = VNet integration (default, all envs). public = escape hatch only.')
@@ -84,7 +87,8 @@ var dbDomainKeys = concat(
   deployPeople ? [ 'people' ] : [],
   deployBirthday ? [ 'birthday' ] : [],
   deployCommercial ? [ 'commercial' ] : [],
-  deployOnsite ? [ 'onsite' ] : []
+  deployOnsite ? [ 'onsite' ] : [],
+  deployAtwork ? [ 'atwork' ] : []
 )
 var databases = map(dbDomainKeys, key => '${key}_${environmentName}')
 
@@ -108,7 +112,8 @@ var kvSecretNames = concat(
   deployPeople ? [ 'database-url-people' ] : [],
   deployBirthday ? [ 'database-url-birthday' ] : [],
   deployCommercial ? [ 'database-url-commercial' ] : [],
-  deployOnsite ? [ 'database-url-onsite' ] : []
+  deployOnsite ? [ 'database-url-onsite' ] : [],
+  deployAtwork ? [ 'database-url-atwork' ] : []
 )
 
 // ---- network (private PostgreSQL) --------------------------------------

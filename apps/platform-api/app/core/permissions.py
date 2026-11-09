@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.constants import MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_TALENT_FLOW, PlatformRole
+from app.core.constants import MODULE_ATWORK, MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_TALENT_FLOW, PlatformRole
 
 
 @dataclass(frozen=True)
@@ -418,7 +418,62 @@ ONSITE_ROLES: list[RoleDef] = [
     ),
 ]
 
-ALL_PERMISSIONS: list[PermissionDef] = (
-    PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS
+# DijiAtWork catalog; enforcement lives in atwork-api.
+ATWORK_PERMISSIONS: list[PermissionDef] = [
+    PermissionDef("atwork.access", "Access DijiAtWork", "Open the DijiAtWork application.", MODULE_ATWORK, "Access"),
+    PermissionDef(
+        "atwork.management.access", "Access Management", "Open the DijiAtWork Management area.",
+        MODULE_ATWORK, "Management",
+    ),
+    PermissionDef(
+        "atwork.attendance.read_own", "View Own Attendance", "View your own attendance status and history.",
+        MODULE_ATWORK, "Attendance",
+    ),
+    PermissionDef(
+        "atwork.attendance.record_own", "Record Own Attendance", "Check in, check out and record your own breaks.",
+        MODULE_ATWORK, "Attendance",
+    ),
+    PermissionDef(
+        "atwork.corrections.request_own", "Request Own Corrections", "Request corrections to your own attendance.",
+        MODULE_ATWORK, "Corrections",
+    ),
+    PermissionDef(
+        "atwork.attendance.read", "View All Attendance", "View attendance for all employees.",
+        MODULE_ATWORK, "Management",
+    ),
+    PermissionDef(
+        "atwork.corrections.review", "Review Corrections", "View correction requests and their proposed values.",
+        MODULE_ATWORK, "Corrections",
+    ),
+    PermissionDef(
+        "atwork.corrections.approve", "Decide Corrections", "Approve or reject correction requests from other employees.",
+        MODULE_ATWORK, "Corrections",
+    ),
+    PermissionDef("atwork.reports.read", "View Reports", "View attendance reports.", MODULE_ATWORK, "Reports"),
+    PermissionDef("atwork.reports.export", "Export Reports", "Export attendance reports.", MODULE_ATWORK, "Reports"),
+    PermissionDef(
+        "atwork.settings.manage", "Manage Settings", "Change DijiAtWork operational settings.", MODULE_ATWORK, "Management",
+    ),
+    PermissionDef("atwork.audit.read", "View Audit History", "View the attendance audit history.", MODULE_ATWORK, "Management"),
+]
+
+_ATWORK_EMPLOYEE_PERMISSIONS = (
+    "atwork.access", "atwork.attendance.read_own", "atwork.attendance.record_own", "atwork.corrections.request_own",
 )
-ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES
+_ATWORK_MANAGEMENT_PERMISSIONS = (
+    "atwork.management.access", "atwork.attendance.read", "atwork.corrections.review", "atwork.corrections.approve",
+    "atwork.reports.read", "atwork.reports.export", "atwork.settings.manage", "atwork.audit.read",
+)
+
+ATWORK_ROLES: list[RoleDef] = [
+    RoleDef("ATWORK_USER", "DijiAtWork User", "Access DijiAtWork.", MODULE_ATWORK, _ATWORK_EMPLOYEE_PERMISSIONS),
+    RoleDef(
+        "ATWORK_MANAGER", "DijiAtWork Manager", "User access plus the DijiAtWork Management area.",
+        MODULE_ATWORK, _ATWORK_EMPLOYEE_PERMISSIONS + _ATWORK_MANAGEMENT_PERMISSIONS,
+    ),
+]
+
+ALL_PERMISSIONS: list[PermissionDef] = (
+    PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS + ATWORK_PERMISSIONS
+)
+ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES + ATWORK_ROLES

@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.constants import MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole  # noqa: E402
+from app.core.constants import MODULE_ATWORK, MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole  # noqa: E402
 from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.core.real_dev_clients import PERSONA_CLIENTS, REAL_DEV_CLIENTS  # noqa: E402
 from app.db.base import Base  # noqa: E402
@@ -147,6 +147,13 @@ def seed_module_registry(db) -> None:
             # COMING_SOON). Only users holding an ONSITE_* assignment see it.
             required_roles="ANY",
             supports_client_scope=False,  # onsite-api never reads client scope
+        ),
+        dict(
+            key=MODULE_ATWORK, name="DijiAtWork",
+            description="Work Check-in and Attendance", icon="Clock",
+            route="/atwork", status="COMING_SOON", enabled=True,
+            display_order=5, required_roles="ANY",
+            supports_client_scope=False,  # atwork-api never reads client scope
         ),
     ]
     for fields in definitions:

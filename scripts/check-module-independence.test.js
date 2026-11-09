@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { classify, findViolations } = require("./check-module-independence");
+const { ATWORK, classify, findViolations } = require("./check-module-independence");
 
 const run = (files) => findViolations(Object.keys(files), (f) => files[f]);
 
@@ -55,4 +55,44 @@ test("classify", () => {
   assert.equal(classify("apps/talent-api/x"), "zero");
   assert.equal(classify("apps/shell-web/next.config.ts"), "allowed");
   assert.equal(classify("apps/shell-web/src/x.ts"), "guarded");
+});
+
+const runAtwork = (files) => findViolations(Object.keys(files), (f) => files[f], ATWORK);
+
+test("DijiAtWork: own apps and registration points are permitted", () => {
+  assert.deepEqual(runAtwork({
+    "apps/atwork-api/app/main.py": "ATWORK_VALUE = 1",
+    "apps/shell-web/next.config.ts": "const ATWORK_WEB_URL = up('ATWORK_WEB_URL')",
+    "apps/platform-api/app/core/permissions.py": "ATWORK_ROLES = []",
+    "docs/atwork/foundation.md": "atwork-api owns ...",
+  }), []);
+});
+
+test("DijiAtWork: zero tolerance includes Diji On-site, and the reverse holds", () => {
+  const v = runAtwork({
+    "apps/onsite-api/app/x.py": "# calls atwork",
+    "apps/people-api/app/x.py": "# DijiAtWork field",
+    "packages/contracts/src/x.ts": "const dijiAtWork = 1",
+  });
+  assert.equal(v.length, 3);
+  assert.ok(v.every((x) => x.rule === "zero"));
+  const reverse = run({ "apps/atwork-api/app/x.py": "# calls onsite", "apps/atwork-web/src/x.ts": "const OnSite = 1" });
+  assert.equal(reverse.length, 2);
+  assert.ok(reverse.every((x) => x.rule === "zero"));
+});
+
+test("DijiAtWork: runtime references elsewhere are violations", () => {
+  const v = runAtwork({ "apps/shell-web/src/app/page.tsx": "fetch('/api/atwork/me')", "scripts/other.js": "process.env.ATWORK_API_URL" });
+  assert.equal(v.length, 2);
+  assert.ok(v.every((x) => x.rule === "guarded"));
+});
+
+test("DijiAtWork: the ordinary phrase is not a reference", () => {
+  assert.deepEqual(runAtwork({ "packages/design-system/src/x.ts": "// what we do at work, that work" }), []);
+});
+
+test("classify per module", () => {
+  assert.equal(classify("apps/atwork-api/x", ATWORK), "own");
+  assert.equal(classify("apps/onsite-api/x", ATWORK), "zero");
+  assert.equal(classify("apps/atwork-api/x"), "zero");
 });

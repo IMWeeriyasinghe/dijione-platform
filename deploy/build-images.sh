@@ -23,6 +23,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-true}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 DEPLOY_ONSITE="${DEPLOY_ONSITE:-false}"
+DEPLOY_ATWORK="${DEPLOY_ATWORK:-false}"
 
 # Per-app footer version/build metadata (docs/platform/versioning.md) — the
 # exact commit + timestamp this set of images was built from. The app
@@ -45,6 +46,10 @@ fi
 if [ "$DEPLOY_ONSITE" = "true" ]; then
   API_SERVICES+=(onsite-api)
   WEB_APPS+=(onsite-web)
+fi
+if [ "$DEPLOY_ATWORK" = "true" ]; then
+  API_SERVICES+=(atwork-api)
+  WEB_APPS+=(atwork-web)
 fi
 
 : > "$OUT"
