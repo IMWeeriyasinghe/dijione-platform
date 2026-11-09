@@ -202,6 +202,8 @@ class FakeRecruitmentClient:
         self.down = down
         self.candidacies_down = candidacies_down
         self.sync_calls: list[dict] = []
+        self.page_calls = 0
+        self.fail_on_page: int | None = None
         self.source_snapshot = {"state": "COMPLETE"}
 
     def _guard(self):
@@ -226,6 +228,20 @@ class FakeRecruitmentClient:
         if posting_external_id is not None:
             rows = [r for r in rows if r.get("posting_external_id") == posting_external_id]
         return list(rows[:limit])
+
+    def list_candidacies_page(self, *, posting_external_id: str, after_external_id: str, limit: int) -> list[dict]:
+        self._guard()
+        self.page_calls += 1
+        if self.candidacies_down or self.page_calls == self.fail_on_page:
+            import httpx
+
+            raise httpx.ConnectError("recruitment-api candidacies unreachable")
+        rows = sorted(
+            (r for r in self._candidacies
+             if r.get("posting_external_id") == posting_external_id and r["external_id"] > after_external_id),
+            key=lambda r: r["external_id"],
+        )
+        return rows[:limit]
 
     def get_freshness(self) -> dict:
         self._guard()

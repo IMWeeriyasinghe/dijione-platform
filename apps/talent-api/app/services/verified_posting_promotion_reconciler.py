@@ -121,9 +121,7 @@ class VerifiedPostingPromotionReconciler:
         self.applications = ApplicationRepository(db)
         self.audit = AuditService()
 
-    def reconcile(
-        self, *, candidacies: list[dict] | None, candidacy_limit_hit: bool = False
-    ) -> PromotionSummary:
+    def reconcile(self, *, candidacies: list[dict] | None) -> PromotionSummary:
         summary = PromotionSummary()
         tr_by_posting: dict[str, object] = {}
 
@@ -170,8 +168,6 @@ class VerifiedPostingPromotionReconciler:
             return summary
 
         summary.candidacies_seen = len(candidacies)
-        if candidacy_limit_hit:
-            summary.transitions.append("candidacy_page_limit_hit")
 
         groups: dict[tuple[str, str], list[dict]] = {}
         for row in candidacies:

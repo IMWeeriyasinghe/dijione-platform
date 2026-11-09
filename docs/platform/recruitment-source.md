@@ -49,9 +49,8 @@ overlap with the sync, and moving the schedule would not fix it.
 | Outcome | HTTP | Azure job | Data | Meaning |
 |---|---|---|---|---|
 | `SUCCEEDED` | 200 | Succeeded | Committed | Postings and candidacies fully read |
-| `PARTIAL` / `candidacies_unavailable` | 503 | Failed, retried once | Postings committed | Transient; the retry can complete it |
+| `PARTIAL` / `candidacies_unavailable` | 503 | Failed, retried once | Postings committed, no candidacies | Any posting's read failed or could not be proven complete |
 | `PARTIAL` / `no_postings` | 503 | Failed, retried once | Nothing to change | Investigate if the retry also reports it |
-| `PARTIAL` / `candidacy_limit_hit` | 503 | Failed, retried once | First 500 committed | Retry cannot help; needs paging |
 | `SKIPPED` / `already_running` | 409 | Failed | Unchanged | Another replica or run holds the lock |
 | `FAILED` | 503 | Failed, retried once | Rolled back | Source unavailable, error, or over budget |
 

@@ -46,6 +46,8 @@ SIDE_EFFECT_DELIVERY_SECONDS = 200.0
 # Bound each PostgreSQL statement and lock wait inside the reconcile.
 _POSTGRES_STATEMENT_TIMEOUT = "60s"
 _POSTGRES_LOCK_TIMEOUT = "15s"
+# Bounds one posting's read: 20,000 candidacies, against 2,090 at most today.
+CANDIDACY_MAX_PAGES = 40
 
 OUTCOME_SUCCEEDED = "SUCCEEDED"
 OUTCOME_PARTIAL = "PARTIAL"
@@ -61,9 +63,50 @@ class ReconcileBudgetExceeded(Exception):
     """The run outlived RECONCILE_BUDGET_SECONDS; nothing may be committed."""
 
 
-def _build_client(timeout: float) -> RecruitmentSourceClient:
+class CandidacyReadIncomplete(Exception):
+    """A posting's candidacies could not be proven fully read."""
+
+
+class PagedRecruitmentClient(RecruitmentSourceClient):
+    def list_candidacies_page(
+        self, *, posting_external_id: str, after_external_id: str, limit: int
+    ) -> list[dict]:
+        return self._get("/api/recruitment/candidacies", params={
+            "posting_external_id": posting_external_id, "after_external_id": after_external_id, "limit": limit,
+        }).json()
+
+
+def read_all_candidacies(
+    client: PagedRecruitmentClient, posting_external_id: str, on_page: Callable[[], None]
+) -> list[dict]:
+    """Every candidacy of one posting, or an exception. Only an empty page ends
+    the read, so a full last page is not mistaken for more or for the end, and a
+    source that repeats rows (one without paging) is refused, not truncated."""
+    rows: list[dict] = []
+    seen: set[str] = set()
+    after = ""
+    for _ in range(CANDIDACY_MAX_PAGES + 1):
+        page = client.list_candidacies_page(
+            posting_external_id=posting_external_id, after_external_id=after, limit=CANDIDACY_PAGE_LIMIT
+        )
+        if not page:
+            return rows
+        if len(page) > CANDIDACY_PAGE_LIMIT:
+            raise CandidacyReadIncomplete("oversized_page")
+        for row in page:
+            external_id = row.get("external_id")
+            if not external_id or external_id in seen or row.get("posting_external_id") != posting_external_id:
+                raise CandidacyReadIncomplete("unexpected_row")
+            seen.add(external_id)
+        rows.extend(page)
+        after = page[-1]["external_id"]
+        on_page()
+    raise CandidacyReadIncomplete("page_limit")
+
+
+def _build_client(timeout: float) -> PagedRecruitmentClient:
     settings = get_settings()
-    return RecruitmentSourceClient(
+    return PagedRecruitmentClient(
         base_url=settings.recruitment_api_url,
         internal_secret=settings.internal_service_secret,
         timeout=timeout,
@@ -71,11 +114,11 @@ def _build_client(timeout: float) -> RecruitmentSourceClient:
     )
 
 
-def get_recruitment_client() -> RecruitmentSourceClient:
+def get_recruitment_client() -> PagedRecruitmentClient:
     return _build_client(INTERACTIVE_SOURCE_TIMEOUT_SECONDS)
 
 
-def get_recruitment_batch_client() -> RecruitmentSourceClient:
+def get_recruitment_batch_client() -> PagedRecruitmentClient:
     return _build_client(BATCH_SOURCE_TIMEOUT_SECONDS)
 
 
@@ -147,8 +190,6 @@ def classify_reconcile_result(result: dict) -> tuple[str, list[str]]:
         reasons.append("no_postings")
     if not promotion["candidacies_available"]:
         reasons.append("candidacies_unavailable")
-    if promotion["candidacy_limit_hit"]:
-        reasons.append("candidacy_limit_hit")
     return (OUTCOME_PARTIAL, reasons) if reasons else (OUTCOME_SUCCEEDED, [])
 
 
@@ -269,27 +310,19 @@ class RecruitmentConsumerService:
         summary = PostingClientMappingReconciler(self.db).reconcile_postings(postings)
         check_budget()
 
-        limit_hit = False
         try:
             candidacies: list[dict] | None = []
-            # Per posting, so the page limit applies to one posting and
-            # candidacies for postings TalentFlow ignores cannot crowd these out.
+            # Per posting, so candidacies for postings TalentFlow ignores are
+            # never read. All or nothing: one unproven posting discards them all.
             for mapping in PostingClientMappingRepository(self.db).list_verified():
-                rows = self.client.list_candidacies(
-                    posting_external_id=mapping.posting_external_id, limit=CANDIDACY_PAGE_LIMIT
-                )
-                limit_hit = limit_hit or len(rows) >= CANDIDACY_PAGE_LIMIT
-                candidacies.extend(rows)
-                check_budget()
-        except httpx.HTTPError as exc:
+                candidacies.extend(read_all_candidacies(self.client, mapping.posting_external_id, check_budget))
+        except (httpx.HTTPError, CandidacyReadIncomplete) as exc:
             logger.warning(
                 "recruitment-api candidacies unavailable — promoting postings only (%s)",
                 type(exc).__name__,
             )
             candidacies = None
-        promotion = VerifiedPostingPromotionReconciler(self.db).reconcile(
-            candidacies=candidacies, candidacy_limit_hit=limit_hit
-        )
+        promotion = VerifiedPostingPromotionReconciler(self.db).reconcile(candidacies=candidacies)
 
         check_budget()
         self.db.commit()
@@ -318,7 +351,6 @@ class RecruitmentConsumerService:
                 ),
                 "collapsed_duplicate_candidacies": promotion.collapsed_duplicate_candidacies,
                 "candidacies_available": promotion.candidacies_available,
-                "candidacy_limit_hit": "candidacy_page_limit_hit" in promotion.transitions,
                 "requests_retired": promotion.requests_retired,
                 "requests_access_withdrawn": promotion.requests_access_withdrawn,
                 "unchanged": promotion.unchanged,
