@@ -206,6 +206,7 @@ export function PostingsView() {
                       {verifyingId === p.id ? (
                         <div className="flex items-center gap-2">
                           <Select
+                            aria-label="Client for this posting"
                             value={pickClientId ?? ""}
                             onChange={(e) => setPickClientId(Number(e.target.value) || null)}
                           >

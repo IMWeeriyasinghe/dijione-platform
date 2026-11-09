@@ -73,6 +73,15 @@ overlap with the sync, and moving the schedule would not fix it.
   and new applications stay unshared until TA shares them. The freshness panel
   reports the Lever sync, not this reconcile, so check the job status as well.
 
+## Completeness
+
+- `OPPORTUNITY_SYNC_LIMIT` (200) caps the general read of Lever opportunities
+  and has no continuation, so older opportunities are not refreshed by it.
+- Every posting with a DTC tag is therefore also read in full through Lever's
+  `posting_id` filter. Those are the only postings TalentFlow can promote.
+- `talent-api` reads candidacies one verified posting at a time, so its
+  500-row limit applies per posting.
+
 ## Sync lifecycle
 
 | Concern | Implementation |

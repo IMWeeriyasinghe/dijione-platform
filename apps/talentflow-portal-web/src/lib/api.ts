@@ -1,8 +1,8 @@
 import type {
-  ClientDashboardOut,
   ClientInterviewOut,
   ClientSafeCandidateOut,
-  TalentRequestOut,
+  ExternalClientDashboardOut,
+  ExternalTalentRequestOut,
 } from "@dijione/contracts";
 
 import { currentSession, refreshSessionFromStoredToken } from "./external-auth";
@@ -62,14 +62,14 @@ async function request<T>(path: string): Promise<T> {
 }
 
 export const getDashboard = () =>
-  request<ClientDashboardOut>("/api/talent/external/dashboard");
+  request<ExternalClientDashboardOut>("/api/talent/external/dashboard");
 
 export const listRequests = (
   params: { search?: string; stage?: string; status_filter?: string } = {},
-) => request<TalentRequestOut[]>(`/api/talent/external/requests${qs(params)}`);
+) => request<ExternalTalentRequestOut[]>(`/api/talent/external/requests${qs(params)}`);
 
 export const getRequest = (id: number) =>
-  request<TalentRequestOut>(`/api/talent/external/requests/${id}`);
+  request<ExternalTalentRequestOut>(`/api/talent/external/requests/${id}`);
 
 export const listRequestCandidates = (id: number) =>
   request<ClientSafeCandidateOut[]>(`/api/talent/external/requests/${id}/candidates`);

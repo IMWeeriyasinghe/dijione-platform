@@ -50,14 +50,14 @@ export default function AccessPage() {
             <p className="mt-2 text-sm text-dt-text-secondary">One moment.</p>
           </>
         ) : (
-          <>
+          <div role="alert">
             <h1 className="mt-2 text-xl font-semibold text-dt-text-primary">
               This access link is invalid or has expired
             </h1>
             <p className="mt-2 text-sm text-dt-text-secondary">
               Ask your Dijital Team contact to send you a new link.
             </p>
-          </>
+          </div>
         )}
       </div>
     </div>

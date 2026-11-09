@@ -45,3 +45,5 @@ param supplierAuthMode = 'entra'
 param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param supplierEntraClientId = 'bdd98d91-1fe9-4b81-b621-96fa14d2e9b5'
 param supplierPublicBaseUrl = 'https://birthday-supplier-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'
+
+param externalPortalBaseUrl = 'https://talentflow-portal-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'

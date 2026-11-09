@@ -22,9 +22,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
 from app.services.posting_client_mapping_reconciler import PostingClientMappingReconciler
 from app.services.side_effects import SideEffect, collect_side_effects, deliver_side_effects
-from app.services.verified_posting_promotion_reconciler import VerifiedPostingPromotionReconciler
+from app.services.verified_posting_promotion_reconciler import (
+    CANDIDACY_PAGE_LIMIT,
+    VerifiedPostingPromotionReconciler,
+)
 
 logger = logging.getLogger("talent-api.recruitment_consumer")
 
@@ -218,15 +222,27 @@ class RecruitmentConsumerService:
         summary = PostingClientMappingReconciler(self.db).reconcile_postings(postings)
         check_budget()
 
+        limit_hit = False
         try:
-            candidacies = self.client.list_candidacies(limit=500)
+            candidacies: list[dict] | None = []
+            # Per posting, so the page limit applies to one posting and
+            # candidacies for postings TalentFlow ignores cannot crowd these out.
+            for mapping in PostingClientMappingRepository(self.db).list_verified():
+                rows = self.client.list_candidacies(
+                    posting_external_id=mapping.posting_external_id, limit=CANDIDACY_PAGE_LIMIT
+                )
+                limit_hit = limit_hit or len(rows) >= CANDIDACY_PAGE_LIMIT
+                candidacies.extend(rows)
+                check_budget()
         except httpx.HTTPError as exc:
             logger.warning(
                 "recruitment-api candidacies unavailable — promoting postings only (%s)",
                 type(exc).__name__,
             )
             candidacies = None
-        promotion = VerifiedPostingPromotionReconciler(self.db).reconcile(candidacies=candidacies)
+        promotion = VerifiedPostingPromotionReconciler(self.db).reconcile(
+            candidacies=candidacies, candidacy_limit_hit=limit_hit
+        )
 
         check_budget()
         self.db.commit()
@@ -256,6 +272,8 @@ class RecruitmentConsumerService:
                 "collapsed_duplicate_candidacies": promotion.collapsed_duplicate_candidacies,
                 "candidacies_available": promotion.candidacies_available,
                 "candidacy_limit_hit": "candidacy_page_limit_hit" in promotion.transitions,
+                "requests_retired": promotion.requests_retired,
+                "requests_access_withdrawn": promotion.requests_access_withdrawn,
                 "unchanged": promotion.unchanged,
             },
         }

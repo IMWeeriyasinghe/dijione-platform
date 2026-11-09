@@ -16,6 +16,19 @@ import { NextResponse } from "next/server";
 const PLATFORM_API_URL = process.env.PLATFORM_API_URL ?? "http://localhost:8000";
 const TOKEN_STORAGE_KEY = "dijione.devToken";
 
+/**
+ * JSON for an inline <script>. JSON.stringify alone leaves `<` intact, so a
+ * query value containing `</script>` would end the script block.
+ */
+function scriptJson(value: string): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 function page(script: string): NextResponse {
   // The <script> must be inside <body>, not <head>: an error branch sets
   // `document.body.textContent`, and without an explicit <body> the parser
@@ -36,7 +49,7 @@ export async function GET(request: Request) {
   const err = url.searchParams.get("error_description") || url.searchParams.get("error");
 
   if (err) {
-    return page(`document.body.textContent=${JSON.stringify("Sign-in failed: " + err)};`);
+    return page(`document.body.textContent=${scriptJson("Sign-in failed: " + err)};`);
   }
   if (!code || !state) {
     return page(`location.replace("/");`);
@@ -64,11 +77,11 @@ export async function GET(request: Request) {
     } catch {
       /* keep default */
     }
-    return page(`document.body.textContent=${JSON.stringify(detail)};`);
+    return page(`document.body.textContent=${scriptJson(detail)};`);
   }
 
   const { access_token } = (await resp.json()) as { access_token: string };
   return page(
-    `try{localStorage.setItem(${JSON.stringify(TOKEN_STORAGE_KEY)},${JSON.stringify(access_token)});}catch(e){}location.replace("/");`,
+    `try{localStorage.setItem(${scriptJson(TOKEN_STORAGE_KEY)},${scriptJson(access_token)});}catch(e){}location.replace("/");`,
   );
 }

@@ -47,6 +47,8 @@ def list_requests(
         filter_client_id=client_id,
         allowed_client_ids=scope.client_ids,
     )
+    if scope.client_id is not None:
+        return [service.to_client_out(r) for r in requests]
     return [service.to_out(r) for r in requests]
 
 
@@ -83,6 +85,8 @@ def get_request(
     )
     if request is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found")
+    if scope.client_id is not None:
+        return service.to_client_out(request)
     return service.to_out(request)
 
 
@@ -153,6 +157,8 @@ def update_ta_status(
         )
     except TalentRequestNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found") from exc
+    except InvalidTransitionError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     db.commit()
     db.refresh(request)
     return service.to_out(request)

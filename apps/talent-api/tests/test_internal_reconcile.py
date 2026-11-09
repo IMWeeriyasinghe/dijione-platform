@@ -237,7 +237,7 @@ def test_postgres_lock_excludes_second_session():
 def test_exception_rolls_back_everything_and_hides_detail(api_client, db, two_tenant_world, monkeypatch):
     _use(monkeypatch, _source(two_tenant_world))
 
-    def boom(self, *, candidacies):
+    def boom(self, *, candidacies, candidacy_limit_hit=False):
         self.db.flush()
         raise RuntimeError("secret candidate detail")
 

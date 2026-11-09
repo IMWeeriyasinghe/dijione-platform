@@ -11,10 +11,11 @@ separately.
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -31,6 +32,13 @@ from app.services.lever_candidacy_sync_service import LeverCandidacySyncService
 from app.services.lever_posting_service import LeverPostingSyncService
 
 logger = logging.getLogger("recruitment-api.sync")
+
+# A live run touches its row every heartbeat, however slow Lever is. Silence for
+# this long means its replica has gone.
+_HEARTBEAT_SECONDS = 30.0
+_ABANDONED_AFTER = timedelta(minutes=10)
+# Serializes the "is one active? then create" check across replicas (PostgreSQL).
+_SYNC_REQUEST_LOCK = 7206114
 
 
 class RecruitmentSyncService:
@@ -59,12 +67,28 @@ class RecruitmentSyncService:
         )
 
     def _active_run(self) -> RecruitmentSyncRun | None:
-        return self.db.execute(
+        runs = self.db.execute(
             select(RecruitmentSyncRun)
             .where(RecruitmentSyncRun.status.in_([s.value for s in ACTIVE_STATUSES]))
             .order_by(RecruitmentSyncRun.requested_at.desc())
-            .limit(1)
-        ).scalars().first()
+            .with_for_update()  # a run finishing right now must not then be abandoned
+        ).scalars().all()
+        now = datetime.now(UTC)
+        active = [r for r in runs if not self._abandon_if_stale(r, now)]
+        return active[0] if active else None
+
+    def _abandon_if_stale(self, run: RecruitmentSyncRun, now: datetime) -> bool:
+        last_seen = run.updated_at
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=UTC)
+        if now - last_seen < _ABANDONED_AFTER:
+            return False
+        run.status = SyncStatus.FAILED.value
+        run.completed_at = now
+        run.error_summary = "Abandoned: the run did not record a result."
+        self.db.flush()
+        logger.warning("recruitment sync run %s abandoned", run.run_id)
+        return True
 
     def last_successful_at(self) -> datetime | None:
         run = self.db.execute(
@@ -96,8 +120,11 @@ class RecruitmentSyncService:
         requested_by_application: str,
         requested_by_user_id: int | None = None,
     ) -> tuple[RecruitmentSyncRun, bool]:
+        if self.db.get_bind().dialect.name == "postgresql":
+            self.db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SYNC_REQUEST_LOCK})
         existing = self._active_run()
         if existing is not None:
+            self.db.commit()
             return existing, False
 
         run = RecruitmentSyncRun(
@@ -126,14 +153,20 @@ class RecruitmentSyncService:
             run.status = SyncStatus.RUNNING.value
             run.started_at = datetime.now(UTC)
             db.commit()
+            heartbeat_stop = threading.Event()
+            threading.Thread(target=_heartbeat, args=(run_id, heartbeat_stop), daemon=True).start()
 
             limit = get_settings().opportunity_sync_limit
             read = created = updated = unchanged = 0
             error: str | None = None
+            incomplete: str | None = None
             try:
                 p = LeverPostingSyncService(db).sync_postings()
                 o = LeverCandidacySyncService(db).sync_opportunities(limit=limit)
                 db.commit()
+                posting_reads, posting_total = o.get("dtc_postings_read", 0), o.get("dtc_postings_total", 0)
+                if posting_reads < posting_total:
+                    incomplete = f"Incomplete: {posting_reads} of {posting_total} client postings read."
                 read += int(p.get("total", 0))
                 created += int(p.get("created", 0))
                 updated += int(p.get("updated", 0))
@@ -148,17 +181,54 @@ class RecruitmentSyncService:
                 error = _safe_error(exc)
                 logger.warning("recruitment sync run %s failed: %s", run_id, error)
 
-            run = svc.get(run_id)
+            heartbeat_stop.set()
+            # Locked and re-read: another replica may have just abandoned this run.
+            run = db.execute(
+                select(RecruitmentSyncRun)
+                .where(RecruitmentSyncRun.run_id == run_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).scalars().one()
+            if run.status != SyncStatus.RUNNING.value:
+                db.rollback()
+                logger.warning("recruitment sync run %s finished after being abandoned", run_id)
+                return
             run.completed_at = datetime.now(UTC)
             run.records_read = read
             run.records_created = created
             run.records_updated = updated
             run.records_unchanged = unchanged
-            run.error_summary = error
-            run.status = SyncStatus.FAILED.value if error else SyncStatus.SUCCEEDED.value
+            run.error_summary = error or incomplete
+            if error:
+                run.status = SyncStatus.FAILED.value
+            elif incomplete:
+                run.status = SyncStatus.PARTIAL.value
+            else:
+                run.status = SyncStatus.SUCCEEDED.value
             db.commit()
 
             _notify_completion(run)
+        finally:
+            db.close()
+
+
+def _heartbeat(run_id: str, stop: threading.Event) -> None:
+    """Uses its own session: the run's transaction stays open until it finishes."""
+    while not stop.wait(_HEARTBEAT_SECONDS):
+        db = SessionLocal()
+        try:
+            db.execute(
+                update(RecruitmentSyncRun)
+                .where(
+                    RecruitmentSyncRun.run_id == run_id,
+                    RecruitmentSyncRun.status == SyncStatus.RUNNING.value,
+                )
+                .values(updated_at=datetime.now(UTC))
+            )
+            db.commit()
+        except Exception:  # noqa: BLE001 - a missed beat must not stop the sync
+            db.rollback()
+            logger.warning("recruitment sync run %s heartbeat failed", run_id)
         finally:
             db.close()
 
@@ -211,7 +281,7 @@ def _notify_completion(run: RecruitmentSyncRun) -> None:
             ),
             related_entity_id=run.id,
         )
-    elif run.trigger_type == SyncTriggerType.SCHEDULED.value and not ok:
+    elif run.trigger_type == SyncTriggerType.SCHEDULED.value and run.status != SyncStatus.SUCCEEDED.value:
         platform_notify.notify_module_role(
             module_key=MODULE_TALENT_FLOW,
             role=TA_MANAGER_ROLE,

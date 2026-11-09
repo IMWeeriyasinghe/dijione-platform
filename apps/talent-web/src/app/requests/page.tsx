@@ -73,7 +73,7 @@ function RequestsPageInner() {
             className="w-full rounded-lg border border-dt-border bg-dt-surface py-2 pl-9 pr-3 text-sm focus:border-dt-orange focus:outline-none focus:ring-2 focus:ring-dt-orange/20"
           />
         </div>
-        <Select value={stage} onChange={(e) => setStage(e.target.value)} className="sm:w-48">
+        <Select aria-label="Filter by stage" value={stage} onChange={(e) => setStage(e.target.value)} className="sm:w-48">
           <option value="">All stages</option>
           {CANONICAL_STAGES.map((s) => (
             <option key={s} value={s}>
@@ -81,7 +81,7 @@ function RequestsPageInner() {
             </option>
           ))}
         </Select>
-        <Select value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-48">
+        <Select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-48">
           <option value="">All statuses</option>
           {activeOnly && <option value="active">Active (Approved + In Progress)</option>}
           {LIFECYCLE_STATUSES.map((s) => (

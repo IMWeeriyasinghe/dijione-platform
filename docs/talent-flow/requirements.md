@@ -46,8 +46,8 @@ client UI.
 | Requirement | Status |
 |---|---|
 | Dashboard (active requests, candidates in process, interviews this week, offers) | Done |
-| My Requests (search, stage/status filter, create) | Done |
-| New Talent Request → Pending Customer Success review | Done |
+| My Requests (search, stage/status filter) | Done; create retired 2026-09-01 |
+| New Talent Request → Pending Customer Success review | Retired 2026-09-01: requests come from verified Lever postings |
 | Candidates (client-safe fields only) | Done — aggregated across requests |
 | Interviews | Done |
 | Messages | Done — per-request thread + aggregated overview |
