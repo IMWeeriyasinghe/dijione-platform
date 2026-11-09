@@ -9,6 +9,20 @@ DijiAtWork has two separate levels of administration.
 | Manages | Users, SSO identity, application access, DijiAtWork role assignment (direct or through Access Groups) | Application settings, management workflows, DijiAtWork business records and policies |
 | Must not | Hold DijiAtWork business rules or records | Store users, assign roles or provide a separate login |
 
+## Default employee access
+
+Platform Core derives `ATWORK_USER` for every eligible internal employee from
+`module_baseline_roles`, with no per-user rows. Home, tokens, the Admin Center and
+API checks read the same result. Eligible means active, signed in through Entra, in
+our tenant, confirmed a member by the `acct` optional claim (a missing claim fails
+closed), and on an `ENTRA_INTERNAL_EMAIL_DOMAINS` domain. The marker
+is refreshed at each sign-in, so existing users qualify at their next one.
+
+`ATWORK_MANAGER` is never default: assign it directly or through an Access Group. To
+revoke one employee's default access, save a disabled `ATWORK_USER` assignment. Management
+routes re-check Platform Core, so a revocation applies within 30 seconds and an
+unconfirmed answer is refused. Employee routes use the token, renewed within 12 hours.
+
 ## How access works
 
 1. Microsoft Entra authenticates the user; `platform-api` issues the DijiOne token.

@@ -582,6 +582,7 @@ class AdminService:
             is_active=user.is_active,
             platform_permissions=sorted(self.authz.platform_permissions(user)),
             modules=modules_out,
+            default_access_excluded=[key for key, _role in self.authz.baseline_exclusions(user)],
         )
 
     # --- Access Groups (Phase 2.6, additive) --------------------------------

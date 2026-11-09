@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import PlatformRole
@@ -31,6 +31,8 @@ class User(TimestampMixin, Base):
     entra_object_id: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     identity_provider: Mapped[str] = mapped_column(String(32), default="DEV_IDENTITY")
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set only from a verified Entra sign-in. See entra_service.is_internal_employee.
+    internal_employee: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     module_roles: Mapped[list[UserModuleRole]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

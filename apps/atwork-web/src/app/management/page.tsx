@@ -69,6 +69,11 @@ function Screen() {
           )}
         </Card>
       </div>
+      <Card className="mt-4 p-5">
+        <h2 className="text-base font-semibold">Access</h2>
+        <p className="mt-1 text-sm text-dt-text-secondary">Employee access is automatic. Manager access is granted by DijiOne administrators, individually or through an Access Group.</p>
+        <a className="mt-2 inline-block text-sm font-medium text-dt-burnt-orange underline underline-offset-2" href="/admin/applications/atwork">Open DijiOne Admin Center</a>
+      </Card>
     </>
   );
 }

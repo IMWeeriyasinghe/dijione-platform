@@ -84,7 +84,7 @@ export type AuditLogOut = {
 };
 
 export type AccessSourceOut = {
-  type: "DIRECT" | "GROUP";
+  type: "DIRECT" | "GROUP" | "BASELINE";
   role: string | null;
   group_id: number | null;
   group_name: string | null;
@@ -102,6 +102,7 @@ export type EffectiveModuleAccessOut = {
 };
 
 export type EffectiveAccessOut = {
+  default_access_excluded?: string[];
   user_id: number;
   full_name: string;
   platform_role: string;

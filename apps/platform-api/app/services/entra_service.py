@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.constants import PlatformRole
 from app.models.user import User
 
@@ -42,6 +43,26 @@ def _email_from_claims(claims: dict) -> str | None:
         if value and "@" in value:
             return value.lower()
     return None
+
+
+def is_internal_employee(claims: dict) -> bool:
+    """True only on affirmative proof of tenant membership. A single-tenant issuer
+    does not exclude B2B guests, and a missing claim proves nothing, so the app
+    registration must emit the optional `acct` claim (0 = member, 1 = guest)."""
+    settings = get_settings()
+    domains = {d.strip().lower() for d in settings.entra_internal_email_domains.split(",") if d.strip()}
+    email = _email_from_claims(claims)
+    if not domains or email is None or email.rsplit("@", 1)[1] not in domains:
+        return False
+    tenant = settings.entra_tenant_id
+    if not tenant or claims.get("tid") != tenant:
+        return False
+    if claims.get("idp") not in (None, f"https://sts.windows.net/{tenant}/", settings.entra_issuer):
+        return False
+    if claims.get("acct") not in (0, "0"):
+        return False
+    names = [claims.get(k) for k in ("email", "preferred_username", "upn")]
+    return not any("#ext#" in n.lower() for n in names if isinstance(n, str))
 
 
 def resolve_entra_user(db: Session, claims: dict) -> User:
@@ -77,6 +98,8 @@ def resolve_entra_user(db: Session, claims: dict) -> User:
         db.add(user)
         db.flush()
         created = True
+
+    user.internal_employee = is_internal_employee(claims)
 
     if not user.is_active:
         db.commit()  # persist the just-created / newly-linked row

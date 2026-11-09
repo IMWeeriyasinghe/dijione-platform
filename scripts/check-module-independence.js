@@ -45,6 +45,8 @@ const SHARED_ALLOWED_FILES = [
   "scripts/check-module-independence.test.js",
   // Gateway routing + Home-card runtime-status path (shell-web).
   "apps/shell-web/next.config.ts",
+  "apps/platform-api/alembic/versions/p6q7r8s9t0u1_module_baseline_roles.py",
+  "apps/platform-api/tests/test_default_module_access.py",
   "apps/shell-web/src/proxy.ts",
   "apps/shell-web/src/__tests__/proxy.test.ts",
   "apps/shell-web/src/components/home/ModuleCard.tsx",
