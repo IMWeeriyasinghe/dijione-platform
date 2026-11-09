@@ -75,7 +75,6 @@ class PromotionSummary:
     candidacies_seen: int = 0
     candidacies_skipped_no_verified_request: int = 0
     collapsed_duplicate_candidacies: int = 0
-    candidacies_available: bool = True
     requests_retired: int = 0
     requests_access_withdrawn: int = 0
     unchanged: int = 0
@@ -121,7 +120,7 @@ class VerifiedPostingPromotionReconciler:
         self.applications = ApplicationRepository(db)
         self.audit = AuditService()
 
-    def reconcile(self, *, candidacies: list[dict] | None) -> PromotionSummary:
+    def reconcile(self, *, candidacies: list[dict]) -> PromotionSummary:
         summary = PromotionSummary()
         tr_by_posting: dict[str, object] = {}
 
@@ -162,10 +161,6 @@ class VerifiedPostingPromotionReconciler:
             tr_by_posting[mapping.posting_external_id] = tr
 
         self.db.flush()
-
-        if candidacies is None:
-            summary.candidacies_available = False
-            return summary
 
         summary.candidacies_seen = len(candidacies)
 

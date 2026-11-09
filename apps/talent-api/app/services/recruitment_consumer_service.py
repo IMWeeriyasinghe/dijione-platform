@@ -184,12 +184,9 @@ def classify_reconcile_result(result: dict) -> tuple[str, list[str]]:
     """Only a complete read of the source is SUCCEEDED."""
     if not result.get("refreshed"):
         return OUTCOME_FAILED, [result.get("reason", "unknown")]
-    promotion = result["promotion"]
     reasons: list[str] = []
     if not result["postings_seen"]:
         reasons.append("no_postings")
-    if not promotion["candidacies_available"]:
-        reasons.append("candidacies_unavailable")
     return (OUTCOME_PARTIAL, reasons) if reasons else (OUTCOME_SUCCEEDED, [])
 
 
@@ -292,7 +289,8 @@ class RecruitmentConsumerService:
         source-domain outage this is a no-op that keeps the last-good
         projection and never widens visibility. The whole refresh is one
         transaction, committed only at the end; past ``budget_seconds`` it
-        raises before committing."""
+        raises before committing, and a candidacy read that fails or cannot
+        be proven complete rolls the whole of it back."""
         started = time.monotonic()
 
         def check_budget() -> None:
@@ -311,17 +309,19 @@ class RecruitmentConsumerService:
         check_budget()
 
         try:
-            candidacies: list[dict] | None = []
+            candidacies: list[dict] = []
             # Per posting, so candidacies for postings TalentFlow ignores are
             # never read. All or nothing: one unproven posting discards them all.
             for mapping in PostingClientMappingRepository(self.db).list_verified():
                 candidacies.extend(read_all_candidacies(self.client, mapping.posting_external_id, check_budget))
         except (httpx.HTTPError, CandidacyReadIncomplete) as exc:
+            # Nothing commits on an unproven read, including the mapping changes
+            # above, and run_reconcile drops their audit calls with the rollback.
             logger.warning(
-                "recruitment-api candidacies unavailable — promoting postings only (%s)",
-                type(exc).__name__,
+                "recruitment-api candidacies unavailable — nothing applied (%s)", type(exc).__name__
             )
-            candidacies = None
+            self.db.rollback()
+            return {"refreshed": False, "reason": "candidacies_unavailable"}
         promotion = VerifiedPostingPromotionReconciler(self.db).reconcile(candidacies=candidacies)
 
         check_budget()
@@ -350,7 +350,6 @@ class RecruitmentConsumerService:
                     promotion.candidacies_skipped_no_verified_request
                 ),
                 "collapsed_duplicate_candidacies": promotion.collapsed_duplicate_candidacies,
-                "candidacies_available": promotion.candidacies_available,
                 "requests_retired": promotion.requests_retired,
                 "requests_access_withdrawn": promotion.requests_access_withdrawn,
                 "unchanged": promotion.unchanged,
