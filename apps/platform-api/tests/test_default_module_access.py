@@ -94,7 +94,8 @@ def test_no_role_rows_are_written(db, baseline):
 def test_guest_and_foreign_identities_are_denied(db, baseline, over):
     claims = {**tok(), **over}
     email = (claims.get("email") or claims.get("preferred_username")).lower()
-    db.add(User(email=email, full_name="x", is_active=True))
+    user = User(email=email, full_name="x", is_active=True, entra_object_id="oid-emp", identity_provider="ENTRA")
+    db.add(user)
     db.commit()
     assert atwork(db, resolve_entra_user(db, claims)) == frozenset()
 
@@ -102,7 +103,9 @@ def test_guest_and_foreign_identities_are_denied(db, baseline, over):
 def test_empty_domain_list_fails_closed(db, baseline, monkeypatch):
     monkeypatch.setenv("ENTRA_INTERNAL_EMAIL_DOMAINS", "")
     get_settings.cache_clear()
-    existing(db)
+    user = existing(db)
+    user.entra_object_id = "oid-emp"
+    db.commit()
     assert atwork(db, sign_in(db)) == frozenset()
 
 
@@ -212,7 +215,9 @@ def test_home_admin_and_me_agree_with_effective_access(api_client, db, baseline,
 
 
 def test_missing_membership_claim_is_not_proof(db, baseline):
-    existing(db)
+    user = existing(db)
+    user.entra_object_id = "oid-emp"
+    db.commit()
     claims = tok()
     del claims["acct"]
     assert atwork(db, resolve_entra_user(db, claims)) == frozenset()
