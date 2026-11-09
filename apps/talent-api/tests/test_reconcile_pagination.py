@@ -7,6 +7,7 @@ import pytest
 
 from app.db.session import engine
 from app.models.application import Application
+from app.models.audit_outbox import AuditOutbox
 from app.models.candidate import Candidate
 from app.models.posting_client_mapping import PostingClientMapping
 from app.models.talent_request import TalentRequest
@@ -210,7 +211,8 @@ def test_a_complete_read_still_applies_mapping_changes(db, api_client, two_tenan
     promotion = body["counts"]["promotion"]
     assert promotion["requests_access_withdrawn"] == 1 and promotion["requests_retired"] == 1
     assert promotion["talent_requests_created"] == 2
-    assert delivered
+    db.expire_all()
+    assert db.query(AuditOutbox).count() > 0
     db.expire_all()
     p3 = db.query(TalentRequest).filter_by(posting_external_id="p3").one()
     assert all(a.is_client_visible is False for a in p3.applications)

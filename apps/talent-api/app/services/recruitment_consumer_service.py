@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
+from app.services.audit_outbox_service import audit_outbox_scope
 from app.services.audit_service import AuditService
 from app.services.posting_client_mapping_reconciler import PostingClientMappingReconciler
 from app.services.side_effects import SideEffect, collect_side_effects, deliver_side_effects
@@ -216,7 +217,8 @@ def run_reconcile(
                     reasons = [hold]
                     result = {"upstream": snapshot}
                 else:
-                    result = service.refresh_projection_and_reconcile(budget_seconds=budget_seconds)
+                    with audit_outbox_scope(db):
+                        result = service.refresh_projection_and_reconcile(budget_seconds=budget_seconds)
                     outcome, reasons = classify_reconcile_result(result)
                     if outcome == OUTCOME_SUCCEEDED and snapshot.get("latest_run_status") != "SUCCEEDED" and (
                         "latest_run_status" in snapshot

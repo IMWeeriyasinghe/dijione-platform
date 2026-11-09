@@ -1,5 +1,6 @@
 from app.db.base import Base
 from app.models.application import Application
+from app.models.audit_outbox import AuditOutbox
 from app.models.candidate import Candidate
 from app.models.client import Client
 from app.models.document import Document
@@ -13,6 +14,7 @@ from app.models.talent_request import TalentRequest
 __all__ = [
     "Base",
     "Application",
+    "AuditOutbox",
     "Candidate",
     "Client",
     "Document",

@@ -8,6 +8,7 @@ import pytest
 
 from app.db.session import SessionLocal, engine
 from app.models.application import Application
+from app.models.audit_outbox import AuditOutbox
 from app.models.candidate import Candidate
 from app.models.recruitment_posting_ref import RecruitmentPostingRef
 from app.models.talent_request import TalentRequest
@@ -278,21 +279,12 @@ def test_lock_is_released_after_failure(api_client, db, two_tenant_world, monkey
     assert not consumer._local_reconcile_lock.locked()
 
 
-def test_side_effects_sent_only_after_commit(api_client, db, two_tenant_world, monkeypatch, platform_calls):
+def test_audit_is_committed_to_the_outbox_not_sent(api_client, db, two_tenant_world, monkeypatch, platform_calls):
     _use(monkeypatch, _source(two_tenant_world))
-    order = []
-    real_commit = consumer.Session.commit
-    audit_seen_at_commit = []
-
-    def spying_commit(self):
-        audit_seen_at_commit.append(len(platform_calls["audit_events"]))
-        order.append("commit")
-        return real_commit(self)
-
-    monkeypatch.setattr(consumer.Session, "commit", spying_commit)
     assert api_client.post(URL, headers=HEADERS).status_code == 200
-    assert audit_seen_at_commit == [0]
-    assert platform_calls["audit_events"]
+    assert platform_calls["audit_events"] == []
+    db.expire_all()
+    assert db.query(AuditOutbox).count() > 0
 
 
 def test_rollback_sends_no_side_effects(api_client, db, two_tenant_world, monkeypatch, platform_calls):
@@ -301,14 +293,18 @@ def test_rollback_sends_no_side_effects(api_client, db, two_tenant_world, monkey
     api_client.post(URL, headers=HEADERS)
     assert platform_calls["audit_events"] == []
     assert platform_calls["broadcasts"] == []
+    db.expire_all()
+    assert db.query(AuditOutbox).count() == 0
 
 
 def test_retry_does_not_duplicate_audit(api_client, db, two_tenant_world, monkeypatch, platform_calls):
     _use(monkeypatch, _source(two_tenant_world))
     api_client.post(URL, headers=HEADERS)
-    first = len(platform_calls["audit_events"])
+    db.expire_all()
+    first = db.query(AuditOutbox).count()
     api_client.post(URL, headers=HEADERS)
-    assert first > 0 and len(platform_calls["audit_events"]) == first
+    db.expire_all()
+    assert first > 0 and db.query(AuditOutbox).count() == first
 
 
 def test_persisting_conflict_notifies_once(api_client, db, two_tenant_world, monkeypatch, platform_calls):
