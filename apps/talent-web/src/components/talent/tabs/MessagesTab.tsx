@@ -63,6 +63,11 @@ export function MessagesTab({ requestId }: { requestId: number }) {
         </div>
       )}
 
+      {mutation.isError && (
+        <p role="alert" className="text-sm text-dt-danger">
+          Your message could not be sent. Please try again.
+        </p>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();

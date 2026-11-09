@@ -166,6 +166,25 @@ export type DocumentOut = {
   created_at: string;
 };
 
+export type ExternalTalentRequestOut = Pick<
+  TalentRequestOut,
+  | "id"
+  | "request_code"
+  | "designation"
+  | "location"
+  | "current_stage"
+  | "client_safe_status_text"
+  | "progress_percent"
+  | "stage_timeline"
+  | "active_application_count"
+  | "created_at"
+  | "updated_at"
+>;
+
+export type ExternalClientDashboardOut = Omit<ClientDashboardOut, "requests"> & {
+  requests: ExternalTalentRequestOut[];
+};
+
 export type ClientDashboardOut = {
   client_name: string;
   active_requests: number;

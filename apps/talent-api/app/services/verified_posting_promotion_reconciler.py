@@ -51,11 +51,12 @@ from app.repositories.posting_repo import PostingRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.services.audit_service import AuditService
 from app.services.candidate_service import CandidateService
+from app.services.client_access_service import retire_request, withdraw_request_access
 from app.services.talent_request_service import TalentRequestService
 
 logger = logging.getLogger("talent-api.promotion_reconciler")
 
-_CANDIDACY_PAGE_LIMIT = 500
+CANDIDACY_PAGE_LIMIT = 500
 _STAGE_RANK = {s.value: i for i, s in enumerate(CANONICAL_STAGE_ORDER)}
 _VALID_STATUSES = {s.value for s in ApplicationStatus}
 _DEFAULT_STAGE = CanonicalStage.SOURCING.value
@@ -75,6 +76,8 @@ class PromotionSummary:
     candidacies_skipped_no_verified_request: int = 0
     collapsed_duplicate_candidacies: int = 0
     candidacies_available: bool = True
+    requests_retired: int = 0
+    requests_access_withdrawn: int = 0
     unchanged: int = 0
     transitions: list[str] = field(default_factory=list)
 
@@ -118,9 +121,13 @@ class VerifiedPostingPromotionReconciler:
         self.applications = ApplicationRepository(db)
         self.audit = AuditService()
 
-    def reconcile(self, *, candidacies: list[dict] | None) -> PromotionSummary:
+    def reconcile(
+        self, *, candidacies: list[dict] | None, candidacy_limit_hit: bool = False
+    ) -> PromotionSummary:
         summary = PromotionSummary()
         tr_by_posting: dict[str, object] = {}
+
+        self._enforce_mapping_changes(summary)
 
         for mapping in self.mappings.list_verified():
             ref = self.postings.get_ref_by_external_id(mapping.posting_external_id)
@@ -163,7 +170,7 @@ class VerifiedPostingPromotionReconciler:
             return summary
 
         summary.candidacies_seen = len(candidacies)
-        if len(candidacies) >= _CANDIDACY_PAGE_LIMIT:
+        if candidacy_limit_hit:
             summary.transitions.append("candidacy_page_limit_hit")
 
         groups: dict[tuple[str, str], list[dict]] = {}
@@ -201,6 +208,42 @@ class VerifiedPostingPromotionReconciler:
 
         self.db.flush()
         return summary
+
+    def _enforce_mapping_changes(self, summary: PromotionSummary) -> None:
+        """Apply mapping changes to requests already promoted. A request
+        whose posting now belongs to another client is retired, so promotion
+        below builds a clean one; one with no valid mapping loses its shared
+        candidates. Never exposes anything to a client."""
+        verified = {m.posting_external_id: m.client_id for m in self.mappings.list_verified()}
+        for request in self.request_repo.list_source_linked():
+            client_id = verified.get(request.posting_external_id)
+            if client_id == request.client_id:
+                continue
+            if client_id is not None:
+                previous_client_id = request.client_id
+                retire_request(self.db, request)
+                summary.requests_retired += 1
+                self._audit_request(request, "retired_client_changed", {
+                    "previous_client_id": previous_client_id, "client_id": client_id,
+                })
+            elif withdraw_request_access(request):
+                summary.requests_access_withdrawn += 1
+                self._audit_request(request, "client_access_withdrawn", {
+                    "client_id": request.client_id,
+                })
+        self.db.flush()
+
+    def _audit_request(self, request, action: str, meta: dict) -> None:
+        try:
+            self.audit.log(
+                actor_id=None,
+                action=f"talent_request.{action}",
+                entity_type="TalentRequest",
+                entity_id=request.id,
+                new_state=meta,
+            )
+        except Exception:  # noqa: BLE001 - best-effort, mirrors _audit_application
+            logger.debug("promotion reconcile audit skipped", exc_info=True)
 
     def _reconcile_application(
         self, candidate_id: int, talent_request_id: int, chosen: dict, summary: PromotionSummary

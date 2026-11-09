@@ -24,8 +24,10 @@ from app.db.session import get_db
 from app.repositories.client_repo import ClientRepository
 from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
 from app.repositories.posting_repo import PostingRepository
+from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.posting import ClientSafePostingOut, PostingClientMappingVerify, PostingOut
 from app.services.audit_service import AuditService
+from app.services.client_access_service import retire_request, withdraw_request_access
 
 router = APIRouter(prefix="/api/talent/postings", tags=["postings"])
 
@@ -33,6 +35,24 @@ _UNMAPPED = PostingClientMappingStatus.UNMAPPED.value
 _VERIFIED = PostingClientMappingStatus.VERIFIED.value
 _REJECTED = PostingClientMappingStatus.REJECTED.value
 _MANUAL = PostingClientMappingSource.MANUAL.value
+
+
+def _can_view(scope: TalentScope, mapping) -> bool:
+    """Portfolio-restricted staff see their clients' postings and postings
+    no client holds yet (needed to triage them), never another client's."""
+    if scope.client_ids is None or mapping is None or mapping.client_id is None:
+        return True
+    return mapping.client_id in scope.client_ids
+
+
+def _can_change(scope: TalentScope, mapping) -> bool:
+    """A rejected mapping has no client left to scope it by, so only
+    unrestricted staff may overturn one."""
+    if scope.client_ids is None:
+        return True
+    if mapping is not None and mapping.status == _REJECTED:
+        return False
+    return _can_view(scope, mapping)
 
 
 def _to_posting_out(ref, mapping, client_name: str | None) -> PostingOut:
@@ -69,6 +89,8 @@ def list_postings_staff(
 
     out: list[PostingOut] = []
     for ref, mapping in rows:
+        if not _can_view(scope, mapping):
+            continue
         client_name = None
         if mapping and mapping.client_id:
             client = client_repo.get_by_id(mapping.client_id)
@@ -96,10 +118,20 @@ def verify_posting_mapping(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
 
     client = client_repo.get_by_id(payload.client_id)
-    if client is None:
+    if client is None or (scope.client_ids is not None and client.id not in scope.client_ids):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
 
     mapping = mapping_repo.get_or_create(ref.external_id, provider=ref.provider)
+    if not _can_change(scope, mapping):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
+    previous = {"status": mapping.status, "client_id": mapping.client_id, "source": mapping.source}
+    request = TalentRequestRepository(db).get_by_posting_external_id(
+        ref.external_id, provider=ref.provider
+    )
+    retired_request_id = None
+    if request is not None and request.client_id != client.id:
+        retired_request_id = request.id
+        retire_request(db, request)
     mapping.client_id = client.id
     mapping.status = PostingClientMappingStatus.VERIFIED.value
     mapping.source = PostingClientMappingSource.MANUAL.value
@@ -107,6 +139,19 @@ def verify_posting_mapping(
     mapping.verified_at = datetime.now(UTC)
     db.commit()
     db.refresh(mapping)
+
+    AuditService().log(
+        actor_id=scope.user.id,
+        action="posting_mapping.manually_verified",
+        entity_type="PostingClientMapping",
+        entity_id=mapping.id,
+        new_state={
+            "previous": previous,
+            "client_id": client.id,
+            "posting_external_id": ref.external_id,
+            "retired_request_id": retired_request_id,
+        },
+    )
 
     return _to_posting_out(ref, mapping, client.name)
 
@@ -132,7 +177,14 @@ def unmap_posting_mapping(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
 
     mapping = mapping_repo.get_or_create(ref.external_id, provider=ref.provider)
+    if scope.client_ids is not None and mapping.client_id not in scope.client_ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
     previous = {"status": mapping.status, "client_id": mapping.client_id, "source": mapping.source}
+    request = TalentRequestRepository(db).get_by_posting_external_id(
+        ref.external_id, provider=ref.provider
+    )
+    if request is not None:
+        withdraw_request_access(request)
     mapping.status = _REJECTED
     mapping.source = _MANUAL
     mapping.client_id = None
@@ -171,6 +223,8 @@ def reopen_posting_mapping(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
 
     mapping = mapping_repo.get_or_create(ref.external_id, provider=ref.provider)
+    if not _can_change(scope, mapping):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
     previous = {"status": mapping.status, "client_id": mapping.client_id, "source": mapping.source}
     mapping.status = _UNMAPPED
     mapping.source = ""
@@ -220,6 +274,8 @@ def get_posting_staff(
     if ref is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
     mapping = mapping_repo.get_for_posting(ref.external_id, provider=ref.provider)
+    if not _can_view(scope, mapping):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Posting not found")
     client_name = None
     if mapping and mapping.client_id:
         client = client_repo.get_by_id(mapping.client_id)

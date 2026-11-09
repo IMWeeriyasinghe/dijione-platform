@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - "apps/*-web/**"
+      - "apps/talent-api/**"
       - "packages/**"
       - "package.json"
       - "package-lock.json"
@@ -53,3 +54,38 @@ jobs:
 
       - name: Build
         run: npm --workspace apps/${{ matrix.app }} run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - talent-web
+          - talentflow-portal-web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install talent-api
+        working-directory: apps/talent-api
+        run: pip install -r requirements.txt
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: npm --workspace apps/${{ matrix.app }} run test:e2e

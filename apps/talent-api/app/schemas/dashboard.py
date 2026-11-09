@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from app.schemas.talent_request import TalentRequestOut
+from app.schemas.talent_request import ExternalTalentRequestOut, TalentRequestOut
 
 
 class ClientDashboardOut(BaseModel):
@@ -10,6 +10,15 @@ class ClientDashboardOut(BaseModel):
     interviews_this_week: int
     offers_in_progress: int
     requests: list[TalentRequestOut]
+
+
+class ExternalClientDashboardOut(BaseModel):
+    client_name: str
+    active_requests: int
+    candidates_in_process: int
+    interviews_this_week: int
+    offers_in_progress: int
+    requests: list[ExternalTalentRequestOut]
 
 
 class TaDashboardOut(BaseModel):

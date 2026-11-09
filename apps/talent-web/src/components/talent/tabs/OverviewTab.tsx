@@ -52,7 +52,7 @@ export function OverviewTab({ request }: { request: TalentRequestOut }) {
             </div>
             <div>
               <dt className="text-dt-text-secondary">Priority</dt>
-              <dd className="font-medium text-dt-text-primary">{request.priority}</dd>
+              <dd className="font-medium text-dt-text-primary">{request.priority || "—"}</dd>
             </div>
           </dl>
 

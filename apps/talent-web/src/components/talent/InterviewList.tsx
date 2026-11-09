@@ -91,6 +91,7 @@ export function InterviewList({ requestId }: { requestId?: number }) {
               <div className="flex items-center gap-2">
                 {scope.isStaff ? (
                   <Select
+                    aria-label="Interview status"
                     value={interview.status}
                     onChange={async (e) => {
                       await updateInterviewStatus(interview.id, e.target.value);

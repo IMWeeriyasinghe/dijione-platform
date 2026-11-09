@@ -52,3 +52,5 @@ class RecruitmentSyncRun(TimestampMixin, Base):
     records_updated: Mapped[int] = mapped_column(Integer, default=0)
     records_unchanged: Mapped[int] = mapped_column(Integer, default=0)
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON: per-entity counts and client-posting progress. Counts only.
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)

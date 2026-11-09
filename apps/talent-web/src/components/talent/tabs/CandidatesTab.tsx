@@ -18,6 +18,7 @@ import { AddApplicationModal } from "@/components/talent/AddApplicationModal";
 export function StaffCandidatesTab({ requestId }: { requestId: number }) {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
+  const [shareError, setShareError] = useState(false);
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["applications", requestId],
     queryFn: () => listApplications({ talent_request_id: requestId }),
@@ -33,6 +34,11 @@ export function StaffCandidatesTab({ requestId }: { requestId: number }) {
 
   return (
     <div>
+      {shareError && (
+        <p role="alert" className="mb-3 text-sm text-dt-danger">
+          Candidate sharing could not be updated. Please try again.
+        </p>
+      )}
       <div className="mb-4 flex justify-end">
         <Button size="sm" onClick={() => setAddOpen(true)}>
           <Plus className="size-4" />
@@ -79,8 +85,15 @@ export function StaffCandidatesTab({ requestId }: { requestId: number }) {
                       type="checkbox"
                       defaultChecked={app.is_client_visible}
                       onChange={async (e) => {
-                        await updateApplicationVisibility(app.id, e.target.checked);
-                        invalidate();
+                        const box = e.target;
+                        setShareError(false);
+                        try {
+                          await updateApplicationVisibility(app.id, box.checked);
+                          invalidate();
+                        } catch {
+                          box.checked = !box.checked;
+                          setShareError(true);
+                        }
                       }}
                       className="size-4 accent-[var(--dt-orange)]"
                     />

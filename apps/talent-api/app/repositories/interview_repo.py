@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.application import Application
 from app.models.interview import Interview
 from app.models.talent_request import TalentRequest
+from app.repositories.talent_request_repo import client_may_access_request
 
 
 class InterviewRepository:
@@ -47,7 +48,12 @@ class InterviewRepository:
             )
         )
         if client_id is not None:
-            stmt = stmt.where(TalentRequest.client_id == client_id, Interview.client_visible.is_(True))
+            stmt = stmt.where(
+                TalentRequest.client_id == client_id,
+                client_may_access_request(),
+                Interview.client_visible.is_(True),
+                Application.is_client_visible.is_(True),
+            )
         elif allowed_client_ids is not None:
             stmt = stmt.where(TalentRequest.client_id.in_(allowed_client_ids))
         stmt = stmt.order_by(Interview.scheduled_at)

@@ -64,6 +64,7 @@ class SyncRunOut(BaseModel):
     records_updated: int
     records_unchanged: int
     error_summary: str | None = None
+    detail: dict | None = None
 
 
 class SyncAcceptedOut(BaseModel):
@@ -77,3 +78,4 @@ class FreshnessOut(BaseModel):
     provider: str
     last_successful_sync_at: str | None = None
     latest_run: SyncRunOut | None = None
+    source_snapshot: dict | None = None

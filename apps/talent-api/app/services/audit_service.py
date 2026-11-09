@@ -12,6 +12,7 @@ from __future__ import annotations
 from auth_client_py import PlatformClient
 
 from app.core.config import get_settings
+from app.services.side_effects import dispatch_or_collect
 
 
 class AuditService:
@@ -33,7 +34,7 @@ class AuditService:
         new_state: dict | str | None = None,
         metadata: dict | None = None,
     ) -> None:
-        self.client.record_audit_event(
+        dispatch_or_collect(lambda: self.client.record_audit_event(
             actor_id=actor_id, action=action, entity_type=entity_type, entity_id=entity_id,
             previous_state=previous_state, new_state=new_state, metadata=metadata,
-        )
+        ))

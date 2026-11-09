@@ -6,10 +6,12 @@
    docs/talent-flow/brand-baseline.md for the verified values and the
    rationale for keeping the invented-shade token names while their hexes
    collapse to the two canonical brand colours. */
+/* TalentFlow only: darker text shades for WCAG AA. --dt-orange, the brand
+   primary used for fills and borders, is unchanged. */
 :root {
   --dt-red-deep: #bf1e2e;
   --dt-red: #bf1e2e;
-  --dt-burnt-orange: #f1592a;
+  --dt-burnt-orange: #b93a12;
   --dt-orange-deep: #f1592a;
   --dt-orange: #f1592a;
   --dt-amber: #fcb040;
@@ -25,7 +27,7 @@
   --dt-border: #eadbd3;
 
   --dt-success: #056839;
-  --dt-warning: #c78300;
+  --dt-warning: #8a5a00;
   --dt-danger: #bf1e2e;
   --dt-info: #5b6472;
 
