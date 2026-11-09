@@ -494,6 +494,11 @@ export default function AdminUserDetailPage() {
                   ))}
                 </div>
               </div>
+              {(effectiveQuery.data.default_access_excluded ?? []).length > 0 && (
+                <p className="border-t border-dt-border pt-4 text-sm text-dt-text-secondary">
+                  Default employee access removed for: {effectiveQuery.data.default_access_excluded?.join(", ")}
+                </p>
+              )}
               {effectiveQuery.data.modules.map((m) => (
                 <div key={m.module_key} className="border-t border-dt-border pt-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">

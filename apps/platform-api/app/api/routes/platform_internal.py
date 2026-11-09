@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_internal_service
 from app.db.session import get_db
 from app.models.client import Client
-from app.models.user import UserModuleRole
+from app.models.user import User, UserModuleRole
 from app.services.audit_service import AuditService
+from app.services.authorization_service import AuthorizationService
 from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/api/platform/internal", tags=["platform-internal"])
@@ -186,6 +187,20 @@ def deliver_notification(
     )
     db.commit()
     return {"status": "ok", "recipients": len(recipients), "created": created}
+
+
+@router.get("/users/{user_id}/modules/{module_key}/permissions")
+def live_module_permissions(
+    user_id: int,
+    module_key: str,
+    db: Session = Depends(get_db),
+    _service: None = Depends(require_internal_service),
+) -> dict:
+    """Current effective permissions, for services that must not trust older claims."""
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        return {"active": False, "permissions": []}
+    return {"active": True, "permissions": sorted(AuthorizationService(db).effective_permissions(user, module_key))}
 
 
 class ModuleRoleHoldersOut(BaseModel):

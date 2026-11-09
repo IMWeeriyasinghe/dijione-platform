@@ -46,8 +46,9 @@ def _email_from_claims(claims: dict) -> str | None:
 
 
 def is_internal_employee(claims: dict) -> bool:
-    """True only for a member of our own tenant. A single-tenant issuer does not
-    exclude B2B guests, so each guest signal is checked and any doubt fails closed."""
+    """True only on affirmative proof of tenant membership. A single-tenant issuer
+    does not exclude B2B guests, and a missing claim proves nothing, so the app
+    registration must emit the optional `acct` claim (0 = member, 1 = guest)."""
     settings = get_settings()
     domains = {d.strip().lower() for d in settings.entra_internal_email_domains.split(",") if d.strip()}
     email = _email_from_claims(claims)
@@ -58,7 +59,7 @@ def is_internal_employee(claims: dict) -> bool:
         return False
     if claims.get("idp") not in (None, f"https://sts.windows.net/{tenant}/", settings.entra_issuer):
         return False
-    if claims.get("acct") not in (None, 0, "0"):
+    if claims.get("acct") not in (0, "0"):
         return False
     names = [claims.get(k) for k in ("email", "preferred_username", "upn")]
     return not any("#ext#" in n.lower() for n in names if isinstance(n, str))

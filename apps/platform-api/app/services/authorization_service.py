@@ -156,6 +156,18 @@ class AuthorizationService:
 
         return grants
 
+    def baseline_exclusions(self, user: User) -> list[tuple[str, str]]:
+        """Baseline roles this user has been explicitly excluded from."""
+        stmt = (
+            select(ModuleBaselineRole.module_key, ModuleBaselineRole.role)
+            .join(
+                UserModuleRole,
+                (UserModuleRole.module_key == ModuleBaselineRole.module_key) & (UserModuleRole.role == ModuleBaselineRole.role),
+            )
+            .where(UserModuleRole.user_id == user.id, UserModuleRole.enabled.is_(False), ModuleBaselineRole.enabled.is_(True))
+        )
+        return [(module_key, role) for module_key, role in self.db.execute(stmt).all()]
+
     def baseline_roles(self, user: User) -> dict[str, str]:
         """Module roles held by being an eligible internal employee. A disabled
         direct assignment of the same role is an explicit revocation."""

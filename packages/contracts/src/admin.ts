@@ -102,6 +102,7 @@ export type EffectiveModuleAccessOut = {
 };
 
 export type EffectiveAccessOut = {
+  default_access_excluded?: string[];
   user_id: number;
   full_name: string;
   platform_role: string;

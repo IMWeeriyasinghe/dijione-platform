@@ -136,6 +136,7 @@ class EffectiveAccessOut(BaseModel):
     is_active: bool
     platform_permissions: list[str]
     modules: list[EffectiveModuleAccessOut]
+    default_access_excluded: list[str] = []
 
 
 class GroupModuleAssignmentOut(BaseModel):

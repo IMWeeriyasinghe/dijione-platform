@@ -12,7 +12,7 @@ from app.models.user import User, UserModuleRole
 from app.services.authorization_service import AuthorizationService
 from app.services.claims_service import build_claims
 from app.services.entra_service import EntraLoginRefusedError, resolve_entra_user
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, internal_headers
 from tests.test_atwork_registration import MANAGER_PERMS, USER_PERMS, _register_module
 
 TENANT = "tenant-1"
@@ -37,7 +37,7 @@ def baseline(db):
 
 
 def tok(name="emp", **over):
-    return {"oid": f"oid-{name}", "email": f"{name}@dijital.example", "name": name, "tid": TENANT, **over}
+    return {"oid": f"oid-{name}", "email": f"{name}@dijital.example", "name": name, "tid": TENANT, "acct": 0, **over}
 
 
 def existing(db, name="emp", active=True):
@@ -85,6 +85,7 @@ def test_no_role_rows_are_written(db, baseline):
         {"idp": "https://sts.windows.net/other/"},
         {"idp": "live.com"},
         {"acct": 1},
+        {"acct": None},
         {"preferred_username": "x_y.com#EXT#@tenant.example", "email": None},
         {"upn": "ext#EXT#@dijital.example"},
         {"email": "person@gmail.example"},
@@ -208,3 +209,39 @@ def test_home_admin_and_me_agree_with_effective_access(api_client, db, baseline,
     ).json()["module_roles"]
     app.dependency_overrides[get_current_user] = lambda: outsider
     assert "atwork" not in {m["key"] for m in api_client.get("/api/modules").json()}
+
+
+def test_missing_membership_claim_is_not_proof(db, baseline):
+    existing(db)
+    claims = tok()
+    del claims["acct"]
+    assert atwork(db, resolve_entra_user(db, claims)) == frozenset()
+
+
+def test_precedence_exclusion_only_removes_the_default_and_is_reported(api_client, db, baseline, two_tenant_world):
+    existing(db)
+    user = sign_in(db)
+    db.add(UserModuleRole(user_id=user.id, module_key="atwork", role="ATWORK_USER", enabled=False))
+    db.commit()
+    _grant_group(db, user)
+    assert atwork(db, user) == MANAGER_PERMS  # an explicit group grant still applies
+    admin = auth_headers(api_client, "test-super-admin")
+    body = api_client.get(f"{USERS_URL}/{user.id}/effective-access", headers=admin).json()
+    assert body["default_access_excluded"] == ["atwork"]
+    assert [s["type"] for m in body["modules"] for s in m["sources"] if m["module_key"] == "atwork"] == ["GROUP"]
+
+
+def test_live_permissions_follow_revocation_and_deactivation(api_client, db, baseline):
+    url_for = lambda u: f"/api/platform/internal/users/{u.id}/modules/atwork/permissions"  # noqa: E731
+    existing(db)
+    user = sign_in(db)
+    member = _grant_group(db, user)
+    headers = internal_headers()
+    assert set(api_client.get(url_for(user), headers=headers).json()["permissions"]) == MANAGER_PERMS
+    db.delete(member)
+    db.commit()
+    assert set(api_client.get(url_for(user), headers=headers).json()["permissions"]) == USER_PERMS
+    user.is_active = False
+    db.commit()
+    assert api_client.get(url_for(user), headers=headers).json() == {"active": False, "permissions": []}
+    assert api_client.get(url_for(user)).status_code == 401
