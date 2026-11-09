@@ -93,6 +93,20 @@ describe("GET /api/auth/callback", () => {
     );
     expect(html).toContain("localStorage.setItem");
     expect(html).toContain("session-token-abc");
-    expect(html).toContain('location.replace("/")');
+    const script = /<script>([\s\S]*)<\/script>/.exec(html)![1];
+    const landsOn = (stored: string | null) => {
+      const replace = vi.fn();
+      new Function("localStorage", "sessionStorage", "location", script)(
+        { setItem() {} },
+        { getItem: () => stored, removeItem() {} },
+        { replace },
+      );
+      return replace.mock.calls[0][0];
+    };
+    expect(landsOn(null)).toBe("/");
+    expect(landsOn("/atwork/management?x=1")).toBe("/atwork/management?x=1");
+    for (const bad of ["https://evil.example", "//evil.example", "/\\evil.example", "javascript:alert(1)"]) {
+      expect(landsOn(bad)).toBe("/");
+    }
   });
 });

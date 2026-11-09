@@ -19,14 +19,13 @@ def metadata() -> dict:
         "key": MODULE_ATWORK,
         "name": "DijiAtWork",
         "description": "Employee work check-in and attendance",
-        "product_status": "COMING_SOON",
     }
 
 
 @router.get("/summary")
 def summary() -> dict:
     """DijiOne Home's per-module status card."""
-    return {"service": SERVICE_NAME, "status": "healthy", "product_status": "COMING_SOON"}
+    return {"service": SERVICE_NAME, "status": "healthy"}
 
 
 @router.get("/me", response_model=AtworkMeOut)

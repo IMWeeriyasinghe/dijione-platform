@@ -14,6 +14,16 @@ import { Button } from "../ui/Button";
  * `/login` route, which builds the authorize URL + PKCE flow cookie and 302s
  * to Microsoft; `/api/auth/callback` completes the exchange.
  */
+function startSignIn() {
+  // Read back by /api/auth/callback, so a deep link survives the Microsoft round trip.
+  try {
+    sessionStorage.setItem("dijione.returnTo", location.pathname + location.search + location.hash);
+  } catch {
+    // Storage unavailable: sign-in still works and lands on Home.
+  }
+  beginEntraLogin();
+}
+
 export function EntraSignIn() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-dt-red-deep via-dt-red to-dt-burnt-orange px-4 py-12">
@@ -35,7 +45,7 @@ export function EntraSignIn() {
 
         <Button
           type="button"
-          onClick={() => beginEntraLogin()}
+          onClick={startSignIn}
           className="mt-8 w-full justify-center gap-2"
         >
           <LogIn className="size-4" />

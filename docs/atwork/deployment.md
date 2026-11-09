@@ -72,10 +72,23 @@ sets only the `atwork` row to `ACTIVE`, only when `APP_ENV` is `development`. UA
 Production keep `COMING_SOON`. Assign `ATWORK_USER` and, for the restricted test
 group only, `ATWORK_MANAGER` in the Admin Center.
 
+## DEV URLs
+
+DijiAtWork uses the existing DijiOne DEV domain and shell gateway, like Diji On-site.
+It has no DNS record, hostname, certificate or public endpoint of its own.
+
+- Employee: <https://dijione-dev.dijitalteam.com/atwork>
+- Management: <https://dijione-dev.dijitalteam.com/atwork/management>
+
+`/api/atwork/internal/*` is blocked at the gateway and is reachable only inside the
+Container Apps environment, with the internal service secret.
+
 ## DEV smoke test
 
 - [ ] `/health/deep` on `atwork-api` reports the database OK and the migration up to date.
-- [ ] Sign in through `shell-web`; `/atwork` opens with no second sign-in.
+- [ ] Sign in at <https://dijione-dev.dijitalteam.com>; `/atwork` opens with no second sign-in.
+- [ ] Signed out, open `/atwork/management` directly; after sign-in it returns there.
+- [ ] `POST /api/atwork/internal/notifications/run` on the DEV domain returns 404.
 - [ ] An `ATWORK_USER` is refused `/atwork/management`.
 - [ ] Check in, break, end break, confirm check-out, check in again; totals add up.
 - [ ] Submit a missing-session request. A reviewer gets a notification that opens it.
