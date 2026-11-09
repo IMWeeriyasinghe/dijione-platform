@@ -73,20 +73,9 @@ def test_source_down_is_failed_not_success(api_client, db, two_tenant_world, mon
     assert _counts(db) == (0, 0, 0, 0)
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "reason"),
-    [
-        ({"candidacies_down": True}, "candidacies_unavailable"),
-        ({"candidacies": [
-            recruitment_candidacy_dto(f"o{i}", posting_external_id="p1", candidate_external_id=f"c{i}")
-            for i in range(500)
-        ]}, "candidacy_limit_hit"),
-    ],
-)
-def test_partial_is_non_2xx_and_never_fully_refreshed(
-    api_client, db, two_tenant_world, monkeypatch, kwargs, reason
-):
-    _use(monkeypatch, _source(two_tenant_world, **kwargs))
+def test_partial_is_non_2xx_and_never_fully_refreshed(api_client, db, two_tenant_world, monkeypatch):
+    reason = "candidacies_unavailable"
+    _use(monkeypatch, _source(two_tenant_world, candidacies_down=True))
     resp = api_client.post(URL, headers=HEADERS)
     body = resp.json()
     assert resp.status_code == 503
@@ -239,7 +228,7 @@ def test_postgres_lock_excludes_second_session():
 def test_exception_rolls_back_everything_and_hides_detail(api_client, db, two_tenant_world, monkeypatch):
     _use(monkeypatch, _source(two_tenant_world))
 
-    def boom(self, *, candidacies, candidacy_limit_hit=False):
+    def boom(self, *, candidacies):
         self.db.flush()
         raise RuntimeError("secret candidate detail")
 
@@ -351,17 +340,6 @@ def test_partial_never_shares_or_withdraws(api_client, db, two_tenant_world, mon
     assert api_client.post(URL, headers=HEADERS).json()["reasons"] == ["no_postings"]
     assert _counts(db) == (1, 1, 1, 1)
     assert db.query(Application).one().is_client_visible is True
-
-
-def test_partial_new_applications_stay_unshared(api_client, db, two_tenant_world, monkeypatch):
-    rows = [
-        recruitment_candidacy_dto(f"o{i}", posting_external_id="p1", candidate_external_id=f"c{i}")
-        for i in range(500)
-    ]
-    _use(monkeypatch, _source(two_tenant_world, candidacies=rows))
-    assert api_client.post(URL, headers=HEADERS).json()["outcome"] == "PARTIAL"
-    db.expire_all()
-    assert db.query(Application).filter(Application.is_client_visible.is_(True)).count() == 0
 
 
 def test_delivery_is_time_limited_and_survives_errors():

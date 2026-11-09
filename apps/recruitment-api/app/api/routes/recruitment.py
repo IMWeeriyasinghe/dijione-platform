@@ -93,8 +93,13 @@ def get_posting(external_id: str, db: Session = Depends(get_db)) -> PostingOut:
 def list_candidacies(
     posting_external_id: str | None = Query(default=None),
     limit: int = Query(default=200, le=500),
+    after_external_id: str | None = Query(
+        default=None, description="Page by opportunity id within one posting; empty for the first page."
+    ),
     db: Session = Depends(get_db),
 ) -> list[CandidacyOut]:
+    if after_external_id is not None and posting_external_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Paging requires posting_external_id")
     posting_repo = PostingRepository(db)
     posting_local_id: int | None = None
     if posting_external_id is not None:
@@ -103,7 +108,9 @@ def list_candidacies(
             return []
         posting_local_id = posting.id
 
-    rows = RecruitmentCandidacyRepository(db).list(posting_id=posting_local_id, limit=limit)
+    rows = RecruitmentCandidacyRepository(db).list(
+        posting_id=posting_local_id, limit=limit, after_opportunity_id=after_external_id
+    )
     out: list[CandidacyOut] = []
     for c in rows:
         if c.posting is None or c.candidate is None:

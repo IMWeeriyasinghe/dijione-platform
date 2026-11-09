@@ -3,10 +3,14 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from app.models.posting import Posting
 from app.models.recruitment_candidacy import RecruitmentCandidacy
+from app.models.recruitment_candidate import RecruitmentCandidate
 from app.services import lever_candidacy_sync_service as module
 from app.services.lever_candidacy_sync_service import LeverCandidacySyncService
+from tests.conftest import internal_headers
 
 
 def _opp(opp_id: str):
@@ -110,3 +114,50 @@ def test_posting_reads_stop_at_the_budget_and_report_it(db, monkeypatch, caplog)
 
     assert (result["dtc_postings_read"], result["dtc_postings_total"]) == (1, 2)
     assert "incomplete" in caplog.text
+
+
+def _candidacies(db, count, posting="pg"):
+    p = Posting(lever_posting_id=posting)
+    db.add(p)
+    db.flush()
+    for i in range(count):
+        c = RecruitmentCandidate(lever_contact_id=f"{posting}-c{i}")
+        db.add(c)
+        db.flush()
+        db.add(RecruitmentCandidacy(recruitment_candidate_id=c.id, posting_id=p.id, lever_opportunity_id=f"{posting}-{i:04}"))
+    db.commit()
+
+
+def _page(api_client, posting, after, limit):
+    return api_client.get(
+        "/api/recruitment/candidacies", headers=internal_headers(),
+        params={"posting_external_id": posting, "after_external_id": after, "limit": limit},
+    ).json()
+
+
+@pytest.mark.parametrize("count", [0, 3, 6, 7])
+def test_cursor_pages_return_each_candidacy_once_in_order(db, api_client, count):
+    _candidacies(db, count)
+    _candidacies(db, 4, posting="other")
+    seen, after = [], ""
+    while page := _page(api_client, "pg", after, 3):
+        seen += [r["external_id"] for r in page]
+        after = page[-1]["external_id"]
+    assert seen == [f"pg-{i:04}" for i in range(count)]
+
+
+def test_an_update_between_pages_neither_repeats_nor_skips(db, api_client):
+    _candidacies(db, 4)
+    first = [r["external_id"] for r in _page(api_client, "pg", "", 2)]
+    row = db.query(RecruitmentCandidacy).filter_by(lever_opportunity_id="pg-0003").one()
+    row.status = "ARCHIVED"
+    db.commit()
+    second = [r["external_id"] for r in _page(api_client, "pg", first[-1], 2)]
+    assert first + second == ["pg-0000", "pg-0001", "pg-0002", "pg-0003"]
+
+
+def test_paging_needs_a_posting_and_keeps_the_page_cap(db, api_client):
+    url = "/api/recruitment/candidacies"
+    assert api_client.get(url, headers=internal_headers(), params={"after_external_id": ""}).status_code == 422
+    params = {"posting_external_id": "pg", "after_external_id": "", "limit": 501}
+    assert api_client.get(url, headers=internal_headers(), params=params).status_code == 422
