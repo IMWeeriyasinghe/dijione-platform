@@ -46,6 +46,7 @@ export function useRuntimeStatus(moduleKey: string, enabled: boolean) {
     retryDelay: statusRetryDelay,
     staleTime: STATUS_STALE_MS,
     refetchInterval: STATUS_POLL_MS,
+    refetchOnWindowFocus: false,
   });
 }
 

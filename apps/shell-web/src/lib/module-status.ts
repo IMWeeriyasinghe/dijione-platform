@@ -8,7 +8,8 @@ export type ReplicaSignal = "SCALED_TO_ZERO" | "STARTING";
 
 export const HEALTH_TIMEOUT_MS = 20_000; // long enough for a Container Apps cold start
 export const STATUS_STALE_MS = 60_000;
-export const STATUS_POLL_MS = 300_000; // every poll can wake a scaled-down service
+// Longer than the 300-second scale-down window, so an open Home tab lets services idle.
+export const STATUS_POLL_MS = 600_000;
 const MAX_RETRIES = 2;
 
 const SUMMARY_PATH_OVERRIDES: Record<string, string> = { "talent-flow": "/api/talent/summary" };
@@ -17,11 +18,13 @@ export function summaryPathFor(moduleKey: string): string {
   return SUMMARY_PATH_OVERRIDES[moduleKey] ?? `/api/${moduleKey}/summary`;
 }
 
-type FailureKind = "server-error" | "no-response" | "no-status";
+// Gateway errors are also what a cold start can produce, so alone they prove nothing.
+type FailureKind = "server-error" | "gateway" | "no-response" | "no-status";
 
 function failureKind(error: unknown): FailureKind {
   const status = (error as { status?: unknown } | null)?.status;
   if (typeof status !== "number") return "no-response";
+  if ([502, 503, 504].includes(status)) return "gateway";
   return status >= 500 ? "server-error" : "no-status";
 }
 

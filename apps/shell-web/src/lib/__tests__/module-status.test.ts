@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveModuleHealth, shouldRetryStatus, statusRetryDelay, summaryPathFor } from "../module-status";
+import { STATUS_POLL_MS, deriveModuleHealth, shouldRetryStatus, statusRetryDelay, summaryPathFor } from "../module-status";
 
 const failed = (error: unknown, signal?: "SCALED_TO_ZERO" | "STARTING") =>
   deriveModuleHealth({ isPending: false, isSuccess: false, error, signal });
@@ -15,7 +15,8 @@ describe("deriveModuleHealth", () => {
     expect(deriveModuleHealth({ isPending: true, isSuccess: false, error: timeout })).toBe("CHECKING"));
   it("does not claim idle or an outage on a timeout", () => expect(failed(timeout)).toBe("UNKNOWN"));
   it("does not claim idle or an outage on a network failure", () => expect(failed(new TypeError("fetch"))).toBe("UNKNOWN"));
-  it.each([500, 502, 503, 504])("treats %i after retries as unavailable", (s) => expect(failed(http(s))).toBe("UNAVAILABLE"));
+  it.each([500, 501])("treats %i after retries as unavailable", (s) => expect(failed(http(s))).toBe("UNAVAILABLE"));
+  it.each([502, 503, 504])("keeps %i neutral because a cold start can produce it", (s) => expect(failed(http(s))).toBe("UNKNOWN"));
   it.each([401, 403, 404])("does not treat %i as an outage", (s) => expect(failed(http(s))).toBe("UNKNOWN"));
 });
 
@@ -23,6 +24,7 @@ describe("retry policy", () => {
   it("retries a bounded number of times with backoff", () => {
     expect([0, 1, 2].map((n) => shouldRetryStatus(n, timeout))).toEqual([true, true, false]);
     expect(shouldRetryStatus(0, http(503))).toBe(true);
+    expect(STATUS_POLL_MS).toBeGreaterThan(300_000);
     expect([statusRetryDelay(0), statusRetryDelay(1)]).toEqual([5000, 15000]);
   });
   it.each([401, 403, 404])("never retries %i", (s) => expect(shouldRetryStatus(0, http(s))).toBe(false));
