@@ -52,6 +52,7 @@ export type NotificationOut = {
   is_read: boolean;
   related_entity_type: string | null;
   related_entity_id: number | null;
+  link_url?: string | null;
   created_at: string;
 };
 

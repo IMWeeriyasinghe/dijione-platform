@@ -18,6 +18,9 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
+// DijiAtWork stays off until DEV deployment is separately authorized (docs/atwork/deployment.md).
+param deployAtwork = false
+
 // Diji On-site (docs/onsite/architecture.md). Reads the ONE shared Diji On-site Attendance source
 // (rg-diji-onsite-attendance), exactly like UAT and PROD (deploy/bicep/onsite-release.bicep).
 param deployOnsite = true

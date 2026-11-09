@@ -48,6 +48,9 @@ param deployCommercial bool = false
 @description('Deploy Diji On-site (onsite-api, onsite-web, migrate + sync jobs). Independently deployable/removable; requires people-api (deployed whenever DijiBirthday or Diji On-site is). See docs/onsite/architecture.md.')
 param deployOnsite bool = false
 
+@description('Deploy DijiAtWork (atwork-api, atwork-web, migrate and notification jobs). Independently deployable and removable. Separate authorization required before enabling.')
+param deployAtwork bool = false
+
 @description('onsite-api source mode. "mock" = MockOnsiteSource; "live" = SELECT-only Azure SQL onsite.* via the Container App system-assigned managed identity (no SQL password).')
 @allowed([ 'mock', 'live' ])
 param onsiteIntegrationsMode string = 'mock'
@@ -200,12 +203,17 @@ var onsiteServices = [
   { name: 'onsite-api', kind: 'api', db: 'onsite', external: false }
   { name: 'onsite-web', kind: 'web', db: '', external: false }
 ]
+var atworkServices = [
+  { name: 'atwork-api', kind: 'api', db: 'atwork', external: false }
+  { name: 'atwork-web', kind: 'web', db: '', external: false }
+]
 var services = concat(
   coreServices,
   deployPeople ? peopleServices : [],
   deployBirthday ? birthdayServices : [],
   deployCommercial ? commercialServices : [],
-  deployOnsite ? onsiteServices : []
+  deployOnsite ? onsiteServices : [],
+  deployAtwork ? atworkServices : []
 )
 
 // ---- image ref helper (digest first, tag only for first bring-up) --------
@@ -245,6 +253,8 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
     { name: 'BIRTHDAY_WEB_URL', value: 'http://birthday-web' }
     { name: 'ONSITE_API_URL', value: 'http://onsite-api' }
     { name: 'ONSITE_WEB_URL', value: 'http://onsite-web' }
+    { name: 'ATWORK_API_URL', value: 'http://atwork-api' }
+    { name: 'ATWORK_WEB_URL', value: 'http://atwork-web' }
     { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
   ]
   : svc == 'platform-api' ? concat(
@@ -334,6 +344,14 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         { name: 'ONSITE_SQL_DATABASE', value: onsiteSqlDatabase }
       ] : []
     )
+  : svc == 'atwork-api' ? [
+      { name: 'INTEGRATIONS_MODE', value: 'mock' }
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+    ]
+  : svc == 'atwork-web' ? [
+      { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'ATWORK_API_URL', value: 'http://atwork-api' }
+    ]
   : svc == 'onsite-web' ? [
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'ONSITE_API_URL', value: 'http://onsite-api' }
@@ -412,7 +430,8 @@ var migrateTargets = concat(
   deployPeople ? [ 'people-api' ] : [],
   deployBirthday ? [ 'birthday-api' ] : [],
   deployCommercial ? [ 'commercial-api' ] : [],
-  deployOnsite ? [ 'onsite-api' ] : []
+  deployOnsite ? [ 'onsite-api' ] : [],
+  deployAtwork ? [ 'atwork-api' ] : []
 )
 
 // Same logical domain keys as the service catalogue's own `db` field above
@@ -427,6 +446,7 @@ func _dbFor(svc string) string =>
     : svc == 'people-api' ? 'people'
     : svc == 'birthday-api' ? 'birthday'
     : svc == 'onsite-api' ? 'onsite'
+    : svc == 'atwork-api' ? 'atwork'
     : 'commercial'
 
 module migrateJobs 'modules/job.bicep' = [
@@ -545,6 +565,9 @@ var scheduledJobs = concat(
   ] : [],
   deployOnsite ? [
     { name: 'onsite-sync-job', image: 'onsite-api', cron: onsiteSyncCron, url: 'http://onsite-api/api/onsite/internal/scheduled-sync', timeout: 120 }
+  ] : [],
+  deployAtwork ? [
+    { name: 'atwork-notifications-job', image: 'atwork-api', cron: '*/15 * * * *', url: 'http://atwork-api/api/atwork/internal/notifications/run', timeout: 300 }
   ] : []
 )
 

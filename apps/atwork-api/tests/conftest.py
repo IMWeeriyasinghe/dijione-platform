@@ -9,8 +9,12 @@ os.environ["PLATFORM_JWT_SECRET"] = "test-only-secret"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTEGRATIONS_MODE"] = "mock"
-os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp(prefix='atwork-test-')}/test.db"
+# ATWORK_TEST_DATABASE_URL runs the suite on a disposable PostgreSQL. It drops every table.
+os.environ["DATABASE_URL"] = (
+    os.environ.get("ATWORK_TEST_DATABASE_URL") or f"sqlite:///{tempfile.mkdtemp(prefix='atwork-test-')}/test.db"
+)
 os.environ["BUSINESS_TIME_ZONE"] = "Asia/Colombo"
+os.environ["PLATFORM_API_URL"] = "http://127.0.0.1:1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

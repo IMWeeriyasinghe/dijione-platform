@@ -1,7 +1,7 @@
 """Employee correction requests: always the verified token's own records."""
 
 from auth_client_py import AuthClaims
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.core.errors import AttendanceError
 from app.db.session import get_db
 from app.models.corrections import CorrectionRequest
 from app.schemas.corrections import CorrectionIn, CorrectionListOut, CorrectionOut
+from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy, get_policy
 from app.services.attendance_service import Clock
 from app.services.correction_service import CorrectionService
@@ -69,12 +70,14 @@ def list_own(
 @router.post("", response_model=CorrectionOut, status_code=201)
 def submit(
     body: CorrectionIn,
+    background: BackgroundTasks,
     claims: AuthClaims = Depends(can_request),
     db: Session = Depends(get_db),
     service: CorrectionService = Depends(get_correction_service),
 ) -> CorrectionOut:
     remember_employee(db, claims)
     item, _replayed = service.submit(claims.user_id, body)
+    background.add_task(notifications.deliver_after_response)
     return correction_out(item, employee_names(db, {claims.user_id}))
 
 
@@ -93,8 +96,11 @@ def detail(request_id: str, claims: AuthClaims = Depends(can_request), db: Sessi
 @router.post("/{request_id}/withdraw", response_model=CorrectionOut)
 def withdraw(
     request_id: str,
+    background: BackgroundTasks,
     claims: AuthClaims = Depends(can_request),
     db: Session = Depends(get_db),
     service: CorrectionService = Depends(get_correction_service),
 ) -> CorrectionOut:
-    return correction_out(service.withdraw(request_id, claims.user_id), employee_names(db, {claims.user_id}))
+    item = service.withdraw(request_id, claims.user_id)
+    background.add_task(notifications.deliver_after_response)
+    return correction_out(item, employee_names(db, {claims.user_id}))

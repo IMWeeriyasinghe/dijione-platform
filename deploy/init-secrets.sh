@@ -35,6 +35,7 @@ PG="psql-dijione-${ENV}"
 DEPLOY_BIRTHDAY="${DEPLOY_BIRTHDAY:-true}"
 DEPLOY_COMMERCIAL="${DEPLOY_COMMERCIAL:-false}"
 DEPLOY_ONSITE="${DEPLOY_ONSITE:-false}"
+DEPLOY_ATWORK="${DEPLOY_ATWORK:-false}"
 
 # DB-owning services -> logical database, suffixed with THIS run's own
 # $ENV (must match foundation.bicep's dbDomainKeys -> '<key>_${environmentName}'
@@ -47,6 +48,7 @@ DBS=(platform:platform_${ENV} talent:talent_${ENV} recruitment:recruitment_${ENV
 [ "$DEPLOY_BIRTHDAY" = "true" ]   && DBS+=(birthday:birthday_${ENV})
 [ "$DEPLOY_COMMERCIAL" = "true" ] && DBS+=(commercial:commercial_${ENV})
 [ "$DEPLOY_ONSITE" = "true" ]     && DBS+=(onsite:onsite_${ENV})
+[ "$DEPLOY_ATWORK" = "true" ]     && DBS+=(atwork:atwork_${ENV})
 
 echo "== resolving PostgreSQL FQDN for $PG =="
 PG_FQDN="$(az postgres flexible-server show -g "$RG" -n "$PG" --query fullyQualifiedDomainName -o tsv)"

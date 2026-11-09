@@ -109,6 +109,11 @@ class PlatformClient:
             },
         )
 
+    def deliver_notification(self, payload: dict) -> bool:
+        """Idempotent delivery: ``dedupe_key`` makes a retry harmless. Recipients
+        are one ``user_id`` or everyone holding ``required_permissions``."""
+        return self._post_internal("/api/platform/internal/notifications/deliver", payload)
+
     def _post_internal(self, path: str, payload: dict) -> bool:
         try:
             resp = self._request(

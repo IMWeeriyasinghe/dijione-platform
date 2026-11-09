@@ -11,6 +11,7 @@ class NotificationOut(BaseModel):
     is_read: bool
     related_entity_type: str | None
     related_entity_id: int | None
+    link_url: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

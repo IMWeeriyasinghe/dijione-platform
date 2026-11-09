@@ -10,24 +10,10 @@ import { attendance, corrections, errorMessage, isUncertain, newRequestId, type 
 import { ALL_WORK_MODES, localInputToUtc, utcToLocalInput, WORK_MODE_LABEL } from "@/lib/format";
 import { PERM } from "@/lib/atwork-scope";
 import { usePolicy } from "@/lib/hooks";
+import { validateCorrection, type BreakRow } from "@/lib/correction-validation";
 
-type BreakRow = { key: number; start: string; end: string };
+
 let nextKey = 0;
-
-function validate(checkIn: string, checkOut: string, breaks: BreakRow[], isOpen: boolean, reason: string): string | null {
-  if (!checkIn) return "Enter a check-in time.";
-  if (!isOpen && !checkOut) return "Enter a check-out time.";
-  if (checkOut && checkOut < checkIn) return "Check-out must not be before check-in.";
-  for (const b of breaks) {
-    if (!b.start || !b.end) return "Enter a start and end for each break.";
-    if (b.end < b.start) return "A break must not end before it starts.";
-    if (b.start < checkIn || (checkOut && b.end > checkOut)) return "Breaks must fall within the session.";
-  }
-  const sorted = [...breaks].sort((a, b) => a.start.localeCompare(b.start));
-  for (let i = 1; i < sorted.length; i++) if (sorted[i].start < sorted[i - 1].end) return "Breaks must not overlap.";
-  if (reason.trim().length < 5) return "Give a reason of at least 5 characters.";
-  return null;
-}
 
 function Form({ session, zone, enabled }: { session: Session | null; zone: string; enabled: WorkMode[] }) {
   const router = useRouter();
@@ -64,7 +50,7 @@ function Form({ session, zone, enabled }: { session: Session | null; zone: strin
   return (
     <form noValidate onSubmit={(e) => {
       e.preventDefault();
-      const invalid = validate(checkIn, checkOut, breaks, isOpen, reason);
+      const invalid = validateCorrection({ checkIn, checkOut, breaks, isOpen, reason, nowLocal: utcToLocalInput(new Date().toISOString(), zone) });
       setProblem(invalid);
       if (!invalid && !submit.isPending) submit.mutate();
     }}>
@@ -105,7 +91,7 @@ function Screen() {
   if (sessionId && !session.data) return <QueryError error={session.error} retry={() => session.refetch()} />;
   return (
     <>
-      <PageHeader title={sessionId ? "Request a correction" : "Request a missing session"} description="Management reviews every request." />
+      <PageHeader title={sessionId ? "Request a correction" : "Request a missing session"} description={sessionId ? "Management reviews every request." : "Use this for time that was not recorded, such as after an accidental check-out. Management reviews every request."} />
       <Form session={session.data ?? null} zone={policy.data.business_time_zone} enabled={policy.data.enabled_work_modes} />
     </>
   );

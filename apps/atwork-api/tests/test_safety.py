@@ -33,4 +33,4 @@ def test_only_imports_stdlib_shared_auth_and_its_own_code():
 
 def test_has_no_setting_pointing_at_another_service():
     for field in Settings.model_fields:
-        assert not field.endswith("_api_url"), field
+        assert field == "platform_api_url" or not field.endswith("_api_url"), field

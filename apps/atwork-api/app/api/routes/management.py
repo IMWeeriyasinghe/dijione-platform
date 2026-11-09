@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from auth_client_py import AuthClaims
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -53,11 +53,12 @@ from app.schemas.management import (
     SettingsIn,
     SettingsOut,
 )
+from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy, get_policy
 from app.services.attendance_service import AttendanceService, Clock
 from app.services.correction_service import CorrectionService
 from app.services.employee_directory import display_name, employee_names
-from app.services.reporting import ReportFilter, Reporting, checked_range, stamp, to_csv, to_xlsx
+from app.services.reporting import ExportInfo, ReportFilter, Reporting, checked_range, export_filename, to_csv, to_xlsx
 from app.services.time_accounting import daily_totals, local_day_bounds
 
 router = APIRouter(prefix="/api/atwork/management", tags=["management"])
@@ -269,11 +270,13 @@ def correction_detail(request_id: str, claims: AuthClaims = Depends(can_review),
 def approve(
     request_id: str,
     body: ApproveIn,
+    background: BackgroundTasks,
     claims: AuthClaims = Depends(can_approve),
     db: Session = Depends(get_db),
     service: CorrectionService = Depends(get_correction_service),
 ) -> CorrectionOut:
     item = service.approve(request_id, claims.user_id, claims.full_name, body.note)
+    background.add_task(notifications.deliver_after_response)
     return correction_out(item, employee_names(db, {item.platform_user_id}))
 
 
@@ -281,11 +284,13 @@ def approve(
 def reject(
     request_id: str,
     body: RejectIn,
+    background: BackgroundTasks,
     claims: AuthClaims = Depends(can_approve),
     db: Session = Depends(get_db),
     service: CorrectionService = Depends(get_correction_service),
 ) -> CorrectionOut:
     item = service.reject(request_id, claims.user_id, claims.full_name, body.reason)
+    background.add_task(notifications.deliver_after_response)
     return correction_out(item, employee_names(db, {item.platform_user_id}))
 
 
@@ -438,7 +443,16 @@ def report_export(
     flt = _filter(service, date_from, date_to, user_id, work_mode)
     now = service.now()
     head, rows = Reporting(service.db, service.policy, now).table(report, flt)
-    content = to_csv(head, rows) if format == "csv" else to_xlsx(head, rows, report)
+    info = ExportInfo(
+        report,
+        flt.date_from,
+        flt.date_to,
+        now.astimezone(service.policy.zone),
+        service.policy.business_time_zone,
+        user_id,
+        work_mode,
+    )
+    content = to_csv(head, rows, info) if format == "csv" else to_xlsx(head, rows, info)
     service.db.add(
         AttendanceEvent(
             actor_user_id=claims.user_id,
@@ -459,7 +473,7 @@ def report_export(
         )
     )
     service.db.commit()
-    filename = f"dijiatwork-{report}-{stamp(now)}.{format}"
+    filename = export_filename(info, format)
     return Response(content, media_type=_MEDIA[format], headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 

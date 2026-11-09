@@ -345,7 +345,7 @@ def test_excel_export_survives_control_characters_in_a_reason(api_client, clock)
     out = api_client.get(f"{M}/reports/export", params=params, headers=MGR)
     assert out.status_code == 200
     rows = list(load_workbook(io.BytesIO(out.content)).active.iter_rows(values_only=True))
-    assert rows[1][7] == "Bad  character"
+    assert rows[1][10] == "Bad  character"
 
 
 def test_concurrent_settings_updates_keep_one_winner(api_client, clock):
@@ -436,7 +436,9 @@ def test_csv_and_xlsx_match_the_report_and_neutralize_formulas(api_client, clock
     csv_out = api_client.get(f"{M}/reports/export", params={**params, "format": "csv"}, headers=MGR)
     assert csv_out.status_code == 200 and "attachment" in csv_out.headers["content-disposition"]
     lines = csv_out.content.decode("utf-8-sig").splitlines()
-    assert lines[0].startswith("Employee,") and lines[1] == "'=HYPERLINK(1),7,1,3.0,0.0,3.0"
+    assert lines[0].startswith("Employee,") and lines[1].startswith(
+        "'=HYPERLINK(1),7,1,3.0,0.0,3.0,Employee Summary Report,2026-11-09,2026-11-09,"
+    )
     xlsx = api_client.get(f"{M}/reports/export", params={**params, "format": "xlsx"}, headers=MGR)
     rows = list(load_workbook(io.BytesIO(xlsx.content)).active.iter_rows(values_only=True))
     assert rows[1] == ("'=HYPERLINK(1)", 7, 1, 3, 0, 3)

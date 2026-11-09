@@ -15,6 +15,6 @@ own apps and its registration points.
 ## Permanent removal
 
 1. Disable the `atwork` registry row in the Admin Center. Never revert the migration.
-2. Remove the deployed services once any exist; those steps are defined with deployment.
+2. Remove the deployed services: see `deployment.md`.
 
 Removing the module leaves its catalog rows in place, unused.

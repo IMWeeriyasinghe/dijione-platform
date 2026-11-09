@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     internal_service_secret: str = "dev-only-internal-secret-change-me"
 
+    # In-app notifications are delivered through Platform Core.
+    platform_api_url: str = "http://localhost:8000"
+
     # The foundation has no external integrations.
     integrations_mode: str = "mock"
 

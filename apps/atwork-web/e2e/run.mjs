@@ -88,6 +88,7 @@ async function main() {
     await page.waitForFunction((n) => [...document.querySelectorAll("button:not([disabled])")].some((b) => b.innerText.trim() === n), { timeout: 15000 }, name);
     await page.evaluate((n) => [...document.querySelectorAll("button:not([disabled])")].find((b) => b.innerText.trim() === n).click(), name);
   };
+  const checkOut = async (page) => { await click(page, "Check Out"); await text(page, "End this session?"); await click(page, "Confirm Check Out"); };
   const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
 
   const emp = await open("ta-member");
@@ -137,7 +138,9 @@ async function main() {
   check("offline state shown", await emp.page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "Check Out").disabled));
   await emp.page.setOfflineMode(false);
   await sleep(1200);
-  await click(emp.page, "Check Out");
+  await checkOut(emp.page);
+  await text(emp.page, "You are checked out. If you still have work to do, check in again");
+  check("check-out confirmed in a dialog and re-check-in explained", true);
   await text(emp.page, "You are checked out.");
   await text(emp.page, "Completed sessions");
   check("full attendance cycle", true);
@@ -174,6 +177,19 @@ async function main() {
   await go(mgr.page, "/management/audit");
   await text(mgr.page, "Session corrected");
   check("audit shows the correction", true);
+  const notes = async (token) => (await api(PLATFORM, "/api/notifications", token)).body;
+  let mgrNotes = []; let empNotes = [];
+  for (let i = 0; i < 20 && !(mgrNotes.length && empNotes.length); i++) { await sleep(250); mgrNotes = await notes(mgr.token); empNotes = await notes(emp.token); }
+  const review = mgrNotes.find((n) => n.type === "ATWORK_CORRECTION_REQUESTED");
+  check("reviewer notified of the request with a link", Boolean(review?.link_url?.startsWith("/atwork/management/corrections/")));
+  check("employee notified of the approval", empNotes.some((n) => n.type === "ATWORK_CORRECTION_APPROVED"));
+  check("employee does not get the reviewer notification", !empNotes.some((n) => n.type === "ATWORK_CORRECTION_REQUESTED"));
+  check("notification text has no attendance details", !/\d{1,2}:\d{2}/.test(review.title + review.body));
+  await mgr.page.goto(`${B}/`, { waitUntil: "networkidle2" });
+  await mgr.page.click('button[aria-label="Notifications"]');
+  await text(mgr.page, "Attendance correction awaiting review");
+  await Promise.all([mgr.page.waitForNavigation({ waitUntil: "networkidle2" }), mgr.page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.innerText.includes("Attendance correction awaiting review")).click())]);
+  check("notification opens the DijiAtWork screen", mgr.page.url().includes("/atwork/management/corrections/"));
 
   const self = (await api(ATWORK, "/api/atwork/attendance/check-in", mgr.token, { method: "POST", body: JSON.stringify({ work_mode: "OFFICE", client_request_id: "e2e-self-001" }) })).body.session;
   await api(ATWORK, "/api/atwork/attendance/check-out", mgr.token, { method: "POST", body: JSON.stringify({ client_request_id: "e2e-self-002" }) });

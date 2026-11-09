@@ -28,6 +28,7 @@ DijiAtWork records operational working hours. It is not payroll.
 | `GET /api/atwork/management/reports/export` | Management + `atwork.reports.read` + `atwork.reports.export` | CSV and Excel |
 | `GET, PUT /api/atwork/management/settings` | Management + `atwork.settings.manage` | Local policy |
 | `GET /api/atwork/management/audit` | Management + `atwork.audit.read` | Audit history |
+| `POST /api/atwork/internal/notifications/run` | Internal service secret | Scheduled alerts and notification delivery |
 
 A valid token without a DijiAtWork role receives `module_access: false` and no
 permissions. Outside development, the service refuses to start with the default
@@ -58,6 +59,37 @@ Navigation follows permissions; `atwork-api` enforces them.
 - Downgrading migration `0002_atwork_corrections` is refused while correction or
   voided-break history exists.
 
+## Check-out and corrections
+
+- Check Out always asks for confirmation. There is no Undo: a completed session
+  changes only through an approved correction.
+- Checking in again starts a new session. Sessions on the same day add up.
+  Time between them counts only if a missing-session request is approved.
+
+## Notifications
+
+In-app only, through Platform Core. Each is written to `notification_outbox` in
+the same transaction as the attendance change, then delivered after the response
+and retried every 15 minutes by `atwork-notifications-job` (backoff, 12 attempts).
+Platform Core's per-recipient key makes a retry invisible to the user. Reviewers
+are resolved by effective permission (`atwork.management.access` and
+`atwork.corrections.review`), never by role name, and requesters are excluded
+from notices about their own request. Text contains no times or employee names.
+
+| Event | Recipient | Once per |
+|---|---|---|
+| Correction requested or withdrawn | Reviewers | Request |
+| Correction approved or rejected (with reason) | Employee | Request |
+| Missed check-out threshold passed | Employee | Session |
+| Requests pending over 24 hours | Reviewers (one digest, from 09:00 business time) | Business day |
+
+## Exports
+
+Names follow `DijiAtWork_<Report>_Report_YYYY-MM-DD_HHmmss.<ext>` in the business
+time zone. Excel has real date cells and an Export Information sheet. CSV uses
+ISO 8601 with offsets, and every row ends with the report name, period, generation
+time and time zone. A report with no rows has a header only.
+
 ## Local browser test
 
 ```
@@ -87,6 +119,10 @@ The test runs through the DijiOne shell. It uses disposable SQLite databases and
 - **Employee identity linking.** Records key on `platform_user_id` from verified
   claims. There is no link to the Workforce Directory, so a deactivated employee
   is limited only by platform access and token expiry (up to 12 hours).
+
+- **Email.** Notifications are in-app only. Email needs an approved sender, an
+  Exchange RBAC mailbox scope and `atwork-api`'s own managed identity
+  (`docs/platform/email-architecture.md`).
 
 ## Platform registration
 

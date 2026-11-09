@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Card, EmptyState, LoadingState, PageHeader, StatusBadge } from "@dijione/design-system";
 import { Coffee, LogIn, LogOut, Play } from "lucide-react";
+import { CheckoutDialog } from "@/components/checkout-dialog";
 import { DayHeading, Notice, OfflineBanner, Page, QueryError, RequirePermission, SessionRow, TotalsCards } from "@/components/ui";
 import type { Session, Today, WorkMode } from "@/lib/api";
 import { ALL_WORK_MODES, duration, localDate, time, WORK_MODE_LABEL, type TimeFormat } from "@/lib/format";
@@ -94,6 +95,7 @@ function TodayScreen() {
   const serverNow = tick + offset;
   const modes = policy.data?.enabled_work_modes ?? ALL_WORK_MODES;
   const [chosen, setMode] = useState<WorkMode>("OFFICE");
+  const [confirmingCheckout, setConfirmingCheckout] = useState(false);
   const mode = modes.includes(chosen) ? chosen : modes[0];
 
   // A new local day needs a fresh summary even if nothing else changed.
@@ -128,6 +130,11 @@ function TodayScreen() {
           This session has been open for over {policy.data.missed_checkout_hours} hours. If you forgot to check out, request a correction.
         </Notice>
       )}
+      {state === "NOT_CHECKED_IN" && canRecord && today.data.session_count > 0 && (
+        <Notice tone="info" action={hasPermission(scope, PERM.REQUEST_OWN) ? <Link className="font-medium text-dt-burnt-orange underline underline-offset-2" href="/requests/new">Request a missing session</Link> : undefined}>
+          You are checked out. If you still have work to do, check in again: a new session starts and adds to today&apos;s total. Time between sessions is not counted unless Management approves a request for it.
+        </Notice>
+      )}
       <Card className="mb-6 p-5 sm:p-6">
         {state === "NOT_CHECKED_IN" && (
           canRecord ? (
@@ -160,7 +167,7 @@ function TodayScreen() {
                 {state === "WORKING" ? (
                   <>
                     <Button variant="secondary" loading={action.pending === "BREAK_START"} disabled={disabled} onClick={() => action.run({ kind: "BREAK_START" })}><Coffee className="size-4" aria-hidden />Start Break</Button>
-                    <Button loading={action.pending === "CHECK_OUT"} disabled={disabled} onClick={() => action.run({ kind: "CHECK_OUT" })}><LogOut className="size-4" aria-hidden />Check Out</Button>
+                    <Button loading={action.pending === "CHECK_OUT"} disabled={disabled} onClick={() => setConfirmingCheckout(true)}><LogOut className="size-4" aria-hidden />Check Out</Button>
                   </>
                 ) : (
                   <>
@@ -176,6 +183,9 @@ function TodayScreen() {
         )}
       </Card>
 
+      {confirmingCheckout && state === "WORKING" && totals && (
+        <CheckoutDialog netSeconds={totals.net} grossSeconds={totals.gross} onCancel={() => setConfirmingCheckout(false)} onConfirm={() => { setConfirmingCheckout(false); action.run({ kind: "CHECK_OUT" }); }} />
+      )}
       {today.data.session_count === 0 && state === "NOT_CHECKED_IN" ? <EmptyState title="No attendance recorded today" description="Your sessions will appear here after you check in." /> : <TodaySummary today={today.data} format={format} serverNow={serverNow} />}
     </>
   );

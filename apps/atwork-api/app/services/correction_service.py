@@ -27,6 +27,7 @@ from app.core.errors import AttendanceError
 from app.models.attendance import AttendanceBreak, AttendanceEvent, AttendanceSession
 from app.models.corrections import AttendanceEmployee, CorrectionRequest
 from app.schemas.corrections import CorrectionIn
+from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy
 from app.services.attendance_service import Clock, system_clock
 
@@ -221,6 +222,7 @@ class CorrectionService:
             self._event(
                 user_id, user_id, "CORRECTION_REQUESTED", "CorrectionRequest", item.id, item.session_id, now, original, proposed
             )
+            notifications.correction_requested(self.db, item)
             return item, False
 
         return self._retrying(work)
@@ -323,6 +325,7 @@ class CorrectionService:
                 {"status": CORRECTION_PENDING},
                 {"status": CORRECTION_APPROVED, "note": note},
             )
+            notifications.correction_approved(self.db, item)
             return item
 
         return self._retrying(work)
@@ -409,6 +412,7 @@ class CorrectionService:
                 {"status": CORRECTION_PENDING},
                 {"status": CORRECTION_REJECTED, "note": reason.strip()},
             )
+            notifications.correction_rejected(self.db, item)
             return item
 
         return self._retrying(work)
@@ -438,6 +442,7 @@ class CorrectionService:
                 {"status": CORRECTION_PENDING},
                 {"status": CORRECTION_WITHDRAWN},
             )
+            notifications.correction_withdrawn(self.db, item)
             return item
 
         return self._retrying(work)

@@ -3,10 +3,11 @@
 import csv
 import io
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from openpyxl.utils import get_column_letter
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -147,8 +148,16 @@ class Reporting:
             stmt = stmt.where(CorrectionRequest.platform_user_id == flt.user_id)
         return list(self.db.scalars(stmt.order_by(CorrectionRequest.created_at.desc())))
 
-    def local(self, value: datetime | None) -> str:
-        return value.astimezone(self.policy.zone).strftime("%Y-%m-%d %H:%M:%S") if value else ""
+    def local(self, value: datetime | None) -> datetime | None:
+        return value.astimezone(self.policy.zone) if value else None
+
+    def work_date(self, value: datetime | str | None) -> date | None:
+        """The business-time-zone date a session belongs to, from its check-in."""
+        moment = datetime.fromisoformat(value) if isinstance(value, str) else value
+        return moment.astimezone(self.policy.zone).date() if moment else None
+
+    def local_iso(self, value: str | None) -> datetime | None:
+        return self.local(datetime.fromisoformat(value)) if value else None
 
     def table(self, report: str, flt: ReportFilter) -> tuple[list[str], list[list]]:
         if report == "employee_summary":
@@ -173,11 +182,12 @@ class Reporting:
                 "User ID",
                 "Work mode",
                 "Status",
-                "Check-in",
-                "Check-out",
-                "Gross hours in range",
-                "Break hours in range",
-                "Net hours in range",
+                "Work date",
+                "Check-in date/time",
+                "Check-out date/time",
+                "Gross hours in period",
+                "Break hours in period",
+                "Net hours in period",
                 "Corrections",
             ]
             rows = []
@@ -189,6 +199,7 @@ class Reporting:
                         s.platform_user_id,
                         s.work_mode,
                         s.status,
+                        self.work_date(s.check_in_at),
                         self.local(s.check_in_at),
                         self.local(s.check_out_at),
                         hours(part.gross_seconds),
@@ -199,12 +210,13 @@ class Reporting:
                 )
             return head, rows
         if report == "missed_checkouts":
-            head = ["Employee", "User ID", "Work mode", "Check-in", "Open hours", "Break open"]
+            head = ["Employee", "User ID", "Work mode", "Work date", "Check-in date/time", "Open hours", "Break open"]
             rows = [
                 [
                     r["employee_name"],
                     r["platform_user_id"],
                     r["work_mode"],
+                    self.work_date(r["check_in_at"]),
                     self.local(r["check_in_at"]),
                     hours(r["open_seconds"]),
                     "Yes" if r["break_open"] else "No",
@@ -215,13 +227,29 @@ class Reporting:
         if report == "corrections":
             items = self.corrections(flt)
             names = employee_names(self.db, {i.platform_user_id for i in items})
-            head = ["Employee", "User ID", "Type", "Status", "Requested", "Reviewer", "Reviewed", "Reason", "Decision note"]
+            head = [
+                "Employee",
+                "User ID",
+                "Type",
+                "Status",
+                "Affected work date",
+                "Proposed check-in date/time",
+                "Proposed check-out date/time",
+                "Requested date/time",
+                "Reviewer",
+                "Reviewed date/time",
+                "Reason",
+                "Decision note",
+            ]
             rows = [
                 [
                     display_name(names, i.platform_user_id),
                     i.platform_user_id,
                     i.kind,
                     i.status,
+                    self.work_date(i.proposed["check_in_at"]),
+                    self.local_iso(i.proposed["check_in_at"]),
+                    self.local_iso(i.proposed["check_out_at"]),
                     self.local(i.created_at),
                     i.reviewer_name or "",
                     self.local(i.reviewed_at),
@@ -245,25 +273,93 @@ def safe_cell(value):
     return value
 
 
-def to_csv(head: list[str], rows: list[list]) -> bytes:
+_REPORTS = {
+    "sessions": ("Attendance Report", "Attendance"),
+    "employee_summary": ("Employee Summary Report", "Employee_Summary"),
+    "missed_checkouts": ("Missed Check-out Report", "Missed_Checkout"),
+    "corrections": ("Correction Report", "Correction"),
+}
+_XLSX_DATE = "yyyy-mm-dd"
+_XLSX_DATETIME = "yyyy-mm-dd hh:mm:ss"
+_META_HEAD = ["Report", "Reporting period from", "Reporting period to", "Export generated at", "Time zone"]
+
+
+@dataclass(frozen=True)
+class ExportInfo:
+    report: str
+    period_from: date
+    period_to: date
+    generated_at: datetime  # aware, in the business time zone
+    time_zone: str
+    user_id: int | None = None
+    work_mode: str | None = None
+
+    @property
+    def title(self) -> str:
+        return _REPORTS[self.report][0]
+
+
+def export_filename(info: ExportInfo, extension: str) -> str:
+    """Built only from a fixed name and a timestamp, so it needs no escaping."""
+    return f"DijiAtWork_{_REPORTS[info.report][1]}_Report_{info.generated_at:%Y-%m-%d_%H%M%S}.{extension}"
+
+
+def _csv_value(value):
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    return "" if value is None else safe_cell(value)
+
+
+def to_csv(head: list[str], rows: list[list], info: ExportInfo) -> bytes:
+    """Metadata sits in trailing columns so every line stays one plain record."""
+    meta = [info.title, info.period_from.isoformat(), info.period_to.isoformat(), info.generated_at.isoformat(), info.time_zone]
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(head)
-    writer.writerows([safe_cell(v) for v in row] for row in rows)
-    return ("﻿" + buffer.getvalue()).encode("utf-8")
+    writer.writerow(head + _META_HEAD)
+    writer.writerows([_csv_value(v) for v in row] + meta for row in rows)
+    return ("\ufeff" + buffer.getvalue()).encode("utf-8")
 
 
-def to_xlsx(head: list[str], rows: list[list], title: str) -> bytes:
-    book = Workbook(write_only=True)
-    sheet = book.create_sheet(title[:31])
-    sheet.append(head)
-    for row in rows:
+def _xlsx_cell(sheet, row: int, column: int, value) -> None:
+    if isinstance(value, datetime):
+        sheet.cell(row, column, value.replace(tzinfo=None)).number_format = _XLSX_DATETIME
+    elif isinstance(value, date):
+        sheet.cell(row, column, value).number_format = _XLSX_DATE
+    else:
+        safe = safe_cell(value)
         # openpyxl refuses control characters, which free-text reasons may contain.
-        sheet.append([ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v for v in map(safe_cell, row)])
+        sheet.cell(row, column, ILLEGAL_CHARACTERS_RE.sub("", safe) if isinstance(safe, str) else safe)
+
+
+def to_xlsx(head: list[str], rows: list[list], info: ExportInfo) -> bytes:
+    book = Workbook()
+    sheet = book.active
+    sheet.title = info.title[:31]
+    sheet.append(head)
+    sheet.freeze_panes = "A2"
+    for r, row in enumerate(rows, start=2):
+        for c, value in enumerate(row, start=1):
+            _xlsx_cell(sheet, r, c, value)
+    for c, name in enumerate(head, start=1):
+        sheet.column_dimensions[get_column_letter(c)].width = max(14, len(name) + 2)
+
+    about = book.create_sheet("Export Information")
+    lines = [
+        ("Report name", info.title),
+        ("Reporting period from", info.period_from),
+        ("Reporting period to", info.period_to),
+        ("Generated date/time", info.generated_at),
+        ("Time zone", info.time_zone),
+        ("Employee filter (user ID)", info.user_id if info.user_id is not None else "All"),
+        ("Work mode filter", info.work_mode or "All"),
+        ("Rows", len(rows)),
+        ("Date and time columns", f"Shown in {info.time_zone}. Work date is the local date of check-in."),
+    ]
+    for r, (label, value) in enumerate(lines, start=1):
+        about.cell(r, 1, label)
+        _xlsx_cell(about, r, 2, value)
+    about.column_dimensions["A"].width = 28
+    about.column_dimensions["B"].width = 48
     buffer = io.BytesIO()
     book.save(buffer)
     return buffer.getvalue()
-
-
-def stamp(now: datetime) -> str:
-    return now.astimezone(UTC).strftime("%Y%m%d-%H%M%S")

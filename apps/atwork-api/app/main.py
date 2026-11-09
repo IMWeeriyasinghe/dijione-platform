@@ -2,7 +2,7 @@ from auth_client_py import CorrelationIdMiddleware, assert_trust_anchors_safe
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import attendance, atwork, corrections, health, management
+from app.api.routes import attendance, atwork, corrections, health, internal, management
 from app.core.config import get_settings
 from app.core.errors import AttendanceError, attendance_error_handler
 
@@ -39,5 +39,6 @@ app.include_router(atwork.router)
 app.include_router(attendance.router)
 app.include_router(corrections.router)
 app.include_router(management.router)
+app.include_router(internal.router)
 
 app.add_exception_handler(AttendanceError, attendance_error_handler)

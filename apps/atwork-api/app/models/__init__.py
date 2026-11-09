@@ -3,3 +3,4 @@ from app.models.attendance import AttendanceBreak, AttendanceEvent, AttendanceSe
 
 __all__ = ["AttendanceBreak", "AttendanceEvent", "AttendanceSession", "Base"]
 from app.models.corrections import AttendanceEmployee, AtworkSettings, CorrectionRequest  # noqa: E402,F401
+from app.models.notifications import NotificationOutbox  # noqa: E402,F401
