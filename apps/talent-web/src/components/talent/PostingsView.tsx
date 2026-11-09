@@ -153,7 +153,7 @@ export function PostingsView() {
                   : "rounded-full border border-dt-border px-3 py-1 text-xs text-dt-text-secondary hover:border-dt-orange"
               }
             >
-              {f.label} <span className="opacity-60">({count})</span>
+              {f.label} <span>({count})</span>
             </button>
           );
         })}

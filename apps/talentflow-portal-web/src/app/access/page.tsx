@@ -41,7 +41,7 @@ export default function AccessPage() {
     <div className="flex min-h-screen items-center justify-center bg-dt-background px-4">
       <div className="w-full max-w-md rounded-2xl border border-dt-border bg-dt-surface p-8 text-center shadow-sm">
         <BrandLogo width={150} className="mx-auto mb-5" />
-        <p className="text-xs font-semibold uppercase tracking-wide text-dt-orange">
+        <p className="text-xs font-semibold uppercase tracking-wide text-dt-burnt-orange">
           Client Talent Review Workspace
         </p>
         {phase === "working" ? (

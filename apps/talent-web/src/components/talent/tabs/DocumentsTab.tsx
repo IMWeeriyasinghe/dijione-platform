@@ -8,7 +8,7 @@ import { formatDate } from "@dijione/design-system";
 import { Button } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { Card } from "@dijione/design-system";
-import { Modal } from "@dijione/design-system";
+import { Modal } from "@/components/talent/Modal";
 import { FormField, Input, Select } from "@dijione/design-system";
 
 const CATEGORIES = ["CV", "CONTRACT", "REQUIREMENT", "OFFER_LETTER", "OTHER"] as const;

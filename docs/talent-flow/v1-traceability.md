@@ -59,12 +59,20 @@ Lever stage. Until approved, TA manages the stage manually.
 ## Accessibility
 
 An axe WCAG 2.1 A/AA audit runs on staff and portal screens in `a11y.spec`.
-Unnamed filter, interview-status and posting-client selects were fixed. Open
-items are in the shared design system, so changing them affects every module:
+TalentFlow has its own dialog with focus containment and restoration, labelled
+controls, announced errors, and darker text tokens in its own stylesheets. The
+portal's footer text is overridden locally.
 
-- `Modal` has no `role="dialog"`, `aria-modal`, name, or focus move and trap.
-- The `AppShell` avatar button has no accessible name.
-- Colour tokens fail contrast: white on orange, orange badges and muted text.
+Text-only shades are darker in TalentFlow's stylesheets; the brand primary
+`--dt-orange` and the red and amber brand colours are unchanged.
+
+The shared `UserMenu` button gained `aria-label` and `aria-expanded`, with no
+visual change. It still labels sign-out "Switch persona" under Entra. The shared
+`Modal` still lacks dialog semantics for other modules.
+
+Browser suites are not repeat-safe for two tests: customer review and grant
+revocation each consume one seed record, so `--repeat-each` fails them after
+the first pass. Their assertions are unchanged.
 
 ## Known limits
 

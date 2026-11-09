@@ -45,6 +45,8 @@ test("unknown, expired and revoked links are refused alike", async ({ page }) =>
   await expectRefused(page, seed.tokens.revoked);
 });
 
+// Consumes the one revocable seed grant, so it passes only on the first run
+// against a seeded server: --repeat-each fails it by design.
 test("revoking a grant ends a live session and clears browser storage", async ({ page, request }) => {
   await open(page, seed.tokens.to_revoke);
   expect(await stored(page, SESSION)).not.toBeNull();

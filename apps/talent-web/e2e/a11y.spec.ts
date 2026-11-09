@@ -5,10 +5,6 @@ import { STATE_FILE } from "../playwright.config";
 const seed = JSON.parse(fs.readFileSync(STATE_FILE, "utf-8"));
 const LOAD = { timeout: 45_000 };
 
-// Reported, not fixed here: the design system's colour tokens and its unnamed
-// avatar button are shared by every module.
-const SHARED = (line: string) => line.includes("color-contrast") || (line.includes("button-name") && line.includes(".p-0"));
-
 async function signIn(page: Page, role: string, id: number, clientId: number | null = null) {
   const profile = {
     id, full_name: "Audit User", email: "audit@example.invalid", is_active: true,
@@ -28,7 +24,7 @@ async function audit(page: Page, label: string) {
     return result.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.slice(0, 4).map((n) => n.target.join(" ")).join(" | ")} (${v.nodes.length})`);
   });
   console.log(`AXE ${label}: ${violations.length ? "\n  " + violations.join("\n  ") : "clean"}`);
-  expect(violations.filter((v) => !SHARED(v)), label).toEqual([]);
+  expect(violations, label).toEqual([]);
 }
 
 const STAFF = ["dashboard", "clients", "requests", "applications", "candidates", "interviews", "postings", "access-links"];
@@ -64,16 +60,30 @@ test("keyboard users can reach the page and see focus", async ({ page }) => {
   expect(ring).not.toBe("none none");
 });
 
-test("schedule dialog is labelled and closes with Escape", async ({ page }) => {
+test("dialogs are named, contain focus, announce errors and restore focus", async ({ page }) => {
   await signIn(page, "TA_MEMBER", 201);
   await page.addInitScript(([k, v]) => localStorage.setItem(k, v), ["dijione.devToken", seed.staff.ta]);
   await page.goto(`/talent-flow/requests/${seed.alpha_request}`);
   await page.getByRole("button", { name: "Interviews" }).click(LOAD);
-  await page.getByRole("button", { name: "Schedule Interview" }).click(LOAD);
-  await page.locator("#scheduled-at").waitFor();
+  const opener = page.getByRole("button", { name: "Schedule Interview" });
+  await opener.click(LOAD);
+  const dialog = page.getByRole("dialog", { name: "Schedule Interview" });
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("#application")).toBeFocused();
   await audit(page, "schedule dialog");
-  await page.locator("#scheduled-at").focus();
-  await expect(page.locator("#scheduled-at")).toBeFocused();
+
+  await dialog.getByRole("button", { name: "Close dialog" }).focus();
+  await page.keyboard.press("Shift+Tab");
+  expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press("Tab");
+    expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  }
+
+  await dialog.locator("form").evaluate((form: HTMLFormElement) => { form.noValidate = true; form.requestSubmit(); });
+  await expect(dialog.getByRole("alert")).toContainText("Select a candidate");
+
   await page.keyboard.press("Escape");
-  await expect(page.locator("#scheduled-at")).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
 });

@@ -79,15 +79,20 @@ test("an invalid token is refused by the API", async ({ request }) => {
   expect(res.status()).toBe(401);
 });
 
-test("logout clears the session", async ({ page }) => {
+test("logout clears the token and the workspace stays closed", async ({ page }) => {
   await identity(page, () => ({ status: 200, json: me("ta") }));
+  // Seeded once, so the reload below proves logout rather than re-seeding.
+  await page.addInitScript(([k, v]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem(k, v); sessionStorage.setItem("seeded", "1"); } }, [TOKEN_KEY, seed.staff.ta]);
   await page.goto("/talent-flow/dashboard");
-  await page.evaluate(([k, v]) => localStorage.setItem(k, v), [TOKEN_KEY, seed.staff.ta]);
-  await page.reload();
   await expect(page.getByRole("heading", { name: "Operations Dashboard" })).toBeVisible(LOAD);
-  await page.locator('button[class*="p-0.5"]').first().click();
+  await page.getByRole("button", { name: "User menu" }).click();
   await page.getByRole("button", { name: "Switch persona" }).click();
   await expect.poll(() => stored(page)).toBeNull();
+  await expect(page.getByRole("button", { name: /microsoft/i })).toBeVisible(LOAD);
+  await page.reload();
+  await expect(page.getByRole("button", { name: /microsoft/i })).toBeVisible(LOAD);
+  await expect(page.getByRole("heading", { name: "Operations Dashboard" })).toHaveCount(0);
+  expect(await stored(page)).toBeNull();
 });
 
 test("TA dashboard shows live counts and navigates", async ({ page }) => {
@@ -165,6 +170,8 @@ test("staff can schedule an interview", async ({ page, request }) => {
   await expect.poll(async () => (await (await talentApi(request, "ta", "/interviews")).json()).length, LOAD).toBe(before + 1);
 });
 
+// Consumes the one pending seed request, so it passes only on the first run
+// against a seeded server: --repeat-each fails it by design.
 test("TA members cannot review; Customer Success can, once", async ({ browser, request }) => {
   const url = `/talent-flow/requests/${seed.pending_request}`;
   const taContext = await browser.newContext({ baseURL: "http://localhost:3002" });

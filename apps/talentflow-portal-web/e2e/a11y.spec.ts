@@ -11,8 +11,7 @@ async function audit(page: Page, label: string) {
     return result.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.slice(0, 4).map((n) => n.target.join(" ")).join(" | ")} (${v.nodes.length})`);
   });
   console.log(`AXE ${label}: ${violations.length ? "\n  " + violations.join("\n  ") : "clean"}`);
-  // Colour tokens are shared by every module; reported, not fixed here.
-  expect(violations.filter((v) => !v.includes("color-contrast")), label).toEqual([]);
+  expect(violations, label).toEqual([]);
 }
 
 test("portal screens", async ({ page }) => {
