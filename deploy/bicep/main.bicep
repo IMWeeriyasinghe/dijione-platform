@@ -88,6 +88,9 @@ param authMode string = 'dev'
 @description('Entra directory (tenant) id. Only used when authMode == entra.')
 param entraTenantId string = ''
 
+@description('Comma-separated email domains of internal employees. Empty disables default module access.')
+param entraInternalEmailDomains string = ''
+
 @description('Application (client) id of the per-environment DijiOne Entra app registration. Only used when authMode == entra.')
 param entraClientId string = ''
 
@@ -241,7 +244,7 @@ var commonApiEnv = [
 // http://<app-name>) + module modes. Declarative here so a redeploy does not
 // wipe them (Bicep env is desired-state, not a merge). `AUTH_MODE=dev` on
 // platform-api = the dev-login identity provider (no real Entra in DEV).
-func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string, birthdayMode string, onsiteMode string, onsiteSqlServer string, onsiteSqlDatabase string) array =>
+func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, internalEmailDomains string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string, birthdayMode string, onsiteMode string, onsiteSqlServer string, onsiteSqlDatabase string) array =>
   svc == 'shell-web' ? [
     { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
     { name: 'ADMIN_API_URL', value: 'http://admin-api' }
@@ -265,6 +268,7 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
       ],
       authMode == 'entra' ? [
         { name: 'ENTRA_TENANT_ID', value: entraTenantId }
+        { name: 'ENTRA_INTERNAL_EMAIL_DOMAINS', value: internalEmailDomains }
         { name: 'ENTRA_CLIENT_ID', value: entraClientId }
         { name: 'ENTRA_REDIRECT_URI', value: '${publicBaseUrl}/api/auth/callback' }
         { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
@@ -416,7 +420,7 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase))
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
       //   matching *IntegrationsMode == 'live'

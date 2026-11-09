@@ -32,6 +32,16 @@ def _module_roles_payload(user: User, repo: UserRepository) -> list[dict]:
     ]
 
 
+def _with_baseline(assigned: list[dict], baseline: dict[str, str]) -> list[dict]:
+    held = {r["module_key"] for r in assigned if r["enabled"]}
+    extra = [
+        {"module_key": key, "role": role, "client_id": None, "enabled": True}
+        for key, role in baseline.items()
+        if key not in held
+    ]
+    return assigned + extra
+
+
 def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> CurrentUserOut:
     return CurrentUserOut(
         id=user.id,
@@ -40,7 +50,7 @@ def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> Curre
         title=user.title,
         platform_role=user.platform_role,
         avatar_color=user.avatar_color,
-        module_roles=_module_roles_payload(user, repo),
+        module_roles=_with_baseline(_module_roles_payload(user, repo), AuthorizationService(db).baseline_roles(user)),
         platform_permissions=sorted(AuthorizationService(db).platform_permissions(user)),
     )
 

@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     entra_client_id: str = ""
     entra_client_secret: str = ""
     entra_redirect_uri: str = ""
+    # Comma-separated. Empty means nobody qualifies as an internal employee.
+    entra_internal_email_domains: str = ""
     # Public origin of this environment (e.g. https://dijione-dev.example.com).
     # Used to build the Entra front-channel logout redirect.
     public_base_url: str = ""

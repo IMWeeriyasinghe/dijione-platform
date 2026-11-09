@@ -521,7 +521,7 @@ export default function AdminUserDetailPage() {
                       <StatusBadge
                         key={idx}
                         status={s.type}
-                        label={s.type === "DIRECT" ? "Direct" : `Inherited from ${s.group_name}`}
+                        label={s.type === "DIRECT" ? "Direct" : s.type === "BASELINE" ? "Default employee access" : `Inherited from ${s.group_name}`}
                       />
                     ))}
                   </div>

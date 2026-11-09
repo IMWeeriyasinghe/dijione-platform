@@ -25,6 +25,8 @@ from app.models.access_group import (
     GroupModuleRole,
     UserGroupMembership,
 )
+from app.models.module import ApplicationModule
+from app.models.module_baseline import ModuleBaselineRole
 from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
@@ -36,7 +38,7 @@ class ResolvedGrant:
     direct assignment or one inherited from an active access group."""
 
     role: str
-    source_type: Literal["DIRECT", "GROUP"]
+    source_type: Literal["DIRECT", "GROUP", "BASELINE"]
     source_name: str | None = None
 
 
@@ -149,7 +151,29 @@ class AuthorizationService:
                     )
                 )
 
+        for module_key, role in self.baseline_roles(user).items():
+            grants.setdefault(module_key, []).append(ResolvedGrant(role=role, source_type="BASELINE"))
+
         return grants
+
+    def baseline_roles(self, user: User) -> dict[str, str]:
+        """Module roles held by being an eligible internal employee. A disabled
+        direct assignment of the same role is an explicit revocation."""
+        if not (user.is_active and user.internal_employee and user.identity_provider == "ENTRA" and user.entra_object_id):
+            return {}
+        rows = self.db.execute(
+            select(ModuleBaselineRole.module_key, ModuleBaselineRole.role)
+            .join(ApplicationModule, ApplicationModule.key == ModuleBaselineRole.module_key)
+            .where(ModuleBaselineRole.enabled.is_(True), ApplicationModule.enabled.is_(True))
+        ).all()
+        revoked = set(
+            self.db.execute(
+                select(UserModuleRole.module_key, UserModuleRole.role).where(
+                    UserModuleRole.user_id == user.id, UserModuleRole.enabled.is_(False)
+                )
+            ).all()
+        )
+        return {module_key: role for module_key, role in rows if (module_key, role) not in revoked}
 
     def effective_client_scope(
         self, user: User, module_key: str

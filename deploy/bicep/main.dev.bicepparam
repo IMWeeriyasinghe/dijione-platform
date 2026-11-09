@@ -49,6 +49,7 @@ param seedTalentClientExtensions = true
 // back to 'dev' and redeploy.
 param authMode = 'entra'
 param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
+param entraInternalEmailDomains = 'dijitalteam.com'
 param entraClientId = '2ea7f6b8-d3c2-4dda-b806-32549efeadb6'
 param publicBaseUrl = 'https://shell-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io'
 
