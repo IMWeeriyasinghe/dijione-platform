@@ -8,7 +8,14 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
-TABLES = {"attendance_sessions", "attendance_breaks", "attendance_events"}
+TABLES = {
+    "attendance_sessions",
+    "attendance_breaks",
+    "attendance_events",
+    "attendance_employees",
+    "correction_requests",
+    "atwork_settings",
+}
 
 
 def alembic(url, *args):
@@ -24,7 +31,7 @@ def alembic(url, *args):
 def test_upgrade_constraints_downgrade_and_reupgrade(tmp_path):
     url = f"sqlite:///{tmp_path / 'migration.db'}"
     heads = alembic(url, "heads")
-    assert heads.stdout.split() == ["0001_atwork_attendance", "(head)"]
+    assert heads.stdout.split() == ["0002_atwork_corrections", "(head)"]
     up = alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)
@@ -43,6 +50,20 @@ def test_upgrade_constraints_downgrade_and_reupgrade(tmp_path):
 
     check = alembic(url, "check")
     assert check.returncode == 0, check.stdout + check.stderr
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO correction_requests (id, platform_user_id, kind, status, reason, proposed, client_request_id,"
+                " version, created_at, updated_at)"
+                " VALUES ('c', 1, 'CREATE_MISSING', 'PENDING', 'r', '{}', 'k', 1, '2026', '2026')"
+            )
+        )
+    refused = alembic(url, "downgrade", "0001_atwork_attendance")
+    assert refused.returncode != 0 and "Downgrade refused" in refused.stderr
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM correction_requests"))
+    engine.dispose()
 
     down = alembic(url, "downgrade", "base")
     assert down.returncode == 0, down.stderr

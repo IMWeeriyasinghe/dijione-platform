@@ -87,6 +87,7 @@ const ATWORK = {
     ...SHARED_ALLOWED_FILES,
     "apps/platform-api/alembic/versions/atw1reg0b2c3_register_atwork_module.py",
     "apps/platform-api/alembic/versions/atw2att0c3d4_attendance_self_permissions.py",
+    "apps/platform-api/alembic/versions/atw3perm1d4e5_atwork_v1_permissions.py",
     "apps/platform-api/tests/test_atwork_registration.py",
   ]),
 };

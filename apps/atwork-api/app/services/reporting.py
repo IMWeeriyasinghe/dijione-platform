@@ -1,0 +1,269 @@
+"""Operational reports and exports. Not payroll: durations only, no pay rules."""
+
+import csv
+import io
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+
+from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from app.core.constants import STATUS_OPEN
+from app.core.errors import AttendanceError
+from app.models.attendance import AttendanceSession
+from app.models.corrections import CorrectionRequest
+from app.services.attendance_policy import AttendancePolicy
+from app.services.employee_directory import display_name, employee_names
+from app.services.time_accounting import Totals, daily_totals, local_day_bounds
+
+MAX_RANGE_DAYS = 366
+
+
+def checked_range(start: date, end: date) -> None:
+    if start > end:
+        raise AttendanceError("INVALID_DATE_RANGE", "The start date must not be after the end date.", 422)
+    if (end - start).days >= MAX_RANGE_DAYS:
+        raise AttendanceError("INVALID_DATE_RANGE", f"The date range must not exceed {MAX_RANGE_DAYS} days.", 422)
+
+
+@dataclass(frozen=True)
+class ReportFilter:
+    date_from: date
+    date_to: date
+    user_id: int | None = None
+    work_mode: str | None = None
+
+
+def hours(seconds: int) -> float:
+    return round(seconds / 3600, 2)
+
+
+def _add(a: Totals, b: Totals) -> Totals:
+    return Totals(a.gross_seconds + b.gross_seconds, a.break_seconds + b.break_seconds)
+
+
+class Reporting:
+    def __init__(self, db: Session, policy: AttendancePolicy, now: datetime) -> None:
+        self.db = db
+        self.policy = policy
+        self.now = now
+
+    def sessions(self, flt: ReportFilter) -> list[AttendanceSession]:
+        checked_range(flt.date_from, flt.date_to)
+        zone = self.policy.zone
+        start, end = local_day_bounds(flt.date_from, zone)[0], local_day_bounds(flt.date_to, zone)[1]
+        stmt = select(AttendanceSession).where(
+            AttendanceSession.check_in_at < end,
+            or_(AttendanceSession.check_out_at.is_(None), AttendanceSession.check_out_at >= start),
+        )
+        if flt.user_id is not None:
+            stmt = stmt.where(AttendanceSession.platform_user_id == flt.user_id)
+        if flt.work_mode:
+            stmt = stmt.where(AttendanceSession.work_mode == flt.work_mode)
+        return list(self.db.scalars(stmt.order_by(AttendanceSession.check_in_at.desc())))
+
+    def in_range(self, session: AttendanceSession, flt: ReportFilter) -> Totals:
+        """The part of one session inside the range, split at local midnight."""
+        total = Totals()
+        for day, value in daily_totals([session], self.policy.zone, self.now).items():
+            if flt.date_from <= day <= flt.date_to:
+                total = _add(total, value)
+        return total
+
+    def summary(self, flt: ReportFilter) -> dict:
+        sessions = self.sessions(flt)
+        names = employee_names(self.db, {s.platform_user_id for s in sessions})
+        total, by_mode, by_user, by_day = Totals(), {}, {}, {}
+        for session in sessions:
+            part = self.in_range(session, flt)
+            total = _add(total, part)
+            by_mode[session.work_mode] = _add(by_mode.get(session.work_mode, Totals()), part)
+            row = by_user.setdefault(session.platform_user_id, {"count": 0, "totals": Totals()})
+            row["count"] += 1
+            row["totals"] = _add(row["totals"], part)
+            for day, value in daily_totals([session], self.policy.zone, self.now).items():
+                if flt.date_from <= day <= flt.date_to:
+                    by_day[day] = _add(by_day.get(day, Totals()), value)
+        employees = sorted(
+            (
+                {
+                    "platform_user_id": uid,
+                    "employee_name": display_name(names, uid),
+                    "session_count": r["count"],
+                    "totals": r["totals"],
+                }
+                for uid, r in by_user.items()
+            ),
+            key=lambda r: r["employee_name"].lower(),
+        )
+        return {
+            "session_count": len(sessions),
+            "totals": total,
+            "by_work_mode": by_mode,
+            "by_employee": employees,
+            "by_day": dict(sorted(by_day.items())),
+        }
+
+    def missed_checkouts(self, flt: ReportFilter | None = None) -> list[dict]:
+        """Open sessions past the threshold. Flagged only: nothing is closed."""
+        cutoff = self.now - timedelta(hours=self.policy.missed_checkout_hours)
+        stmt = select(AttendanceSession).where(AttendanceSession.status == STATUS_OPEN, AttendanceSession.check_in_at <= cutoff)
+        if flt is not None:
+            checked_range(flt.date_from, flt.date_to)
+            zone = self.policy.zone
+            stmt = stmt.where(
+                AttendanceSession.check_in_at >= local_day_bounds(flt.date_from, zone)[0],
+                AttendanceSession.check_in_at < local_day_bounds(flt.date_to, zone)[1],
+            )
+            if flt.user_id is not None:
+                stmt = stmt.where(AttendanceSession.platform_user_id == flt.user_id)
+            if flt.work_mode:
+                stmt = stmt.where(AttendanceSession.work_mode == flt.work_mode)
+        sessions = list(self.db.scalars(stmt.order_by(AttendanceSession.check_in_at)))
+        names = employee_names(self.db, {s.platform_user_id for s in sessions})
+        return [
+            {
+                "session_id": s.id,
+                "platform_user_id": s.platform_user_id,
+                "employee_name": display_name(names, s.platform_user_id),
+                "work_mode": s.work_mode,
+                "check_in_at": s.check_in_at,
+                "open_seconds": int((self.now - s.check_in_at).total_seconds()),
+                "break_open": any(b.ended_at is None for b in s.breaks),
+            }
+            for s in sessions
+        ]
+
+    def corrections(self, flt: ReportFilter) -> list[CorrectionRequest]:
+        checked_range(flt.date_from, flt.date_to)
+        zone = self.policy.zone
+        stmt = select(CorrectionRequest).where(
+            CorrectionRequest.created_at >= local_day_bounds(flt.date_from, zone)[0],
+            CorrectionRequest.created_at < local_day_bounds(flt.date_to, zone)[1],
+        )
+        if flt.user_id is not None:
+            stmt = stmt.where(CorrectionRequest.platform_user_id == flt.user_id)
+        return list(self.db.scalars(stmt.order_by(CorrectionRequest.created_at.desc())))
+
+    def local(self, value: datetime | None) -> str:
+        return value.astimezone(self.policy.zone).strftime("%Y-%m-%d %H:%M:%S") if value else ""
+
+    def table(self, report: str, flt: ReportFilter) -> tuple[list[str], list[list]]:
+        if report == "employee_summary":
+            head = ["Employee", "User ID", "Sessions", "Gross hours", "Break hours", "Net hours"]
+            rows = [
+                [
+                    r["employee_name"],
+                    r["platform_user_id"],
+                    r["session_count"],
+                    hours(r["totals"].gross_seconds),
+                    hours(r["totals"].break_seconds),
+                    hours(r["totals"].net_seconds),
+                ]
+                for r in self.summary(flt)["by_employee"]
+            ]
+            return head, rows
+        if report == "sessions":
+            sessions = self.sessions(flt)
+            names = employee_names(self.db, {s.platform_user_id for s in sessions})
+            head = [
+                "Employee",
+                "User ID",
+                "Work mode",
+                "Status",
+                "Check-in",
+                "Check-out",
+                "Gross hours in range",
+                "Break hours in range",
+                "Net hours in range",
+                "Corrections",
+            ]
+            rows = []
+            for s in sessions:
+                part = self.in_range(s, flt)
+                rows.append(
+                    [
+                        display_name(names, s.platform_user_id),
+                        s.platform_user_id,
+                        s.work_mode,
+                        s.status,
+                        self.local(s.check_in_at),
+                        self.local(s.check_out_at),
+                        hours(part.gross_seconds),
+                        hours(part.break_seconds),
+                        hours(part.net_seconds),
+                        s.correction_count,
+                    ]
+                )
+            return head, rows
+        if report == "missed_checkouts":
+            head = ["Employee", "User ID", "Work mode", "Check-in", "Open hours", "Break open"]
+            rows = [
+                [
+                    r["employee_name"],
+                    r["platform_user_id"],
+                    r["work_mode"],
+                    self.local(r["check_in_at"]),
+                    hours(r["open_seconds"]),
+                    "Yes" if r["break_open"] else "No",
+                ]
+                for r in self.missed_checkouts(flt)
+            ]
+            return head, rows
+        if report == "corrections":
+            items = self.corrections(flt)
+            names = employee_names(self.db, {i.platform_user_id for i in items})
+            head = ["Employee", "User ID", "Type", "Status", "Requested", "Reviewer", "Reviewed", "Reason", "Decision note"]
+            rows = [
+                [
+                    display_name(names, i.platform_user_id),
+                    i.platform_user_id,
+                    i.kind,
+                    i.status,
+                    self.local(i.created_at),
+                    i.reviewer_name or "",
+                    self.local(i.reviewed_at),
+                    i.reason,
+                    i.decision_note or "",
+                ]
+                for i in items
+            ]
+            return head, rows
+        raise AttendanceError("INVALID_REPORT", "Unknown report.", 422)
+
+
+def safe_cell(value):
+    """Spreadsheet programs run cells that start with these characters as formulas."""
+    if (
+        isinstance(value, str)
+        and value.lstrip(" \t\r\n")[:1] in ("=", "+", "-", "@")
+        or (isinstance(value, str) and value[:1] in ("\t", "\r"))
+    ):
+        return "'" + value
+    return value
+
+
+def to_csv(head: list[str], rows: list[list]) -> bytes:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(head)
+    writer.writerows([safe_cell(v) for v in row] for row in rows)
+    return ("﻿" + buffer.getvalue()).encode("utf-8")
+
+
+def to_xlsx(head: list[str], rows: list[list], title: str) -> bytes:
+    book = Workbook(write_only=True)
+    sheet = book.create_sheet(title[:31])
+    sheet.append(head)
+    for row in rows:
+        # openpyxl refuses control characters, which free-text reasons may contain.
+        sheet.append([ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v for v in map(safe_cell, row)])
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def stamp(now: datetime) -> str:
+    return now.astimezone(UTC).strftime("%Y%m%d-%H%M%S")

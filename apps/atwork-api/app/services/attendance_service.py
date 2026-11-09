@@ -148,6 +148,7 @@ class AttendanceService:
             return existing, True
 
         def attempt() -> Result:
+            self.policy.ensure_mode_enabled(work_mode)
             if self.repo.open_session(user_id) is not None:
                 raise AttendanceError("ALREADY_CHECKED_IN", "You are already checked in.")
             now = self.now()

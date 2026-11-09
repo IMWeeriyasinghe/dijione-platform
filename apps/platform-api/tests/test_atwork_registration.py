@@ -19,8 +19,11 @@ ACCESS = "atwork.access"
 MANAGEMENT = "atwork.management.access"
 READ_OWN = "atwork.attendance.read_own"
 RECORD_OWN = "atwork.attendance.record_own"
-USER_PERMS = {ACCESS, READ_OWN, RECORD_OWN}
-MANAGER_PERMS = USER_PERMS | {MANAGEMENT}
+USER_PERMS = {ACCESS, READ_OWN, RECORD_OWN, "atwork.corrections.request_own"}
+MANAGER_PERMS = USER_PERMS | {
+    MANAGEMENT, "atwork.attendance.read", "atwork.corrections.review", "atwork.corrections.approve",
+    "atwork.reports.read", "atwork.reports.export", "atwork.settings.manage", "atwork.audit.read",
+}
 APP_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = APP_ROOT / "alembic" / "versions" / "atw1reg0b2c3_register_atwork_module.py"
 
@@ -49,7 +52,7 @@ def _claims(api_client, persona):
     return get_auth_provider().decode_token(token)
 
 
-def test_catalog_is_minimal_and_scoped_to_the_module():
+def test_catalog_is_exact_and_scoped_to_the_module():
     assert {p.key for p in ATWORK_PERMISSIONS} == MANAGER_PERMS
     assert all(p.module_key == "atwork" for p in ATWORK_PERMISSIONS)
     roles = {r.key: set(r.permissions) for r in ATWORK_ROLES}
@@ -128,7 +131,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     url = f"sqlite:///{tmp_path / 'atwork-migration.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["atw2att0c3d4", "(head)"]
+    assert heads.stdout.split() == ["atw3perm1d4e5", "(head)"]
     up = _alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)
@@ -136,7 +139,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     assert len(first["module"]) == 1
     assert first["module"][0][0] == "COMING_SOON"
     assert not first["module"][0][2]
-    assert (first["perms"], first["roles"], first["links"]) == (4, 2, 7)
+    assert (first["perms"], first["roles"], first["links"]) == (12, 2, 16)
 
     # An administrator's later status is preserved when the migration re-runs.
     with engine.begin() as conn:
@@ -146,7 +149,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     assert again.returncode == 0, again.stderr
     second = _snapshot(engine)
     assert not second["module"][0][1]
-    assert (second["perms"], second["roles"], second["links"]) == (4, 2, 7)
+    assert (second["perms"], second["roles"], second["links"]) == (12, 2, 16)
 
 
 def test_attendance_permissions_reach_existing_role_assignments(tmp_path):
@@ -162,4 +165,4 @@ def test_attendance_permissions_reach_existing_role_assignments(tmp_path):
     upgraded = _alembic(url, "upgrade", "head")
     assert upgraded.returncode == 0, upgraded.stderr
     snapshot = _snapshot(engine)
-    assert (snapshot["perms"], snapshot["roles"], snapshot["links"]) == (4, 2, 7)
+    assert (snapshot["perms"], snapshot["roles"], snapshot["links"]) == (12, 2, 16)

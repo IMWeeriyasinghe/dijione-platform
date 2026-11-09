@@ -2,21 +2,28 @@
 
 import { AppShell, AuthGate, EmptyState, ErrorState, LoadingState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
-import { CalendarClock, History, LayoutDashboard, ShieldCheck } from "lucide-react";
+
+type NavItem = NavSection["items"][number];
+import { BarChart3, CalendarClock, ClipboardCheck, FilePenLine, History, ScrollText, Settings, ShieldCheck, Users } from "lucide-react";
 import { hasPermission, PERM, useAtworkScope, type AtworkScope } from "@/lib/atwork-scope";
 
 export function buildSections(scope: AtworkScope | null): NavSection[] {
-  const sections: NavSection[] = [
-    {
-      items: [
-        { label: "Home", href: "/", icon: LayoutDashboard, exact: true },
-        { label: "Today", href: "/today", icon: CalendarClock },
-        { label: "My History", href: "/history", icon: History },
-      ],
-    },
-  ];
-  if (hasPermission(scope, PERM.MANAGEMENT)) {
-    sections.push({ items: [{ label: "Management", href: "/management", icon: ShieldCheck }] });
+  const can = (key: string) => hasPermission(scope, key);
+  const mine: NavItem[] = [];
+  if (can(PERM.READ_OWN)) {
+    mine.push({ label: "Today", href: "/", icon: CalendarClock, exact: true });
+    mine.push({ label: "My Attendance", href: "/attendance", icon: History });
+  }
+  if (can(PERM.REQUEST_OWN)) mine.push({ label: "My Requests", href: "/requests", icon: FilePenLine });
+  const sections: NavSection[] = mine.length ? [{ items: mine }] : [];
+  if (can(PERM.MANAGEMENT)) {
+    const items: NavItem[] = [{ label: "Overview", href: "/management", icon: ShieldCheck, exact: true }];
+    if (can(PERM.READ_ALL)) items.push({ label: "Employees", href: "/management/employees", icon: Users });
+    if (can(PERM.REVIEW)) items.push({ label: "Corrections", href: "/management/corrections", icon: ClipboardCheck });
+    if (can(PERM.REPORTS)) items.push({ label: "Reports", href: "/management/reports", icon: BarChart3 });
+    if (can(PERM.AUDIT)) items.push({ label: "Audit History", href: "/management/audit", icon: ScrollText });
+    if (can(PERM.SETTINGS)) items.push({ label: "Settings", href: "/management/settings", icon: Settings });
+    sections.push({ label: "Management", items });
   }
   return sections;
 }

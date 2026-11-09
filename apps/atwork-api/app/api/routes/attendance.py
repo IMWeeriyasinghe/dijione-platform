@@ -18,6 +18,7 @@ from app.schemas.attendance import (
     CheckInIn,
     DayTotalsOut,
     HistoryOut,
+    PolicyOut,
     SessionOut,
     StatusOut,
     TodayOut,
@@ -25,12 +26,12 @@ from app.schemas.attendance import (
 )
 from app.services.attendance_policy import AttendancePolicy, get_policy
 from app.services.attendance_service import AttendanceService, Clock, open_break, system_clock
+from app.services.employee_directory import remember_employee
 from app.services.time_accounting import Totals, session_totals
 
 router = APIRouter(prefix="/api/atwork/attendance", tags=["attendance"])
 
 _MAX_RANGE_DAYS = 366
-_DEFAULT_RANGE_DAYS = 30
 
 can_read = require_atwork_permission(PERM_ATTENDANCE_READ_OWN)
 can_record = require_atwork_permission(PERM_ATTENDANCE_RECORD_OWN)
@@ -60,6 +61,8 @@ def _session(session: AttendanceSession, now: datetime) -> SessionOut:
         check_in_at=session.check_in_at,
         check_out_at=session.check_out_at,
         time_zone=session.time_zone,
+        origin=session.origin,
+        correction_count=session.correction_count,
         breaks=[BreakOut(id=b.id, started_at=b.started_at, ended_at=b.ended_at) for b in session.breaks],
         totals=_totals(session_totals(session, now)),
     )
@@ -75,6 +78,19 @@ def _action(service: AttendanceService, result: tuple[AttendanceSession, bool]) 
     session, replayed = result
     now = service.now()
     return ActionOut(replayed=replayed, state=_state(session), server_time=now, session=_session(session, now))
+
+
+@router.get("/policy", response_model=PolicyOut)
+def policy(_claims: AuthClaims = Depends(can_read), service: AttendanceService = Depends(get_service)) -> PolicyOut:
+    current = service.policy
+    return PolicyOut(
+        enabled_work_modes=list(current.enabled_work_modes),
+        business_time_zone=current.business_time_zone,
+        missed_checkout_hours=current.missed_checkout_hours,
+        time_format=current.time_format,
+        default_history_days=current.default_history_days,
+        server_time=service.now(),
+    )
 
 
 @router.get("/status", response_model=StatusOut)
@@ -93,6 +109,7 @@ def status(claims: AuthClaims = Depends(can_read), service: AttendanceService = 
 def check_in(
     body: CheckInIn, claims: AuthClaims = Depends(can_record), service: AttendanceService = Depends(get_service)
 ) -> ActionOut:
+    remember_employee(service.db, claims)
     return _action(service, service.check_in(claims.user_id, body.work_mode, body.client_request_id))
 
 
@@ -143,7 +160,7 @@ def history(
 ) -> HistoryOut:
     now = service.now()
     end = date_to or service.local_date(now)
-    start = date_from or end - timedelta(days=_DEFAULT_RANGE_DAYS - 1)
+    start = date_from or end - timedelta(days=service.policy.default_history_days - 1)
     if start > end:
         raise AttendanceError("INVALID_DATE_RANGE", "The start date must not be after the end date.", 422)
     if (end - start).days >= _MAX_RANGE_DAYS:

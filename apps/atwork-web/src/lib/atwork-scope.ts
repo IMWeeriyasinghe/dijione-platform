@@ -8,7 +8,17 @@ import { request, useAuth } from "@dijione/auth-client";
 // verified token. This drives navigation only; the API enforces access.
 export const PERM = {
   ACCESS: "atwork.access",
+  READ_OWN: "atwork.attendance.read_own",
+  RECORD_OWN: "atwork.attendance.record_own",
+  REQUEST_OWN: "atwork.corrections.request_own",
   MANAGEMENT: "atwork.management.access",
+  READ_ALL: "atwork.attendance.read",
+  REVIEW: "atwork.corrections.review",
+  APPROVE: "atwork.corrections.approve",
+  REPORTS: "atwork.reports.read",
+  EXPORT: "atwork.reports.export",
+  SETTINGS: "atwork.settings.manage",
+  AUDIT: "atwork.audit.read",
 } as const;
 
 export type AtworkScope = {

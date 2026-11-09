@@ -7,7 +7,7 @@ from pathlib import Path
 from app.core.config import Settings
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
-ALLOWED_THIRD_PARTY = {"app", "auth_client_py", "fastapi", "pydantic", "pydantic_settings", "sqlalchemy"}
+ALLOWED_THIRD_PARTY = {"openpyxl", "app", "auth_client_py", "fastapi", "pydantic", "pydantic_settings", "sqlalchemy"}
 
 
 def test_refuses_to_start_outside_development_with_default_secrets():

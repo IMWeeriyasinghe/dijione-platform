@@ -11,7 +11,7 @@ from app.db.base import Base, TimestampMixin, UTCDateTime, utcnow
 
 _MODES_SQL = ", ".join(f"'{mode}'" for mode in WORK_MODES)
 _OPEN = text("status = 'OPEN'")
-_OPEN_BREAK = text("ended_at IS NULL")
+_OPEN_BREAK = text("ended_at IS NULL AND voided_at IS NULL")
 _HAS_CHECKOUT_KEY = text("check_out_request_id IS NOT NULL")
 _HAS_END_KEY = text("end_request_id IS NOT NULL")
 
@@ -55,12 +55,19 @@ class AttendanceSession(TimestampMixin, Base):
     check_out_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_by_user_id: Mapped[int] = mapped_column(Integer)
     updated_by_user_id: Mapped[int] = mapped_column(Integer)
+    origin: Mapped[str] = mapped_column(String(16), default="RECORDED", server_default="RECORDED")
+    correction_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     version: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __mapper_args__ = {"version_id_col": version}
 
+    # Official breaks only: a break replaced by an approved correction stays
+    # in the table, voided, so the original record is preserved.
     breaks: Mapped[list[AttendanceBreak]] = relationship(
-        back_populates="session", order_by="AttendanceBreak.started_at", lazy="selectin"
+        back_populates="session",
+        primaryjoin="and_(AttendanceSession.id == foreign(AttendanceBreak.session_id), AttendanceBreak.voided_at.is_(None))",
+        order_by="AttendanceBreak.started_at",
+        lazy="selectin",
     )
 
 
@@ -86,6 +93,8 @@ class AttendanceBreak(TimestampMixin, Base):
     ended_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     start_request_id: Mapped[str] = mapped_column(String(64))
     end_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    voided_by_correction_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     session: Mapped[AttendanceSession] = relationship(back_populates="breaks")
 
@@ -105,7 +114,7 @@ class AttendanceEvent(Base):
     action: Mapped[str] = mapped_column(String(32))
     entity_type: Mapped[str] = mapped_column(String(32))
     entity_id: Mapped[str] = mapped_column(String(36))
-    session_id: Mapped[str] = mapped_column(ForeignKey("attendance_sessions.id", ondelete="RESTRICT"))
+    session_id: Mapped[str | None] = mapped_column(ForeignKey("attendance_sessions.id", ondelete="RESTRICT"), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     before_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     after_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -34,6 +34,8 @@ class SessionOut(BaseModel):
     check_in_at: datetime
     check_out_at: datetime | None
     time_zone: str
+    origin: str
+    correction_count: int
     breaks: list[BreakOut]
     totals: TotalsOut
 
@@ -74,3 +76,12 @@ class HistoryOut(BaseModel):
     offset: int
     daily_totals: list[DayTotalsOut]
     sessions: list[SessionOut]
+
+
+class PolicyOut(BaseModel):
+    enabled_work_modes: list[WorkMode]
+    business_time_zone: str
+    missed_checkout_hours: int
+    time_format: str
+    default_history_days: int
+    server_time: datetime
