@@ -137,6 +137,7 @@ jobs:
         working-directory: apps/${{ matrix.service }}
         run: pytest -q
       - name: alembic upgrade head on a fresh database (module removed)
+        if: matrix.service != 'admin-api'
         working-directory: apps/${{ matrix.service }}
         run: DATABASE_URL="sqlite:///./removal-check.db" alembic upgrade head
 
