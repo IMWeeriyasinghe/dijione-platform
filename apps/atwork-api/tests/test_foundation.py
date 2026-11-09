@@ -28,14 +28,13 @@ def test_metadata(api_client):
     body = api_client.get("/api/atwork/metadata").json()
     assert body["key"] == "atwork"
     assert body["name"] == "DijiAtWork"
-    assert body["product_status"] == "COMING_SOON"
+    assert "product_status" not in body  # Platform Core owns module status
 
 
 def test_summary(api_client):
     assert api_client.get("/api/atwork/summary").json() == {
         "service": "atwork-api",
         "status": "healthy",
-        "product_status": "COMING_SOON",
     }
 
 
