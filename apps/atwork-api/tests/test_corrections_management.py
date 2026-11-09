@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app.api.routes.attendance import get_clock
+from app.db.session import SessionLocal
 from app.main import app
 from app.models.attendance import AttendanceBreak, AttendanceEvent, AttendanceSession
 from app.models.corrections import CorrectionRequest
@@ -340,7 +341,11 @@ def test_open_break_needs_an_end_time_in_a_correction(api_client, clock):
 
 def test_excel_export_survives_control_characters_in_a_reason(api_client, clock):
     sid = work(api_client, clock)
-    assert amend(api_client, sid, work_mode="REMOTE", reason="Bad \x01 character").status_code == 201
+    made = amend(api_client, sid, work_mode="REMOTE", reason="Bad \x01 character")
+    assert made.status_code == 201
+    with SessionLocal() as session:  # created_at comes from the wall clock, not the test clock
+        session.get(CorrectionRequest, made.json()["id"]).created_at = clock.value
+        session.commit()
     params = {"report": "corrections", "format": "xlsx", "date_from": "2026-11-09", "date_to": "2026-11-09"}
     out = api_client.get(f"{M}/reports/export", params=params, headers=MGR)
     assert out.status_code == 200
