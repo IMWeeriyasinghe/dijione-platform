@@ -202,6 +202,7 @@ class FakeRecruitmentClient:
         self.down = down
         self.candidacies_down = candidacies_down
         self.sync_calls: list[dict] = []
+        self.source_snapshot = {"state": "COMPLETE"}
 
     def _guard(self):
         if self.down:
@@ -228,7 +229,12 @@ class FakeRecruitmentClient:
 
     def get_freshness(self) -> dict:
         self._guard()
-        return {"provider": "LEVER", "last_successful_sync_at": "2026-09-01T00:00:00+00:00", "latest_run": None}
+        return {
+            "source_snapshot": self.source_snapshot,
+            "provider": "LEVER",
+            "last_successful_sync_at": "2026-09-01T00:00:00+00:00",
+            "latest_run": None,
+        }
 
     def request_sync(self, *, requested_by_user_id=None, requested_by_application="talent-flow") -> dict:
         self._guard()

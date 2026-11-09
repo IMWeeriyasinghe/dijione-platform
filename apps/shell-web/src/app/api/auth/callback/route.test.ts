@@ -56,6 +56,30 @@ describe("GET /api/auth/callback", () => {
     expect(html).toContain("Sign-in failed: access_denied");
   });
 
+  it("cannot be broken out of by a crafted error value (reflected XSS)", async () => {
+    const payload = "</script><script>alert(document.domain)</script>";
+    const html = await bodyOf(
+      new Request(
+        `https://shell-web.example/api/auth/callback?error_description=${encodeURIComponent(payload)}`,
+      ),
+    );
+    expect(html.match(/<script>/g)).toHaveLength(1);
+    expect(html.match(/<\/script>/g)).toHaveLength(1);
+    expect(html).not.toContain("alert(document.domain)</script>");
+    expect(html).toContain("\\u003c/script\\u003e");
+  });
+
+  it("escapes a crafted detail returned by the token exchange", async () => {
+    cookieStore.set("dijione_entra_flow", "flow");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ detail: "</script><img src=x>" }), { status: 400 })),
+    );
+    const html = await bodyOf(new Request("https://shell-web.example/api/auth/callback?code=abc&state=xyz"));
+    expect(html.match(/<\/script>/g)).toHaveLength(1);
+    expect(html).not.toContain("<img");
+  });
+
   it("expired flow session shows a message instead of going blank", async () => {
     const html = await bodyOf(new Request("https://shell-web.example/api/auth/callback?code=abc&state=xyz"));
     expect(html).toContain("Sign-in session expired");

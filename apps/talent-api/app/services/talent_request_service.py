@@ -18,6 +18,7 @@ from app.models.talent_request import TalentRequest
 from app.repositories.application_repo import ApplicationRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.talent_request import (
+    ExternalTalentRequestOut,
     StageProgressOut,
     TalentRequestCreate,
     TalentRequestOut,
@@ -42,6 +43,12 @@ _STAGE_STATUS_TEXT = {
     CanonicalStage.OFFER: "Offer in progress",
     CanonicalStage.ONBOARDING: "Onboarding in progress",
     CanonicalStage.DEPLOYED: "Candidate deployed",
+}
+
+
+_REVIEWABLE_STATUSES = {
+    CustomerSuccessStatus.PENDING_REVIEW.value,
+    CustomerSuccessStatus.CLARIFICATION_REQUIRED.value,
 }
 
 
@@ -199,6 +206,8 @@ class TalentRequestService:
             raise TalentRequestNotFoundError(request_id)
 
         previous_status = request.customer_success_status
+        if previous_status not in _REVIEWABLE_STATUSES:
+            raise InvalidTransitionError(f"Request is not awaiting review: {previous_status}")
         if decision == CustomerSuccessStatus.APPROVED.value:
             request.customer_success_status = CustomerSuccessStatus.APPROVED.value
             request.lifecycle_status = TalentRequestLifecycleStatus.APPROVED.value
@@ -328,6 +337,8 @@ class TalentRequestService:
         )
         if request is None:
             raise TalentRequestNotFoundError(request_id)
+        if ta_status not in {s.value for s in TaStatus}:
+            raise InvalidTransitionError(f"Unknown TA status: {ta_status}")
         previous = request.ta_status
         request.ta_status = ta_status
         self.audit.log(
@@ -384,4 +395,40 @@ class TalentRequestService:
             active_application_count=active_count,
             created_at=request.created_at,
             updated_at=request.updated_at,
+        )
+
+    def to_client_out(self, request: TalentRequest) -> TalentRequestOut:
+        """The internal client workspace's view: no staff-only workflow fields,
+        and a candidate count covering shared candidates only."""
+        shared = self.application_repo.list_for_request(request.id, client_visible_only=True)
+        return self.to_out(request).model_copy(
+            update={
+                "notes": "",
+                "ta_status": "",
+                "customer_success_status": "",
+                "priority": "",
+                "active_application_count": sum(
+                    1 for a in shared if a.status in ACTIVE_APPLICATION_STATUSES
+                ),
+            }
+        )
+
+    def to_external_out(self, request: TalentRequest) -> ExternalTalentRequestOut:
+        """The portal's view; its candidate count covers shared candidates only."""
+        out = self.to_out(request)
+        shared = self.application_repo.list_for_request(request.id, client_visible_only=True)
+        return ExternalTalentRequestOut(
+            id=out.id,
+            request_code=out.request_code,
+            designation=out.designation,
+            location=out.location,
+            current_stage=out.current_stage,
+            client_safe_status_text=out.client_safe_status_text,
+            progress_percent=out.progress_percent,
+            stage_timeline=out.stage_timeline,
+            active_application_count=sum(
+                1 for a in shared if a.status in ACTIVE_APPLICATION_STATUSES
+            ),
+            created_at=out.created_at,
+            updated_at=out.updated_at,
         )

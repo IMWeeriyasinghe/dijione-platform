@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
+    CANONICAL_STAGE_ORDER,
     MODULE_TALENT_FLOW,
     NotificationType,
     TalentFlowRole,
@@ -23,6 +24,10 @@ class ApplicationNotFoundError(Exception):
 
 
 class TalentRequestNotFoundError(Exception):
+    pass
+
+
+class CandidateNotFoundError(Exception):
     pass
 
 
@@ -59,6 +64,10 @@ class ApplicationService:
         )
         if request is None:
             raise TalentRequestNotFoundError(payload.talent_request_id)
+        if payload.current_stage not in {s.value for s in CANONICAL_STAGE_ORDER}:
+            raise InvalidApplicationValueError(f"Unknown stage: {payload.current_stage}")
+        if self.candidate_repo.get_by_id(payload.candidate_id) is None:
+            raise CandidateNotFoundError(payload.candidate_id)
         if self.repo.exists_for_pair(payload.candidate_id, payload.talent_request_id):
             raise DuplicateApplicationError(
                 f"Candidate {payload.candidate_id} already has an application for "

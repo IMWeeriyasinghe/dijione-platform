@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, updateTalentRequestStage } from "@/lib/api";
 import { CANONICAL_STAGES } from "@dijione/contracts";
-import { Modal } from "@dijione/design-system";
+import { Modal } from "@/components/talent/Modal";
 import { Button } from "@dijione/design-system";
 import { FormField, Select, Textarea } from "@dijione/design-system";
 import { stageLabel } from "@dijione/design-system";
@@ -63,7 +63,7 @@ export function UpdateStageModal({
             placeholder="e.g. Client interviews in progress"
           />
         </FormField>
-        {error && <p className="text-sm text-dt-danger">{error}</p>}
+        {error && <p role="alert" className="text-sm text-dt-danger">{error}</p>}
         <div className="flex justify-end gap-3 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel

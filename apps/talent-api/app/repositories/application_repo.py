@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.application import Application
 from app.models.talent_request import TalentRequest
+from app.repositories.talent_request_repo import client_may_access_request
 
 
 class ApplicationRepository:
@@ -22,7 +23,9 @@ class ApplicationRepository:
             .where(Application.id == application_id)
         )
         if client_id is not None:
-            stmt = stmt.join(TalentRequest).where(TalentRequest.client_id == client_id)
+            stmt = stmt.join(TalentRequest).where(
+                TalentRequest.client_id == client_id, client_may_access_request()
+            )
         elif allowed_client_ids is not None:
             stmt = stmt.join(TalentRequest).where(TalentRequest.client_id.in_(allowed_client_ids))
         return self.db.execute(stmt).scalars().first()
@@ -74,7 +77,7 @@ class ApplicationRepository:
         if talent_request_id is not None:
             stmt = stmt.where(Application.talent_request_id == talent_request_id)
         if client_id is not None:
-            stmt = stmt.where(TalentRequest.client_id == client_id)
+            stmt = stmt.where(TalentRequest.client_id == client_id, client_may_access_request())
         elif allowed_client_ids is not None:
             stmt = stmt.where(TalentRequest.client_id.in_(allowed_client_ids))
         if search:

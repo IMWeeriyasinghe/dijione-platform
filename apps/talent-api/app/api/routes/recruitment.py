@@ -12,14 +12,18 @@ from __future__ import annotations
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import TalentScope, require_internal_service, require_staff_scope
 from app.db.session import SessionLocal, get_db
+from app.services import recruitment_consumer_service as consumer
 from app.services.audit_service import AuditService
 from app.services.recruitment_consumer_service import (
     RecruitmentConsumerService,
+    get_recruitment_batch_client,
     get_recruitment_client,
+    run_reconcile,
 )
 
 router = APIRouter(prefix="/api/talent/integrations/recruitment", tags=["recruitment-source"])
@@ -62,7 +66,7 @@ def sync_run(run_id: str, scope: TalentScope = Depends(require_staff_scope)) -> 
 def _reconcile_bg() -> None:
     db = SessionLocal()
     try:
-        RecruitmentConsumerService(db).refresh_projection_and_reconcile()
+        run_reconcile(db)
     finally:
         db.close()
 
@@ -100,13 +104,31 @@ def request_ad_hoc_sync(
     }
 
 
-@internal_router.post("/reconcile", status_code=202)
+_RECONCILE_HTTP_STATUS = {
+    consumer.OUTCOME_SUCCEEDED: status.HTTP_200_OK,
+    consumer.OUTCOME_SKIPPED: status.HTTP_409_CONFLICT,
+    # Incomplete is not success: the job's `curl -f` must exit non-zero so
+    # Azure records the execution as Failed and retries it once.
+    consumer.OUTCOME_PARTIAL: status.HTTP_503_SERVICE_UNAVAILABLE,
+    consumer.OUTCOME_FAILED: status.HTTP_503_SERVICE_UNAVAILABLE,
+}
+
+
+@internal_router.post("/reconcile")
 def reconcile(
     background: BackgroundTasks,
+    db: Session = Depends(get_db),
     _: None = Depends(require_internal_service),
-) -> dict:
+) -> JSONResponse:
     """Called by an external replica-safe scheduler (a Container Apps Job;
     cron/curl locally), offset from the recruitment-api sync Job. Refreshes
-    the local posting projection and runs the DTC trust reconciliation."""
-    background.add_task(_reconcile_bg)
-    return {"status": "accepted"}
+    the local posting projection and runs the DTC trust reconciliation.
+    Synchronous so the job's exit status reflects the real outcome."""
+    report = run_reconcile(
+        db,
+        client=get_recruitment_batch_client(),
+        budget_seconds=consumer.RECONCILE_BUDGET_SECONDS,
+        # After the response, so audit traffic cannot use up the request limit.
+        schedule_delivery=background.add_task,
+    )
+    return JSONResponse(status_code=_RECONCILE_HTTP_STATUS[report["outcome"]], content=report)

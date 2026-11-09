@@ -34,11 +34,59 @@ fail-closed authorization join — `docs/platform/data-ownership.md` §4a),
 **Lever is GET-only** (CLAUDE.md §60). `test_lever_client_safety.py` plus
 `test_no_direct_lever_dependency.py` (in `talent-api`) guard this.
 
+## Reconcile outcomes
+
+`POST /api/talent/internal/recruitment/reconcile` runs synchronously, so the
+`curl -f` in `talent-reconcile-job` reports the real result.
+
+**Why this exists.** Until November 2026 every scheduled reconcile failed
+silently with `ReadTimeout` in every hosted environment. `recruitment-api`
+scales to zero about 5 minutes after the `:00` sync, so the `:15` reconcile
+always found it cold. Its start took 7-47 s against a 5 s timeout. The route
+returned 202 before doing the work, so Azure recorded success. It was not an
+overlap with the sync, and moving the schedule would not fix it.
+
+| Outcome | HTTP | Azure job | Data | Meaning |
+|---|---|---|---|---|
+| `SUCCEEDED` | 200 | Succeeded | Committed | Postings and candidacies fully read |
+| `PARTIAL` / `candidacies_unavailable` | 503 | Failed, retried once | Postings committed | Transient; the retry can complete it |
+| `PARTIAL` / `no_postings` | 503 | Failed, retried once | Nothing to change | Investigate if the retry also reports it |
+| `PARTIAL` / `candidacy_limit_hit` | 503 | Failed, retried once | First 500 committed | Retry cannot help; needs paging |
+| `SKIPPED` / `already_running` | 409 | Failed | Unchanged | Another replica or run holds the lock |
+| `FAILED` | 503 | Failed, retried once | Rolled back | Source unavailable, error, or over budget |
+
+- `fully_refreshed` is true only for `SUCCEEDED`. Every other outcome logs a
+  `recruitment reconcile outcome=...` warning; `curl -f` hides failure bodies.
+- **Timeouts:** 90 s per batch call, 5 s for browser-facing calls. The run stops
+  at 220 s and rolls back, inside the 240 s Container Apps request limit. Two
+  attempts fit within the job's 900 s limit. The 220 s check is cooperative: if
+  Azure cuts a longer request off, the job shows Failed and the final check
+  before commit still rolls the run back. PostgreSQL statements stop at 60 s and
+  lock waits at 15 s.
+- **Single-flight:** a PostgreSQL transaction advisory lock covers all replicas
+  and is released on commit, rollback or lost connection.
+- **Transaction:** one database transaction, committed last, and safe to re-run.
+- **Side effects:** audit and notification calls are queued and sent only after
+  commit, after the response, for at most 200 s. A rolled-back run sends none.
+  Delivery stays best-effort; losses are logged as `side effects undelivered`.
+- **Incomplete data:** a `PARTIAL` commit never deletes or withdraws anything,
+  and new applications stay unshared until TA shares them. The freshness panel
+  reports the Lever sync, not this reconcile, so check the job status as well.
+
+## Completeness
+
+- `OPPORTUNITY_SYNC_LIMIT` (200) caps the general read of Lever opportunities
+  and has no continuation, so older opportunities are not refreshed by it.
+- Every posting with a DTC tag is therefore also read in full through Lever's
+  `posting_id` filter. Those are the only postings TalentFlow can promote.
+- `talent-api` reads candidacies one verified posting at a time, so its
+  500-row limit applies per posting.
+
 ## Sync lifecycle
 
 | Concern | Implementation |
 |---|---|
-| **Scheduled reconciliation** | Every 6 h, via an external replica-safe caller: `POST /api/recruitment/internal/scheduled-sync` (`X-Internal-Token`). Azure = the `recruitment-sync-job` Container Apps Job (`deploy/` — prepared, not created). Local = cron / `curl` / a script. **Not** an in-process timer per replica. `talent-reconcile-job` runs 15 min later to refresh `talent-api`'s posting projection + DTC trust reconciliation. |
+| **Scheduled reconciliation** | Every 6 h, via an external replica-safe caller: `POST /api/recruitment/internal/scheduled-sync` (`X-Internal-Token`). Azure = the `recruitment-sync-job` Container Apps Job (`deploy/` — prepared, not created). Local = cron / `curl` / a script. **Not** an in-process timer per replica. `talent-reconcile-job` runs 15 min later to refresh `talent-api`'s posting projection + DTC trust reconciliation; see "Reconcile outcomes" below. |
 | **Ad-hoc sync** | `POST /api/talent/integrations/recruitment/sync` (staff, `require_staff_scope`) proxies to `POST /api/recruitment/internal/sync` on this service. Browser → `talent-web` → `talent-api` → `recruitment-api`. Never browser → source directly. |
 | **Async** | Ad-hoc returns **`202 Accepted`** `{run_id, status, started}`; the run executes in a FastAPI background task with its own DB session. The HTTP request is never held open. |
 | **Single-flight** | `request_sync` returns any already-`QUEUED`/`RUNNING` run instead of starting a second full reconciliation (`started: false`). No provider thundering herd. |
@@ -105,3 +153,17 @@ GET-only, against the real Lever tenant (647 postings synced, zero writes)
 to confirm the two governed DTC test postings resolve correctly — see
 `docs/platform/data-ownership.md` and the Architecture Completion Plan's
 final report for the result.
+
+## Client-posting completeness
+
+Each `DTC` posting is read and committed on its own, with a checkpoint. The next
+run starts from the least recently attempted posting, so an interrupted run
+resumes and a failing posting cannot hold back the others. A run is `PARTIAL`
+while any posting failed or was deferred.
+
+`/freshness` returns `source_snapshot.state`. `COMPLETE` requires every client
+posting to have been read within 24 hours and the latest finished run not to
+have failed. Talent reconcile holds, with no writes, in any other state.
+
+`recruitment-sync-job` runs `scripts/run_scheduled_sync.py`, which polls until
+the run finishes. The polling keeps the replica up under the background task.
