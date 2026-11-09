@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
+from app.services.audit_service import AuditService
 from app.services.posting_client_mapping_reconciler import PostingClientMappingReconciler
 from app.services.side_effects import SideEffect, collect_side_effects, deliver_side_effects
 from app.services.verified_posting_promotion_reconciler import (
@@ -109,6 +110,29 @@ def reconcile_guard(db: Session) -> Iterator[bool]:
             _local_reconcile_lock.release()
 
 
+_UPSTREAM_HOLD_REASONS = {
+    "RUNNING": "upstream_running",
+    "NONE": "upstream_never_synced",
+    "FAILED": "upstream_failed",
+    "STALE": "upstream_stale",
+    "INCOMPLETE": "upstream_incomplete",
+}
+
+
+def upstream_hold(client: RecruitmentSourceClient) -> tuple[str | None, dict]:
+    """Why this reconcile must not read the source yet, or None. Anything other
+    than an explicit COMPLETE holds it: reconcile applies mapping changes, so it
+    only ever acts on a full read."""
+    try:
+        snapshot = client.get_freshness().get("source_snapshot") or {}
+    except httpx.HTTPError:
+        return "source_unavailable", {}
+    state = snapshot.get("state")
+    if state == "COMPLETE":
+        return None, snapshot
+    return _UPSTREAM_HOLD_REASONS.get(state, "upstream_incomplete"), snapshot
+
+
 def _deliver_now(deliver: Callable[..., None], *args, **kwargs) -> None:
     deliver(*args, **kwargs)
 
@@ -147,12 +171,22 @@ def run_reconcile(
             outcome, reasons = OUTCOME_SKIPPED, ["already_running"]
         else:
             try:
-                result = RecruitmentConsumerService(
-                    db, client=client
-                ).refresh_projection_and_reconcile(budget_seconds=budget_seconds)
-                outcome, reasons = classify_reconcile_result(result)
-                if result.get("refreshed"):
-                    effects = collected
+                service = RecruitmentConsumerService(db, client=client)
+                hold, snapshot = upstream_hold(service.client)
+                if hold:
+                    outcome = OUTCOME_FAILED if hold == "source_unavailable" else OUTCOME_SKIPPED
+                    reasons = [hold]
+                    result = {"upstream": snapshot}
+                else:
+                    result = service.refresh_projection_and_reconcile(budget_seconds=budget_seconds)
+                    outcome, reasons = classify_reconcile_result(result)
+                    if outcome == OUTCOME_SUCCEEDED and snapshot.get("latest_run_status") != "SUCCEEDED" and (
+                        "latest_run_status" in snapshot
+                    ):
+                        # Every posting is current, but across several runs.
+                        outcome, reasons = OUTCOME_PARTIAL, ["upstream_rolling_read"]
+                    if result.get("refreshed"):
+                        effects = collected
             except Exception as exc:  # noqa: BLE001 - reported, rolled back by the guard
                 outcome, reasons = OUTCOME_FAILED, [type(exc).__name__]
 
@@ -160,6 +194,9 @@ def run_reconcile(
         (schedule_delivery or _deliver_now)(
             deliver_side_effects, effects, limit_seconds=SIDE_EFFECT_DELIVERY_SECONDS
         )
+
+    if "upstream" in result:
+        _audit_hold(reasons[0], result["upstream"])
 
     elapsed = round(time.monotonic() - started, 1)
     if outcome != OUTCOME_SUCCEEDED:
@@ -174,6 +211,16 @@ def run_reconcile(
         "elapsed_seconds": elapsed,
         "counts": {k: v for k, v in result.items() if k not in ("refreshed", "reason")},
     }
+
+
+def _audit_hold(reason: str, snapshot: dict) -> None:
+    try:
+        AuditService().log(
+            actor_id=None, action="recruitment.reconcile_held", entity_type="RecruitmentReconcile",
+            entity_id=0, new_state={"reason": reason, **snapshot},
+        )
+    except Exception:  # noqa: BLE001 - best-effort, the outcome is still reported
+        logger.debug("reconcile hold audit skipped", exc_info=True)
 
 
 class RecruitmentConsumerService:

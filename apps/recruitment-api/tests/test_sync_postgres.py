@@ -4,12 +4,17 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete, select, text, update
 
 from app.db.session import SessionLocal, engine
+from app.models.posting import Posting
+from app.models.recruitment_candidacy import RecruitmentCandidacy
+from app.models.recruitment_candidate import RecruitmentCandidate
 from app.models.sync_run import RecruitmentSyncRun, SyncStatus, SyncTriggerType
+from app.services import lever_candidacy_sync_service as candidacy_module
 from app.services import recruitment_sync_service as module
 from app.services.recruitment_sync_service import RecruitmentSyncService
 
@@ -21,6 +26,7 @@ def clean_runs(db):
     def wipe():
         with SessionLocal() as s:
             s.execute(delete(RecruitmentSyncRun))
+            s.execute(delete(Posting))
             s.commit()
 
     wipe()
@@ -172,3 +178,67 @@ def test_abandon_waits_for_a_finish_in_progress():
         _, created = request.result(timeout=10)
     assert created
     assert _status(finishing) == SyncStatus.SUCCEEDED.value
+
+
+def test_completed_postings_survive_a_run_that_dies(monkeypatch):
+    with SessionLocal() as s:
+        s.add_all([Posting(lever_posting_id=f"p{n}", tags='["DTC - Acme"]') for n in range(3)])
+        s.commit()
+
+    class Lever:
+        def list_stages(self):
+            return []
+
+        def list_archive_reasons(self):
+            return []
+
+        def list_opportunities(self, posting_id=None, limit=None):
+            if posting_id == "p2":
+                raise SystemExit("replica stopped")
+            return []
+
+    monkeypatch.setattr(candidacy_module, "get_lever_client", Lever)
+    dying = SessionLocal()
+    with pytest.raises(SystemExit):
+        candidacy_module.LeverCandidacySyncService(dying).sync_opportunities(limit=1)
+    dying.invalidate()
+    with SessionLocal() as s:
+        read = s.execute(select(Posting.lever_posting_id).where(Posting.dtc_last_read_at.isnot(None))).scalars().all()
+    assert sorted(read) == ["p0", "p1"]
+
+
+def test_overlapping_reads_of_one_posting_create_no_duplicates(monkeypatch):
+    """A late abandoned run overlapping a new one: a lost race fails that posting only."""
+    with SessionLocal() as s:
+        s.add(Posting(lever_posting_id="shared", tags='["DTC - Acme"]'))
+        s.commit()
+    barrier = threading.Barrier(2)
+
+    class Lever:
+        def list_stages(self):
+            return []
+
+        def list_archive_reasons(self):
+            return []
+
+        def list_opportunities(self, posting_id=None, limit=None):
+            if posting_id is None:
+                return []
+            barrier.wait(timeout=10)
+            return [SimpleNamespace(
+                id=f"opp-{n}", contact_id=f"contact-{n}", name="", email="", headline="", tags=[], sources=[],
+                stage_id="", archived=False, archive_reason_id=None,
+            ) for n in range(5)]
+
+    monkeypatch.setattr(candidacy_module, "get_lever_client", Lever)
+
+    def run(_):
+        with SessionLocal() as s:
+            return candidacy_module.LeverCandidacySyncService(s).sync_opportunities(limit=1)
+
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(run, range(2)))
+    assert sum(r["dtc_postings_read"] for r in results) >= 1
+    with SessionLocal() as s:
+        assert s.query(RecruitmentCandidacy).count() == 5
+        assert s.query(RecruitmentCandidate).count() == 5

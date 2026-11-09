@@ -10,6 +10,7 @@ separately.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import uuid
@@ -23,12 +24,19 @@ from app.core.constants import MODULE_TALENT_FLOW, TA_MANAGER_ROLE, Notification
 from app.db.session import SessionLocal
 from app.models.sync_run import (
     ACTIVE_STATUSES,
+    TERMINAL_STATUSES,
     RecruitmentSyncRun,
     SyncStatus,
     SyncTriggerType,
 )
+from app.repositories.posting_repo import PostingRepository
 from app.services import platform_notify
-from app.services.lever_candidacy_sync_service import LeverCandidacySyncService
+from app.services.lever_candidacy_sync_service import (
+    SNAPSHOT_MAX_AGE,
+    LeverCandidacySyncService,
+    dtc_postings,
+    unread_postings,
+)
 from app.services.lever_posting_service import LeverPostingSyncService
 
 logger = logging.getLogger("recruitment-api.sync")
@@ -109,6 +117,33 @@ class RecruitmentSyncService:
             "provider": "LEVER",
             "last_successful_sync_at": _iso(self.last_successful_at()),
             "latest_run": run_dto(latest) if latest else None,
+            "source_snapshot": self.source_snapshot(),
+        }
+
+    def source_snapshot(self) -> dict:
+        """Whether consumers may treat the client-posting data as a full read."""
+        now = datetime.now(UTC)
+        postings = dtc_postings(PostingRepository(self.db))
+        unread = len(unread_postings(postings, now))
+        runs = self.db.execute(
+            select(RecruitmentSyncRun).order_by(RecruitmentSyncRun.requested_at.desc()).limit(20)
+        ).scalars().all()
+        terminal = [r for r in runs if r.status in {s.value for s in TERMINAL_STATUSES}]
+        if any(r.status in {s.value for s in ACTIVE_STATUSES} for r in runs):
+            state = "RUNNING"
+        elif not terminal or terminal[0].completed_at is None:
+            state = "NONE"
+        elif terminal[0].status == SyncStatus.FAILED.value:
+            state = "FAILED"
+        elif now - _utc(terminal[0].completed_at) >= SNAPSHOT_MAX_AGE:
+            state = "STALE"
+        else:
+            state = "COMPLETE" if postings and not unread and _general_read_finished(terminal[0]) else "INCOMPLETE"
+        return {
+            "state": state,
+            "client_postings_total": len(postings),
+            "client_postings_unread": unread,
+            "latest_run_status": terminal[0].status if terminal else None,
         }
 
     # --- request (single-flight) ------------------------------------
@@ -160,13 +195,31 @@ class RecruitmentSyncService:
             read = created = updated = unchanged = 0
             error: str | None = None
             incomplete: str | None = None
+            detail: dict | None = None
             try:
                 p = LeverPostingSyncService(db).sync_postings()
                 o = LeverCandidacySyncService(db).sync_opportunities(limit=limit)
                 db.commit()
                 posting_reads, posting_total = o.get("dtc_postings_read", 0), o.get("dtc_postings_total", 0)
-                if posting_reads < posting_total:
+                failed, deferred = o.get("dtc_postings_failed", 0), o.get("dtc_postings_deferred", 0)
+                already_current = o.get("dtc_postings_current", 0)
+                if posting_reads + already_current < posting_total:
                     incomplete = f"Incomplete: {posting_reads} of {posting_total} client postings read."
+                    if failed or deferred:
+                        incomplete = f"{incomplete[:-1]}; {failed} failed, {deferred} deferred."
+                elif o.get("general_budget_exhausted"):
+                    incomplete = "Incomplete: the general opportunity read stopped at its budget."
+                detail = {
+                    "postings": {k: int(p.get(k, 0)) for k in ("total", "created", "updated")},
+                    "candidates": {k: int(o.get(f"candidates_{k}", 0)) for k in ("created", "matched")},
+                    "candidacies": {k: int(o.get(f"candidacies_{k}", 0)) for k in ("created", "updated")},
+                    "client_postings": {
+                        "total": posting_total, "processed": posting_reads, "current": already_current, "failed": failed,
+                        "deferred": deferred, "remaining": o.get("dtc_postings_remaining", 0),
+                    },
+                    "opportunities_seen": o.get("opportunities_seen", 0),
+                    "general_budget_exhausted": bool(o.get("general_budget_exhausted")),
+                }
                 read += int(p.get("total", 0))
                 created += int(p.get("created", 0))
                 updated += int(p.get("updated", 0))
@@ -199,6 +252,7 @@ class RecruitmentSyncService:
             run.records_updated = updated
             run.records_unchanged = unchanged
             run.error_summary = error or incomplete
+            run.detail = json.dumps(detail) if detail else None
             if error:
                 run.status = SyncStatus.FAILED.value
             elif incomplete:
@@ -238,6 +292,17 @@ def _safe_error(exc: Exception) -> str:
     return f"{exc.__class__.__name__}: {msg}"
 
 
+def _general_read_finished(run: RecruitmentSyncRun) -> bool:
+    """A run without recorded detail proves nothing about what it read."""
+    if not run.detail:
+        return False
+    return not json.loads(run.detail).get("general_budget_exhausted", True)
+
+
+def _utc(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
 def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat() if dt else None
 
@@ -257,6 +322,7 @@ def run_dto(run: RecruitmentSyncRun) -> dict:
         "records_updated": run.records_updated,
         "records_unchanged": run.records_unchanged,
         "error_summary": run.error_summary,
+        "detail": json.loads(run.detail) if run.detail else None,
     }
 
 

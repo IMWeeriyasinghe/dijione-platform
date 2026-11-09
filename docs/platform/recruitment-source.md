@@ -153,3 +153,17 @@ GET-only, against the real Lever tenant (647 postings synced, zero writes)
 to confirm the two governed DTC test postings resolve correctly — see
 `docs/platform/data-ownership.md` and the Architecture Completion Plan's
 final report for the result.
+
+## Client-posting completeness
+
+Each `DTC` posting is read and committed on its own, with a checkpoint. The next
+run starts from the least recently attempted posting, so an interrupted run
+resumes and a failing posting cannot hold back the others. A run is `PARTIAL`
+while any posting failed or was deferred.
+
+`/freshness` returns `source_snapshot.state`. `COMPLETE` requires every client
+posting to have been read within 24 hours and the latest finished run not to
+have failed. Talent reconcile holds, with no writes, in any other state.
+
+`recruitment-sync-job` runs `scripts/run_scheduled_sync.py`, which polls until
+the run finishes. The polling keeps the replica up under the background task.

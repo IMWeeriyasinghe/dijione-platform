@@ -102,7 +102,7 @@ def test_posting_reads_stop_at_the_budget_and_report_it(db, monkeypatch, caplog)
     _posting(db, "tagged-a", ["DTC - Acme"])
     _posting(db, "tagged-b", ["DTC - Beta"])
     lever = FakeLever(recent=[], by_posting={})
-    clock = iter([0.0, 1.0, module._DTC_READ_BUDGET_SECONDS + 1])
+    clock = iter([0.0, 0.0, module._DTC_READ_BUDGET_SECONDS + 2.0])
     monkeypatch.setattr(module.time, "monotonic", lambda: next(clock))
 
     with caplog.at_level("WARNING"):

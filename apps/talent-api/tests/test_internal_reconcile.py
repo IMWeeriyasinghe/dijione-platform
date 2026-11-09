@@ -123,6 +123,8 @@ def _cold_source(world, startup_seconds):
         if timeout < startup_seconds:
             raise httpx.ReadTimeout("cold start")
         body = [posting] if url.endswith("/postings") else []
+        if url.endswith("/freshness"):
+            body = {"source_snapshot": {"state": "COMPLETE"}}
         return httpx.Response(200, json=body, request=httpx.Request(method, url))
 
     return fake

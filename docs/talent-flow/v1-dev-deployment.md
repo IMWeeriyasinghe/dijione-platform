@@ -77,3 +77,21 @@ do not revert with the image.
 7. Confirm heartbeat: a long run's `updated_at` advances about every 30 s.
 8. Rate limit: log the peer address and `X-Forwarded-For` from two client networks.
 9. Confirm other DEV apps, routes and custom domains are unaffected.
+
+## Sync recovery: `recruitment-sync-job` change (not yet applied)
+
+Apply only after migration `0003_sync_checkpoints` and the new `recruitment-api`
+image, with the job's `/bin/sh -c` command unchanged:
+
+```bash
+az containerapp job update -g rg-dijione-dev -n recruitment-sync-job \
+  --image crdijionenonprod.azurecr.io/dijione/recruitment-api@sha256:<new> \
+  --args "python scripts/run_scheduled_sync.py"
+```
+
+The job's `INTERNAL_SERVICE_SECRET` is already set. The working directory in the
+image is the service folder, which contains `scripts/`. Timeout 1800 s and retry
+limit 1 are unchanged. Alert on the `sync_outcome=` log line: `PARTIAL` exits 0
+because later runs continue the read, and `FAILED` or `UNKNOWN` exit 1. A retried
+execution attaches to the active run. Restore the current image and `curl` args
+to roll back.
