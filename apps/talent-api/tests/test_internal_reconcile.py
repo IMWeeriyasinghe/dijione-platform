@@ -73,13 +73,13 @@ def test_source_down_is_failed_not_success(api_client, db, two_tenant_world, mon
     assert _counts(db) == (0, 0, 0, 0)
 
 
-def test_partial_is_non_2xx_and_never_fully_refreshed(api_client, db, two_tenant_world, monkeypatch):
+def test_a_failed_candidacy_read_is_non_2xx_and_never_fully_refreshed(api_client, db, two_tenant_world, monkeypatch):
     reason = "candidacies_unavailable"
     _use(monkeypatch, _source(two_tenant_world, candidacies_down=True))
     resp = api_client.post(URL, headers=HEADERS)
     body = resp.json()
     assert resp.status_code == 503
-    assert body["outcome"] == "PARTIAL" and body["fully_refreshed"] is False
+    assert body["outcome"] == "FAILED" and body["fully_refreshed"] is False
     assert body["reasons"] == [reason]
 
 
@@ -89,10 +89,10 @@ def test_no_postings_is_partial(api_client, db, two_tenant_world, monkeypatch):
     assert body["outcome"] == "PARTIAL" and body["reasons"] == ["no_postings"]
 
 
-def test_retry_completes_partial_without_duplicates(api_client, db, two_tenant_world, monkeypatch):
+def test_retry_completes_a_failed_read_without_duplicates(api_client, db, two_tenant_world, monkeypatch):
     _use(monkeypatch, _source(two_tenant_world, candidacies_down=True))
     api_client.post(URL, headers=HEADERS)
-    assert _counts(db) == (1, 1, 0, 0)
+    assert _counts(db) == (0, 0, 0, 0)
 
     _use(monkeypatch, _source(two_tenant_world))
     assert api_client.post(URL, headers=HEADERS).status_code == 200
@@ -326,7 +326,7 @@ def test_persisting_conflict_notifies_once(api_client, db, two_tenant_world, mon
     assert len(platform_calls["broadcasts"]) == 1
 
 
-def test_partial_never_shares_or_withdraws(api_client, db, two_tenant_world, monkeypatch):
+def test_failed_read_or_empty_source_never_shares_or_withdraws(api_client, db, two_tenant_world, monkeypatch):
     _use(monkeypatch, _source(two_tenant_world))
     api_client.post(URL, headers=HEADERS)
     db.expire_all()
@@ -335,7 +335,7 @@ def test_partial_never_shares_or_withdraws(api_client, db, two_tenant_world, mon
     db.commit()
 
     _use(monkeypatch, _source(two_tenant_world, candidacies_down=True))
-    assert api_client.post(URL, headers=HEADERS).json()["outcome"] == "PARTIAL"
+    assert api_client.post(URL, headers=HEADERS).json()["outcome"] == "FAILED"
     _use(monkeypatch, FakeRecruitmentClient([]))
     assert api_client.post(URL, headers=HEADERS).json()["reasons"] == ["no_postings"]
     assert _counts(db) == (1, 1, 1, 1)

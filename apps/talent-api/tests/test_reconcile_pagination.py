@@ -8,6 +8,8 @@ import pytest
 from app.db.session import engine
 from app.models.application import Application
 from app.models.candidate import Candidate
+from app.models.posting_client_mapping import PostingClientMapping
+from app.models.talent_request import TalentRequest
 from app.services import recruitment_consumer_service as consumer
 from tests.conftest import FakeRecruitmentClient, recruitment_candidacy_dto, recruitment_posting_dto
 
@@ -52,7 +54,7 @@ def test_a_failed_later_page_uses_no_candidacies_and_a_retry_completes(api_clien
     source = FakeRecruitmentClient([_posting(two_tenant_world["abc"].name)], candidacies=_rows(1200))
     source.fail_on_page = 2
     body = _run(api_client, monkeypatch, source).json()
-    assert body["outcome"] == "PARTIAL" and body["reasons"] == ["candidacies_unavailable"]
+    assert body["outcome"] == "FAILED" and body["reasons"] == ["candidacies_unavailable"]
     assert _count(db, Application) == 0
 
     source.fail_on_page = None
@@ -70,7 +72,7 @@ def test_a_failed_read_keeps_existing_applications_unchanged(api_client, db, two
 
     source.page_calls = 0
     source.fail_on_page = 2
-    assert _run(api_client, monkeypatch, source).json()["outcome"] == "PARTIAL"
+    assert _run(api_client, monkeypatch, source).json()["outcome"] == "FAILED"
     assert _count(db, Application) == 600
     assert db.query(Application).filter(Application.is_client_visible.is_(True)).count() == 1
 
@@ -106,7 +108,7 @@ class _Scripted(FakeRecruitmentClient):
 def test_an_unprovable_read_is_refused_not_truncated(api_client, db, two_tenant_world, monkeypatch, pages):
     source = _Scripted([_posting(two_tenant_world["abc"].name)], pages(_rows(3)))
     body = _run(api_client, monkeypatch, source).json()
-    assert body["outcome"] == "PARTIAL" and body["reasons"] == ["candidacies_unavailable"]
+    assert body["outcome"] == "FAILED" and body["reasons"] == ["candidacies_unavailable"]
     assert _count(db, Application) == 0
 
 
@@ -136,6 +138,84 @@ def test_the_budget_stops_a_slow_read_with_nothing_committed(db, two_tenant_worl
     body = consumer.run_reconcile(db, client=source, budget_seconds=-1)
     assert body["outcome"] == "FAILED" and body["reasons"] == ["ReconcileBudgetExceeded"]
     assert _count(db, Application) == 0
+
+
+def _untagged(external_id):
+    return recruitment_posting_dto(external_id, title="Engineer", dtc_status="NO_TAG")
+
+
+def _shared_world(db, api_client, monkeypatch, world):
+    """p1 and p2 promoted for one client, every candidate shared."""
+    name = world["abc"].name
+    source = FakeRecruitmentClient(
+        [_posting(name, "p1"), _posting(name, "p2")], candidacies=_rows(3, "p1", "a") + _rows(3, "p2", "b"),
+    )
+    assert _run(api_client, monkeypatch, source).json()["outcome"] == "SUCCEEDED"
+    for application in db.query(Application).all():
+        application.is_client_visible = True
+    db.commit()
+    return name
+
+
+def _state(db):
+    db.expire_all()
+    return (
+        sorted((m.posting_external_id, m.status, m.client_id, m.source) for m in db.query(PostingClientMapping).all()),
+        sorted((r.posting_external_id, r.client_id, r.provider, r.lifecycle_status) for r in db.query(TalentRequest).all()),
+        sorted((a.candidate_id, a.talent_request_id, a.is_client_visible) for a in db.query(Application).all()),
+    )
+
+
+def _change_everything(world, name):
+    """p1 loses its tag, p2 moves to another client, p3 is new."""
+    return [_untagged("p1"), _posting(world["xyz"].name, "p2"), _posting(name, "p3")]
+
+
+@pytest.mark.parametrize("failure", ["down", "later_page", "unprovable"])
+def test_a_failed_read_commits_no_mapping_request_or_sharing_change(db, api_client, two_tenant_world, monkeypatch, failure):
+    name = _shared_world(db, api_client, monkeypatch, two_tenant_world)
+    before = _state(db)
+    postings = _change_everything(two_tenant_world, name)
+    rows = _rows(600, "p3", "c")
+    if failure == "unprovable":
+        source = _Scripted(postings, [rows[:2], rows[:2]])
+    else:
+        source = FakeRecruitmentClient(postings, candidacies=rows, candidacies_down=failure == "down")
+        source.fail_on_page = 2 if failure == "later_page" else None
+
+    delivered = []
+    body = consumer.run_reconcile(db, client=source, schedule_delivery=lambda f, e, **k: delivered.extend(e))
+    assert body["outcome"] == "FAILED" and body["reasons"] == ["candidacies_unavailable"]
+    assert _state(db) == before
+    assert delivered == []
+
+
+def test_an_over_budget_read_commits_no_mapping_request_or_sharing_change(db, api_client, two_tenant_world, monkeypatch):
+    name = _shared_world(db, api_client, monkeypatch, two_tenant_world)
+    before = _state(db)
+    source = FakeRecruitmentClient(_change_everything(two_tenant_world, name), candidacies=_rows(3, "p3", "c"))
+    delivered = []
+    body = consumer.run_reconcile(db, client=source, budget_seconds=-1, schedule_delivery=lambda f, e, **k: delivered.extend(e))
+    assert body["reasons"] == ["ReconcileBudgetExceeded"]
+    assert _state(db) == before
+    assert delivered == []
+
+
+def test_a_complete_read_still_applies_mapping_changes(db, api_client, two_tenant_world, monkeypatch):
+    name = _shared_world(db, api_client, monkeypatch, two_tenant_world)
+    source = FakeRecruitmentClient(_change_everything(two_tenant_world, name), candidacies=_rows(3, "p3", "c"))
+    delivered = []
+    body = consumer.run_reconcile(db, client=source, schedule_delivery=lambda f, e, **k: delivered.extend(e))
+    assert body["outcome"] == "SUCCEEDED"
+    promotion = body["counts"]["promotion"]
+    assert promotion["requests_access_withdrawn"] == 1 and promotion["requests_retired"] == 1
+    assert promotion["talent_requests_created"] == 2
+    assert delivered
+    db.expire_all()
+    p3 = db.query(TalentRequest).filter_by(posting_external_id="p3").one()
+    assert all(a.is_client_visible is False for a in p3.applications)
+    p1 = db.query(TalentRequest).filter_by(posting_external_id="p1").one()
+    assert all(a.is_client_visible is False for a in p1.applications)
 
 
 REAL_SHAPE = [2090, 1839, 1188, 749, 707, 691, 686, 584, 547] + [149] * 12 + [148] * 12
