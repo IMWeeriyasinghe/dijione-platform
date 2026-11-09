@@ -87,7 +87,7 @@ def test_entra_mode_missing_config_501(api_client, db, monkeypatch):
 # --- token exchange ------------------------------------------------------
 
 def test_token_exchange_issues_dijione_session_for_known_user(api_client, db, entra_mode, monkeypatch):
-    db.add(User(email="known@example.com", full_name="Known", platform_role="PLATFORM_USER",
+    db.add(User(entra_object_id="oid-1", email="known@example.com", full_name="Known", platform_role="PLATFORM_USER",
                 persona_key="k", is_active=True))
     db.commit()
 
@@ -170,7 +170,7 @@ def test_token_exchange_code_rejected_401(api_client, db, entra_mode, monkeypatc
 def test_entra_mode_session_token_authorizes_protected_endpoint(
     api_client, db, entra_mode, monkeypatch
 ):
-    db.add(User(email="known2@example.com", full_name="Known2", platform_role="PLATFORM_USER",
+    db.add(User(entra_object_id="oid-2", email="known2@example.com", full_name="Known2", platform_role="PLATFORM_USER",
                 persona_key="k2", is_active=True))
     db.commit()
 

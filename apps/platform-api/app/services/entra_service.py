@@ -8,13 +8,14 @@ without granting any standing access to the whole tenant.
 
 Matching order:
   1. ``users.entra_object_id`` == the token's ``oid`` (stable, preferred)
-  2. ``users.email`` == the token's email/preferred_username (first login —
-     stamps ``entra_object_id`` so subsequent logins take path 1)
+  2. ``users.email`` == the token's email/preferred_username, only for a proven
+     internal employee and an account not yet linked to any Entra object
   3. neither -> create ``is_active=False``
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -23,6 +24,8 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.constants import PlatformRole
 from app.models.user import User
+
+logger = logging.getLogger("platform-api.entra")
 
 
 class EntraLoginRefusedError(Exception):
@@ -35,6 +38,14 @@ class EntraLoginRefusedError(Exception):
             + ("It has just been created — " if created else "")
             + "ask a platform administrator to activate it and assign access."
         )
+
+
+class EntraIdentityConflictError(EntraLoginRefusedError):
+    """The identity's email belongs to an account this identity may not claim."""
+
+    def __init__(self) -> None:
+        super().__init__(created=False)
+        self.args = ("This sign-in cannot be matched to a DijiOne account. Contact a platform administrator.",)
 
 
 def _email_from_claims(claims: dict) -> str | None:
@@ -81,6 +92,11 @@ def resolve_entra_user(db: Session, claims: dict) -> User:
     if user is None and email is not None:
         user = db.execute(select(User).where(User.email == email)).scalars().first()
         if user is not None:
+            # An email claim is not an identity. Only a proven member of our tenant may
+            # claim an account that has never been linked to another Entra object.
+            if user.entra_object_id is not None or not is_internal_employee(claims):
+                logger.warning("Entra sign-in refused: email matches account %s it cannot claim", user.id)
+                raise EntraIdentityConflictError
             user.entra_object_id = oid
             user.identity_provider = "ENTRA"
 
