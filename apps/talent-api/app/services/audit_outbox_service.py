@@ -30,8 +30,12 @@ from app.models.audit_outbox import DELIVERED, FAILED, PENDING, AuditOutbox
 logger = logging.getLogger("talent-api.audit_outbox")
 
 BATCH_SIZE = 100
-CLAIM_SECONDS = 120
 RUN_SECONDS = 240.0  # inside the job's 280 s replica timeout
+# Longer than any run, so a live worker's claim never expires under it; a dead
+# worker's claim frees its batch for the next scheduled run.
+CLAIM_SECONDS = 300
+# No send starts with less claim than this left.
+CLAIM_MARGIN = timedelta(seconds=30)
 BASE_RETRY_SECONDS = 30
 MAX_RETRY_SECONDS = 3600
 # Consecutive failures that mean Platform Core is down, not one bad event.
@@ -75,9 +79,12 @@ def _build_client() -> httpx.Client:
     )
 
 
-def claim_batch(db: Session, *, limit: int = BATCH_SIZE) -> list[tuple[int, str]]:
-    """Lease due events. SKIP LOCKED keeps concurrent workers off the same rows."""
+def claim_batch(db: Session, *, limit: int = BATCH_SIZE) -> tuple[str, datetime, list[tuple[int, str, int]]]:
+    """Lease due events. SKIP LOCKED keeps concurrent workers off the same rows.
+    Returns the claim token, when the claim expires, and (id, payload, attempts)."""
     now = _utcnow()
+    token = str(uuid.uuid4())
+    until = now + timedelta(seconds=CLAIM_SECONDS)
     rows = db.execute(
         select(AuditOutbox)
         .where(
@@ -90,21 +97,23 @@ def claim_batch(db: Session, *, limit: int = BATCH_SIZE) -> list[tuple[int, str]
         .with_for_update(skip_locked=True)
     ).scalars().all()
     for row in rows:
-        row.claimed_until = now + timedelta(seconds=CLAIM_SECONDS)
+        row.claimed_until = until
+        row.claim_token = token
         row.attempts += 1
         row.last_attempt_at = now
-    claimed = [(row.id, row.payload) for row in rows]
+    claimed = [(row.id, row.payload, row.attempts) for row in rows]
     db.commit()
-    return claimed
+    return token, until, claimed
 
 
-def _settle(db: Session, row_id: int, **values) -> None:
-    """Only a still-pending row changes, so a worker whose claim expired cannot
-    undo another worker's delivery."""
-    db.execute(update(AuditOutbox).where(AuditOutbox.id == row_id, AuditOutbox.status == PENDING).values(
-        claimed_until=None, **values
-    ))
+def _settle(db: Session, row_id: int, token: str, **values) -> bool:
+    """Only the current claim holder changes a still-pending row, so a worker
+    whose claim expired cannot undo or unlock another worker's attempt."""
+    result = db.execute(update(AuditOutbox).where(
+        AuditOutbox.id == row_id, AuditOutbox.status == PENDING, AuditOutbox.claim_token == token
+    ).values(claimed_until=None, claim_token=None, **values))
     db.commit()
+    return result.rowcount == 1
 
 
 def _retry_at(attempts: int, now: datetime) -> datetime:
@@ -128,11 +137,11 @@ def _deliver(client: httpx.Client, event_id: str, payload: str) -> str | None:
     return None if acknowledged else "no_event_id_ack"
 
 
-def _release(db: Session, row_ids: list[int]) -> None:
+def _release(db: Session, token: str, row_ids: list[int]) -> None:
     if row_ids:
-        db.execute(update(AuditOutbox).where(AuditOutbox.id.in_(row_ids), AuditOutbox.status == PENDING).values(
-            claimed_until=None
-        ))
+        db.execute(update(AuditOutbox).where(
+            AuditOutbox.id.in_(row_ids), AuditOutbox.status == PENDING, AuditOutbox.claim_token == token
+        ).values(claimed_until=None, claim_token=None))
         db.commit()
 
 
@@ -145,33 +154,36 @@ def drain(db: Session, *, client: httpx.Client | None = None, run_seconds: float
     stopped = None
     try:
         while stopped is None:
-            batch = claim_batch(db)
+            token, until, batch = claim_batch(db)
             if not batch:
                 break
-            for index, (row_id, payload) in enumerate(batch):
+            for index, (row_id, payload, attempts) in enumerate(batch):
                 if time.monotonic() - started > run_seconds:
                     stopped = "time_limit"
+                elif _utcnow() > until - CLAIM_MARGIN:
+                    stopped = "claim_expiring"
                 elif streak >= STOP_AFTER_FAILURES:
                     stopped = "platform_unavailable"
                 if stopped:
-                    _release(db, [r for r, _ in batch[index:]])
+                    _release(db, token, [r for r, _, _ in batch[index:]])
                     break
                 now = _utcnow()
                 error = _deliver(owned, json.loads(payload)["event_id"], payload)
                 if error is None:
-                    _settle(db, row_id, status=DELIVERED, delivered_at=now, last_error=None)
-                    delivered += 1
+                    delivered += _settle(db, row_id, token, status=DELIVERED, delivered_at=now, last_error=None)
                     streak = 0
                 elif error == "http_409":
-                    _settle(db, row_id, status=FAILED, last_error=error)
-                    refused += 1
+                    refused += _settle(db, row_id, token, status=FAILED, last_error=error)
                     streak = 0
                 else:
-                    attempts = db.execute(select(AuditOutbox.attempts).where(AuditOutbox.id == row_id)).scalar_one()
-                    _settle(db, row_id, next_attempt_at=_retry_at(attempts, now), last_error=error)
-                    db.commit()
-                    retried += 1
+                    retried += _settle(db, row_id, token, next_attempt_at=_retry_at(attempts, now), last_error=error)
                     streak += 1
+                    if error == "no_event_id_ack":
+                        # Platform Core without event_id support records every
+                        # attempt, so one is the most this run may send.
+                        stopped = "platform_without_event_id"
+                        _release(db, token, [r for r, _, _ in batch[index + 1:]])
+                        break
     finally:
         if client is None:
             owned.close()

@@ -28,6 +28,7 @@ def upgrade() -> None:
         sa.Column("attempts", sa.Integer(), nullable=False),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("claimed_until", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("claim_token", sa.String(length=36), nullable=True),
         sa.Column("last_attempt_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_error", sa.String(length=64), nullable=True),
         sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),

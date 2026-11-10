@@ -177,29 +177,77 @@ def test_a_refused_event_is_kept_and_visible_not_retried(db, two_tenant_world):
 @pytest.mark.parametrize("body", [{"status": "ok"}, {}])
 def test_a_platform_without_event_id_support_is_not_counted_as_delivered(db, two_tenant_world, body):
     _reconcile(db, two_tenant_world, count=1)
-    old = httpx.Client(base_url="http://platform", transport=httpx.MockTransport(lambda r: httpx.Response(201, json=body)))
+    calls = []
+    old = httpx.Client(base_url="http://platform", transport=httpx.MockTransport(
+        lambda r: calls.append(1) or httpx.Response(201, json=body)
+    ))
     result = outbox.drain(db, client=old)
     assert result["delivered"] == 0 and result["pending"] == len(_rows_in(db))
+    assert result["stopped"] == "platform_without_event_id" and len(calls) == 1, "each attempt is recorded there"
+    assert all(r.claimed_until is None for r in _rows_in(db))
 
 
 def test_a_worker_that_dies_loses_nothing(db, two_tenant_world):
     _reconcile(db, two_tenant_world, count=1)
     total = len(_rows_in(db))
-    claimed = outbox.claim_batch(db)
-    assert len(claimed) == total and outbox.claim_batch(db) == []
+    _, _, claimed = outbox.claim_batch(db)
+    assert len(claimed) == total and outbox.claim_batch(db)[2] == []
     db.execute(update(AuditOutbox).values(claimed_until=datetime.now(UTC) - timedelta(seconds=1)))
     db.commit()
     platform = Platform()
     assert outbox.drain(db, client=platform.client())["delivered"] == total
 
 
+def _expire_claims(db):
+    db.execute(update(AuditOutbox).values(claimed_until=datetime.now(UTC) - timedelta(seconds=1)))
+    db.commit()
+
+
 def test_a_late_failure_cannot_undo_another_workers_delivery(db, two_tenant_world):
     _reconcile(db, two_tenant_world, count=1)
-    row = _rows_in(db)[0]
-    outbox._settle(db, row.id, status=DELIVERED, delivered_at=datetime.now(UTC))
-    outbox._settle(db, row.id, next_attempt_at=datetime.now(UTC), last_error="ReadTimeout")
+    stale, _, rows = outbox.claim_batch(db)
+    _expire_claims(db)
+    current, _, _ = outbox.claim_batch(db)
+    row_id = rows[0][0]
+    assert outbox._settle(db, row_id, current, status=DELIVERED, delivered_at=datetime.now(UTC))
+    assert not outbox._settle(db, row_id, stale, next_attempt_at=datetime.now(UTC), last_error="ReadTimeout")
     db.expire_all()
-    assert db.get(AuditOutbox, row.id).status == DELIVERED and db.get(AuditOutbox, row.id).last_error is None
+    assert db.get(AuditOutbox, row_id).status == DELIVERED and db.get(AuditOutbox, row_id).last_error is None
+
+
+def test_an_expired_worker_cannot_release_or_settle_a_newer_claim(db, two_tenant_world):
+    _reconcile(db, two_tenant_world, count=1)
+    stale, _, rows = outbox.claim_batch(db)
+    _expire_claims(db)
+    current, until, _ = outbox.claim_batch(db)
+    row_id = rows[0][0]
+    assert not outbox._settle(db, row_id, stale, next_attempt_at=datetime.now(UTC), last_error="ReadTimeout")
+    outbox._release(db, stale, [row_id])
+    db.expire_all()
+    row = db.get(AuditOutbox, row_id)
+    assert row.claim_token == current and row.claimed_until is not None and row.last_error is None
+    assert outbox.claim_batch(db)[2] == [], "a third worker took a row that is still claimed"
+
+
+def test_no_send_starts_on_a_claim_about_to_expire(db, two_tenant_world, monkeypatch):
+    _reconcile(db, two_tenant_world, count=3)
+    platform = Platform()
+    clock = [datetime.now(UTC)]
+    monkeypatch.setattr(outbox, "_utcnow", lambda: clock[0])
+
+    def slow(event):
+        clock[0] += timedelta(seconds=outbox.CLAIM_SECONDS)  # this send outlived the claim
+
+    platform.fail = slow
+    result = outbox.drain(db, client=platform.client(), run_seconds=10_000)
+    assert result["stopped"] == "claim_expiring" and platform.calls == 1
+    assert all(r.claim_token is None for r in _rows_in(db, PENDING))
+
+
+def test_a_claim_outlasts_any_run():
+    worst_send = outbox._REQUEST_TIMEOUT * 4  # connect, write, read and pool limits
+    assert outbox.CLAIM_SECONDS >= outbox.RUN_SECONDS + worst_send
+    assert outbox.CLAIM_MARGIN.total_seconds() >= worst_send - outbox._REQUEST_TIMEOUT
 
 
 def test_only_delivered_rows_past_retention_are_purged(db, two_tenant_world):
