@@ -44,6 +44,12 @@ DELIVERED_RETENTION = timedelta(days=30)
 CLEANUP_BATCH = 1000
 _REQUEST_TIMEOUT = 10.0
 _AUDIT_PATH = "/api/platform/internal/audit-events"
+# Platform Core scales to zero; a cold replica took ~14 s to start in DEV,
+# longer than one send waits. Counted inside RUN_SECONDS, not added to it.
+READY_SECONDS = 60.0
+READY_RETRY_SECONDS = 2.0
+_READY_TIMEOUT = httpx.Timeout(5.0, connect=3.0)
+_READY_PATH = "/health"
 
 _session: ContextVar[Session | None] = ContextVar("audit_outbox_session", default=None)
 
@@ -145,7 +151,26 @@ def _release(db: Session, token: str, row_ids: list[int]) -> None:
         db.commit()
 
 
-def drain(db: Session, *, client: httpx.Client | None = None, run_seconds: float = RUN_SECONDS) -> dict:
+def wait_for_platform(client: httpx.Client, *, window: float = READY_SECONDS, sleep=None, clock=None) -> bool:
+    """Wake Platform Core and wait until its health check answers. Called before
+    anything is claimed, so a cold start costs a delay, not a retried event."""
+    sleep, clock = sleep or time.sleep, clock or time.monotonic
+    deadline = clock() + window
+    while True:
+        try:
+            if client.get(_READY_PATH, timeout=_READY_TIMEOUT).is_success:
+                return True
+        except httpx.HTTPError:
+            pass
+        remaining = deadline - clock()
+        if remaining <= 0:
+            return False
+        sleep(min(READY_RETRY_SECONDS, remaining))
+
+
+def drain(
+    db: Session, *, client: httpx.Client | None = None, run_seconds: float = RUN_SECONDS, ready_seconds: float = READY_SECONDS
+) -> dict:
     """Deliver due events in bounded batches until none remain, time runs out,
     or Platform Core looks down. Undelivered events stay for a later run."""
     owned = client or _build_client()
@@ -153,6 +178,8 @@ def drain(db: Session, *, client: httpx.Client | None = None, run_seconds: float
     delivered = retried = refused = streak = 0
     stopped = None
     try:
+        if not wait_for_platform(owned, window=ready_seconds):
+            stopped = "platform_not_ready"  # nothing claimed; every event stays due
         while stopped is None:
             token, until, batch = claim_batch(db)
             if not batch:

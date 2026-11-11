@@ -27,8 +27,16 @@ class Platform:
         self.calls = 0
         self.lock = threading.Lock()
         self.fail = None  # callable(event) returning an exception or status code
+        self.health = None  # callable(check number) returning an exception or status code
+        self.health_calls = 0
 
     def __call__(self, request):
+        if request.url.path == "/health":
+            self.health_calls += 1
+            outcome = self.health(self.health_calls) if self.health else None
+            if isinstance(outcome, Exception):
+                raise outcome
+            return httpx.Response(outcome or 200, json={"service": "platform-api", "status": "healthy"})
         event = json.loads(request.content)
         with self.lock:
             self.calls += 1
@@ -178,9 +186,13 @@ def test_a_refused_event_is_kept_and_visible_not_retried(db, two_tenant_world):
 def test_a_platform_without_event_id_support_is_not_counted_as_delivered(db, two_tenant_world, body):
     _reconcile(db, two_tenant_world, count=1)
     calls = []
-    old = httpx.Client(base_url="http://platform", transport=httpx.MockTransport(
-        lambda r: calls.append(1) or httpx.Response(201, json=body)
-    ))
+
+    def old_platform(request):
+        if request.url.path != "/health":
+            calls.append(1)
+        return httpx.Response(201, json=body)
+
+    old = httpx.Client(base_url="http://platform", transport=httpx.MockTransport(old_platform))
     result = outbox.drain(db, client=old)
     assert result["delivered"] == 0 and result["pending"] == len(_rows_in(db))
     assert result["stopped"] == "platform_without_event_id" and len(calls) == 1, "each attempt is recorded there"
@@ -248,6 +260,75 @@ def test_a_claim_outlasts_any_run():
     worst_send = outbox._REQUEST_TIMEOUT * 4  # connect, write, read and pool limits
     assert outbox.CLAIM_SECONDS >= outbox.RUN_SECONDS + worst_send
     assert outbox.CLAIM_MARGIN.total_seconds() >= worst_send - outbox._REQUEST_TIMEOUT
+
+
+def test_a_healthy_platform_is_checked_once_then_receives_every_event(db, two_tenant_world):
+    _reconcile(db, two_tenant_world, count=1)
+    platform = Platform()
+    result = outbox.drain(db, client=platform.client())
+    assert platform.health_calls == 1 and result["stopped"] is None
+    assert result["delivered"] == len(_rows_in(db)) == len(platform.records)
+
+
+COLD = [httpx.ConnectError("connection refused"), httpx.ReadTimeout("replica starting"), 503]
+
+
+@pytest.mark.parametrize("cold", COLD, ids=["connect_refused", "read_timeout", "http_503"])
+def test_a_cold_platform_is_waited_for_and_nothing_is_claimed_meanwhile(db, two_tenant_world, monkeypatch, cold):
+    _reconcile(db, two_tenant_world, count=2)
+    total = len(_rows_in(db))
+    platform = Platform()
+    untouched = []
+
+    def starting(check):
+        untouched.append(all(r.attempts == 0 and r.claim_token is None for r in _rows_in(db)))
+        return cold if check <= 3 else None
+
+    platform.health = starting
+    slept = []
+    monkeypatch.setattr(outbox.time, "sleep", slept.append)
+    result = outbox.drain(db, client=platform.client())
+    assert platform.health_calls == 4 and all(untouched)
+    assert slept == [outbox.READY_RETRY_SECONDS] * 3
+    assert result["delivered"] == total and result["retried"] == 0 and result["pending"] == 0
+    assert len(platform.records) == total and all(r.attempts == 1 for r in _rows_in(db))
+
+
+@pytest.mark.parametrize("cold", COLD, ids=["connect_refused", "read_timeout", "http_503"])
+def test_readiness_gives_up_at_its_deadline(cold):
+    platform = Platform()
+    platform.health = lambda check: cold
+    clock = [0.0]
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    assert not outbox.wait_for_platform(platform.client(), window=outbox.READY_SECONDS, sleep=sleep, clock=lambda: clock[0])
+    assert clock[0] == outbox.READY_SECONDS
+    assert platform.health_calls == outbox.READY_SECONDS / outbox.READY_RETRY_SECONDS + 1
+
+
+def test_a_platform_that_never_becomes_ready_leaves_every_event_untouched(db, two_tenant_world):
+    _reconcile(db, two_tenant_world, count=2)
+    before = [(r.event_id, r.status, r.attempts, r.next_attempt_at) for r in _rows_in(db)]
+    platform = Platform()
+    platform.health = lambda check: httpx.ConnectError("connection refused")
+    result = outbox.drain(db, client=platform.client(), ready_seconds=0)
+    assert result["stopped"] == "platform_not_ready" and platform.calls == 0
+    assert result["delivered"] == result["retried"] == 0 and result["pending"] == len(before)
+    after = _rows_in(db)
+    assert [(r.event_id, r.status, r.attempts, r.next_attempt_at) for r in after] == before
+    assert all(r.claim_token is None and r.claimed_until is None and r.last_error is None for r in after)
+
+    platform.health = None
+    assert outbox.drain(db, client=platform.client())["delivered"] == len(before) == len(platform.records)
+
+
+def test_readiness_fits_inside_the_run_and_the_job_timeout():
+    worst_check = 5.0 + 3.0  # read and connect limits of one health check
+    assert outbox.READY_SECONDS + worst_check < outbox.RUN_SECONDS
+    worst_send = outbox._REQUEST_TIMEOUT * 4
+    assert outbox.RUN_SECONDS + worst_send <= 280, "talent-audit-outbox-job replica timeout"
 
 
 def test_only_delivered_rows_past_retention_are_purged(db, two_tenant_world):

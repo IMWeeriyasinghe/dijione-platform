@@ -28,3 +28,15 @@ def test_file_form_resolves():
         "runpy.run_path('scripts/drain_audit_outbox.py', run_name='entrypoint_check')"
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_the_job_fails_visibly_when_platform_never_becomes_ready(monkeypatch, capsys):
+    sys.path.insert(0, str(APP_DIR))
+    import scripts.drain_audit_outbox as entry
+
+    outcome = {"delivered": 0, "retried": 0, "refused": 0, "stopped": None}
+    monkeypatch.setattr(entry, "drain", lambda db: dict(outcome))
+    assert entry.main() == 0
+    outcome["stopped"] = "platform_not_ready"
+    assert entry.main() == 1
+    assert '"stopped": "platform_not_ready"' in capsys.readouterr().out

@@ -1,7 +1,8 @@
 """Entry point for talent-audit-outbox-job: send pending audit events to Platform Core.
 
 Delivers audit events only. It cannot start a reconcile or a sync. Exits 1 when
-events were left for retry or refused, so the execution shows as failed.
+events were left for retry or refused, or Platform Core never became ready, so
+the execution shows as failed.
 """
 
 import json
@@ -20,7 +21,7 @@ def main() -> int:
         result = drain(db)
     # Counts only: alert on this line.
     print("audit_outbox_outcome=" + json.dumps(result))
-    return 1 if result["retried"] or result["refused"] else 0
+    return 1 if result["retried"] or result["refused"] or result["stopped"] == "platform_not_ready" else 0
 
 
 if __name__ == "__main__":
