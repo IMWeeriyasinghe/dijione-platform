@@ -298,7 +298,8 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
     assert caps.pop("onsite") in (0, False) and all(caps[k] in (1, True) for k in ("talent-flow", "birthday", "spark"))
 
     # Downgrade one step is a no-op data migration (repo convention); re-upgrade converges, no duplicates.
-    assert _alembic(url, "downgrade", "-1").returncode == 0
+    # The head is a merge point, where "-1" is ambiguous, so step back to one parent.
+    assert _alembic(url, "downgrade", "p6q7r8s9t0u1").returncode == 0
     assert _alembic(url, "upgrade", "head").returncode == 0
     assert snapshot() == first
     eng.dispose()

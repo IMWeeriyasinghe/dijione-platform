@@ -1,11 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
     ApplicationStatus,
     CandidateAvailability,
+    CanonicalStage,
     CustomerSuccessStatus,
     InterviewStatus,
     TalentRequestLifecycleStatus,
@@ -17,8 +18,17 @@ from app.models.interview import Interview
 from app.models.talent_request import TalentRequest
 from app.repositories.client_repo import ClientRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
-from app.schemas.dashboard import ClientDashboardOut, TaDashboardOut
+from app.schemas.dashboard import ClientDashboardOut, ExternalClientDashboardOut, TaDashboardOut
 from app.services.talent_request_service import ACTIVE_APPLICATION_STATUSES, TalentRequestService
+
+# Lever-sourced applications carry the offer as their stage, not their status.
+_IN_OFFER = or_(
+    Application.status == ApplicationStatus.OFFER.value,
+    and_(
+        Application.current_stage == CanonicalStage.OFFER.value,
+        Application.status.in_(list(ACTIVE_APPLICATION_STATUSES)),
+    ),
+)
 
 
 class DashboardService:
@@ -49,13 +59,15 @@ class DashboardService:
             candidates_in_process = self.db.execute(
                 select(func.count(Application.id)).where(
                     Application.talent_request_id.in_(request_ids),
+                    Application.is_client_visible.is_(True),
                     Application.status.in_(list(ACTIVE_APPLICATION_STATUSES)),
                 )
             ).scalar_one()
             offers_in_progress = self.db.execute(
                 select(func.count(Application.id)).where(
                     Application.talent_request_id.in_(request_ids),
-                    Application.status == ApplicationStatus.OFFER.value,
+                    Application.is_client_visible.is_(True),
+                    _IN_OFFER,
                 )
             ).scalar_one()
 
@@ -68,9 +80,11 @@ class DashboardService:
                 .join(Application, Interview.application_id == Application.id)
                 .where(
                     Application.talent_request_id.in_(request_ids),
+                    Application.is_client_visible.is_(True),
                     Interview.scheduled_at >= now,
                     Interview.scheduled_at <= week_end,
                     Interview.client_visible.is_(True),
+                    Interview.status == InterviewStatus.SCHEDULED.value,
                 )
             ).scalar_one()
 
@@ -80,7 +94,15 @@ class DashboardService:
             candidates_in_process=candidates_in_process,
             interviews_this_week=interviews_this_week,
             offers_in_progress=offers_in_progress,
-            requests=[self.request_service.to_out(r) for r in requests],
+            requests=[self.request_service.to_client_out(r) for r in requests],
+        )
+
+    def external_dashboard(self, client_id: int) -> ExternalClientDashboardOut:
+        dashboard = self.client_dashboard(client_id)
+        requests = self.request_repo.list_for_scope(client_id=client_id)
+        return ExternalClientDashboardOut(
+            **dashboard.model_dump(exclude={"requests"}),
+            requests=[self.request_service.to_external_out(r) for r in requests],
         )
 
     def ta_dashboard(self, *, allowed_client_ids: list[int] | None = None) -> TaDashboardOut:
@@ -137,9 +159,7 @@ class DashboardService:
             ).where(TalentRequest.client_id.in_(allowed_client_ids))
         interviews_scheduled = self.db.execute(interviews_stmt).scalar_one()
         offers_in_progress = _scoped_app_count(
-            select(func.count(Application.id)).where(
-                Application.status == ApplicationStatus.OFFER.value
-            )
+            select(func.count(Application.id)).where(_IN_OFFER)
         )
 
         attention = sorted(

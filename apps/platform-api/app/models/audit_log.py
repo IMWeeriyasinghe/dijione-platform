@@ -20,3 +20,6 @@ class AuditLog(Base):
     new_state: Mapped[str] = mapped_column(Text, default="")
     event_metadata: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Caller-chosen, so a retried delivery cannot record the event twice. NULL
+    # for callers that do not send one; NULLs never collide.
+    event_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)

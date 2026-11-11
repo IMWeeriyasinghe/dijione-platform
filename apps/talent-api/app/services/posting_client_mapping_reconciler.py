@@ -178,13 +178,17 @@ class PostingClientMappingReconciler:
                 m.resolution_status = DtcResolutionStatus.RESOLVED.value  # manual agrees
                 s.unchanged += 1
             else:
-                m.resolution_status = DtcResolutionStatus.CONFLICT_MANUAL_OVERRIDE.value
+                conflict = DtcResolutionStatus.CONFLICT_MANUAL_OVERRIDE.value
+                newly_flagged = m.resolution_status != conflict
+                m.resolution_status = conflict
                 s.conflicts += 1
-                self._audit(m, "dtc_conflict_manual_override", {
-                    "manual_client_id": m.client_id, "dtc_tag": raw_tag,
-                    "dtc_client_id": target.id,
-                })
-                self._notify_conflict(m, target.name)
+                # Runs every 6 h: tell people when a conflict appears, not on every run.
+                if newly_flagged:
+                    self._audit(m, "dtc_conflict_manual_override", {
+                        "manual_client_id": m.client_id, "dtc_tag": raw_tag,
+                        "dtc_client_id": target.id,
+                    })
+                    self._notify_conflict(m, target.name)
             return
 
         if m.status == _VERIFIED and m.source == _DTC and m.client_id == target.id:

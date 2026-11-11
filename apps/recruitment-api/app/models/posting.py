@@ -42,4 +42,9 @@ class Posting(TimestampMixin, Base):
     lever_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Checkpoints for the per-posting Lever read. Attempt orders the queue;
+    # read is set only when the whole posting was read and saved.
+    dtc_last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dtc_last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
