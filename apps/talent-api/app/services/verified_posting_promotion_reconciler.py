@@ -169,12 +169,20 @@ class VerifiedPostingPromotionReconciler:
             key = (row.get("candidate_external_id") or "", row.get("posting_external_id") or "")
             groups.setdefault(key, []).append(row)
 
+        # Batched: two bulk lookups up front, then one flush per pass rather
+        # than several queries per candidacy. Same decisions, same single
+        # transaction; nothing commits here.
+        resolved: list[tuple[str, list[dict], object]] = []
         for (candidate_ext, posting_ext), rows in groups.items():
             tr = tr_by_posting.get(posting_ext)
             if tr is None:
                 summary.candidacies_skipped_no_verified_request += len(rows)
                 continue
+            resolved.append((candidate_ext, rows, tr))
 
+        known = self.candidates.repo.map_by_lever_external_ids(ext for ext, _, _ in resolved)
+        pairs: list[tuple[object, object, dict]] = []
+        for candidate_ext, rows, tr in resolved:
             chosen = _pick_candidacy(rows)
             if len(rows) > 1:
                 summary.collapsed_duplicate_candidacies += len(rows) - 1
@@ -187,6 +195,7 @@ class VerifiedPostingPromotionReconciler:
                 full_name=chosen.get("candidate_name") or "",
                 email=chosen.get("candidate_email") or "",
                 headline=chosen.get("candidate_headline") or "",
+                index=known,
             )
             if cstate == "created":
                 summary.candidates_created += 1
@@ -194,8 +203,16 @@ class VerifiedPostingPromotionReconciler:
                 summary.candidates_updated += 1
             else:
                 summary.unchanged += 1
+            pairs.append((candidate, tr, chosen))
+        self.db.flush()  # candidate ids for the applications below
 
-            self._reconcile_application(candidate.id, tr.id, chosen, summary)
+        existing = self.applications.map_for_requests(tr.id for tr in tr_by_posting.values())
+        created: list[tuple[Application, dict]] = []
+        for candidate, tr, chosen in pairs:
+            self._reconcile_application(candidate.id, tr.id, chosen, summary, existing, created)
+        self.db.flush()  # application ids for their audit events
+        for application, meta in created:
+            self._audit_application(application, "system_promoted", meta)
 
         self.db.flush()
         return summary
@@ -237,14 +254,15 @@ class VerifiedPostingPromotionReconciler:
             logger.debug("promotion reconcile audit skipped", exc_info=True)
 
     def _reconcile_application(
-        self, candidate_id: int, talent_request_id: int, chosen: dict, summary: PromotionSummary
+        self, candidate_id: int, talent_request_id: int, chosen: dict, summary: PromotionSummary,
+        existing_by_pair: dict, created: list,
     ) -> None:
         src_stage = _safe_stage(chosen.get("current_stage"))
         src_status = _safe_status(chosen.get("status"))
         src_reason = chosen.get("lever_archive_reason")
         opportunity_id = chosen.get("external_id") or ""
 
-        existing = self.applications.get_for_pair(candidate_id, talent_request_id)
+        existing = existing_by_pair.get((candidate_id, talent_request_id))
         if existing is None:
             application = Application(
                 candidate_id=candidate_id,
@@ -255,12 +273,13 @@ class VerifiedPostingPromotionReconciler:
                 lever_archive_reason=src_reason,
                 is_client_visible=False,
             )
-            self.applications.add(application)
+            self.db.add(application)
+            existing_by_pair[(candidate_id, talent_request_id)] = application
             summary.applications_created += 1
-            self._audit_application(application, "system_promoted", {
+            created.append((application, {
                 "candidate_id": candidate_id, "talent_request_id": talent_request_id,
                 "lever_opportunity_id": opportunity_id,
-            })
+            }))
             return
 
         changed = False

@@ -54,6 +54,9 @@ overlap with the sync, and moving the schedule would not fix it.
 | `SKIPPED` / `already_running` | 409 | Failed | Unchanged | Another replica or run holds the lock |
 | `FAILED` | 503 | Failed, retried once | Rolled back | Source unavailable, error, or over budget |
 
+- Audit events from a reconcile are saved in `audit_outbox` in the same
+  transaction and sent by `talent-audit-outbox-job`. Other Talent workflows keep
+  best-effort delivery. A rolled-back run leaves no events.
 - `fully_refreshed` is true only for `SUCCEEDED`. Every other outcome logs a
   `recruitment reconcile outcome=...` warning; `curl -f` hides failure bodies.
 - **Timeouts:** 90 s per batch call, 5 s for browser-facing calls. The run stops
