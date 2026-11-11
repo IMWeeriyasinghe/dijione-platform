@@ -30,6 +30,15 @@ class CandidateRepository:
         stmt = select(Candidate).where(Candidate.lever_external_id == lever_external_id)
         return self.db.execute(stmt).scalars().first()
 
+    def map_by_lever_external_ids(self, lever_external_ids, *, chunk: int = 1000) -> dict[str, Candidate]:
+        """One query per ``chunk`` ids instead of one per candidate."""
+        ids = sorted(set(lever_external_ids))
+        found: dict[str, Candidate] = {}
+        for start in range(0, len(ids), chunk):
+            stmt = select(Candidate).where(Candidate.lever_external_id.in_(ids[start:start + chunk]))
+            found.update((c.lever_external_id, c) for c in self.db.execute(stmt).scalars())
+        return found
+
     def list_all(
         self, search: str | None = None, *, allowed_client_ids: list[int] | None = None
     ) -> list[Candidate]:

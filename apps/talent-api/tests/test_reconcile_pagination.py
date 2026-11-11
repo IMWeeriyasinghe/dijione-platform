@@ -237,3 +237,30 @@ def test_real_verified_volume_first_load_and_rerun(db, two_tenant_world):
         assert body["outcome"] == "SUCCEEDED", body
     assert _count(db, Application) == len(rows)
     warnings.warn(f"reconcile volume rows={len(rows)} first_load_s={timings[0]} rerun_s={timings[1]}", stacklevel=1)
+
+
+def test_promotion_lookups_do_not_grow_with_candidacies(db, two_tenant_world):
+    """DEV's database is a network hop away, so per-candidacy queries cost
+    the run its budget. Lookups must stay flat as the candidacy count grows."""
+    from sqlalchemy import event
+
+    from app.db.session import engine
+
+    name = two_tenant_world["abc"].name
+
+    def selects_for(count, prefix):
+        postings = [_posting(name, f"{prefix}{i}") for i in range(3)]
+        rows = [r for i in range(3) for r in _rows(count, posting=f"{prefix}{i}", prefix=f"{prefix}{i}-")]
+        seen = []
+        listener = lambda conn, cursor, stmt, *a: seen.append(stmt.lstrip().split()[0].upper())  # noqa: E731
+        event.listen(engine, "before_cursor_execute", listener)
+        try:
+            body = consumer.run_reconcile(db, client=FakeRecruitmentClient(postings, candidacies=rows))
+        finally:
+            event.remove(engine, "before_cursor_execute", listener)
+        assert body["outcome"] == "SUCCEEDED"
+        assert body["counts"]["promotion"]["applications_created"] == 3 * count
+        return seen.count("SELECT")
+
+    small, large = selects_for(10, "s"), selects_for(400, "l")
+    assert large - small < 20, (small, large)

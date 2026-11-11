@@ -41,7 +41,8 @@ class CandidateService:
         return self.repo.add(candidate)
 
     def upsert_from_source(
-        self, *, lever_external_id: str, full_name: str, email: str, headline: str
+        self, *, lever_external_id: str, full_name: str, email: str, headline: str,
+        index: dict[str, Candidate] | None = None,
     ) -> tuple[Candidate, str]:
         """Get-or-create a Candidate master from a real Lever person fact
         (VerifiedPostingPromotionReconciler). Dedup is on
@@ -56,9 +57,16 @@ class CandidateService:
         (full_name/professional_title/email) are refreshed —
         availability_status/summary/skills/cv_reference/phone/location are
         TalentFlow-owned once set and are never touched here.
+
+        With ``index`` (preloaded by ``lever_external_id``) there is no
+        lookup query and no flush: the caller flushes once for the batch,
+        and a created candidate is added to ``index`` for later rows.
         """
         norm_email = email or None
-        existing = self.repo.get_by_lever_external_id(lever_external_id)
+        if index is None:
+            existing = self.repo.get_by_lever_external_id(lever_external_id)
+        else:
+            existing = index.get(lever_external_id)
         if existing is None:
             candidate = Candidate(
                 full_name=full_name or "Unknown",
@@ -70,7 +78,11 @@ class CandidateService:
                 lever_external_id=lever_external_id,
                 availability_status=CandidateAvailability.IN_PROCESS.value,
             )
-            self.repo.add(candidate)
+            if index is None:
+                self.repo.add(candidate)
+            else:
+                self.db.add(candidate)
+                index[lever_external_id] = candidate
             return candidate, "created"
 
         changed = False
