@@ -102,6 +102,14 @@ class ApplicationRepository:
         )
         return self.db.execute(stmt).scalars().first() is not None
 
+    def map_for_requests(self, talent_request_ids) -> dict[tuple[int, int], Application]:
+        """Every application on these requests, keyed by (candidate_id, talent_request_id)."""
+        ids = sorted(set(talent_request_ids))
+        if not ids:
+            return {}
+        stmt = select(Application).where(Application.talent_request_id.in_(ids))
+        return {(a.candidate_id, a.talent_request_id): a for a in self.db.execute(stmt).scalars()}
+
     def add(self, application: Application) -> Application:
         self.db.add(application)
         self.db.flush()
