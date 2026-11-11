@@ -6,9 +6,13 @@ events were left for retry or refused, so the execution shows as failed.
 
 import json
 import sys
+from pathlib import Path
 
-from app.db.session import SessionLocal
-from app.services.audit_outbox_service import drain
+# Runnable as `python scripts/drain_audit_outbox.py` too, not only `-m`.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.db.session import SessionLocal  # noqa: E402
+from app.services.audit_outbox_service import drain  # noqa: E402
 
 
 def main() -> int:
