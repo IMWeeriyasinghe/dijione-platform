@@ -28,9 +28,9 @@ from app.db.session import get_db
 from app.repositories.application_repo import ApplicationRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.candidate import ClientSafeCandidateOut
-from app.schemas.dashboard import ClientDashboardOut
+from app.schemas.dashboard import ExternalClientDashboardOut
 from app.schemas.external import RedeemRequest, RedeemResponse
-from app.schemas.talent_request import TalentRequestOut
+from app.schemas.talent_request import ExternalTalentRequestOut
 from app.services.candidate_service import CandidateService
 from app.services.dashboard_service import DashboardService
 from app.services.interview_service import InterviewService
@@ -72,22 +72,22 @@ def redeem_access_link(
     return RedeemResponse(access_token=token, expires_in=expires_in)
 
 
-@router.get("/dashboard", response_model=ClientDashboardOut)
+@router.get("/dashboard", response_model=ExternalClientDashboardOut)
 def external_dashboard(
     scope: ExternalClientScope = Depends(require_external_permission("talent.dashboard.read_own")),
     db: Session = Depends(get_db),
-) -> ClientDashboardOut:
-    return DashboardService(db).client_dashboard(scope.client_id)
+) -> ExternalClientDashboardOut:
+    return DashboardService(db).external_dashboard(scope.client_id)
 
 
-@router.get("/requests", response_model=list[TalentRequestOut])
+@router.get("/requests", response_model=list[ExternalTalentRequestOut])
 def external_list_requests(
     search: str | None = None,
     stage: str | None = None,
     status_filter: str | None = None,
     scope: ExternalClientScope = Depends(require_external_permission("talent.requests.read_own")),
     db: Session = Depends(get_db),
-) -> list[TalentRequestOut]:
+) -> list[ExternalTalentRequestOut]:
     service = TalentRequestService(db)
     requests = service.repo.list_for_scope(
         client_id=scope.client_id,
@@ -97,20 +97,20 @@ def external_list_requests(
         filter_client_id=None,
         allowed_client_ids=None,
     )
-    return [service.to_out(r) for r in requests]
+    return [service.to_external_out(r) for r in requests]
 
 
-@router.get("/requests/{request_id}", response_model=TalentRequestOut)
+@router.get("/requests/{request_id}", response_model=ExternalTalentRequestOut)
 def external_get_request(
     request_id: int,
     scope: ExternalClientScope = Depends(require_external_permission("talent.requests.read_own")),
     db: Session = Depends(get_db),
-) -> TalentRequestOut:
+) -> ExternalTalentRequestOut:
     service = TalentRequestService(db)
     request = service.repo.get_by_id(request_id, client_id=scope.client_id, allowed_client_ids=None)
     if request is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found")
-    return service.to_out(request)
+    return service.to_external_out(request)
 
 
 @router.get(

@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, reviewTalentRequest } from "@/lib/api";
-import { Modal } from "@dijione/design-system";
+import { Modal } from "@/components/talent/Modal";
 import { Button } from "@dijione/design-system";
 import { FormField, Select, Textarea } from "@dijione/design-system";
 
@@ -53,7 +53,7 @@ export function ReviewRequestModal({
         <FormField label="Notes" htmlFor="reason" hint="Visible to the client for rejections/clarifications.">
           <Textarea id="reason" value={reason} onChange={(e) => setReason(e.target.value)} />
         </FormField>
-        {error && <p className="text-sm text-dt-danger">{error}</p>}
+        {error && <p role="alert" className="text-sm text-dt-danger">{error}</p>}
         <div className="flex justify-end gap-3 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel

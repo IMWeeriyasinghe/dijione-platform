@@ -69,7 +69,9 @@ export function RecruitmentSyncStatus() {
           setFlash(
             run.status === "FAILED"
               ? "Sync failed — please try again shortly."
-              : `Recruitment data updated · ${run.records_read} records checked.`,
+              : run.status === "PARTIAL"
+                ? "Sync incomplete — some client postings were not read."
+                : `Recruitment data updated · ${run.records_read} records checked.`,
           );
           setTimeout(() => setFlash(null), 6000);
           await freshness.refetch();
@@ -110,7 +112,9 @@ export function RecruitmentSyncStatus() {
 
   let statusLine: string;
   if (syncing) statusLine = "Syncing recruitment data…";
+  else if (freshness.isError) statusLine = "Sync status unavailable";
   else if (latest?.status === "FAILED") statusLine = "Last sync failed";
+  else if (latest?.status === "PARTIAL") statusLine = "Last sync incomplete";
   else if (lastOk) statusLine = "Up to date";
   else statusLine = "Not yet synced";
 
@@ -137,6 +141,11 @@ export function RecruitmentSyncStatus() {
           </Link>
         )}
         {flash && <p className="mt-1 text-xs text-dt-success">{flash}</p>}
+        {syncNow.isError && (
+          <p role="alert" className="mt-1 text-xs text-dt-danger">
+            Could not start the sync. Please try again.
+          </p>
+        )}
       </div>
       <Button
         type="button"

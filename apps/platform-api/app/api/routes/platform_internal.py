@@ -14,7 +14,7 @@ unavailable. See docs/platform/failure-isolation.md.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,7 +23,7 @@ from app.api.deps import require_internal_service
 from app.db.session import get_db
 from app.models.client import Client
 from app.models.user import User, UserModuleRole
-from app.services.audit_service import AuditService
+from app.services.audit_service import AuditEventConflict, AuditService
 from app.services.authorization_service import AuthorizationService
 from app.services.notification_service import NotificationService
 
@@ -53,6 +53,7 @@ def list_clients(
 
 
 class AuditEventIn(BaseModel):
+    event_id: str | None = Field(default=None, min_length=1, max_length=64)
     actor_id: int | None = None
     action: str
     entity_type: str
@@ -65,20 +66,24 @@ class AuditEventIn(BaseModel):
 @router.post("/audit-events", status_code=201)
 def create_audit_event(
     payload: AuditEventIn,
+    response: Response,
     db: Session = Depends(get_db),
     _service: None = Depends(require_internal_service),
 ) -> dict:
-    AuditService(db).log(
-        actor_id=payload.actor_id,
-        action=payload.action,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-        previous_state=payload.previous_state,
-        new_state=payload.new_state,
-        metadata=payload.metadata,
-    )
+    fields = payload.model_dump(exclude={"event_id"})
+    if payload.event_id is None:
+        AuditService(db).log(**fields)
+        db.commit()
+        return {"status": "ok"}
+    try:
+        recorded = AuditService(db).log_once(event_id=payload.event_id, **fields)
+    except AuditEventConflict as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "event_id already used for different content") from exc
     db.commit()
-    return {"status": "ok"}
+    if not recorded:
+        response.status_code = status.HTTP_200_OK
+    return {"status": "ok" if recorded else "duplicate", "event_id": payload.event_id}
 
 
 class NotificationIn(BaseModel):

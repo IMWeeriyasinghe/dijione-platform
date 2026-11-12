@@ -1,7 +1,25 @@
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.constants import PostingClientMappingStatus
+from app.models.posting_client_mapping import PostingClientMapping
 from app.models.talent_request import TalentRequest
+
+
+def client_may_access_request():
+    """Fail-closed client gate. A request promoted from a posting is visible
+    to its client only while a VERIFIED mapping names that same client, so
+    unmapping or re-tagging takes effect on the next read. Requests with no
+    source posting have no mapping to consult."""
+    return or_(
+        TalentRequest.posting_external_id.is_(None),
+        exists().where(
+            PostingClientMapping.provider == TalentRequest.provider,
+            PostingClientMapping.posting_external_id == TalentRequest.posting_external_id,
+            PostingClientMapping.status == PostingClientMappingStatus.VERIFIED.value,
+            PostingClientMapping.client_id == TalentRequest.client_id,
+        ),
+    )
 
 
 class TalentRequestRepository:
@@ -19,7 +37,7 @@ class TalentRequestRepository:
 
     def _scoped(self, stmt, client_id: int | None, allowed_client_ids: list[int] | None = None):
         if client_id is not None:
-            stmt = stmt.where(TalentRequest.client_id == client_id)
+            stmt = stmt.where(TalentRequest.client_id == client_id, client_may_access_request())
         elif allowed_client_ids is not None:
             # Staff portfolio restriction (CLAUDE.md-extension §22) — only
             # applied when the caller has no single-tenant client_id (i.e.
@@ -79,6 +97,16 @@ class TalentRequestRepository:
             TalentRequest.posting_external_id == posting_external_id,
         )
         return self.db.execute(stmt).scalars().first()
+
+    def list_source_linked(self, *, provider: str = "LEVER") -> list[TalentRequest]:
+        return list(
+            self.db.execute(
+                select(TalentRequest).where(
+                    TalentRequest.provider == provider,
+                    TalentRequest.posting_external_id.is_not(None),
+                )
+            ).scalars().all()
+        )
 
     def next_request_code(self) -> str:
         count = self.db.execute(select(func.count()).select_from(TalentRequest)).scalar_one()

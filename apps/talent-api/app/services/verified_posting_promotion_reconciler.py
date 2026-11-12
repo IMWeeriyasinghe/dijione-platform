@@ -51,11 +51,12 @@ from app.repositories.posting_repo import PostingRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.services.audit_service import AuditService
 from app.services.candidate_service import CandidateService
+from app.services.client_access_service import retire_request, withdraw_request_access
 from app.services.talent_request_service import TalentRequestService
 
 logger = logging.getLogger("talent-api.promotion_reconciler")
 
-_CANDIDACY_PAGE_LIMIT = 500
+CANDIDACY_PAGE_LIMIT = 500
 _STAGE_RANK = {s.value: i for i, s in enumerate(CANONICAL_STAGE_ORDER)}
 _VALID_STATUSES = {s.value for s in ApplicationStatus}
 _DEFAULT_STAGE = CanonicalStage.SOURCING.value
@@ -74,7 +75,8 @@ class PromotionSummary:
     candidacies_seen: int = 0
     candidacies_skipped_no_verified_request: int = 0
     collapsed_duplicate_candidacies: int = 0
-    candidacies_available: bool = True
+    requests_retired: int = 0
+    requests_access_withdrawn: int = 0
     unchanged: int = 0
     transitions: list[str] = field(default_factory=list)
 
@@ -118,9 +120,11 @@ class VerifiedPostingPromotionReconciler:
         self.applications = ApplicationRepository(db)
         self.audit = AuditService()
 
-    def reconcile(self, *, candidacies: list[dict] | None) -> PromotionSummary:
+    def reconcile(self, *, candidacies: list[dict]) -> PromotionSummary:
         summary = PromotionSummary()
         tr_by_posting: dict[str, object] = {}
+
+        self._enforce_mapping_changes(summary)
 
         for mapping in self.mappings.list_verified():
             ref = self.postings.get_ref_by_external_id(mapping.posting_external_id)
@@ -158,25 +162,27 @@ class VerifiedPostingPromotionReconciler:
 
         self.db.flush()
 
-        if candidacies is None:
-            summary.candidacies_available = False
-            return summary
-
         summary.candidacies_seen = len(candidacies)
-        if len(candidacies) >= _CANDIDACY_PAGE_LIMIT:
-            summary.transitions.append("candidacy_page_limit_hit")
 
         groups: dict[tuple[str, str], list[dict]] = {}
         for row in candidacies:
             key = (row.get("candidate_external_id") or "", row.get("posting_external_id") or "")
             groups.setdefault(key, []).append(row)
 
+        # Batched: two bulk lookups up front, then one flush per pass rather
+        # than several queries per candidacy. Same decisions, same single
+        # transaction; nothing commits here.
+        resolved: list[tuple[str, list[dict], object]] = []
         for (candidate_ext, posting_ext), rows in groups.items():
             tr = tr_by_posting.get(posting_ext)
             if tr is None:
                 summary.candidacies_skipped_no_verified_request += len(rows)
                 continue
+            resolved.append((candidate_ext, rows, tr))
 
+        known = self.candidates.repo.map_by_lever_external_ids(ext for ext, _, _ in resolved)
+        pairs: list[tuple[object, object, dict]] = []
+        for candidate_ext, rows, tr in resolved:
             chosen = _pick_candidacy(rows)
             if len(rows) > 1:
                 summary.collapsed_duplicate_candidacies += len(rows) - 1
@@ -189,6 +195,7 @@ class VerifiedPostingPromotionReconciler:
                 full_name=chosen.get("candidate_name") or "",
                 email=chosen.get("candidate_email") or "",
                 headline=chosen.get("candidate_headline") or "",
+                index=known,
             )
             if cstate == "created":
                 summary.candidates_created += 1
@@ -196,21 +203,66 @@ class VerifiedPostingPromotionReconciler:
                 summary.candidates_updated += 1
             else:
                 summary.unchanged += 1
+            pairs.append((candidate, tr, chosen))
+        self.db.flush()  # candidate ids for the applications below
 
-            self._reconcile_application(candidate.id, tr.id, chosen, summary)
+        existing = self.applications.map_for_requests(tr.id for tr in tr_by_posting.values())
+        created: list[tuple[Application, dict]] = []
+        for candidate, tr, chosen in pairs:
+            self._reconcile_application(candidate.id, tr.id, chosen, summary, existing, created)
+        self.db.flush()  # application ids for their audit events
+        for application, meta in created:
+            self._audit_application(application, "system_promoted", meta)
 
         self.db.flush()
         return summary
 
+    def _enforce_mapping_changes(self, summary: PromotionSummary) -> None:
+        """Apply mapping changes to requests already promoted. A request
+        whose posting now belongs to another client is retired, so promotion
+        below builds a clean one; one with no valid mapping loses its shared
+        candidates. Never exposes anything to a client."""
+        verified = {m.posting_external_id: m.client_id for m in self.mappings.list_verified()}
+        for request in self.request_repo.list_source_linked():
+            client_id = verified.get(request.posting_external_id)
+            if client_id == request.client_id:
+                continue
+            if client_id is not None:
+                previous_client_id = request.client_id
+                retire_request(self.db, request)
+                summary.requests_retired += 1
+                self._audit_request(request, "retired_client_changed", {
+                    "previous_client_id": previous_client_id, "client_id": client_id,
+                })
+            elif withdraw_request_access(request):
+                summary.requests_access_withdrawn += 1
+                self._audit_request(request, "client_access_withdrawn", {
+                    "client_id": request.client_id,
+                })
+        self.db.flush()
+
+    def _audit_request(self, request, action: str, meta: dict) -> None:
+        try:
+            self.audit.log(
+                actor_id=None,
+                action=f"talent_request.{action}",
+                entity_type="TalentRequest",
+                entity_id=request.id,
+                new_state=meta,
+            )
+        except Exception:  # noqa: BLE001 - best-effort, mirrors _audit_application
+            logger.debug("promotion reconcile audit skipped", exc_info=True)
+
     def _reconcile_application(
-        self, candidate_id: int, talent_request_id: int, chosen: dict, summary: PromotionSummary
+        self, candidate_id: int, talent_request_id: int, chosen: dict, summary: PromotionSummary,
+        existing_by_pair: dict, created: list,
     ) -> None:
         src_stage = _safe_stage(chosen.get("current_stage"))
         src_status = _safe_status(chosen.get("status"))
         src_reason = chosen.get("lever_archive_reason")
         opportunity_id = chosen.get("external_id") or ""
 
-        existing = self.applications.get_for_pair(candidate_id, talent_request_id)
+        existing = existing_by_pair.get((candidate_id, talent_request_id))
         if existing is None:
             application = Application(
                 candidate_id=candidate_id,
@@ -221,12 +273,13 @@ class VerifiedPostingPromotionReconciler:
                 lever_archive_reason=src_reason,
                 is_client_visible=False,
             )
-            self.applications.add(application)
+            self.db.add(application)
+            existing_by_pair[(candidate_id, talent_request_id)] = application
             summary.applications_created += 1
-            self._audit_application(application, "system_promoted", {
+            created.append((application, {
                 "candidate_id": candidate_id, "talent_request_id": talent_request_id,
                 "lever_opportunity_id": opportunity_id,
-            })
+            }))
             return
 
         changed = False

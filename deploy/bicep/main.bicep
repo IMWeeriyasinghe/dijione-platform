@@ -97,6 +97,9 @@ param entraClientId string = ''
 @description('Public HTTPS origin of shell-web for this environment, e.g. https://shell-web.<env-domain>. Backs the Entra redirect URI and the front-channel logout redirect.')
 param publicBaseUrl string = ''
 
+@description('Base URL of the TalentFlow client portal, used to build access links. Empty leaves the app default, which only works locally.')
+param externalPortalBaseUrl string = ''
+
 @description('recruitment-api provider mode. "mock" = MockLeverClient; "live" = the GET-only LiveLeverClient, which also needs the lever-api-key-<env> Key Vault secret. Lever is READ-ONLY by construction (CLAUDE.md §60).')
 @allowed([ 'mock', 'live' ])
 param recruitmentIntegrationsMode string = 'mock'
@@ -244,7 +247,7 @@ var commonApiEnv = [
 // http://<app-name>) + module modes. Declarative here so a redeploy does not
 // wipe them (Bicep env is desired-state, not a merge). `AUTH_MODE=dev` on
 // platform-api = the dev-login identity provider (no real Entra in DEV).
-func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, internalEmailDomains string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string, birthdayMode string, onsiteMode string, onsiteSqlServer string, onsiteSqlDatabase string) array =>
+func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClientId string, internalEmailDomains string, publicBaseUrl string, recruitmentMode string, peopleMode string, bamboohrSubdomain string, supplierAuthMode string, supplierEntraTenantId string, supplierEntraClientId string, supplierPublicBaseUrl string, birthdayMode string, onsiteMode string, onsiteSqlServer string, onsiteSqlDatabase string, externalPortalBaseUrl string) array =>
   svc == 'shell-web' ? [
     { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
     { name: 'ADMIN_API_URL', value: 'http://admin-api' }
@@ -281,11 +284,13 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'TALENT_API_URL', value: 'http://talent-api' }
     ]
-  : svc == 'talent-api' ? [
+  : svc == 'talent-api' ? concat([
       { name: 'INTEGRATIONS_MODE', value: 'mock' }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'RECRUITMENT_API_URL', value: 'http://recruitment-api' }
-    ]
+    ], empty(externalPortalBaseUrl) ? [] : [
+      { name: 'EXTERNAL_PORTAL_BASE_URL', value: externalPortalBaseUrl }
+    ])
   : svc == 'recruitment-api' ? [
       { name: 'INTEGRATIONS_MODE', value: recruitmentMode }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
@@ -420,7 +425,7 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase))
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase, externalPortalBaseUrl))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
       //   matching *IntegrationsMode == 'live'

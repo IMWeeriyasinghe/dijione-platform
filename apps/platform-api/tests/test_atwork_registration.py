@@ -137,7 +137,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     url = f"sqlite:///{tmp_path / 'atwork-migration.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["p6q7r8s9t0u1", "(head)"]
+    assert heads.stdout.split() == ["c9d2e4f6a8b1", "(head)"]
     up = _alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)

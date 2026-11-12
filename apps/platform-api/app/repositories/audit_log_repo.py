@@ -13,6 +13,9 @@ class AuditLogRepository:
         self.db.flush()
         return entry
 
+    def get_by_event_id(self, event_id: str) -> AuditLog | None:
+        return self.db.execute(select(AuditLog).where(AuditLog.event_id == event_id)).scalars().first()
+
     def list_for_entity(self, entity_type: str, entity_id: int) -> list[AuditLog]:
         stmt = (
             select(AuditLog)
