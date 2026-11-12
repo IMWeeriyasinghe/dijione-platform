@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from app.models.notifications import NotificationOutbox
 from app.services import notifications
 from app.services.time_accounting import daily_totals, is_unverified
-from tests.test_corrections_management import MGR, A, C, M, clock, hdr, post, rid  # noqa: F401
+from tests.test_corrections_management import MANAGER, MGR, A, C, M, clock, hdr, post, rid  # noqa: F401
 from tests.test_uat_feedback import INTERNAL, FakePlatform, check_in, check_out, csv_rows, export, outbox, today
 
 COLOMBO = ZoneInfo("Asia/Colombo")
@@ -20,7 +20,7 @@ class S:
     check_in_at: datetime
     check_out_at: datetime | None = None
     breaks: list = field(default_factory=list)
-    correction_count: int = 0
+    times_confirmed: bool = False
 
 
 def at(day, hour, minute=0):
@@ -54,7 +54,7 @@ def test_late_check_out_does_not_confirm_days_of_open_time():
 
 
 def test_management_confirmed_session_counts_even_when_long():
-    confirmed = S(at(10, 7), check_out_at=at(10, 21), correction_count=1)
+    confirmed = S(at(10, 7), check_out_at=at(10, 21), times_confirmed=True)
     assert not is_unverified(confirmed, at(13, 0), LIMIT)
     assert sum(t.net_seconds for t in daily_totals([confirmed], COLOMBO, at(13, 0), LIMIT).values()) == 14 * H
 
@@ -241,3 +241,86 @@ def test_failed_review_request_is_not_resent_once_decided(api_client, clock, db)
 def test_retry_endpoint_requires_the_internal_secret(api_client):
     assert api_client.post("/api/atwork/internal/notifications/retry-failed").status_code == 401
     assert api_client.post("/api/atwork/internal/notifications/retry-failed", headers=MGR).status_code == 401
+
+
+# --- confirmation needs approved times; every view agrees ---
+
+
+def _long_completed(api, clock, hours=20):  # noqa: F811
+    sid = check_in(api)["id"]
+    clock.advance(hours=hours)
+    check_out(api)
+    return sid
+
+
+def _approve(api, **body):
+    made = post(api, C, client_request_id=rid(), reason="Please review", **body)
+    assert made.status_code == 201, made.text
+    assert post(api, f"{M}/corrections/{made.json()['id']}/approve", MGR).status_code == 200
+
+
+def _confirmed_net(api):
+    return sum(d["net_seconds"] for d in api.get(f"{A}/history", headers=hdr()).json()["daily_totals"])
+
+
+def test_work_mode_only_approval_does_not_confirm_a_long_duration(api_client, clock):  # noqa: F811
+    sid = _long_completed(api_client, clock)
+    _approve(api_client, session_id=sid, work_mode="REMOTE")
+    detail = api_client.get(f"{A}/sessions/{sid}", headers=hdr()).json()
+    assert detail["correction_count"] == 1 and detail["work_mode"] == "REMOTE"
+    assert detail["unverified"] is True and _confirmed_net(api_client) == 0
+    # Confirming the recorded times explicitly is still possible afterwards.
+    _approve(api_client, session_id=sid)
+    assert _confirmed_net(api_client) == 20 * H
+
+
+def test_correction_count_changes_only_on_approval(api_client, clock):  # noqa: F811
+    sid = _long_completed(api_client, clock, hours=2)
+    count = lambda: api_client.get(f"{A}/sessions/{sid}", headers=hdr()).json()["correction_count"]  # noqa: E731
+    end = (clock.value - timedelta(minutes=10)).isoformat()
+    made = post(api_client, C, client_request_id=rid(), reason="Wrong time", session_id=sid, check_out_at=end).json()
+    assert count() == 0
+    rejected = post(api_client, f"{M}/corrections/{made['id']}/reject", MGR, reason="Times do not match the log")
+    assert rejected.status_code == 200 and count() == 0
+    made = post(api_client, C, client_request_id=rid(), reason="Wrong time", session_id=sid, check_out_at=end).json()
+    assert post(api_client, f"{C}/{made['id']}/withdraw").status_code == 200
+    assert count() == 0
+    _approve(api_client, session_id=sid, check_out_at=end)
+    assert count() == 1
+
+
+def test_an_unverified_session_shows_no_confirmed_net_anywhere(api_client, clock):  # noqa: F811
+    sid = check_in(api_client)["id"]
+    clock.advance(hours=60)
+    views = [
+        api_client.get(f"{A}/status", headers=hdr()).json()["session"],
+        api_client.get(f"{A}/sessions/{sid}", headers=hdr()).json(),
+        api_client.get(f"{A}/history", headers=hdr()).json()["sessions"][0],
+        api_client.get(f"{M}/sessions/{sid}", headers=MGR).json()["session"],
+        api_client.get(f"{M}/employees/7/attendance", headers=MGR).json()["sessions"][0],
+        next(c["session"] for c in api_client.get(f"{M}/overview", headers=MGR).json()["working"]),
+    ]
+    for view in views:
+        assert view["unverified"] is True
+        assert view["totals"]["net_seconds"] == 0 and view["totals"]["gross_seconds"] == 0
+        assert view["totals"]["provisional_seconds"] == 60 * H and view["elapsed_seconds"] == 60 * H
+    assert today(api_client)["totals"]["net_seconds"] == 0
+    overview = api_client.get(f"{M}/overview", headers=MGR).json()
+    assert overview["totals"]["net_seconds"] == 0
+    [summary] = csv_rows(export(api_client, "employee_summary", "csv", date_to="2026-11-12"))
+    assert summary["Net hours"] == "0.0"
+    [row] = csv_rows(export(api_client, "sessions", "csv", date_to="2026-11-12"))
+    assert row["Net hours in period"] == "0.0" and row["Unverified"] == "Yes"
+
+
+def test_a_normal_session_reports_its_own_totals_unchanged(api_client, clock):  # noqa: F811
+    sid = check_in(api_client)["id"]
+    clock.advance(hours=3)
+    detail = api_client.get(f"{A}/sessions/{sid}", headers=hdr()).json()
+    assert detail["unverified"] is False and detail["totals"]["net_seconds"] == 3 * H == detail["elapsed_seconds"]
+
+
+def test_retry_endpoint_is_not_reachable_with_a_user_token_or_by_get(api_client):
+    url = "/api/atwork/internal/notifications/retry-failed"
+    assert api_client.post(url, headers=hdr(7, MANAGER)).status_code == 401
+    assert api_client.get(url, headers=INTERNAL).status_code == 405

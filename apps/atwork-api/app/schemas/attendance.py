@@ -41,7 +41,9 @@ class SessionOut(BaseModel):
     breaks: list[BreakOut]
     totals: TotalsOut
     # Longer than the missed check-out threshold and not confirmed by Management.
+    # Its ``totals`` then count nothing; the raw duration is ``elapsed_seconds``.
     unverified: bool = False
+    elapsed_seconds: int = 0
 
 
 class StatusOut(BaseModel):
