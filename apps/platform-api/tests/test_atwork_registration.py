@@ -137,8 +137,8 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     url = f"sqlite:///{tmp_path / 'atwork-migration.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["c9d2e4f6a8b1", "(head)"]
-    up = _alembic(url, "upgrade", "head")
+    assert heads.stdout.split() == ["e1f3a5b7c9d0", "(head)"]
+    up = _alembic(url, "upgrade", "c9d2e4f6a8b1")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)
     first = _snapshot(engine)
@@ -151,7 +151,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     with engine.begin() as conn:
         conn.execute(text("UPDATE application_modules SET enabled = 0 WHERE key='atwork'"))
     assert _alembic(url, "stamp", "m3n4o5p6q7r8").returncode == 0
-    again = _alembic(url, "upgrade", "head")
+    again = _alembic(url, "upgrade", "c9d2e4f6a8b1")
     assert again.returncode == 0, again.stderr
     second = _snapshot(engine)
     assert not second["module"][0][1]
@@ -190,10 +190,38 @@ def test_home_card_activates_in_dev_only_and_touches_only_atwork(tmp_path):
         grants = text("SELECT COUNT(*) FROM user_module_roles")
         with engine.connect() as conn:
             before, granted = dict(conn.execute(query).all()), conn.execute(grants).scalar()
-        result = run("head")
+        result = run("o5p6q7r8s9t0")
         assert result.returncode == 0, result.stderr
         with engine.connect() as conn:
             after = dict(conn.execute(query).all())
             assert conn.execute(grants).scalar() == granted
         assert after["atwork"] == expected
+        assert {k: v for k, v in after.items() if k != "atwork"} == {k: v for k, v in before.items() if k != "atwork"}
+
+
+def test_release_activation_runs_only_in_uat_and_prod_and_grants_nothing(tmp_path):
+    expected = {"development": ("ACTIVE", True), "uat": ("ACTIVE", True), "prod": ("ACTIVE", True)}
+    for app_env, (status, baseline) in expected.items():
+        url = f"sqlite:///{tmp_path}/rel-{app_env}.db"
+        env = {**os.environ, "DATABASE_URL": url, "APP_ENV": app_env}
+        env.pop("PYTHONPATH", None)
+
+        def run(target, env=env):
+            command = [sys.executable, "-m", "alembic", "upgrade", target]
+            return subprocess.run(command, cwd=APP_ROOT, env=env, capture_output=True, text=True)
+
+        assert run("c9d2e4f6a8b1").returncode == 0
+        engine = create_engine(url)
+        with engine.connect() as conn:
+            before = dict(conn.execute(text("SELECT key, status FROM application_modules")).all())
+            grants = conn.execute(text("SELECT COUNT(*) FROM user_module_roles")).scalar()
+        if app_env != "development":
+            assert before["atwork"] == "COMING_SOON"
+        result = run("head")
+        assert result.returncode == 0, result.stderr
+        with engine.connect() as conn:
+            after = dict(conn.execute(text("SELECT key, status FROM application_modules")).all())
+            enabled = conn.execute(text("SELECT enabled FROM module_baseline_roles WHERE module_key = 'atwork'")).scalar()
+            assert conn.execute(text("SELECT COUNT(*) FROM user_module_roles")).scalar() == grants
+        assert (after["atwork"], bool(enabled)) == (status, baseline)
         assert {k: v for k, v in after.items() if k != "atwork"} == {k: v for k, v in before.items() if k != "atwork"}

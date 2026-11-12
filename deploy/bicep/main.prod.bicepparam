@@ -47,4 +47,6 @@ param maxReplicasOverrides = {
 // attempt correctly FAILS rather than silently falling back to DEV identity
 // mode.
 param authMode = 'entra'
+// Default module access needs a verified internal employee (docs/atwork/deployment.md).
+param entraInternalEmailDomains = 'dijitalteam.com'
 param supplierAuthMode = 'entra'
