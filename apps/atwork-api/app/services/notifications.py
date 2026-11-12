@@ -11,8 +11,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.constants import CORRECTION_PENDING, MODULE_ATWORK, PERM_CORRECTIONS_REVIEW, PERM_MANAGEMENT_ACCESS, SERVICE_NAME
+from app.core.constants import (
+    CORRECTION_PENDING,
+    MODULE_ATWORK,
+    PERM_CORRECTIONS_REVIEW,
+    PERM_MANAGEMENT_ACCESS,
+    SERVICE_NAME,
+    STATUS_OPEN,
+)
 from app.db.base import utcnow
+from app.models.attendance import AttendanceSession
 from app.models.corrections import CorrectionRequest
 from app.models.notifications import NotificationOutbox
 from app.services.attendance_policy import AttendancePolicy
@@ -27,9 +35,17 @@ REMINDER_LOCAL_HOUR = 9
 _MAX_REASON = 300
 
 
+# Platform Core scales to zero and can take well over a few seconds to start.
+DELIVERY_TIMEOUT_SECONDS = 30.0
+RETRY_FAILED_MAX_AGE = timedelta(days=7)
+_STOP_AFTER_FAILURES = 3  # keeps a run within the job timeout when Platform Core is down
+
+
 def platform_client() -> PlatformClient:
     settings = get_settings()
-    return PlatformClient(settings.platform_api_url, settings.internal_service_secret, timeout=3.0, caller=SERVICE_NAME)
+    return PlatformClient(
+        settings.platform_api_url, settings.internal_service_secret, timeout=DELIVERY_TIMEOUT_SECONDS, caller=SERVICE_NAME
+    )
 
 
 def enqueue(
@@ -187,8 +203,10 @@ def deliver_pending(db: Session, client: PlatformClient, now: datetime, limit: i
         )
     )
     db.rollback()
-    sent = failed = 0
+    sent = failed = consecutive_failures = 0
     for row_id in ids:
+        if consecutive_failures >= _STOP_AFTER_FAILURES:
+            break  # Platform Core is unavailable; the rest wait for the next run
         row = db.scalars(
             select(NotificationOutbox)
             .where(NotificationOutbox.id == row_id, NotificationOutbox.status == "PENDING")
@@ -205,15 +223,54 @@ def deliver_pending(db: Session, client: PlatformClient, now: datetime, limit: i
         if delivered:
             row.status, row.sent_at = "SENT", now
             sent += 1
+            consecutive_failures = 0
         else:
             row.attempts += 1
             failed += 1
+            consecutive_failures += 1
             if row.attempts >= MAX_ATTEMPTS:
                 row.status = "FAILED"
             else:
                 row.next_attempt_at = now + timedelta(seconds=min(60 * 2**row.attempts, 3600))
         db.commit()
     return {"sent": sent, "failed": failed}
+
+
+def _still_relevant(db: Session, row: NotificationOutbox, policy: AttendancePolicy, now: datetime) -> bool:
+    """A failed notification is resent only if it is still true today."""
+    parts = row.dedupe_key.split(":")
+    if row.kind == "ATWORK_MISSED_CHECKOUT":
+        session = db.get(AttendanceSession, parts[-1])
+        return session is not None and session.status == STATUS_OPEN
+    if row.kind == "ATWORK_CORRECTION_REMINDER":
+        return parts[-1] == now.astimezone(policy.zone).date().isoformat()
+    item = db.get(CorrectionRequest, parts[2]) if len(parts) > 3 else None
+    if item is None:
+        return False
+    if row.kind == "ATWORK_CORRECTION_REQUESTED":
+        return item.status == CORRECTION_PENDING
+    return True  # a decision or withdrawal stays true once made
+
+
+def retry_failed(db: Session, policy: AttendancePolicy, now: datetime) -> dict:
+    """Requeue recent FAILED notifications that are still relevant. Platform Core's
+    per-recipient key means an earlier, unconfirmed success is never shown twice."""
+    rows = list(
+        db.scalars(
+            select(NotificationOutbox).where(
+                NotificationOutbox.status == "FAILED", NotificationOutbox.created_at >= now - RETRY_FAILED_MAX_AGE
+            )
+        )
+    )
+    requeued = skipped = 0
+    for row in rows:
+        if _still_relevant(db, row, policy, now):
+            row.status, row.attempts, row.next_attempt_at = "PENDING", 0, now
+            requeued += 1
+        else:
+            skipped += 1
+    db.commit()
+    return {"requeued": requeued, "skipped": skipped}
 
 
 def deliver_after_response() -> None:

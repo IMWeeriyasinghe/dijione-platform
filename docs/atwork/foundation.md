@@ -55,7 +55,13 @@ Navigation follows permissions; `atwork-api` enforces them.
 - `attendance_employees` holds a name and email snapshot from verified claims,
   taken at check-in or correction request. Employee search covers only people who
   have done one of those. It is not an identity or role record.
-- The missed check-out threshold defaults to 12 hours. Sessions are flagged only.
+- The missed check-out threshold defaults to 12 hours. Sessions are flagged, never
+  closed automatically.
+- A session longer than that threshold is **unverified**: its time is shown
+  separately as unverified and is not counted in confirmed totals, reports or export
+  hours. An open session becomes unverified when it passes the threshold. A completed
+  one stays unverified, even after a late check-out, until Management approves a
+  correction for it. A genuine long session is confirmed by an unchanged correction.
 - Downgrading migration `0002_atwork_corrections` is refused while correction or
   voided-break history exists.
 
@@ -82,6 +88,14 @@ from notices about their own request. Text contains no times or employee names.
 | Correction approved or rejected (with reason) | Employee | Request |
 | Missed check-out threshold passed | Employee | Session |
 | Requests pending over 24 hours | Reviewers (one digest, from 09:00 business time) | Business day |
+
+Delivery waits up to 30 seconds, because Platform Core scales to zero. A scheduled run
+stops after three consecutive failures and leaves the rest for the next run. After 12
+attempts a notification is `FAILED`. `POST /api/atwork/internal/notifications/retry-failed`
+(internal secret) requeues failed notifications from the last 7 days only if they are
+still true: a missed check-out while the session is open, a review request while it is
+pending, and any decision or withdrawal. Platform Core's per-recipient key prevents
+duplicates.
 
 ## Exports
 

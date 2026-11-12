@@ -48,7 +48,7 @@ function Screen() {
         <MetricCard label="Completed today" value={d.completed_today} icon={CheckCircle2} />
         {d.pending_corrections !== null ? <MetricCard label="Pending corrections" value={d.pending_corrections} icon={ClipboardCheck} href="/management/corrections" /> : <MetricCard label="Exceptions" value={d.exception_count} icon={AlertTriangle} />}
       </div>
-      <p className="mt-4 text-sm text-dt-text-secondary">Today so far: gross {shortDuration(d.totals.gross_seconds)} · break {shortDuration(d.totals.break_seconds)} · net {shortDuration(d.totals.net_seconds)}</p>
+      <p className="mt-4 text-sm text-dt-text-secondary">Today so far: gross {shortDuration(d.totals.gross_seconds)} · break {shortDuration(d.totals.break_seconds)} · net {shortDuration(d.totals.net_seconds)}{(d.totals.provisional_seconds ?? 0) > 0 && <span className="text-dt-warning"> · unverified {shortDuration(d.totals.provisional_seconds ?? 0)}, not included</span>}</p>
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <People title="Currently working" people={d.working} zone={d.time_zone} empty="Nobody is checked in right now." />
         <People title="On break" people={d.on_break} zone={d.time_zone} empty="Nobody is on a break right now." />

@@ -17,7 +17,7 @@ from app.models.attendance import AttendanceSession
 from app.models.corrections import CorrectionRequest
 from app.services.attendance_policy import AttendancePolicy
 from app.services.employee_directory import display_name, employee_names
-from app.services.time_accounting import Totals, daily_totals, local_day_bounds
+from app.services.time_accounting import Totals, daily_totals, is_unverified, local_day_bounds
 
 MAX_RANGE_DAYS = 366
 
@@ -42,7 +42,11 @@ def hours(seconds: int) -> float:
 
 
 def _add(a: Totals, b: Totals) -> Totals:
-    return Totals(a.gross_seconds + b.gross_seconds, a.break_seconds + b.break_seconds)
+    return Totals(
+        a.gross_seconds + b.gross_seconds,
+        a.break_seconds + b.break_seconds,
+        a.provisional_seconds + b.provisional_seconds,
+    )
 
 
 class Reporting:
@@ -65,10 +69,16 @@ class Reporting:
             stmt = stmt.where(AttendanceSession.work_mode == flt.work_mode)
         return list(self.db.scalars(stmt.order_by(AttendanceSession.check_in_at.desc())))
 
+    def daily(self, sessions: list[AttendanceSession]) -> dict[date, Totals]:
+        return daily_totals(sessions, self.policy.zone, self.now, self.policy.unverified_after_seconds)
+
+    def unverified(self, session: AttendanceSession) -> bool:
+        return is_unverified(session, self.now, self.policy.unverified_after_seconds)
+
     def in_range(self, session: AttendanceSession, flt: ReportFilter) -> Totals:
         """The part of one session inside the range, split at local midnight."""
         total = Totals()
-        for day, value in daily_totals([session], self.policy.zone, self.now).items():
+        for day, value in self.daily([session]).items():
             if flt.date_from <= day <= flt.date_to:
                 total = _add(total, value)
         return total
@@ -84,7 +94,7 @@ class Reporting:
             row = by_user.setdefault(session.platform_user_id, {"count": 0, "totals": Totals()})
             row["count"] += 1
             row["totals"] = _add(row["totals"], part)
-            for day, value in daily_totals([session], self.policy.zone, self.now).items():
+            for day, value in self.daily([session]).items():
                 if flt.date_from <= day <= flt.date_to:
                     by_day[day] = _add(by_day.get(day, Totals()), value)
         employees = sorted(
@@ -161,7 +171,15 @@ class Reporting:
 
     def table(self, report: str, flt: ReportFilter) -> tuple[list[str], list[list]]:
         if report == "employee_summary":
-            head = ["Employee", "User ID", "Sessions", "Gross hours", "Break hours", "Net hours"]
+            head = [
+                "Employee",
+                "User ID",
+                "Sessions",
+                "Gross hours",
+                "Break hours",
+                "Net hours",
+                "Unverified hours (not included)",
+            ]
             rows = [
                 [
                     r["employee_name"],
@@ -170,6 +188,7 @@ class Reporting:
                     hours(r["totals"].gross_seconds),
                     hours(r["totals"].break_seconds),
                     hours(r["totals"].net_seconds),
+                    hours(r["totals"].provisional_seconds),
                 ]
                 for r in self.summary(flt)["by_employee"]
             ]
@@ -188,6 +207,8 @@ class Reporting:
                 "Gross hours in period",
                 "Break hours in period",
                 "Net hours in period",
+                "Unverified",
+                "Unverified hours in period (not included)",
                 "Corrections",
             ]
             rows = []
@@ -205,6 +226,8 @@ class Reporting:
                         hours(part.gross_seconds),
                         hours(part.break_seconds),
                         hours(part.net_seconds),
+                        "Yes" if self.unverified(s) else "No",
+                        hours(part.provisional_seconds),
                         s.correction_count,
                     ]
                 )

@@ -35,6 +35,11 @@ class AttendancePolicy:
     def zone(self) -> ZoneInfo:
         return ZoneInfo(self.business_time_zone)
 
+    @property
+    def unverified_after_seconds(self) -> int:
+        """Sessions longer than this are provisional until confirmed."""
+        return self.missed_checkout_hours * 3600
+
     def ensure_can_check_out(self, session: AttendanceSession) -> None:
         if any(item.ended_at is None for item in session.breaks):
             raise AttendanceError("BREAK_STILL_OPEN", "End your break before checking out.")

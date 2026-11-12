@@ -112,7 +112,7 @@ def overview(claims: AuthClaims = Depends(can_read), service: AttendanceService 
             platform_user_id=session.platform_user_id,
             employee_name=display_name(names, session.platform_user_id),
             state=state,
-            session=_session(session, now),
+            session=_session(session, now, service.policy.unverified_after_seconds),
             overdue=session.check_in_at <= cutoff,
         )
 
@@ -141,7 +141,7 @@ def overview(claims: AuthClaims = Depends(can_read), service: AttendanceService 
             {
                 "platform_user_id": s.platform_user_id,
                 "employee_name": display_name(names, s.platform_user_id),
-                "session": _session(s, now).model_dump(mode="json"),
+                "session": _session(s, now, service.policy.unverified_after_seconds).model_dump(mode="json"),
             }
             for s in completed
         ],
@@ -194,7 +194,7 @@ def employee_attendance(
     open_map = {s.platform_user_id: s for s in _open_sessions(service.db, {user_id})}
     daily = [
         DayTotalsOut(date=day, **_totals(t).model_dump())
-        for day, t in sorted(daily_totals(sessions, service.policy.zone, now).items())
+        for day, t in sorted(daily_totals(sessions, service.policy.zone, now, service.policy.unverified_after_seconds).items())
         if start <= day <= end
     ]
     return EmployeeHistoryOut(
@@ -206,7 +206,7 @@ def employee_attendance(
         limit=limit,
         offset=offset,
         daily_totals=daily,
-        sessions=[_session(s, now) for s in sessions[offset : offset + limit]],
+        sessions=[_session(s, now, service.policy.unverified_after_seconds) for s in sessions[offset : offset + limit]],
     )
 
 
@@ -220,7 +220,10 @@ def managed_session(
     uid = session.platform_user_id
     names = employee_names(service.db, {uid})
     open_map = {s.platform_user_id: s for s in _open_sessions(service.db, {uid})}
-    return ManagedSessionOut(employee=_employee(service.db, uid, names, open_map), session=_session(session, service.now()))
+    return ManagedSessionOut(
+        employee=_employee(service.db, uid, names, open_map),
+        session=_session(session, service.now(), service.policy.unverified_after_seconds),
+    )
 
 
 def _can_decide(claims: AuthClaims, item: CorrectionRequest) -> bool:

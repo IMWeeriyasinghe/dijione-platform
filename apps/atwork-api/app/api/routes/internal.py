@@ -20,3 +20,11 @@ def run_notifications(
     now = clock()
     queued = notifications.enqueue_scheduled(db, policy, now)
     return {"queued": queued, "delivery": notifications.deliver_pending(db, notifications.platform_client(), now)}
+
+
+@router.post("/notifications/retry-failed")
+def retry_failed_notifications(
+    db: Session = Depends(get_db), policy: AttendancePolicy = Depends(get_policy), clock: Clock = Depends(get_clock)
+) -> dict:
+    """Operator action: requeue still-relevant FAILED notifications from the last 7 days."""
+    return notifications.retry_failed(db, policy, clock())

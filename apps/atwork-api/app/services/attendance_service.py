@@ -292,4 +292,4 @@ class AttendanceService:
         return self.repo.sessions_overlapping(user_id, local_day_bounds(date_from, zone)[0], local_day_bounds(date_to, zone)[1])
 
     def daily(self, sessions: list[AttendanceSession], now: datetime) -> dict[date, Totals]:
-        return daily_totals(sessions, self.policy.zone, now)
+        return daily_totals(sessions, self.policy.zone, now, self.policy.unverified_after_seconds)
