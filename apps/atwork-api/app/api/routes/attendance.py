@@ -27,7 +27,7 @@ from app.schemas.attendance import (
 from app.services.attendance_policy import AttendancePolicy, get_policy
 from app.services.attendance_service import AttendanceService, Clock, open_break, system_clock
 from app.services.employee_directory import remember_employee
-from app.services.time_accounting import Totals, session_totals
+from app.services.time_accounting import Totals, is_unverified, session_totals
 
 router = APIRouter(prefix="/api/atwork/attendance", tags=["attendance"])
 
@@ -50,10 +50,15 @@ def get_service(
 
 
 def _totals(totals: Totals) -> TotalsOut:
-    return TotalsOut(gross_seconds=totals.gross_seconds, break_seconds=totals.break_seconds, net_seconds=totals.net_seconds)
+    return TotalsOut(
+        gross_seconds=totals.gross_seconds,
+        break_seconds=totals.break_seconds,
+        net_seconds=totals.net_seconds,
+        provisional_seconds=totals.provisional_seconds,
+    )
 
 
-def _session(session: AttendanceSession, now: datetime) -> SessionOut:
+def _session(session: AttendanceSession, now: datetime, threshold: int | None = None) -> SessionOut:
     return SessionOut(
         id=session.id,
         work_mode=session.work_mode,
@@ -65,6 +70,7 @@ def _session(session: AttendanceSession, now: datetime) -> SessionOut:
         correction_count=session.correction_count,
         breaks=[BreakOut(id=b.id, started_at=b.started_at, ended_at=b.ended_at) for b in session.breaks],
         totals=_totals(session_totals(session, now)),
+        unverified=is_unverified(session, now, threshold),
     )
 
 
@@ -77,7 +83,12 @@ def _state(session: AttendanceSession | None) -> str:
 def _action(service: AttendanceService, result: tuple[AttendanceSession, bool]) -> ActionOut:
     session, replayed = result
     now = service.now()
-    return ActionOut(replayed=replayed, state=_state(session), server_time=now, session=_session(session, now))
+    return ActionOut(
+        replayed=replayed,
+        state=_state(session),
+        server_time=now,
+        session=_session(session, now, service.policy.unverified_after_seconds),
+    )
 
 
 @router.get("/policy", response_model=PolicyOut)
@@ -101,7 +112,7 @@ def status(claims: AuthClaims = Depends(can_read), service: AttendanceService = 
         state=_state(session),
         server_time=now,
         time_zone=service.policy.business_time_zone,
-        session=_session(session, now) if session else None,
+        session=_session(session, now, service.policy.unverified_after_seconds) if session else None,
     )
 
 
@@ -145,7 +156,7 @@ def today(claims: AuthClaims = Depends(can_read), service: AttendanceService = D
         server_time=now,
         session_count=len(sessions),
         totals=_totals(service.daily(sessions, now).get(day, Totals())),
-        sessions=[_session(s, now) for s in sessions],
+        sessions=[_session(s, now, service.policy.unverified_after_seconds) for s in sessions],
     )
 
 
@@ -179,7 +190,7 @@ def history(
         limit=limit,
         offset=offset,
         daily_totals=daily,
-        sessions=[_session(s, now) for s in sessions[offset : offset + limit]],
+        sessions=[_session(s, now, service.policy.unverified_after_seconds) for s in sessions[offset : offset + limit]],
     )
 
 
@@ -187,4 +198,4 @@ def history(
 def session_detail(
     session_id: str, claims: AuthClaims = Depends(can_read), service: AttendanceService = Depends(get_service)
 ) -> SessionOut:
-    return _session(service.owned_session(claims.user_id, session_id), service.now())
+    return _session(service.owned_session(claims.user_id, session_id), service.now(), service.policy.unverified_after_seconds)

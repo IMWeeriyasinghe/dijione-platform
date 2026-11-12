@@ -85,7 +85,8 @@ def test_check_in_and_check_out(api, clock):
     out = api.post("check-out").json()
     assert out["state"] == "NOT_CHECKED_IN"
     assert out["session"]["status"] == "COMPLETED"
-    assert out["session"]["totals"] == {"gross_seconds": 28800, "break_seconds": 0, "net_seconds": 28800}
+    expected = {"gross_seconds": 28800, "break_seconds": 0, "net_seconds": 28800, "provisional_seconds": 0}
+    assert out["session"]["totals"] == expected
     assert api.get("status").json()["session"] is None
 
 
@@ -206,7 +207,7 @@ def test_break_flow_and_net_time(api, clock):
     api.post("breaks/end")
     clock.advance(minutes=15)
     totals = api.post("check-out").json()["session"]["totals"]
-    assert totals == {"gross_seconds": 18000, "break_seconds": 2700, "net_seconds": 15300}
+    assert totals == {"gross_seconds": 18000, "break_seconds": 2700, "net_seconds": 15300, "provisional_seconds": 0}
 
 
 def test_invalid_transitions(api):

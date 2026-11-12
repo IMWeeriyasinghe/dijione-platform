@@ -48,13 +48,15 @@ function TodaySummary({ today, format, serverNow }: { today: Today; format: Time
   const completed = today.sessions.filter((s) => s.status === "COMPLETED");
   const events = timeline(today.sessions);
   const open = today.sessions.find((s) => s.status === "OPEN");
-  const elapsed = open ? Math.max(0, Math.floor((serverNow - new Date(today.server_time).getTime()) / 1000)) : 0;
+  // An unverified open session is not confirmed time, so it does not tick into today's totals.
+  const counting = open && !open.unverified;
+  const elapsed = counting ? Math.max(0, Math.floor((serverNow - new Date(today.server_time).getTime()) / 1000)) : 0;
   const gross = today.totals.gross_seconds + elapsed;
-  const breaks = today.totals.break_seconds + (open?.breaks.some((b) => b.ended_at === null) ? elapsed : 0);
+  const breaks = today.totals.break_seconds + (counting && open?.breaks.some((b) => b.ended_at === null) ? elapsed : 0);
   return (
     <>
       <DayHeading day={today.date} />
-      <TotalsCards totals={{ gross_seconds: gross, break_seconds: breaks, net_seconds: Math.max(0, gross - breaks) }} />
+      <TotalsCards totals={{ gross_seconds: gross, break_seconds: breaks, net_seconds: Math.max(0, gross - breaks), provisional_seconds: today.totals.provisional_seconds }} />
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card className="p-5">
           <h2 className="text-base font-semibold">Completed sessions</h2>
@@ -127,7 +129,7 @@ function TodayScreen() {
 
       {session && policy.data && totals && totals.gross >= policy.data.missed_checkout_hours * 3600 && (
         <Notice tone="info" action={hasPermission(scope, PERM.REQUEST_OWN) ? <Link className="font-medium text-dt-burnt-orange underline underline-offset-2" href={`/requests/new?sessionId=${session.id}`}>Request correction</Link> : undefined}>
-          This session has been open for over {policy.data.missed_checkout_hours} hours. If you forgot to check out, request a correction.
+          This session has been open for over {policy.data.missed_checkout_hours} hours and its time is unverified, so it is not counted in your totals. If you forgot to check out, request a correction with your real check-out time; the hours count once Management approves it.
         </Notice>
       )}
       {state === "NOT_CHECKED_IN" && canRecord && today.data.session_count > 0 && (

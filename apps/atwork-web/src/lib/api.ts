@@ -39,12 +39,15 @@ const post = <T>(path: string, body: unknown) => json<T>(path, { method: "POST",
 
 export type WorkMode = "OFFICE" | "REMOTE" | "CLIENT_SITE";
 export type AttendanceState = "NOT_CHECKED_IN" | "WORKING" | "ON_BREAK";
-export type Totals = { gross_seconds: number; break_seconds: number; net_seconds: number };
+/** Confirmed time; provisional_seconds is unverified time kept out of it. */
+export type Totals = { gross_seconds: number; break_seconds: number; net_seconds: number; provisional_seconds?: number };
 export type DayTotals = Totals & { date: string };
 export type Break = { id: string; started_at: string; ended_at: string | null };
 export type Session = {
   id: string; work_mode: WorkMode; status: "OPEN" | "COMPLETED"; check_in_at: string; check_out_at: string | null;
   time_zone: string; origin: string; correction_count: number; breaks: Break[]; totals: Totals;
+  /** Longer than the missed check-out threshold and not yet confirmed by Management. */
+  unverified?: boolean;
 };
 export type Status = { state: AttendanceState; server_time: string; time_zone: string; session: Session | null };
 export type ActionResult = { replayed: boolean; state: AttendanceState; server_time: string; session: Session };

@@ -30,6 +30,7 @@ from app.schemas.corrections import CorrectionIn
 from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy
 from app.services.attendance_service import Clock, system_clock
+from app.services.time_accounting import is_unverified
 
 T = TypeVar("T")
 Intervals = list[tuple[datetime, datetime]]
@@ -191,7 +192,12 @@ class CorrectionService:
                 if proposed["work_mode"] != session.work_mode:
                     self.policy.ensure_mode_enabled(proposed["work_mode"])
                 original = snapshot(session)
-                if {k: original[k] for k in proposed} == proposed:
+                # An unchanged request is how a long but genuine completed session gets
+                # Management's confirmation; anything else with no changes is refused.
+                confirming = session.check_out_at is not None and is_unverified(
+                    session, now, self.policy.unverified_after_seconds
+                )
+                if not confirming and {k: original[k] for k in proposed} == proposed:
                     raise AttendanceError("CORRECTION_NO_CHANGES", "The proposed values match the current record.", 422)
             else:
                 if body.work_mode is None or body.check_in_at is None or body.check_out_at is None:

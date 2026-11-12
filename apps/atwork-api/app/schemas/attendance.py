@@ -25,6 +25,8 @@ class TotalsOut(BaseModel):
     gross_seconds: int
     break_seconds: int
     net_seconds: int
+    # Net time of unverified sessions, excluded from the confirmed fields above.
+    provisional_seconds: int = 0
 
 
 class SessionOut(BaseModel):
@@ -38,6 +40,8 @@ class SessionOut(BaseModel):
     correction_count: int
     breaks: list[BreakOut]
     totals: TotalsOut
+    # Longer than the missed check-out threshold and not confirmed by Management.
+    unverified: bool = False
 
 
 class StatusOut(BaseModel):

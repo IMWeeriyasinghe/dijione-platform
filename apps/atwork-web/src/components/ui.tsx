@@ -50,13 +50,21 @@ export function QueryError({ error, retry }: { error: unknown; retry: () => void
   return <ErrorState message={errorMessage(error)} onRetry={retry} />;
 }
 
+export const UNVERIFIED_HELP = "Not counted until the session is checked out and confirmed through a correction.";
+
 export function TotalsCards({ totals }: { totals: Totals }) {
+  const unverified = totals.provisional_seconds ?? 0;
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <MetricCard label="Gross time" value={shortDuration(totals.gross_seconds)} icon={Clock3} />
-      <MetricCard label="Break time" value={shortDuration(totals.break_seconds)} icon={Coffee} />
-      <MetricCard label="Net working time" value={shortDuration(totals.net_seconds)} icon={Timer} tone="brand" />
-    </div>
+    <>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <MetricCard label="Gross time" value={shortDuration(totals.gross_seconds)} icon={Clock3} />
+        <MetricCard label="Break time" value={shortDuration(totals.break_seconds)} icon={Coffee} />
+        <MetricCard label="Net working time" value={shortDuration(totals.net_seconds)} icon={Timer} tone="brand" />
+      </div>
+      {unverified > 0 && (
+        <p className="mt-2 text-sm text-dt-warning">Unverified time, not included above: {shortDuration(unverified)}. {UNVERIFIED_HELP}</p>
+      )}
+    </>
   );
 }
 
@@ -65,6 +73,7 @@ export function SessionBadge({ session }: { session: Session }) {
     <span className="flex flex-wrap gap-1.5">
       <StatusBadge status={session.status === "OPEN" ? "ACTIVE" : "COMPLETED"} label={session.status === "OPEN" ? "Active" : "Completed"} />
       {session.correction_count > 0 && <StatusBadge status="CONFIRMED" label="Corrected" />}
+      {session.unverified && <StatusBadge status="PENDING" label="Unverified" />}
     </span>
   );
 }
@@ -196,10 +205,16 @@ export function CorrectionComparison({ item, zone, format }: { item: Correction;
 export const CORRECTION_TITLE = { AMEND: "Session correction", CREATE_MISSING: "Missing session" } as const;
 
 export function DayHeading({ day, totals }: { day: string; totals?: Totals }) {
+  const unverified = totals?.provisional_seconds ?? 0;
   return (
     <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
       <h2 className="text-base font-semibold">{longDate(day)}</h2>
-      {totals && <p className="text-sm text-dt-text-secondary">Gross {shortDuration(totals.gross_seconds)} · Break {shortDuration(totals.break_seconds)} · Net {shortDuration(totals.net_seconds)}</p>}
+      {totals && (
+        <p className="text-sm text-dt-text-secondary">
+          Gross {shortDuration(totals.gross_seconds)} · Break {shortDuration(totals.break_seconds)} · Net {shortDuration(totals.net_seconds)}
+          {unverified > 0 && <span className="text-dt-warning"> · Unverified {shortDuration(unverified)}</span>}
+        </p>
+      )}
     </div>
   );
 }
