@@ -1,7 +1,7 @@
 # DijiTalentFlow V1 UAT deployment
 
-Status: prepared, not executed. Needs approval of the protected merge and of
-this deployment. Production follows UAT acceptance under its own approval.
+Status: executed in UAT and then in Production on 12 November 2026. See
+`v1-release-record.md` for digests, results and rollback.
 
 ## Source and images
 
