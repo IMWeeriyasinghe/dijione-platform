@@ -57,6 +57,9 @@ _SORT_KEYS = {
     "employee_name": lambda i: i.display_name.lower(),
     "employee_number": lambda i: i.employee_number or "",
     "city": lambda i: (i.city or "").lower(),
+    # birthday is "MM-DD" — lexical sort is chronological within a year.
+    "birthday": lambda i: i.birthday,
+    "cake_order_status": lambda i: i.cake_order_status,
 }
 
 
@@ -69,6 +72,7 @@ def list_upcoming_birthdays(
     audit_service: AuditService | None = None,
     search: str | None = None,
     group_filter: str | None = None,
+    cake_status_filter: str | None = None,
     province: str | None = None,
     sort_by: str | None = None,
     sort_direction: str = "asc",
@@ -159,7 +163,17 @@ def list_upcoming_birthdays(
             continue
 
     if group_filter and group_filter != "ALL":
-        items = [i for i in items if group_for(i) == group_filter]
+        # Phase 1.6 §16 (R15): comma-list, mirroring cake_status_filter
+        # below — needed so the frontend's curated default ("who do I need
+        # to care about" = ELIGIBLE + NEEDS_ATTENTION) is a real supported
+        # filter, not a value silently faked client-side.
+        wanted_groups = {g.strip() for g in group_filter.split(",") if g.strip()}
+        items = [i for i in items if group_for(i) in wanted_groups]
+
+    if cake_status_filter:
+        wanted = {s.strip() for s in cake_status_filter.split(",") if s.strip()}
+        if wanted:
+            items = [i for i in items if i.cake_order_status in wanted]
 
     if province:
         needle = province.strip().lower()
@@ -173,6 +187,7 @@ def list_upcoming_birthdays(
             or needle in (i.employee_number or "").lower()
             or needle in i.employee_id.lower()
             or needle in (i.city or "").lower()
+            or needle in (i.order_reference or "").lower()
         ]
 
     sort_key = _SORT_KEYS.get(sort_by or "", _SORT_KEYS["days_until_birthday"])

@@ -36,14 +36,180 @@ export const ORDER_STATUSES = [
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-// Derived from the backend's order_status_service.SUPPLIER_DRIVABLE —
-// kept here, imported by the supplier portal, rather than re-typed there.
+// Derived from the backend's order_status_service.SUPPLIER_DRIVABLE — the
+// forward fulfilment progression only. "Request a change" and "Can't
+// fulfil" are NOT status buttons (Phase 1 §V.1): both go through the
+// structured "Report a problem" action (OrderIssue).
 export const SUPPLIER_DRIVABLE_TARGETS: Record<string, OrderStatus[]> = {
-  SENT_TO_SUPPLIER: ["CONFIRMED", "CHANGE_REQUESTED", "UNABLE_TO_FULFIL"],
+  SENT_TO_SUPPLIER: ["CONFIRMED"],
   CONFIRMED: ["PREPARING"],
   PREPARING: ["OUT_FOR_DELIVERY"],
   OUT_FOR_DELIVERY: ["DELIVERED"],
 };
+
+// --- Audience-specific status presentation (Phase 1.6 §18A) ---------------
+// ONE canonical OrderStatus is the workflow/state-machine truth (unchanged,
+// backend-authoritative); labels differ by audience. Never hard-code a
+// status label inside a component — use these so internal-only workflow
+// terminology (PENDING_VERIFICATION, REQUIRES_REVIEW, REQUIRES_ATTENTION,
+// ON_HOLD) can never leak into supplier-facing UI. Those four statuses
+// have no supplier label at all below because a supplier-scoped API
+// response can never contain them in the first place (enforced
+// server-side by SUPPLIER_VISIBLE_STATUSES) — this mapping's absence of an
+// entry is a second, presentation-layer guard, not the only one.
+
+export const INTERNAL_ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  PENDING_VERIFICATION: "Pending Verification",
+  REQUIRES_REVIEW: "Requires Review",
+  REQUIRES_ATTENTION: "Requires Attention",
+  ON_HOLD: "On Hold",
+  SENT_TO_SUPPLIER: "Sent to Supplier",
+  CHANGE_REQUESTED: "Change Requested",
+  CONFIRMED: "Supplier Confirmed",
+  PREPARING: "Preparing",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DELIVERED: "Delivered",
+  COMPLETED: "Completed",
+  UNABLE_TO_FULFIL: "Unable to Fulfil",
+  CANCELLED: "Cancelled",
+};
+
+export function getInternalOrderStatusLabel(status: string): string {
+  return INTERNAL_ORDER_STATUS_LABELS[status as OrderStatus] ?? status;
+}
+
+export const SUPPLIER_ORDER_STATUS_LABELS: Partial<Record<OrderStatus, string>> = {
+  SENT_TO_SUPPLIER: "Awaiting Your Acceptance",
+  CHANGE_REQUESTED: "Change Requested",
+  CONFIRMED: "Accepted",
+  PREPARING: "Preparing",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DELIVERED: "Delivered",
+  COMPLETED: "Completed",
+  UNABLE_TO_FULFIL: "Unable to Fulfil",
+  CANCELLED: "Cancelled",
+};
+
+export function getSupplierOrderStatusLabel(status: string): string {
+  return SUPPLIER_ORDER_STATUS_LABELS[status as OrderStatus] ?? status;
+}
+
+// Supplier-dashboard-only grouping word for a status — distinct from the
+// per-row label above (e.g. a SENT_TO_SUPPLIER row reads "Awaiting Your
+// Acceptance" but its dashboard group is "New Orders"). Reuses
+// StatusBadge's existing tone-by-canonical-status lookup unchanged — a
+// status's underlying severity/colour doesn't change by audience, only
+// its words do, so no separate "supplier tone" function is introduced.
+export const SUPPLIER_ORDER_STATUS_GROUP: Partial<Record<OrderStatus, string>> = {
+  SENT_TO_SUPPLIER: "New Orders",
+  CHANGE_REQUESTED: "New Orders",
+  CONFIRMED: "In Progress",
+  PREPARING: "In Progress",
+  OUT_FOR_DELIVERY: "In Progress",
+  DELIVERED: "Done",
+  COMPLETED: "Done",
+  UNABLE_TO_FULFIL: "Done",
+  CANCELLED: "Done",
+};
+
+export function getSupplierOrderStatusGroup(status: string): string {
+  return SUPPLIER_ORDER_STATUS_GROUP[status as OrderStatus] ?? status;
+}
+
+// --- Order event log presentation (Phase 1.6 §2/§3 review round) ---------
+// Centralised here for the same reason as the status labels above: the
+// internal Raw Event Log must never hard-code a raw OrderEvent.event_type
+// or enum value inline in a component — one lookup, reused everywhere the
+// event log is rendered.
+
+export const ORDER_EVENT_TYPE_LABELS: Record<string, string> = {
+  STATUS_CHANGE: "Status Changed",
+  DETECTED: "Detected",
+  AUTO_RELEASED: "Auto Released",
+  ADDRESS_VERIFICATION_CHANGE: "Address Verification Updated",
+  SUPPLIER_ASSIGNED: "Supplier Assigned",
+  EMPLOYEE_NUMBER_ASSIGNED: "Team Member ID Assigned",
+  DELIVERY_DATE_ADJUSTED: "Delivery Date Adjusted",
+  EXCEPTION: "Exception Raised",
+  EXCEPTION_CLEARED: "Exception Cleared",
+  EMAIL_SENT: "Email Sent",
+  EMAIL_FAILED: "Email Failed",
+  EMAIL_RETRY_EXHAUSTED: "Email Retries Exhausted",
+  ORDER_CHANGED_POST_RELEASE: "Order Changed After Release",
+  PORTAL_MESSAGE: "Portal Message",
+  SUPPLIER_EMAIL_REPLY: "Supplier Email Reply",
+  SUPPLIER_ISSUE: "Supplier Reported a Problem",
+  REOPENED: "Order Reopened",
+};
+
+/** Falls back to a readable title-case rendering of an unmapped event_type
+ * (e.g. a future code addition) rather than a raw underscored enum string. */
+export function getOrderEventTypeLabel(eventType: string): string {
+  return (
+    ORDER_EVENT_TYPE_LABELS[eventType] ??
+    eventType
+      .toLowerCase()
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+  );
+}
+
+export type OrderEventTone = "success" | "warning" | "progress" | "error" | "info";
+
+// Keyed by the event's resulting status (to_status) — the strongest signal
+// for most events, since the default event_type is the generic
+// "STATUS_CHANGE" and the interesting information is what it changed *to*.
+const ORDER_EVENT_STATUS_TONE: Partial<Record<OrderStatus, OrderEventTone>> = {
+  CONFIRMED: "success",
+  DELIVERED: "success",
+  COMPLETED: "success",
+  PENDING_VERIFICATION: "warning",
+  REQUIRES_REVIEW: "warning",
+  REQUIRES_ATTENTION: "warning",
+  ON_HOLD: "warning",
+  PREPARING: "warning",
+  CHANGE_REQUESTED: "warning",
+  SENT_TO_SUPPLIER: "progress",
+  OUT_FOR_DELIVERY: "progress",
+  CANCELLED: "error",
+  UNABLE_TO_FULFIL: "error",
+};
+
+// Keyed by event_type — used when to_status is absent, or to override a
+// generic STATUS_CHANGE tone with a more specific meaning of its own.
+const ORDER_EVENT_TYPE_TONE: Record<string, OrderEventTone> = {
+  AUTO_RELEASED: "success",
+  EMAIL_SENT: "success",
+  EXCEPTION_CLEARED: "success",
+  REOPENED: "warning",
+  EXCEPTION: "warning",
+  SUPPLIER_ISSUE: "warning",
+  ORDER_CHANGED_POST_RELEASE: "warning",
+  EMAIL_FAILED: "error",
+  EMAIL_RETRY_EXHAUSTED: "error",
+  DETECTED: "info",
+  SUPPLIER_ASSIGNED: "info",
+  EMPLOYEE_NUMBER_ASSIGNED: "info",
+  ADDRESS_VERIFICATION_CHANGE: "info",
+  DELIVERY_DATE_ADJUSTED: "info",
+  PORTAL_MESSAGE: "info",
+  SUPPLIER_EMAIL_REPLY: "info",
+};
+
+/** The single source of truth for an OrderEvent's semantic colour — reused
+ * by the dot/icon, left accent and (never colour-only) any badge tone in
+ * the Raw Event Log timeline. to_status wins when present; event_type is
+ * the fallback for events that don't carry a status transition. */
+export function getOrderEventTone(event: { event_type: string; to_status?: string | null }): OrderEventTone {
+  if (event.to_status && ORDER_EVENT_STATUS_TONE[event.to_status as OrderStatus]) {
+    return ORDER_EVENT_STATUS_TONE[event.to_status as OrderStatus]!;
+  }
+  return ORDER_EVENT_TYPE_TONE[event.event_type] ?? "info";
+}
+
+export const COMMUNICATION_CHANNELS = ["EMAIL", "PORTAL", "SYSTEM", "TEAMS"] as const;
+export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[number];
 
 export const ADDRESS_VERIFICATION_STATUSES = [
   "NOT_CHECKED",
@@ -72,6 +238,9 @@ export type OrderEventOut = {
   to_status: string | null;
   actor_id: number | null;
   actor_type: string;
+  // Phase 1.6 §17 — snapshotted at write time; null for any event written
+  // before this column existed (fall back to actor_type when rendering).
+  actor_display_name: string | null;
   detail: string | null;
   created_at: string;
 };
@@ -224,6 +393,55 @@ export type BirthdayOrderUpdateInput = {
   supplier_id?: number | null;
   delivery_date?: string | null;
   catalogue_item_id?: number | null;
+  employee_number?: string | null;
+};
+
+// --- Unified Timeline / communication (Phase 1 §G) --------------------
+// One store (SupplierCommunication) + OrderEvent + OrderIssue markers,
+// merged and audience-filtered by the backend.
+export type TimelineEntryOut = {
+  at: string | null;
+  kind: "message" | "email" | "event" | "issue";
+  channel: string | null;
+  direction: "OUTBOUND" | "INBOUND" | null;
+  author_type: "USER" | "SUPPLIER" | "SYSTEM" | null;
+  author_id: number | null;
+  title: string;
+  body: string | null;
+  meta: Record<string, unknown>;
+};
+
+export type OrderTimelineResponse = {
+  order_id: number;
+  order_reference: string;
+  entries: TimelineEntryOut[];
+};
+
+export type OrderMessageCreateInput = {
+  body: string;
+  issue_id?: number | null;
+  also_email?: boolean; // internal only
+};
+
+// --- Inbound supplier email — "Unmatched" queue (Phase 1 §1.5) --------
+export type InboundEmailOut = {
+  id: number;
+  from_address: string;
+  subject: string;
+  body_preview: string;
+  received_at: string | null;
+  attachment_count: number;
+  status: "UNMATCHED" | "LINKED" | "DISMISSED";
+  reason: string;
+  linked_order_id: number | null;
+  created_at: string;
+};
+
+export type InboundEmailLinkInput = {
+  order_id?: number;
+  order_reference?: string;
+  raise_issue?: boolean;
+  issue_type?: OrderIssueType;
 };
 
 export type BirthdayOrderListResponse = {
@@ -270,6 +488,14 @@ export type OrderIssueCreateInput = {
   detail: string;
 };
 
+export type DetectionHealth = {
+  last_scan_at: string | null;
+  last_status: string | null;
+  consecutive_deferrals: number;
+  stale: boolean;
+  healthy: boolean;
+};
+
 export type BirthdayDashboardSummary = {
   total_orders: number;
   by_status: Record<string, number>;
@@ -279,8 +505,16 @@ export type BirthdayDashboardSummary = {
   pending_verification_count: number;
   verification_overdue_count: number;
   requires_review_count: number;
-  supplier_not_accepted_count: number;
+  // Phase 1.6 §6 — split from the old, misleadingly-named single
+  // supplier_not_accepted_count (secretly SLA-gated).
+  acceptance_awaiting_count: number;
+  acceptance_overdue_count: number;
   deliveries_today_at_risk_count: number;
+  on_hold_count: number;
+  overdue_delivery_count: number;
+  open_issues_count: number;
+  unmatched_emails_count: number;
+  detection_health: DetectionHealth | Record<string, never>;
 };
 
 export type BirthdayUpcomingResponse = {
@@ -435,6 +669,13 @@ export type SupplierCatalogueItemUpdateInput = {
   is_default?: boolean;
 };
 
+export type SupplierUserOnboardingState =
+  | "NOT_INVITED"
+  | "INVITED"
+  | "LINKED"
+  | "ACTIVE"
+  | "INACTIVE";
+
 export type SupplierUserOut = {
   id: number;
   supplier_id: number;
@@ -443,6 +684,10 @@ export type SupplierUserOut = {
   role: string;
   status: string;
   entra_object_id: string | null;
+  invited_at: string | null;
+  linked_at: string | null;
+  last_login_at: string | null;
+  onboarding_state: SupplierUserOnboardingState;
   created_at: string;
   updated_at: string;
 };
@@ -460,5 +705,49 @@ export type SupplierUserUpdateInput = {
   role?: string;
   status?: string;
   entra_object_id?: string | null;
+  mark_invited?: boolean;
+};
+
+export type SupplierSetupReadiness = {
+  supplier_id: number;
+  has_location: boolean;
+  has_default_cake: boolean;
+  has_active_linked_user: boolean;
+  ready: boolean;
+  missing: string[];
+};
+
+// --- DijiBirthday Email Safety (non-production outbound-recipient
+// allowlist, docs/platform/email-architecture.md) — DijiBirthday-owned,
+// never surfaced in DijiOne platform-level admin. -----------------------
+export type TestEmailRecipientType = "INTERNAL_TESTER" | "TEST_SUPPLIER";
+
+export type TestEmailRecipientOut = {
+  id: number;
+  email_address: string;
+  display_label: string;
+  recipient_type: TestEmailRecipientType;
+  is_active: boolean;
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TestEmailRecipientListResponse = {
+  items: TestEmailRecipientOut[];
+};
+
+export type TestEmailRecipientCreateInput = {
+  email_address: string;
+  display_label?: string;
+  recipient_type?: TestEmailRecipientType;
+  is_active?: boolean;
+};
+
+export type TestEmailRecipientUpdateInput = {
+  display_label?: string;
+  recipient_type?: TestEmailRecipientType;
+  is_active?: boolean;
 };
 

@@ -48,12 +48,12 @@ function ClientAccessRow({
 
   return (
     <div className="flex flex-col gap-3 border-b border-dt-border py-4 last:border-0">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link href={`/users/${userId}`} className="font-medium text-dt-text-primary hover:underline">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <Link href={`/users/${userId}`} className="truncate font-medium text-dt-text-primary hover:underline">
             {fullName}
           </Link>
-          <p className="text-xs text-dt-text-secondary">{roleLabel}</p>
+          <p className="truncate text-xs text-dt-text-secondary">{roleLabel}</p>
         </div>
         <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending}>
           Save

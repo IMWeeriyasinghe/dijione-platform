@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -34,4 +36,24 @@ class SupplierUser(TimestampMixin, Base):
     # B2B guest is the only production auth mechanism for supplier users.
     entra_object_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
 
+    # Onboarding-state visibility for internal admins (Phase 1 §1.6). None
+    # until each milestone: invited_at = IT recorded the B2B invite;
+    # linked_at = entra_object_id first stamped; last_login_at = each
+    # successful supplier session mint.
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     supplier: Mapped[Supplier] = relationship(back_populates="users")  # noqa: F821
+
+    @property
+    def onboarding_state(self) -> str:
+        if self.status == "INACTIVE":
+            return "INACTIVE"
+        if self.last_login_at is not None:
+            return "ACTIVE"
+        if self.entra_object_id is not None or self.linked_at is not None:
+            return "LINKED"
+        if self.invited_at is not None:
+            return "INVITED"
+        return "NOT_INVITED"

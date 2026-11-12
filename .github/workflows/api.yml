@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/*-api/**"
       - "packages/auth-client-py/**"
+      - "packages/mail-client-py/**"
       - ".python-version"
       - ".github/workflows/api.yml"
 
@@ -32,6 +33,8 @@ jobs:
           - commercial-api
           - birthday-api
           - spark-api
+          - onsite-api
+          - atwork-api
     defaults:
       run:
         working-directory: apps/${{ matrix.service }}
@@ -39,6 +42,7 @@ jobs:
       # Never let a test reach a real external system.
       INTEGRATIONS_MODE: mock
       EMAIL_SENDING_MODE: mock
+      MAIL_TRANSPORT: "null"
     steps:
       - uses: actions/checkout@v4
 

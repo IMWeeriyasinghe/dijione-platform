@@ -293,10 +293,9 @@ def test_promotion_wired_into_consumer_return_dict(db, two_tenant_world):
     assert result["promotion"]["talent_requests_created"] == 1
     assert result["promotion"]["candidates_created"] == 1
     assert result["promotion"]["applications_created"] == 1
-    assert result["promotion"]["candidacies_available"] is True
 
 
-def test_candidacy_fetch_failure_still_ensures_talent_requests(db, two_tenant_world):
+def test_candidacy_fetch_failure_changes_nothing(db, two_tenant_world):
     name = two_tenant_world["abc"].name
     good = FakeRecruitmentClient(
         postings=[_dtc_ok("p1", name)],
@@ -318,10 +317,7 @@ def test_candidacy_fetch_failure_still_ensures_talent_requests(db, two_tenant_wo
     down = FakeRecruitmentClient(postings=[_dtc_ok("p1", name)], candidacies_down=True)
     result = RecruitmentConsumerService(db, client=down).refresh_projection_and_reconcile()
 
-    assert result["refreshed"] is True
-    assert result["promotion"]["candidacies_available"] is False
-    assert result["promotion"]["candidates_created"] == 0
-    assert result["promotion"]["applications_created"] == 0
+    assert result == {"refreshed": False, "reason": "candidacies_unavailable"}
     assert db.query(TalentRequest).count() == 1
 
     db.refresh(application)

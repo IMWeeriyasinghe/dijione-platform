@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole  # noqa: E402
+from app.core.constants import MODULE_ATWORK, MODULE_BIRTHDAY, MODULE_ONSITE, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole  # noqa: E402
 from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.core.real_dev_clients import PERSONA_CLIENTS, REAL_DEV_CLIENTS  # noqa: E402
 from app.db.base import Base  # noqa: E402
@@ -137,6 +137,24 @@ def seed_module_registry(db) -> None:
             route="/spark", status="COMING_SOON", enabled=True,
             display_order=3, required_roles="",
         ),
+        dict(
+            key=MODULE_ONSITE, name="Diji On-site",
+            description="On-site Attendance Operations", icon="MapPin",
+            route="/onsite", status="ACTIVE", enabled=True,
+            display_order=4,
+            # Dashboard V1 is released for DEV/local testing (migration
+            # k1l2m3n4o5p6 activates it in DEV only; UAT/PROD stay
+            # COMING_SOON). Only users holding an ONSITE_* assignment see it.
+            required_roles="ANY",
+            supports_client_scope=False,  # onsite-api never reads client scope
+        ),
+        dict(
+            key=MODULE_ATWORK, name="DijiAtWork",
+            description="Work Check-in and Attendance", icon="Clock",
+            route="/atwork", status="COMING_SOON", enabled=True,
+            display_order=5, required_roles="ANY",
+            supports_client_scope=False,  # atwork-api never reads client scope
+        ),
     ]
     for fields in definitions:
         existing = db.query(ApplicationModule).filter_by(key=fields["key"]).one_or_none()
@@ -159,13 +177,26 @@ def _assign_client_scope(db, module_role: UserModuleRole, *, client_ref: str | N
         db.add(UserModuleClientScope(user_module_role_id=module_role.id, all_clients=True))
 
 
-def seed() -> None:
+def seed(*, identity_only: bool = False) -> None:
+    """Full local-dev seed, or — with ``identity_only=True`` — only the
+    legitimate development identity/RBAC prerequisites for a hosted
+    environment: the RBAC catalog + module registry (both also migration-
+    seeded, idempotent here) and the staff dev-login personas. It then
+    SKIPS the canonical Client master set (that is platform-api's own
+    migration per the data-ownership contract §2a) and the ``ta-portfolio``
+    portfolio-scope *demo* persona (it needs client rows and only
+    demonstrates a feature). See docs/platform/hosted-dev-data.md.
+    """
     db = SessionLocal()
     try:
         seed_authorization_catalog(db)
 
         # --- Canonical client identity (platform-owned, §6.1) ----------
-        seed_canonical_clients(db)
+        # Skipped for identity-only: this is platform-owned *master data*
+        # created by migration h8i9j0k1l2m3, not something a hosted env
+        # should re-seed from a script.
+        if not identity_only:
+            seed_canonical_clients(db)
 
         # --- Module registry --------------------------------------------
         seed_module_registry(db)
@@ -176,10 +207,14 @@ def seed() -> None:
         # assignments below can be added onto personas that already exist
         # in the local DB from an earlier seed run.
         persona_defs = [
+            # Neutral TalentFlow-only test persona. Deliberately a reserved
+            # `.invalid` address and an obviously synthetic name: dev personas
+            # must never impersonate a real employee's identity (the previous
+            # persona used a fabricated address under a real person's name).
             dict(
-                email="madushanka@dijitalteam.com", full_name="Madushanka Weeriyasinghe",
+                email="ta-member.persona@dijione.invalid", full_name="TA Member (dev persona)",
                 title="Talent Acquisition Specialist", platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="madushanka-ta", avatar_color="#c9431d",
+                persona_key="ta-member", avatar_color="#c9431d",
             ),
             dict(
                 email="tharindu.fernando@dijitalteam.com", full_name="Tharindu Fernando",
@@ -207,13 +242,19 @@ def seed() -> None:
             # organisation and opens the talentflow-portal-web app against it.
             # The TALENT_CLIENT *role* is unchanged; it only ever appears on a
             # magic-link session token now, never on a seeded dev login.
-            dict(
-                email="ruwan.gunasekara@dijitalteam.com", full_name="Ruwan Gunasekara",
-                title="Talent Acquisition Specialist (Portfolio)",
-                platform_role=PlatformRole.PLATFORM_USER.value,
-                persona_key="ta-portfolio", avatar_color="#f26a1b",
-            ),
         ]
+        # ta-portfolio demonstrates portfolio/client scope — needs 2 canonical
+        # Client rows. It is a feature demo, not a login prerequisite, so it is
+        # left out of an identity-only (hosted) bootstrap.
+        if not identity_only:
+            persona_defs.append(
+                dict(
+                    email="ruwan.gunasekara@dijitalteam.com", full_name="Ruwan Gunasekara",
+                    title="Talent Acquisition Specialist (Portfolio)",
+                    platform_role=PlatformRole.PLATFORM_USER.value,
+                    persona_key="ta-portfolio", avatar_color="#f26a1b",
+                )
+            )
         users_by_persona: dict[str, User] = {}
         for fields in persona_defs:
             existing = db.query(User).filter_by(email=fields["email"]).one_or_none()
@@ -224,31 +265,31 @@ def seed() -> None:
             users_by_persona[fields["persona_key"]] = existing
         db.commit()
 
-        madushanka = users_by_persona["madushanka-ta"]
+        ta_member = users_by_persona["ta-member"]
         cs_user = users_by_persona["customer-success"]
         ta_manager = users_by_persona["ta-manager"]
         platform_admin = users_by_persona["platform-admin"]
         super_admin = users_by_persona["super-admin"]
-        ta_portfolio_user = users_by_persona["ta-portfolio"]
-
-        # PERSONA_CLIENTS still supplies the ta-portfolio persona's 2-client
-        # restriction below (CMS group + Databl.io); it no longer backs any
-        # client-login persona.
-        persona_client_refs = {c.name: c.public_id for c in PERSONA_CLIENTS}
-        cms_group_ref = persona_client_refs["CMS group"]
-        databl_io_ref = persona_client_refs["Databl.io"]
 
         # Demonstrates DijiOne Phase 2 client/portfolio scope (CR §22): every
         # staff assignment defaults to ALL_CLIENTS except ta_portfolio_user,
         # who is explicitly restricted to a 2-client portfolio (CMS group +
-        # Databl.io — Portal Technology excluded, same 2-of-3 shape as the
-        # old ABC+XYZ/Nova-excluded portfolio it replaces).
+        # Databl.io). Both the persona and its scope are local-dev only.
         module_roles = [
-            (madushanka, MODULE_TALENT_FLOW, "TA_MEMBER", None, None),
+            (ta_member, MODULE_TALENT_FLOW, "TA_MEMBER", None, None),
             (cs_user, MODULE_TALENT_FLOW, "CUSTOMER_SUCCESS", None, None),
             (ta_manager, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
             (platform_admin, MODULE_TALENT_FLOW, "TA_MANAGER", None, None),
-            (ta_portfolio_user, MODULE_TALENT_FLOW, "TA_MEMBER", None, [cms_group_ref, databl_io_ref]),
+        ]
+        if not identity_only:
+            persona_client_refs = {c.name: c.public_id for c in PERSONA_CLIENTS}
+            module_roles.append(
+                (
+                    users_by_persona["ta-portfolio"], MODULE_TALENT_FLOW, "TA_MEMBER", None,
+                    [persona_client_refs["CMS group"], persona_client_refs["Databl.io"]],
+                )
+            )
+        module_roles += [
             # DijiBirthday (Phase A-D): grant the Super Admin dev persona
             # BIRTHDAY_ADMIN so the "Super Admin can't see DijiBirthday"
             # local-env bug has a persona to actually demo the fix with —
@@ -279,13 +320,19 @@ def seed() -> None:
                 _assign_client_scope(db, module_role, client_ref=client_ref)
         db.commit()
 
-        print("Platform Core seed complete.")
-        print(
-            "  Dev personas: madushanka-ta, customer-success, ta-manager, "
-            "platform-admin, super-admin, ta-portfolio (CMS group + Databl.io only). "
-            "No client-login persona — external client access is the magic-link flow."
-        )
-        print("  Now run: (cd ../talent-api && python scripts/seed.py [--reset])")
+        print("Platform Core seed complete." + (" (identity-only)" if identity_only else ""))
+        personas = "ta-member, customer-success, ta-manager, platform-admin, super-admin"
+        if not identity_only:
+            personas += ", ta-portfolio (CMS group + Databl.io only)"
+        print(f"  Dev personas: {personas}.")
+        print("  No client-login persona — external client access is the magic-link flow.")
+        if identity_only:
+            print(
+                "  Canonical Client master set NOT seeded here — it is migration-owned "
+                "(h8i9j0k1l2m3). No business data seeded."
+            )
+        else:
+            print("  Now run: (cd ../talent-api && python scripts/seed.py [--reset])")
     finally:
         db.close()
 
@@ -293,4 +340,4 @@ def seed() -> None:
 if __name__ == "__main__":
     if "--reset" in sys.argv:
         reset_schema()
-    seed()
+    seed(identity_only="--identity-only" in sys.argv)

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { listNotifications, markNotificationRead } from "@dijione/auth-client";
+import type { NotificationOut } from "@dijione/contracts";
 import { cn, formatDateTime } from "../utils";
 
 export function NotificationsPanel() {
@@ -32,6 +33,15 @@ export function NotificationsPanel() {
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
   }
 
+  // A full navigation: the link may belong to another zone behind the gateway.
+  async function handleOpen(n: NotificationOut) {
+    try {
+      if (!n.is_read) await handleMarkRead(n.id);
+    } finally {
+      if (n.link_url && /^\/(?![/\\])/.test(n.link_url)) window.location.assign(n.link_url);
+    }
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -48,7 +58,7 @@ export function NotificationsPanel() {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-40 mt-2 w-80 rounded-2xl border border-dt-border bg-dt-surface p-2 shadow-xl">
+        <div className="absolute right-0 z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-dt-border bg-dt-surface p-2 shadow-xl">
           <div className="flex items-center justify-between px-2 py-1.5">
             <p className="text-sm font-semibold text-dt-text-primary">Notifications</p>
             {unreadCount > 0 && <span className="text-xs text-dt-text-secondary">{unreadCount} unread</span>}
@@ -60,7 +70,7 @@ export function NotificationsPanel() {
               notifications.slice(0, 15).map((n) => (
                 <button
                   key={n.id}
-                  onClick={() => !n.is_read && handleMarkRead(n.id)}
+                  onClick={() => handleOpen(n)}
                   className={cn(
                     "flex w-full flex-col gap-0.5 rounded-xl px-3 py-2.5 text-left transition hover:bg-dt-surface-warm",
                     !n.is_read && "bg-dt-cream/50"

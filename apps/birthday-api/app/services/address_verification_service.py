@@ -26,6 +26,31 @@ from app.services import order_email_service, order_status_service, readiness_se
 from app.services.audit_service import AuditService
 
 
+class EmptyAddressError(Exception):
+    """Raised when VERIFIED is requested for an order that has **nowhere to
+    deliver to** — no ``office_location`` AND every ``delivery_address_*``
+    field empty. The delivery target is normally the office
+    (``office_location``, always set by detection and a readiness gate);
+    the ``delivery_address_*`` fields are a supplementary home address.
+    Verifying an order with neither would auto-release something the
+    supplier cannot deliver, so the address must be corrected first
+    (Phase 1 §1.0)."""
+
+
+_ADDRESS_FIELDS = (
+    "delivery_address_line1",
+    "delivery_address_line2",
+    "delivery_city",
+    "delivery_state_province",
+    "delivery_postal_code",
+    "delivery_country",
+)
+
+
+def _has_deliverable_address(order: BirthdayOrder) -> bool:
+    return bool(order.office_location) or any(getattr(order, name) for name in _ADDRESS_FIELDS)
+
+
 def set_address_verification_status(
     db: Session,
     order: BirthdayOrder,
@@ -34,7 +59,13 @@ def set_address_verification_status(
     actor_id: int | None,
     note: str | None = None,
     audit_service: AuditService | None = None,
+    actor_display_name: str | None = None,
 ) -> BirthdayOrder:
+    if new_status == AddressVerificationStatus.VERIFIED and not _has_deliverable_address(order):
+        raise EmptyAddressError(
+            f"Order {order.order_reference} has no delivery destination (no office location and no "
+            "delivery address) — correct the address before marking it verified."
+        )
     previous_status = order.address_verification_status
     order.address_verification_status = new_status.value
 
@@ -51,6 +82,7 @@ def set_address_verification_status(
             to_status=new_status.value,
             actor_id=actor_id,
             actor_type="USER",
+            actor_display_name=actor_display_name,
             detail=note,
         )
     )
@@ -77,16 +109,6 @@ def set_address_verification_status(
         pass
 
     return order
-
-
-_ADDRESS_FIELDS = (
-    "delivery_address_line1",
-    "delivery_address_line2",
-    "delivery_city",
-    "delivery_state_province",
-    "delivery_postal_code",
-    "delivery_country",
-)
 
 
 def update_delivery_address(
@@ -164,6 +186,7 @@ def verify_and_release(
     note: str | None = None,
     config,
     audit_service: AuditService | None = None,
+    actor_display_name: str | None = None,
 ) -> VerifyOutcome:
     """The one routine human checkpoint (plan §J/§K/§F). Marks the address
     VERIFIED, then immediately decides what happens next:
@@ -178,7 +201,7 @@ def verify_and_release(
     """
     order = set_address_verification_status(
         db, order, AddressVerificationStatus.VERIFIED, actor_id=actor_id, note=note,
-        audit_service=audit_service,
+        audit_service=audit_service, actor_display_name=actor_display_name,
     )
 
     readiness = readiness_service.check(order)
@@ -188,6 +211,7 @@ def verify_and_release(
             db, order, OrderStatus.REQUIRES_ATTENTION,
             actor_id=actor_id, actor_type=ActorType.USER,
             detail=f"Verified, but not ready to release: {', '.join(readiness.missing)}",
+            actor_display_name=actor_display_name,
         )
         return VerifyOutcome(order=order, auto_released=False, flagged_reasons=readiness.missing)
 
@@ -198,6 +222,7 @@ def verify_and_release(
             db, order, OrderStatus.REQUIRES_REVIEW,
             actor_id=actor_id, actor_type=ActorType.USER,
             detail=f"Flagged for one-click review: {', '.join(flags) or 'auto-release paused'}",
+            actor_display_name=actor_display_name,
         )
         return VerifyOutcome(order=order, auto_released=False, flagged_reasons=flags)
 
@@ -210,11 +235,12 @@ def verify_and_release(
         order = order_status_service.transition(
             db, order, OrderStatus.REQUIRES_ATTENTION,
             actor_id=actor_id, actor_type=ActorType.USER, detail="Verified, but no supplier assigned",
+            actor_display_name=actor_display_name,
         )
         return VerifyOutcome(order=order, auto_released=False, flagged_reasons=["no_supplier"])
 
 
-def confirm_release(db: Session, order: BirthdayOrder, *, actor_id: int) -> BirthdayOrder:
+def confirm_release(db: Session, order: BirthdayOrder, *, actor_id: int, actor_display_name: str | None = None) -> BirthdayOrder:
     """One-click "Confirm & release" for a REQUIRES_REVIEW order — the
     exception-only approval (plan §K)."""
-    return order_email_service.confirm_release_order(db, order, actor_id=actor_id)
+    return order_email_service.confirm_release_order(db, order, actor_id=actor_id, actor_display_name=actor_display_name)

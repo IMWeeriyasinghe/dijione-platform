@@ -4,14 +4,20 @@ assignment here."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import BirthdayScope, require_birthday_permission
 from app.api.routes.config import get_or_create_config
-from app.core.constants import AddressVerificationStatus, OrderIssueStatus, OrderStatus
+from app.core.constants import (
+    ActorType,
+    AddressVerificationStatus,
+    ExceptionReason,
+    OrderIssueStatus,
+    OrderStatus,
+)
 from app.db.session import get_db
 from app.models.birthday_order import BirthdayOrder
 from app.models.order_event import OrderEvent
@@ -34,15 +40,21 @@ from app.schemas.order import (
     OrderIssueCreate,
     OrderIssueRead,
     OrderIssueResolve,
+    OrderMessageCreate,
+    OrderTimelineResponse,
     ReadinessCheckResponse,
     ReleaseRequest,
+    ReopenRequest,
     SpecialRequirementCreate,
     SpecialRequirementRead,
+    TimelineEntryOut,
     VerifyAddressRequest,
     VerifyAddressResponse,
 )
 from app.services import (
     address_verification_service,
+    communication_service,
+    delivery_date_service,
     detection_service,
     order_email_service,
     order_status_service,
@@ -73,6 +85,10 @@ def list_orders(
     office_location: str | None = None,
     supplier_id: int | None = None,
     address_verification_status: str | None = None,
+    due: str | None = None,
+    has_open_issue: bool | None = None,
+    verify: str | None = None,
+    acceptance: str | None = None,
     sort_by: str | None = None,
     sort_direction: str = "desc",
     page: int = 1,
@@ -82,13 +98,28 @@ def list_orders(
 ) -> BirthdayOrderListResponse:
     if sort_direction not in _SORT_DIRECTIONS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "sort_direction must be 'asc' or 'desc'")
+    if due is not None and due not in ("today", "tomorrow", "overdue"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "due must be today, tomorrow, or overdue")
+    if verify is not None and verify not in ("overdue",):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "verify must be 'overdue'")
+    if acceptance is not None and acceptance not in ("awaiting", "overdue"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "acceptance must be 'awaiting' or 'overdue'")
     page = max(page, 1)
     page_size = max(1, min(page_size, 200))
     repo = BirthdayOrderRepository(db)
+    # Same semantic-param principle as `due` (Phase 1.6 §6/§7): the frontend
+    # sends a named state, never a raw timestamp; the SLA cutoff is always
+    # computed here, server-side, from the one BirthdayDetectionConfig.
+    sla_cutoff = None
+    if acceptance == "overdue":
+        config = get_or_create_config(db)
+        sla_cutoff = datetime.now(UTC) - timedelta(hours=config.acknowledgement_sla_hours)
     filters = dict(
         status=status_filter, lead_time_class=lead_time_class,
         office_location=office_location, supplier_id=supplier_id,
         search=search, address_verification_status=address_verification_status,
+        due=due, has_open_issue=has_open_issue,
+        verify=verify, acceptance=acceptance, sla_cutoff=sla_cutoff,
     )
     items = repo.list_filtered(
         **filters, sort_by=sort_by, sort_direction=sort_direction,
@@ -132,13 +163,29 @@ def create_order(
         )
 
     # Business-facing Team Member ID (BambooHR employeeNumber), NOT the
-    # internal record id — falls back to the internal id only when the
-    # employee genuinely has no employeeNumber. See order_sequence_service.
+    # internal record id. No silent fallback: when it is absent the
+    # reference is tagged BDAY-TMP… and the order is flagged
+    # MISSING_EMPLOYEE_NUMBER (Phase 1 §1.0).
+    has_employee_number = bool(payload.employee_number)
     team_member_id = payload.employee_number or payload.employee_id
-    order_reference = next_order_reference(db, team_member_id, birthday_year)
+    order_reference = next_order_reference(
+        db, team_member_id, birthday_year, provisional=not has_employee_number
+    )
+    initial_status = (
+        OrderStatus.PENDING_VERIFICATION if has_employee_number else OrderStatus.REQUIRES_ATTENTION
+    )
+    initial_exception = (
+        None if has_employee_number else ExceptionReason.MISSING_EMPLOYEE_NUMBER.value
+    )
     # Deterministic supplier default (§5/§6): sole ACTIVE supplier ->
     # office-location rule -> is_default. Still fully editable afterwards.
     default_supplier = detection_service.resolve_supplier_for_office(payload.office_location, db)
+    if payload.delivery_date is not None:
+        delivery_date = payload.delivery_date
+    else:
+        delivery_date, _shifted = delivery_date_service.resolve_delivery_date(
+            payload.birthday_date, default_supplier.working_days if default_supplier else None
+        )
     order, _created = create_or_get_order(
         db,
         employee_id=payload.employee_id,
@@ -148,12 +195,14 @@ def create_order(
         order_reference=order_reference,
         birthday_date=payload.birthday_date,
         birthday_year=birthday_year,
-        # §8: delivery date defaults to the birthday occurrence.
-        delivery_date=payload.delivery_date or payload.birthday_date,
+        # §8/§1.1: delivery date defaults to the birthday occurrence, shifted
+        # off a supplier non-working day.
+        delivery_date=delivery_date,
         office_location=payload.office_location,
         lead_time_days=(payload.birthday_date - date.today()).days,
         lead_time_class="NORMAL",
-        status=OrderStatus.PENDING_VERIFICATION,
+        status=initial_status,
+        exception_reason=initial_exception,
         requires_admin_review=False,
         hold_reason=None,
         supplier_id=default_supplier.id if default_supplier is not None else None,
@@ -199,11 +248,83 @@ def update_order(
                 status.HTTP_409_CONFLICT,
                 f"Supplier {target_supplier.name!r} is INACTIVE and cannot be assigned to orders",
             )
+    # Recovery for a MISSING_EMPLOYEE_NUMBER-flagged order: supplying the
+    # real Team Member ID clears the exception and, while the order has
+    # never reached a supplier, regenerates the provisional BDAY-TMP…
+    # reference (Phase 1 §1.0).
+    employee_number_supplied = bool(updates.get("employee_number")) and (
+        updates["employee_number"] != order.employee_number
+    )
+    recovered_missing_number = (
+        employee_number_supplied
+        and order.exception_reason == ExceptionReason.MISSING_EMPLOYEE_NUMBER.value
+    )
+
     # Already visible to the supplier — a change here must not be silent
     # (plan §Y). Flag for a fresh human look and notify.
     was_supplier_visible = order.status in order_status_service.SUPPLIER_VISIBLE_STATUSES
     for field, value in updates.items():
         setattr(order, field, value)
+
+    if recovered_missing_number:
+        order.exception_reason = None
+        never_reached_supplier = order.order_reference.startswith("BDAY-TMP") and (
+            db.query(SupplierCommunication)
+            .filter(SupplierCommunication.order_id == order.id)
+            .first()
+            is None
+        )
+        if never_reached_supplier:
+            order.order_reference = next_order_reference(
+                db, order.employee_number, order.birthday_year
+            )
+        db.add(
+            OrderEvent(
+                order_id=order.id, event_type="EMPLOYEE_NUMBER_ASSIGNED",
+                actor_id=scope.user.id, actor_type="USER",
+                actor_display_name=scope.user.full_name,
+                detail=f"Team Member ID set to {order.employee_number}; reference {order.order_reference}",
+            )
+        )
+        if order.status == OrderStatus.REQUIRES_ATTENTION.value:
+            order = order_status_service.transition(
+                db, order, OrderStatus.PENDING_VERIFICATION,
+                actor_id=scope.user.id, actor_type=ActorType.USER,
+                detail="Team Member ID supplied — MISSING_EMPLOYEE_NUMBER cleared",
+                actor_display_name=scope.user.full_name,
+            )
+
+    # §H2 — a NO_SUPPLIER / NO_DEFAULT_CAKE exception no longer applies once
+    # the operator has assigned a supplier / cake in Fulfilment Assignment.
+    # Clear the stale label so the order does not keep *looking* broken;
+    # move it back to PENDING_VERIFICATION if that was its only blocker.
+    _RECOVERABLE = {ExceptionReason.NO_SUPPLIER.value, ExceptionReason.NO_DEFAULT_CAKE.value}
+    if order.exception_reason in _RECOVERABLE and not recovered_missing_number:
+        cleared = (
+            order.exception_reason == ExceptionReason.NO_SUPPLIER.value and order.supplier_id is not None
+        ) or (
+            order.exception_reason == ExceptionReason.NO_DEFAULT_CAKE.value
+            and order.catalogue_item_id is not None
+        )
+        if cleared:
+            prev = order.exception_reason
+            order.exception_reason = None
+            db.add(
+                OrderEvent(
+                    order_id=order.id, event_type="EXCEPTION_CLEARED",
+                    actor_id=scope.user.id, actor_type="USER",
+                    actor_display_name=scope.user.full_name,
+                    detail=f"{prev} resolved via Fulfilment Assignment",
+                )
+            )
+            if order.status == OrderStatus.REQUIRES_ATTENTION.value:
+                order = order_status_service.transition(
+                    db, order, OrderStatus.PENDING_VERIFICATION,
+                    actor_id=scope.user.id, actor_type=ActorType.USER,
+                    detail=f"{prev} cleared — ready for verification",
+                    actor_display_name=scope.user.full_name,
+                )
+
     if supplier_reassigned:
         db.add(
             OrderEvent(
@@ -211,31 +332,39 @@ def update_order(
                 event_type="SUPPLIER_ASSIGNED",
                 actor_id=scope.user.id,
                 actor_type="USER",
+                actor_display_name=scope.user.full_name,
                 detail=f"Supplier reassigned to supplier_id={updates.get('supplier_id')}",
             )
         )
+    change_detail = None
     if (supplier_reassigned or date_changed) and was_supplier_visible:
+        change_detail = (
+            f"delivery date changed to {updates.get('delivery_date')}"
+            if date_changed
+            else "the assigned supplier changed"
+        )
         db.add(
             OrderEvent(
                 order_id=order.id,
                 event_type="ORDER_CHANGED_POST_RELEASE",
                 actor_id=scope.user.id,
                 actor_type="USER",
-                detail=(
-                    f"delivery_date changed to {updates.get('delivery_date')}"
-                    if date_changed else f"supplier reassigned to supplier_id={updates.get('supplier_id')}"
-                ),
+                actor_display_name=scope.user.full_name,
+                detail=change_detail,
             )
         )
-        # NOTE: no supplier-facing push notification here — there is no
-        # per-supplier notification channel yet (notify_module_role
-        # broadcasts to every supplier, which would leak this order's
-        # existence to unrelated suppliers). The OrderEvent above is
-        # visible to the affected supplier the next time they load the
-        # order; real supplier notifications are a deferred item pending
-        # the Entra B2B / per-supplier notification work (see plan §U).
     db.commit()
     db.refresh(order)
+
+    # Post-release changes must not be silent to the supplier (plan §Y):
+    # email the currently-assigned supplier a nudge to re-check the portal.
+    if change_detail and order.supplier_id is not None:
+        order_email_service.send_ad_hoc_message(
+            db, order,
+            body=f"Order {order.order_reference} has been updated — {change_detail}. "
+                 "Please review the current details in the DijiBirthday Supplier Portal.",
+            actor_id=scope.user.id,
+        )
 
     try:
         AuditService().log(
@@ -312,9 +441,13 @@ def verify_address(
     REQUIRES_REVIEW instead; see /confirm-release."""
     order = _get_order_or_404(db, order_id)
     config = get_or_create_config(db)
-    outcome = address_verification_service.verify_and_release(
-        db, order, actor_id=scope.user.id, corrected=payload.corrected, note=payload.note, config=config,
-    )
+    try:
+        outcome = address_verification_service.verify_and_release(
+            db, order, actor_id=scope.user.id, corrected=payload.corrected, note=payload.note, config=config,
+            actor_display_name=scope.user.full_name,
+        )
+    except address_verification_service.EmptyAddressError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return VerifyAddressResponse(
         order=outcome.order, auto_released=outcome.auto_released, flagged_reasons=outcome.flagged_reasons,
     )
@@ -337,7 +470,9 @@ def confirm_release(
             f"Only REQUIRES_REVIEW orders can be confirmed & released (current status: {order.status})",
         )
     try:
-        return address_verification_service.confirm_release(db, order, actor_id=scope.user.id)
+        return address_verification_service.confirm_release(
+            db, order, actor_id=scope.user.id, actor_display_name=scope.user.full_name,
+        )
     except order_email_service.NoSupplierAssignedError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except order_email_service.AddressNotVerifiedError as exc:
@@ -355,7 +490,10 @@ def hold_order(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_status_service.hold(db, order, hold_reason=payload.hold_reason, actor_id=scope.user.id)
+        return order_status_service.hold(
+            db, order, hold_reason=payload.hold_reason, actor_id=scope.user.id,
+            actor_display_name=scope.user.full_name,
+        )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
@@ -369,7 +507,10 @@ def release_order(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_status_service.release(db, order, actor_id=scope.user.id, note=payload.note)
+        return order_status_service.release(
+            db, order, actor_id=scope.user.id, note=payload.note,
+            actor_display_name=scope.user.full_name,
+        )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
@@ -382,19 +523,51 @@ def cancel_order(
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.cancel")),
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
-    was_supplier_visible = order.status in order_status_service.SUPPLIER_VISIBLE_STATUSES
+    # A supplier had this order in progress -> tell them it is cancelled
+    # (plan §Y). CANCELLED also stays in SUPPLIER_VISIBLE_STATUSES so the
+    # portal shows a tombstone with the reason instead of a silent 404.
+    notify_supplier = (
+        order.status in order_status_service.SUPPLIER_VISIBLE_STATUSES
+        and order.supplier_id is not None
+    )
     try:
-        order = order_status_service.cancel(db, order, actor_id=scope.user.id, reason=payload.reason)
+        order = order_status_service.cancel(
+            db, order, actor_id=scope.user.id, reason=payload.reason,
+            actor_display_name=scope.user.full_name,
+        )
     except order_status_service.InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    # NOTE: CANCELLED stays in SUPPLIER_VISIBLE_STATUSES (see
-    # order_status_service.SUPPLIER_VISIBLE_STATUSES) so the portal shows a
-    # tombstone with the cancellation reason instead of a silent 404 — the
-    # fix for plan §Y's "internal->supplier changes must not be silent".
-    # A push notification to just this supplier is deferred pending a
-    # per-supplier notification channel (see note in update_order above).
-    _ = was_supplier_visible
+    if notify_supplier:
+        reason = payload.reason or "no reason given"
+        order_email_service.send_ad_hoc_message(
+            db, order,
+            body=f"Order {order.order_reference} has been CANCELLED ({reason}). "
+                 "No delivery is required. You can see the cancelled order in the portal.",
+            actor_id=scope.user.id,
+        )
     return order
+
+
+@router.post("/{order_id}/reopen", response_model=BirthdayOrderRead)
+def reopen_order(
+    order_id: int,
+    payload: ReopenRequest,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.reopen")),
+) -> BirthdayOrder:
+    """Phase 1.6 §14 — the guarded exception to CANCELLED being terminal.
+    All eligibility logic lives in order_status_service.reopen_cancelled_order;
+    this route only translates its exceptions to HTTP."""
+    order = _get_order_or_404(db, order_id)
+    try:
+        return order_status_service.reopen_cancelled_order(
+            db, order, reason=payload.reason, actor_id=scope.user.id,
+            actor_display_name=scope.user.full_name,
+        )
+    except order_status_service.InvalidTransitionError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except order_status_service.ReopenNotEligibleError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, exc.reason) from exc
 
 
 @router.post(
@@ -416,6 +589,52 @@ def add_special_requirement(
     db.commit()
     db.refresh(requirement)
     return requirement
+
+
+@router.get("/{order_id}/timeline", response_model=OrderTimelineResponse)
+def get_order_timeline(
+    order_id: int,
+    db: Session = Depends(get_db),
+    _scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.read")),
+) -> OrderTimelineResponse:
+    """The Unified Timeline (§G) — comms (both channels/directions) + events
+    + issue markers, merged. Internal audience: everything."""
+    order = _get_order_or_404(db, order_id)
+    entries = communication_service.build_timeline(db, order, audience="internal")
+    return OrderTimelineResponse(
+        order_id=order.id, order_reference=order.order_reference,
+        entries=[TimelineEntryOut(**e.__dict__) for e in entries],
+    )
+
+
+@router.post("/{order_id}/messages", response_model=OrderTimelineResponse, status_code=status.HTTP_201_CREATED)
+def post_order_message(
+    order_id: int,
+    payload: OrderMessageCreate,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.update")),
+) -> OrderTimelineResponse:
+    """Flow 2 (§G): internal staff post a Portal message the supplier sees
+    on this order. ``also_email`` additionally sends an email copy as a
+    nudge (the portal has no push in Phase 1)."""
+    order = _get_order_or_404(db, order_id)
+    try:
+        communication_service.post_portal_message(
+            db, order, author_type=ActorType.USER, author_id=scope.user.id,
+            body=payload.body, issue_id=payload.issue_id,
+            author_display_name=scope.user.full_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    if payload.also_email:
+        order_email_service.send_ad_hoc_message(
+            db, order, body=payload.body, actor_id=scope.user.id
+        )
+    entries = communication_service.build_timeline(db, order, audience="internal")
+    return OrderTimelineResponse(
+        order_id=order.id, order_reference=order.order_reference,
+        entries=[TimelineEntryOut(**e.__dict__) for e in entries],
+    )
 
 
 @router.get("/{order_id}/issues", response_model=list[OrderIssueRead])
@@ -492,9 +711,13 @@ def update_address_verification(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"Invalid address verification status: {payload.status!r}",
         ) from exc
-    return address_verification_service.set_address_verification_status(
-        db, order, new_status, actor_id=scope.user.id, note=payload.note,
-    )
+    try:
+        return address_verification_service.set_address_verification_status(
+            db, order, new_status, actor_id=scope.user.id, note=payload.note,
+            actor_display_name=scope.user.full_name,
+        )
+    except address_verification_service.EmptyAddressError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
 @router.patch("/{order_id}/delivery-address", response_model=BirthdayOrderRead)
@@ -522,7 +745,9 @@ def send_to_supplier(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_email_service.send_order_to_supplier(db, order, actor_id=scope.user.id)
+        return order_email_service.send_order_to_supplier(
+            db, order, actor_id=scope.user.id, actor_display_name=scope.user.full_name,
+        )
     except order_email_service.NoSupplierAssignedError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except order_email_service.AddressNotVerifiedError as exc:
@@ -541,7 +766,9 @@ def resend_to_supplier(
 ) -> BirthdayOrder:
     order = _get_order_or_404(db, order_id)
     try:
-        return order_email_service.resend_order_to_supplier(db, order, actor_id=scope.user.id)
+        return order_email_service.resend_order_to_supplier(
+            db, order, actor_id=scope.user.id, actor_display_name=scope.user.full_name,
+        )
     except order_email_service.NoSupplierAssignedError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except order_email_service.AddressNotVerifiedError as exc:

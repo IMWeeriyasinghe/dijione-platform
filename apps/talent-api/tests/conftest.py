@@ -13,7 +13,7 @@ from pathlib import Path
 # Honour a pre-set DATABASE_URL (the `postgres` CI workflow points this
 # at a real Postgres 16); fall back to a local SQLite file otherwise.
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_talent.db")
-os.environ["JWT_DEV_SECRET"] = "test-only-secret"
+os.environ["PLATFORM_JWT_SECRET"] = "test-only-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"
 os.environ["INTEGRATIONS_MODE"] = "mock"
@@ -90,7 +90,7 @@ def issue_token(
         "platform_permissions": [],
         "module_roles": module_roles,
     }
-    return jwt.encode(payload, os.environ["JWT_DEV_SECRET"], algorithm="HS256")
+    return jwt.encode(payload, os.environ["PLATFORM_JWT_SECRET"], algorithm="HS256")
 
 
 def headers_for(user_id: int, **kwargs) -> dict:
@@ -202,6 +202,9 @@ class FakeRecruitmentClient:
         self.down = down
         self.candidacies_down = candidacies_down
         self.sync_calls: list[dict] = []
+        self.page_calls = 0
+        self.fail_on_page: int | None = None
+        self.source_snapshot = {"state": "COMPLETE"}
 
     def _guard(self):
         if self.down:
@@ -226,9 +229,28 @@ class FakeRecruitmentClient:
             rows = [r for r in rows if r.get("posting_external_id") == posting_external_id]
         return list(rows[:limit])
 
+    def list_candidacies_page(self, *, posting_external_id: str, after_external_id: str, limit: int) -> list[dict]:
+        self._guard()
+        self.page_calls += 1
+        if self.candidacies_down or self.page_calls == self.fail_on_page:
+            import httpx
+
+            raise httpx.ConnectError("recruitment-api candidacies unreachable")
+        rows = sorted(
+            (r for r in self._candidacies
+             if r.get("posting_external_id") == posting_external_id and r["external_id"] > after_external_id),
+            key=lambda r: r["external_id"],
+        )
+        return rows[:limit]
+
     def get_freshness(self) -> dict:
         self._guard()
-        return {"provider": "LEVER", "last_successful_sync_at": "2026-09-01T00:00:00+00:00", "latest_run": None}
+        return {
+            "source_snapshot": self.source_snapshot,
+            "provider": "LEVER",
+            "last_successful_sync_at": "2026-09-01T00:00:00+00:00",
+            "latest_run": None,
+        }
 
     def request_sync(self, *, requested_by_user_id=None, requested_by_application="talent-flow") -> dict:
         self._guard()

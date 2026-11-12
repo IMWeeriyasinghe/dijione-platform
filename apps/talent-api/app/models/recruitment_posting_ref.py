@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -29,9 +29,10 @@ class RecruitmentPostingRef(TimestampMixin, Base):
     provider: Mapped[str] = mapped_column(String(32), default="LEVER")
     external_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
 
-    title: Mapped[str] = mapped_column(String(255), default="")
+    # Cached copies of free-form Lever posting text — real values exceed 255.
+    title: Mapped[str] = mapped_column(Text, default="")
     state: Mapped[str] = mapped_column(String(32), default="")
-    location: Mapped[str] = mapped_column(String(255), default="")
+    location: Mapped[str] = mapped_column(Text, default="")
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Parsed governed DTC tag fact from recruitment-api (NO_TAG/OK/MALFORMED/MULTIPLE).

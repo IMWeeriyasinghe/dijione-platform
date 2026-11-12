@@ -5,8 +5,8 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.module_repo import ModuleRepository
-from app.repositories.user_repo import UserRepository
 from app.schemas.module import ModuleOut
+from app.services.authorization_service import AuthorizationService
 
 router = APIRouter(prefix="/api/modules", tags=["modules"])
 
@@ -17,9 +17,9 @@ def list_my_modules(
 ) -> list[ModuleOut]:
     """Only modules the current user is authorized to see (CLAUDE.md §9)."""
     modules = ModuleRepository(db).list_enabled()
-    user_module_keys = {
-        r.module_key for r in UserRepository(db).module_roles_for(user.id) if r.enabled
-    }
+    # Effective access — the same direct + active-group grants that build the
+    # JWT module_roles claim — so group-granted modules appear on Home too.
+    user_module_keys = set(AuthorizationService(db).effective_module_roles(user))
 
     visible = []
     for module in modules:

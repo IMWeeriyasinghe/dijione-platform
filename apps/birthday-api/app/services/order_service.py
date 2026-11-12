@@ -123,6 +123,7 @@ def _write_events(db: Session, order: BirthdayOrder, status: OrderStatus, hold_r
             event_type="DETECTED",
             to_status=str(status),
             actor_type=ActorType.SYSTEM.value,
+            actor_display_name="Scheduled Birthday Scan",
         )
     )
     if status in (OrderStatus.REQUIRES_ATTENTION, OrderStatus.ON_HOLD):
@@ -132,6 +133,7 @@ def _write_events(db: Session, order: BirthdayOrder, status: OrderStatus, hold_r
                 event_type="EXCEPTION",
                 to_status=str(status),
                 actor_type=ActorType.SYSTEM.value,
+                actor_display_name="Scheduled Birthday Scan",
                 detail=hold_reason,
             )
         )

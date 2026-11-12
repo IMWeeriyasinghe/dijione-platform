@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, AuthGate, EmptyState } from "@dijione/design-system";
+import { AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useTalentScope } from "@dijione/auth-client";
 import {
@@ -78,7 +78,15 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
       title="DijiTalentFlow"
       topNavTitle={scope.isStaff ? "Talent Acquisition Workspace" : "Client Workspace"}
       sections={scope.isStaff ? staffSections : clientSections}
-      footer={<p className="text-xs text-white/60">DijiTalentFlow · by Dijital Team</p>}
+      footer={
+        <VersionFooter
+          appName="DijiTalentFlow"
+          version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+          gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+          // releaseDate intentionally omitted — not wired to a runtime
+          // RELEASE_DATE source yet (round 3 only did this for birthday-web).
+        />
+      }
     >
       {children}
     </AppShell>

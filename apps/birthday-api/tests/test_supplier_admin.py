@@ -38,7 +38,9 @@ def test_update_supplier_fields(api_client, db):
     assert resp.status_code == 200
     body = resp.json()
     assert body["primary_contact_phone"] == "+94112345678"
-    assert body["working_days"] == "Mon-Sat"
+    # working_days is canonicalised on write (§1.1) so the delivery-date rule
+    # can parse it deterministically.
+    assert body["working_days"] == "Mon,Tue,Wed,Thu,Fri,Sat"
     assert body["lead_time_days"] == 4
 
 

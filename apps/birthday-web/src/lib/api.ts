@@ -26,6 +26,10 @@ import type {
   SupplierUserCreateInput,
   SupplierUserOut,
   SupplierUserUpdateInput,
+  TestEmailRecipientCreateInput,
+  TestEmailRecipientListResponse,
+  TestEmailRecipientOut,
+  TestEmailRecipientUpdateInput,
   UpcomingBirthdaysResponse,
   VerifyAddressInput,
   VerifyAddressResponse,
@@ -33,6 +37,18 @@ import type {
 import { qs, request } from "@dijione/auth-client";
 
 export { ApiError } from "@dijione/auth-client";
+
+// --- Release metadata --------------------------------------------
+// Deliberately NOT "/api/birthday/..." (that prefix has its own basePath:
+// false rewrite in next.config.ts proxying to birthday-api) — /api/meta is
+// a route INSIDE this app itself, so it lives at this app's own basePath
+// ("/birthday", see next.config.ts) and must be fetched at that exact
+// path. A bare fetch("/api/meta") would resolve to this origin's root and
+// 404 once reached through the DijiOne shell (docs/platform/versioning.md
+// has the full explanation) — confirmed correct both standalone and
+// through the shell's /birthday/:path* wildcard proxy.
+export const getReleaseMetadata = () =>
+  request<{ release_date: string | null; is_production: boolean }>("/birthday/api/meta");
 
 // --- Dashboard -------------------------------------------------
 export const getDashboardSummary = () => request<BirthdayDashboardSummary>("/api/birthday/dashboard");
@@ -47,12 +63,25 @@ export const getUpcomingBirthdays = (params: {
   days?: number;
   search?: string;
   filter?: string;
+  cake_status_filter?: string;
   province?: string;
   sort_by?: string;
   sort_direction?: string;
   page?: number;
   page_size?: number;
 } = {}) => request<UpcomingBirthdaysResponse>(`/api/birthday/employees/upcoming-birthdays${qs(params)}`);
+
+// --- Team-member data freshness / manual refresh (Phase 1.5 §B) --------
+export type PeopleFreshness = {
+  available: boolean;
+  auto_refresh: string;
+  last_successful_sync_at?: string | null;
+  source?: string;
+  reason?: string;
+};
+export const getPeopleFreshness = () => request<PeopleFreshness>("/api/birthday/people/freshness");
+export const refreshPeople = () =>
+  request<{ run_id: string; status: string }>("/api/birthday/people/refresh", { method: "POST" });
 
 // --- Orders -------------------------------------------------
 export const listOrders = (params: {
@@ -62,6 +91,10 @@ export const listOrders = (params: {
   office_location?: string;
   supplier_id?: number;
   address_verification_status?: string;
+  due?: "today" | "tomorrow" | "overdue";
+  has_open_issue?: boolean;
+  verify?: "overdue";
+  acceptance?: "awaiting" | "overdue";
   sort_by?: string;
   sort_direction?: string;
   page?: number;
@@ -93,6 +126,13 @@ export const releaseOrder = (id: number, note?: string) =>
 
 export const cancelOrder = (id: number, reason?: string) =>
   request<BirthdayOrderOut>(`/api/birthday/orders/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+// Phase 1.6 §14 — the dedicated, non-bypassable Reopen command.
+export const reopenOrder = (id: number, reason: string) =>
+  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/reopen`, {
     method: "POST",
     body: JSON.stringify({ reason }),
   });
@@ -273,3 +313,79 @@ export const getConfig = () => request<DetectionConfig>("/api/birthday/config");
 
 export const updateConfig = (payload: Partial<DetectionConfig>) =>
   request<DetectionConfig>("/api/birthday/config", { method: "PATCH", body: JSON.stringify(payload) });
+
+// --- Unified Timeline + messaging (Phase 1 §G) ----------------------
+export const getOrderTimeline = (id: number) =>
+  request<import("@dijione/contracts").OrderTimelineResponse>(`/api/birthday/orders/${id}/timeline`);
+
+export const postOrderMessage = (
+  id: number,
+  body: string,
+  opts: { issue_id?: number | null; also_email?: boolean } = {},
+) =>
+  request<import("@dijione/contracts").OrderTimelineResponse>(`/api/birthday/orders/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body, issue_id: opts.issue_id ?? null, also_email: opts.also_email ?? false }),
+  });
+
+// --- Unmatched supplier email queue (Phase 1 §1.5) -----------------
+export const listUnmatchedEmails = (include_resolved = false) =>
+  request<import("@dijione/contracts").InboundEmailOut[]>(
+    `/api/birthday/inbound-emails${qs({ include_resolved: include_resolved || undefined })}`,
+  );
+
+export const linkUnmatchedEmail = (
+  id: number,
+  payload: import("@dijione/contracts").InboundEmailLinkInput,
+) =>
+  request<import("@dijione/contracts").InboundEmailOut>(`/api/birthday/inbound-emails/${id}/link`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const dismissUnmatchedEmail = (id: number) =>
+  request<import("@dijione/contracts").InboundEmailOut>(`/api/birthday/inbound-emails/${id}/dismiss`, {
+    method: "POST",
+  });
+
+// --- Supplier setup readiness (Phase 1 §1.6) ----------------------
+export const getSupplierReadiness = (supplierId: number) =>
+  request<import("@dijione/contracts").SupplierSetupReadiness>(
+    `/api/birthday/suppliers/${supplierId}/readiness`,
+  );
+
+export const markSupplierUserInvited = (supplierId: number, userId: number) =>
+  request<import("@dijione/contracts").SupplierUserOut>(
+    `/api/birthday/suppliers/${supplierId}/users/${userId}`,
+    { method: "PATCH", body: JSON.stringify({ mark_invited: true }) },
+  );
+
+// Read-only supplier-portal impersonation (Phase 1.5 §C).
+export const impersonateSupplierUser = (supplierId: number, userId: number) =>
+  request<{ access_token: string; portal_url: string; expires_in: number }>(
+    `/api/birthday/suppliers/${supplierId}/users/${userId}/impersonate`,
+    { method: "POST" },
+  );
+
+// --- Email Safety (non-production outbound-recipient allowlist) ----
+// Backend enforces require_non_production() independently of anything
+// here — this client simply calls the route; in PROD the route itself
+// 404s (docs/platform/email-architecture.md), so no separate frontend
+// guard is needed against these calls themselves.
+export const listTestEmailRecipients = () =>
+  request<TestEmailRecipientListResponse>("/api/birthday/admin/test-email-recipients");
+
+export const createTestEmailRecipient = (payload: TestEmailRecipientCreateInput) =>
+  request<TestEmailRecipientOut>("/api/birthday/admin/test-email-recipients", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateTestEmailRecipient = (id: number, payload: TestEmailRecipientUpdateInput) =>
+  request<TestEmailRecipientOut>(`/api/birthday/admin/test-email-recipients/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteTestEmailRecipient = (id: number) =>
+  request<void>(`/api/birthday/admin/test-email-recipients/${id}`, { method: "DELETE" });

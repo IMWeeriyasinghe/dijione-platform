@@ -100,7 +100,7 @@ def _sign_flow_token(state: str, nonce: str, verifier: str) -> str:
         "nonce": nonce,
         "cv": verifier,
     }
-    return jwt.encode(payload, settings.jwt_dev_secret, algorithm=settings.jwt_algorithm)
+    return jwt.encode(payload, settings.platform_jwt_secret, algorithm=settings.jwt_algorithm)
 
 
 def _read_flow_token(flow_token: str) -> dict:
@@ -108,7 +108,7 @@ def _read_flow_token(flow_token: str) -> dict:
     try:
         return jwt.decode(
             flow_token,
-            settings.jwt_dev_secret,
+            settings.platform_jwt_secret,
             algorithms=[settings.jwt_algorithm],
             issuer=_FLOW_ISS,
         )

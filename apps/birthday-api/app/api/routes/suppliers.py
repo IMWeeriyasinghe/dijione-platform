@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import BirthdayScope, require_birthday_permission
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.supplier import Supplier
 from app.models.supplier_catalogue_item import SupplierCatalogueItem
@@ -23,12 +24,15 @@ from app.schemas.supplier import (
     SupplierLocationCreate,
     SupplierLocationRead,
     SupplierRead,
+    SupplierSetupReadiness,
     SupplierUpdate,
     SupplierUserCreate,
     SupplierUserRead,
     SupplierUserUpdate,
 )
 from app.services.audit_service import AuditService
+from app.services.delivery_date_service import canonicalise_working_days
+from app.services.supplier_auth import mint_supplier_session_token
 
 router = APIRouter(prefix="/api/birthday/suppliers", tags=["birthday-suppliers"])
 
@@ -80,7 +84,10 @@ def create_supplier(
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
 ) -> Supplier:
     repo = SupplierRepository(db)
-    supplier = repo.create(Supplier(**payload.model_dump()))
+    data = payload.model_dump()
+    if "working_days" in data:
+        data["working_days"] = canonicalise_working_days(data.get("working_days"))
+    supplier = repo.create(Supplier(**data))
     db.flush()
     if supplier.is_default:
         repo.clear_default_except(supplier.id)
@@ -108,6 +115,8 @@ def update_supplier(
 ) -> Supplier:
     supplier = _get_supplier_or_404(db, supplier_id)
     updates = payload.model_dump(exclude_unset=True)
+    if "working_days" in updates:
+        updates["working_days"] = canonicalise_working_days(updates["working_days"])
     repo = SupplierRepository(db)
     repo.update(supplier, updates)
     db.flush()
@@ -227,6 +236,43 @@ _VALID_ROLES = {"SUPPLIER_USER", "SUPPLIER_ADMIN"}
 _VALID_USER_STATUSES = {"ACTIVE", "INACTIVE"}
 
 
+@router.get("/{supplier_id}/readiness", response_model=SupplierSetupReadiness)
+def get_supplier_readiness(
+    supplier_id: int,
+    db: Session = Depends(get_db),
+    _scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.read")),
+) -> SupplierSetupReadiness:
+    """Setup-readiness panel (Phase 1 §1.6) — catches a skeleton supplier
+    before detection routes orders to it and they all land in
+    REQUIRES_ATTENTION."""
+    supplier = _get_supplier_or_404(db, supplier_id)
+    has_location = bool(supplier.locations)
+    active_items = [i for i in supplier.catalogue_items if i.is_active]
+    has_default_cake = (
+        not active_items  # "Cake" alone is valid — no items is fine
+        or len([i for i in active_items if i.is_default]) == 1
+        or len(active_items) == 1
+    )
+    has_active_linked_user = any(
+        u.status == "ACTIVE" and (u.entra_object_id or u.last_login_at) for u in supplier.users
+    )
+    missing: list[str] = []
+    if not has_location:
+        missing.append("no service location")
+    if not has_default_cake:
+        missing.append("catalogue items but no single default cake")
+    if not has_active_linked_user:
+        missing.append("no active Entra-linked supplier user")
+    return SupplierSetupReadiness(
+        supplier_id=supplier.id,
+        has_location=has_location,
+        has_default_cake=has_default_cake,
+        has_active_linked_user=has_active_linked_user,
+        ready=not missing,
+        missing=missing,
+    )
+
+
 @router.get("/{supplier_id}/users", response_model=list[SupplierUserRead])
 def list_supplier_users(
     supplier_id: int,
@@ -285,6 +331,11 @@ def update_supplier_user(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Supplier user not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    mark_invited = updates.pop("mark_invited", False)
+    if mark_invited and user.invited_at is None:
+        from datetime import UTC, datetime
+
+        user.invited_at = datetime.now(UTC)
     if "role" in updates and updates["role"] not in _VALID_ROLES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid role: {updates['role']!r}")
     if "status" in updates and updates["status"] not in _VALID_USER_STATUSES:
@@ -312,6 +363,10 @@ def update_supplier_user(
             )
 
     repo.update_user(user, updates)
+    if entra_link_changed and updates.get("entra_object_id") and user.linked_at is None:
+        from datetime import UTC, datetime
+
+        user.linked_at = datetime.now(UTC)
     db.commit()
     db.refresh(user)
     # Audit the identity link separately from routine profile edits — it is
@@ -323,3 +378,34 @@ def update_supplier_user(
         )
     _audit(scope, "birthday.supplier.user_update", supplier_id, new_state=updates)
     return user
+
+
+@router.post("/{supplier_id}/users/{user_id}/impersonate")
+def impersonate_supplier_user(
+    supplier_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
+) -> dict:
+    """Read-only impersonation (§C): mint a 30-min supplier session token
+    that carries only ``birthday.portal.access`` — every mutating portal
+    route 403s — so an internal admin can preview the portal exactly as
+    this SupplierUser sees it. The caller opens ``portal_url/impersonate``
+    with the token (POST form) in a new tab."""
+    _get_supplier_or_404(db, supplier_id)
+    repo = SupplierRepository(db)
+    user = repo.get_user(supplier_id, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Supplier user not found")
+    if user.status != "ACTIVE":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Cannot impersonate an inactive supplier user")
+    token = mint_supplier_session_token(user, read_only=True, impersonated_by=scope.user.id)
+    _audit(
+        scope, "birthday.supplier.impersonate", supplier_id,
+        new_state={"supplier_user_id": user.id, "email": user.email},
+    )
+    return {
+        "access_token": token,
+        "portal_url": get_settings().supplier_public_base_url or "",
+        "expires_in": 1800,
+    }

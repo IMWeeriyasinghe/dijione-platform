@@ -19,6 +19,8 @@ leaves `localhost:3000`:
 | `/admin`, `/admin/:path*` | `admin-web` :3001 (page zone, `basePath: "/admin"`) |
 | `/talent-flow`, `/talent-flow/:path*` | `talent-web` :3002 (page zone, `basePath: "/talent-flow"`) |
 | `/birthday`, `/birthday/:path*` | `birthday-web` :3003 (page zone, `basePath: "/birthday"`) |
+| `/onsite`, `/onsite/:path*` *(planned)* | `onsite-web` :3004 (page zone, `basePath: "/onsite"`) |
+| `/atwork`, `/atwork/:path*` | `atwork-web` :3005 (page zone, `basePath: "/atwork"`) |
 | `/api/auth/:path*` | `platform-api` :8000 |
 | `/api/modules` | `platform-api` :8000 |
 | `/api/notifications/:path*` | `platform-api` :8000 |
@@ -26,6 +28,8 @@ leaves `localhost:3000`:
 | `/api/talent/:path*` | `talent-api` :8002 |
 | `/api/birthday/:path*` | `birthday-api` :8003 |
 | `/api/spark/:path*` | `spark-api` :8004 |
+| `/api/onsite/:path*` *(planned)* | `onsite-api` :8008 |
+| `/api/atwork/:path*` | `atwork-api` :8009 |
 
 `recruitment-api`, `people-api`, and `commercial-api` have **no gateway
 route** — they are source domains with internal ingress only, called

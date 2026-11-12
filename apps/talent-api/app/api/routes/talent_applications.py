@@ -14,6 +14,7 @@ from app.schemas.application import (
 from app.services.application_service import (
     ApplicationNotFoundError,
     ApplicationService,
+    CandidateNotFoundError,
     DuplicateApplicationError,
     InvalidApplicationValueError,
     TalentRequestNotFoundError,
@@ -65,6 +66,10 @@ def create_application(
         )
     except DuplicateApplicationError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except InvalidApplicationValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except CandidateNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found") from exc
     except TalentRequestNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Talent request not found") from exc
     db.commit()

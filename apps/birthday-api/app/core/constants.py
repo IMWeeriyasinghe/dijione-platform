@@ -65,6 +65,7 @@ class ExceptionReason(StrEnum):
     dashboard drilldowns (plan §Q)."""
 
     MISSING_EMAIL = "MISSING_EMAIL"
+    MISSING_EMPLOYEE_NUMBER = "MISSING_EMPLOYEE_NUMBER"
     NO_SUPPLIER = "NO_SUPPLIER"
     NO_DEFAULT_CAKE = "NO_DEFAULT_CAKE"
     SHORT_NOTICE_LEAD_TIME = "SHORT_NOTICE_LEAD_TIME"
@@ -92,10 +93,15 @@ class OrderIssueStatus(StrEnum):
 
 class CommunicationChannel(StrEnum):
     EMAIL = "EMAIL"
+    PORTAL = "PORTAL"
+    SYSTEM = "SYSTEM"
     TEAMS = "TEAMS"  # reserved
 
 
 class CommunicationDirection(StrEnum):
+    # Relative to the supplier: OUTBOUND = to the supplier (internal email /
+    # internal portal message); INBOUND = from the supplier (supplier email
+    # reply / supplier portal message).
     OUTBOUND = "OUTBOUND"
     INBOUND = "INBOUND"
 
@@ -106,6 +112,7 @@ class CommunicationStatus(StrEnum):
     FAILED = "FAILED"
     DELIVERED = "DELIVERED"
     REPLIED = "REPLIED"
+    POSTED = "POSTED"  # a portal message (immediately visible to the other side)
 
 
 class ActorType(StrEnum):

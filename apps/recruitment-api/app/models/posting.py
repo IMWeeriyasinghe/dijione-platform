@@ -25,11 +25,14 @@ class Posting(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     lever_posting_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
 
-    title: Mapped[str] = mapped_column(String(255), default="")
+    # Free-form Lever text — real postings exceed 255 chars (long location
+    # strings, verbose team/department paths). Unbounded Text; a consumer
+    # must never use these as an authorization signal anyway.
+    title: Mapped[str] = mapped_column(Text, default="")
     state: Mapped[str] = mapped_column(String(32), default="")
-    team: Mapped[str] = mapped_column(String(255), default="")
-    department: Mapped[str] = mapped_column(String(255), default="")
-    location: Mapped[str] = mapped_column(String(255), default="")
+    team: Mapped[str] = mapped_column(Text, default="")
+    department: Mapped[str] = mapped_column(Text, default="")
+    location: Mapped[str] = mapped_column(Text, default="")
     owner_user_id: Mapped[str] = mapped_column(String(128), default="")
     hiring_manager_user_id: Mapped[str] = mapped_column(String(128), default="")
     confidentiality: Mapped[str] = mapped_column(String(32), default="")
@@ -38,5 +41,10 @@ class Posting(TimestampMixin, Base):
     lever_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     lever_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Checkpoints for the per-posting Lever read. Attempt orders the queue;
+    # read is set only when the whole posting was read and saved.
+    dtc_last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dtc_last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     archived: Mapped[bool] = mapped_column(Boolean, default=False)

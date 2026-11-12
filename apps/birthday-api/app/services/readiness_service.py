@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.core.constants import AddressVerificationStatus
+from app.core.constants import AddressVerificationStatus, ExceptionReason
 from app.models.birthday_order import BirthdayOrder
 
 
@@ -49,5 +49,9 @@ def check(order: BirthdayOrder) -> ReadinessResult:
         missing.append("quantity_invalid")
     if not order.employee_name:
         missing.append("employee_name_missing")
+    if order.exception_reason == ExceptionReason.MISSING_EMPLOYEE_NUMBER.value:
+        # A provisional BDAY-TMP… order must not auto-release before a human
+        # supplies the real Team Member ID (Phase 1 §1.0).
+        missing.append("employee_number_missing")
 
     return ReadinessResult(ready=not missing, missing=missing)

@@ -1,0 +1,39 @@
+// Log Analytics workspace (container + app stdout logs) + a small DEV alert
+// baseline. No Application Insights for DEV — the correlation-id middleware
+// covers "follow one request across services" without ingest cost.
+
+@description('Workspace name, e.g. law-dijione-dev.')
+param name string
+param location string = resourceGroup().location
+param tags object = {}
+
+@description('Cap daily ingest (GB) to keep cost proportional. "-1" = no cap. String so a fractional cap (e.g. "0.3" for DEV) is expressible — Bicep has no float literal.')
+param dailyQuotaGb string = '1'
+
+param retentionInDays int = 30
+
+var capping = dailyQuotaGb == '-1' ? {} : { workspaceCapping: { dailyQuotaGb: json(dailyQuotaGb) } }
+
+resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: name
+  location: location
+  tags: tags
+  properties: union(
+    {
+      sku: {
+        name: 'PerGB2018'
+      }
+      retentionInDays: retentionInDays
+    },
+    capping
+  )
+}
+
+output id string = law.id
+output customerId string = law.properties.customerId
+output name string = law.name
+// Consumed by the ACA environment. Exposed as a module output (rather than a
+// caller-side `existing` + listKeys) so the consumer gets a real dependency on
+// this module and cannot race ahead of workspace creation.
+@secure()
+output primarySharedKey string = law.listKeys().primarySharedKey

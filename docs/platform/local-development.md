@@ -42,6 +42,8 @@ Running all eight DijiOne services locally. See
 | `admin-web` | 3001 | `GET http://localhost:3001/admin` (its `basePath`) |
 | `talent-web` | 3002 | `GET http://localhost:3002/talent-flow` (its `basePath`) |
 | `birthday-web` | 3003 | `GET http://localhost:3003/birthday` (its `basePath`) |
+| `onsite-web` *(planned)* | 3004 | `GET http://localhost:3004/onsite` (its `basePath`) |
+| `atwork-web` | 3005 | `GET http://localhost:3005/atwork` (its `basePath`) |
 | `birthday-supplier-web` | 3006 | `GET http://localhost:3006/` (own hostname in prod; not proxied through shell-web) |
 | `platform-api` | 8000 | `GET http://localhost:8000/health` |
 | `admin-api` | 8001 | `GET http://localhost:8001/health` |
@@ -51,6 +53,8 @@ Running all eight DijiOne services locally. See
 | `recruitment-api` | 8005 | `GET http://localhost:8005/health` (internal ingress only — no gateway route) |
 | `people-api` | 8006 | `GET http://localhost:8006/health` (internal ingress only — no gateway route) |
 | `commercial-api` | 8007 | `GET http://localhost:8007/health` (internal ingress only — skeleton) |
+| `onsite-api` *(planned)* | 8008 | `GET http://localhost:8008/health` |
+| `atwork-api` | 8009 | `GET http://localhost:8009/health` |
 
 Always develop against `http://localhost:3000` — that's the gateway.
 `admin-web`/`talent-web` are independently runnable on their own ports for
@@ -94,7 +98,7 @@ real_dev_clients.py`) with stable `public_id`s, and writes every
 `UserModuleClientScope` / `UserModuleRole` row against the real
 `client_ref` string, not a bare integer — client isolation does not depend
 on seed-insertion order lining up across services. It creates only staff
-personas (`madushanka-ta`, `customer-success`, `ta-manager`,
+personas (`ta-member`, `customer-success`, `ta-manager`,
 `platform-admin`, `super-admin`, `ta-portfolio`) — there is **no**
 client-login dev persona. External client/prospect access to DijiTalentFlow
 is the real magic-link flow: a TA generates an access link (talent-web →

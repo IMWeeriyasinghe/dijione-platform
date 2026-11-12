@@ -151,7 +151,19 @@ the official wordmark), `Table` (`Thead`/`Th`/`Tr`/`Td`),
 
 Shell-level composition lives in `packages/design-system/src/shell/`:
 `AppShell`, `Sidebar`, `TopNav`, `NotificationsPanel`, `UserMenu`,
-`DevPersonaSwitcher`, `AuthGate`.
+`DevPersonaSwitcher`, `AuthGate`, `VersionFooter` (per-app version/commit/
+build-date metadata rendered in the existing sidebar/header footer area —
+reads `NEXT_PUBLIC_APP_VERSION`/`NEXT_PUBLIC_GIT_SHA`/
+`NEXT_PUBLIC_BUILD_DATE` directly so the same component source yields a
+different, app-specific value in each app's own build; see
+`docs/platform/versioning.md` for the full mechanism and the major-version
+approval rule).
+
+`AppShell`'s mobile nav (≤767px): the sidebar collapses into a slide-in
+drawer opened via a hamburger button in `TopNav`, closing on backdrop
+click, Escape, or nav-item click. Below `md` (768px) the persistent sidebar
+is hidden entirely — every page's content gets the full viewport width
+instead of losing ~256px to a fixed sidebar it has no way to collapse.
 
 Every DijiTalentFlow page composes these rather than re-implementing card/
 table/badge styling locally (CLAUDE.md §54). The DijiOne Admin Center

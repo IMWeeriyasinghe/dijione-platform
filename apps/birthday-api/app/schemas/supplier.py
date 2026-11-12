@@ -113,6 +113,11 @@ class SupplierUserRead(BaseModel):
     role: str
     status: str
     entra_object_id: str | None
+    # Phase 1 §1.6 — onboarding-state visibility.
+    invited_at: datetime | None = None
+    linked_at: datetime | None = None
+    last_login_at: datetime | None = None
+    onboarding_state: str = "NOT_INVITED"
     created_at: datetime
     updated_at: datetime
 
@@ -122,6 +127,15 @@ class SupplierUserCreate(BaseModel):
     full_name: str = ""
     role: str = "SUPPLIER_USER"
     status: str = "ACTIVE"
+
+
+class SupplierSetupReadiness(BaseModel):
+    supplier_id: int
+    has_location: bool
+    has_default_cake: bool
+    has_active_linked_user: bool
+    ready: bool
+    missing: list[str] = []
 
 
 class SupplierUserUpdate(BaseModel):
@@ -139,3 +153,6 @@ class SupplierUserUpdate(BaseModel):
     role: str | None = None
     status: str | None = None
     entra_object_id: str | None = None
+    # Set true when IT has sent the Entra B2B guest invitation for this
+    # user's email — stamps invited_at (once). Not a stored column here.
+    mark_invited: bool = False

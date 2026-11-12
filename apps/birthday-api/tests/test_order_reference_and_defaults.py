@@ -88,11 +88,39 @@ def test_manual_order_reference_uses_employee_number(api_client, db):
     assert "EMP530" not in created["order_reference"]
 
 
-def test_order_reference_falls_back_to_internal_id_when_no_employee_number(db):
+def test_missing_employee_number_is_a_typed_exception_not_a_silent_fallback(db):
+    """Phase 1 §1.0: no silent fallback. An employee with no BambooHR
+    employeeNumber still gets an order, but it is tagged BDAY-TMP…, lands in
+    REQUIRES_ATTENTION, and carries MISSING_EMPLOYEE_NUMBER until a human
+    supplies the real Team Member ID."""
     client, occ = _one_employee_client(internal_id="777", employee_number="")
     run_daily_scan(db, client, _config())
     order = db.query(BirthdayOrder).filter_by(employee_id="777").one()
-    assert order.order_reference == f"BDAY-EMP777-{occ.year}-00001"
+    assert order.order_reference == f"BDAY-TMP777-{occ.year}-00001"
+    assert order.status == "REQUIRES_ATTENTION"
+    assert order.exception_reason == "MISSING_EMPLOYEE_NUMBER"
+
+
+def test_supplying_team_member_id_recovers_a_missing_employee_number_order(api_client, db):
+    """PATCHing employee_number onto a MISSING_EMPLOYEE_NUMBER order clears
+    the exception, regenerates the provisional reference, and returns the
+    order to PENDING_VERIFICATION (it never reached a supplier)."""
+    client, occ = _one_employee_client(internal_id="778", employee_number="")
+    run_daily_scan(db, client, _config())
+    order = db.query(BirthdayOrder).filter_by(employee_id="778").one()
+    order_id = order.id
+
+    resp = api_client.patch(
+        f"/api/birthday/orders/{order_id}",
+        json={"employee_number": "889"},
+        headers=headers_for(5, role="BIRTHDAY_ADMIN"),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["employee_number"] == "889"
+    assert body["exception_reason"] is None
+    assert body["status"] == "PENDING_VERIFICATION"
+    assert body["order_reference"].startswith("BDAY-EMP889-")
 
 
 # --- B. Supplier auto-selection -------------------------------------------------

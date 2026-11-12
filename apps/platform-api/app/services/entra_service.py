@@ -8,20 +8,24 @@ without granting any standing access to the whole tenant.
 
 Matching order:
   1. ``users.entra_object_id`` == the token's ``oid`` (stable, preferred)
-  2. ``users.email`` == the token's email/preferred_username (first login —
-     stamps ``entra_object_id`` so subsequent logins take path 1)
+  2. ``users.email`` == the token's email/preferred_username, only for a proven
+     internal employee and an account not yet linked to any Entra object
   3. neither -> create ``is_active=False``
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.constants import PlatformRole
 from app.models.user import User
+
+logger = logging.getLogger("platform-api.entra")
 
 
 class EntraLoginRefusedError(Exception):
@@ -36,12 +40,40 @@ class EntraLoginRefusedError(Exception):
         )
 
 
+class EntraIdentityConflictError(EntraLoginRefusedError):
+    """The identity's email belongs to an account this identity may not claim."""
+
+    def __init__(self) -> None:
+        super().__init__(created=False)
+        self.args = ("This sign-in cannot be matched to a DijiOne account. Contact a platform administrator.",)
+
+
 def _email_from_claims(claims: dict) -> str | None:
     for key in ("email", "preferred_username", "upn"):
         value = claims.get(key)
         if value and "@" in value:
             return value.lower()
     return None
+
+
+def is_internal_employee(claims: dict) -> bool:
+    """True only on affirmative proof of tenant membership. A single-tenant issuer
+    does not exclude B2B guests, and a missing claim proves nothing, so the app
+    registration must emit the optional `acct` claim (0 = member, 1 = guest)."""
+    settings = get_settings()
+    domains = {d.strip().lower() for d in settings.entra_internal_email_domains.split(",") if d.strip()}
+    email = _email_from_claims(claims)
+    if not domains or email is None or email.rsplit("@", 1)[1] not in domains:
+        return False
+    tenant = settings.entra_tenant_id
+    if not tenant or claims.get("tid") != tenant:
+        return False
+    if claims.get("idp") not in (None, f"https://sts.windows.net/{tenant}/", settings.entra_issuer):
+        return False
+    if claims.get("acct") not in (0, "0"):
+        return False
+    names = [claims.get(k) for k in ("email", "preferred_username", "upn")]
+    return not any("#ext#" in n.lower() for n in names if isinstance(n, str))
 
 
 def resolve_entra_user(db: Session, claims: dict) -> User:
@@ -60,6 +92,11 @@ def resolve_entra_user(db: Session, claims: dict) -> User:
     if user is None and email is not None:
         user = db.execute(select(User).where(User.email == email)).scalars().first()
         if user is not None:
+            # An email claim is not an identity. Only a proven member of our tenant may
+            # claim an account that has never been linked to another Entra object.
+            if user.entra_object_id is not None or not is_internal_employee(claims):
+                logger.warning("Entra sign-in refused: email matches account %s it cannot claim", user.id)
+                raise EntraIdentityConflictError
             user.entra_object_id = oid
             user.identity_provider = "ENTRA"
 
@@ -77,6 +114,8 @@ def resolve_entra_user(db: Session, claims: dict) -> User:
         db.add(user)
         db.flush()
         created = True
+
+    user.internal_employee = is_internal_employee(claims)
 
     if not user.is_active:
         db.commit()  # persist the just-created / newly-linked row

@@ -52,7 +52,7 @@ def test_alembic_upgrade_head_then_downgrade_base_round_trips_cleanly(tmp_path):
     db_file = tmp_path / "alembic_roundtrip.db"
     env = {
         "DATABASE_URL": f"sqlite:///{db_file}",
-        "JWT_DEV_SECRET": "test-only-secret",
+        "PLATFORM_JWT_SECRET": "test-only-secret",
         "API_CORS_ORIGINS": "http://localhost:3000",
         "INTERNAL_SERVICE_SECRET": "test-only-internal-secret",
         "INTEGRATIONS_MODE": "mock",

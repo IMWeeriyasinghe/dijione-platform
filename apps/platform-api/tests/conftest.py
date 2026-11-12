@@ -6,7 +6,7 @@ from pathlib import Path
 # at a real Postgres 16); fall back to a local SQLite file otherwise.
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_platform.db")
 os.environ["DEV_IDENTITY_MODE"] = "true"
-os.environ["JWT_DEV_SECRET"] = "test-only-secret"
+os.environ["PLATFORM_JWT_SECRET"] = "test-only-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"
 

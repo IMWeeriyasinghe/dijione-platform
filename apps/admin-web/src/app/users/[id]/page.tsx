@@ -79,6 +79,7 @@ function ModuleAssignmentEditor({
   moduleStatus,
   availableRoles,
   clients,
+  supportsClientScope = true,
   current,
   onSaved,
 }: {
@@ -88,11 +89,17 @@ function ModuleAssignmentEditor({
   moduleStatus: string;
   availableRoles: { key: string; name: string }[];
   clients: { id: number; name: string }[];
+  /** False for modules whose authorization ignores client scope. */
+  supportsClientScope?: boolean;
   current: { role: string; enabled: boolean; all_clients: boolean; client_ids: number[] } | undefined;
   onSaved: () => void;
 }) {
   const [enabled, setEnabled] = useState(current?.enabled ?? false);
-  const [role, setRole] = useState(current?.role ?? availableRoles[0]?.key ?? "");
+  const [role, setRole] = useState(
+    // Least privilege: a new assignment never inherits the first (often most
+    // privileged) role — the administrator picks one, unless there is only one.
+    current?.role ?? (availableRoles.length === 1 ? availableRoles[0].key : ""),
+  );
   const [allClients, setAllClients] = useState(current?.all_clients ?? true);
   const [clientIds, setClientIds] = useState<number[]>(current?.client_ids ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +109,7 @@ function ModuleAssignmentEditor({
       upsertModuleAssignment(userId, moduleKey, {
         role,
         enabled,
-        client_scope: { all_clients: allClients, client_ids: allClients ? [] : clientIds },
+        client_scope: supportsClientScope ? { all_clients: allClients, client_ids: allClients ? [] : clientIds } : undefined,
       }),
     onSuccess: () => {
       setError(null);
@@ -141,6 +148,7 @@ function ModuleAssignmentEditor({
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-dt-text-primary">Role</label>
           <Select value={role} onChange={(e) => setRole(e.target.value)} disabled={!enabled}>
+            {!current && availableRoles.length > 1 && <option value="">Select a role…</option>}
             {availableRoles.map((r) => (
               <option key={r.key} value={r.key}>
                 {r.name}
@@ -149,21 +157,23 @@ function ModuleAssignmentEditor({
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-dt-text-primary">Client Scope</label>
-          <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
-            <input
-              type="checkbox"
-              checked={allClients}
-              onChange={(e) => setAllClients(e.target.checked)}
-              disabled={!enabled}
-            />
-            All Clients
-          </label>
-        </div>
+        {supportsClientScope && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-dt-text-primary">Client Scope</label>
+            <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
+              <input
+                type="checkbox"
+                checked={allClients}
+                onChange={(e) => setAllClients(e.target.checked)}
+                disabled={!enabled}
+              />
+              All Clients
+            </label>
+          </div>
+        )}
       </div>
 
-      {!allClients && (
+      {supportsClientScope && !allClients && (
         <div className="mt-3 flex flex-wrap gap-3 rounded-lg border border-dt-border bg-dt-surface-warm p-3">
           {clients.map((c) => (
             <label key={c.id} className="flex items-center gap-1.5 text-sm text-dt-text-primary">
@@ -186,7 +196,7 @@ function ModuleAssignmentEditor({
       {error && <p className="mt-3 text-sm text-dt-danger">{error}</p>}
 
       <div className="mt-4">
-        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending}>
+        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!role}>
           Save {moduleName} Access
         </Button>
       </div>
@@ -299,14 +309,14 @@ export default function AdminUserDetailPage() {
       </Link>
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Avatar name={user.full_name} size={44} />
-          <div>
-            <h1 className="text-2xl font-semibold text-dt-text-primary">{user.full_name}</h1>
-            <p className="text-sm text-dt-text-secondary">{user.email}</p>
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-semibold text-dt-text-primary">{user.full_name}</h1>
+            <p className="truncate text-sm text-dt-text-secondary">{user.email}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <StatusBadge status={user.is_active ? "ACTIVE_CLIENT" : "CANCELLED"} label={user.is_active ? "Active" : "Inactive"} />
           <Button
             size="sm"
@@ -366,6 +376,7 @@ export default function AdminUserDetailPage() {
                 moduleName={m.name}
                 moduleStatus={m.status}
                 availableRoles={moduleRoles}
+                supportsClientScope={m.supports_client_scope !== false}
                 clients={clients}
                 current={
                   assignment
@@ -419,12 +430,12 @@ export default function AdminUserDetailPage() {
           )}
           <div className="flex flex-col divide-y divide-dt-border">
             {userGroups.map((g) => (
-              <div key={g.id} className="flex items-center justify-between py-2.5">
-                <div>
-                  <Link href={`/groups/${g.id}`} className="text-sm font-medium text-dt-burnt-orange">
+              <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                <div className="min-w-0">
+                  <Link href={`/groups/${g.id}`} className="truncate text-sm font-medium text-dt-burnt-orange">
                     {g.display_name}
                   </Link>
-                  <p className="text-xs text-dt-text-secondary">{g.group_type} · {g.module_assignments.length} module{g.module_assignments.length === 1 ? "" : "s"}</p>
+                  <p className="truncate text-xs text-dt-text-secondary">{g.group_type} · {g.module_assignments.length} module{g.module_assignments.length === 1 ? "" : "s"}</p>
                 </div>
                 <Button
                   size="sm"
@@ -483,10 +494,15 @@ export default function AdminUserDetailPage() {
                   ))}
                 </div>
               </div>
+              {(effectiveQuery.data.default_access_excluded ?? []).length > 0 && (
+                <p className="border-t border-dt-border pt-4 text-sm text-dt-text-secondary">
+                  Default employee access removed for: {effectiveQuery.data.default_access_excluded?.join(", ")}
+                </p>
+              )}
               {effectiveQuery.data.modules.map((m) => (
                 <div key={m.module_key} className="border-t border-dt-border pt-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-dt-text-primary">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="min-w-0 truncate text-sm font-medium text-dt-text-primary">
                       {m.module_name} — {m.role_name}
                     </p>
                     <StatusBadge status={m.enabled ? "ACTIVE_CLIENT" : "CANCELLED"} label={m.enabled ? "Enabled" : "Disabled"} />
@@ -510,7 +526,7 @@ export default function AdminUserDetailPage() {
                       <StatusBadge
                         key={idx}
                         status={s.type}
-                        label={s.type === "DIRECT" ? "Direct" : `Inherited from ${s.group_name}`}
+                        label={s.type === "DIRECT" ? "Direct" : s.type === "BASELINE" ? "Default employee access" : `Inherited from ${s.group_name}`}
                       />
                     ))}
                   </div>

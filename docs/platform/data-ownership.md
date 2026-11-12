@@ -42,6 +42,7 @@ registry (Architecture Completion Plan §6.1).
 |---|---|---|---|
 | Lever | `recruitment-api` | **GET-only**, enforced by `LiveLeverClient`'s construction + `test_lever_client_safety.py` | Sole Lever credential in the platform. `talent-api` has zero Lever imports (`tests/test_no_direct_lever_dependency.py` guards an empty allowlist). |
 | BambooHR | `people-api` | GET (a "custom report" read) | Sole BambooHR credential. `birthday-api` has zero BambooHR imports (`tests/test_no_direct_bamboohr_dependency.py`). |
+| Diji On-site attendance (Azure SQL `onsite.*`, ingestion plane owned outside DijiOne) | `onsite-api` *(planned)*, only inside `app/attendance_source/` | SELECT-only, Entra managed-identity token | No other DijiOne service reads it; a static guard will enforce that only `attendance_source` imports the SQL driver. |
 | HubSpot | `commercial-api` (skeleton; no live client yet) | none yet | Stub client + unauthenticated `/webhooks/hubspot` relocated here from `talent-api`; no credential requested. |
 | Microsoft Entra ID / Graph (auth) | `platform-api` | OIDC Auth Code + PKCE, JWKS | Identity boundary. |
 | Microsoft Graph (email) | `birthday-api` | client-credentials, mock by default | Independent of the identity Graph usage — see §6. |
@@ -57,7 +58,8 @@ regression, not a style preference.
 | `platform-api` | `platform_dev` | `users`, `user_module_roles`, `user_module_client_scopes`, `roles`, `permissions`, `role_permissions`, `application_modules`, `audit_logs`, `notifications`, `access_groups`, `user_group_memberships`, `group_module_roles`, `group_module_client_scopes`, `clients`, `client_external_ids` |
 | `talent-api` | `talent_dev` | `clients` (TalentFlow extension, keyed on `platform_client_id`), `talent_requests`, `candidates`, `applications`, `interviews`, `messages`, `documents`, `posting_client_mappings` (trust decision), `recruitment_posting_refs` (thin local projection — §4) |
 | `recruitment-api` | `recruitment_dev` | `postings`, `recruitment_candidates`, `recruitment_candidacies`, `external_mappings` (LEVER), `integration_events` (LEVER), `sync_runs` |
-| `people-api` | `people_dev` | `employees`, `people_sync_runs` |
+| `people-api` | `people_dev` | `employees`, `people_sync_runs` (Birthday-oriented Employee contract); `workforce_directory`, `workforce_sync_runs` (generic Workforce Directory) |
+| `onsite-api` *(planned)* | `onsite_dev` | raw attendance mirror, site registry/settings, agent-status snapshot, sync runs |
 | `birthday-api` | `birthday_dev` | `birthday_orders` (incl. order-time employee snapshot columns), `suppliers`, `supplier_locations`, `supplier_catalogue_items`, `supplier_users`, `order_issues`, `scan_runs`, `detection_config` |
 | `commercial-api` | `commercial_dev` (later) | `integration_events` (HubSpot) today; a commercial-facts read model when HubSpot access lands |
 | `admin-api` | none | zero-DB BFF |
@@ -166,6 +168,8 @@ boundaries".
 | Job → `recruitment-api` | `POST /api/recruitment/internal/scheduled-sync` → `202` | n/a | Run marked `FAILED`; prior read model kept; freshness stale; `TA_MANAGER` warned | `X-Internal-Token` | — |
 | `birthday-api` → `people-api` (employees) | `GET /api/people/employees`, `/employees/{bamboohr_id}` | 5s | Detection scan defers (§4b); directory view shows "unavailable" | `X-Internal-Token` | Additive-only |
 | Job → `people-api` | `POST /api/people/internal/scheduled-sync` → `202` | n/a | Run marked `FAILED`; prior read model kept | `X-Internal-Token` | — |
+| `onsite-api` *(planned)* → `people-api` (workforce) | `GET /api/people/workforce-directory` | 5s | Attendance still shown with EmpCodes only; "Employee details unavailable" | `X-Internal-Token` | Additive-only |
+| Job → `people-api` (workforce) | `POST /api/people/internal/workforce-directory/scheduled-sync` → `202` | n/a | Run marked `FAILED`; prior directory kept | `X-Internal-Token` | — |
 | Job → `birthday-api` | `POST /api/birthday/internal/run-daily-scan` → `202` | n/a | See §4b | `X-Internal-Token` | — |
 | `talent-api`/`birthday-api`/`recruitment-api`/`people-api` → `platform-api` (audit/notify) | `POST /api/platform/internal/{audit-events,notifications,notifications/broadcast}` | 2s | Swallowed, logged, `return False` — best-effort, never fails the caller's business operation | `X-Internal-Token` | — |
 | `talent-api`/`admin-api` → `platform-api` (client directory) | `GET /api/platform/internal/clients` → `[{public_id, name, status}]` | 3s | Cache/last-good display names; a stale name never affects authorization — that's a local `client_ref` | `X-Internal-Token` | — |

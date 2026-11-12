@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     entra_client_id: str = ""
     entra_client_secret: str = ""
     entra_redirect_uri: str = ""
+    # Comma-separated. Empty means nobody qualifies as an internal employee.
+    entra_internal_email_domains: str = ""
     # Public origin of this environment (e.g. https://dijione-dev.example.com).
     # Used to build the Entra front-channel logout redirect.
     public_base_url: str = ""
@@ -32,7 +34,7 @@ class Settings(BaseSettings):
         "http://localhost:3000,http://localhost:3001,http://localhost:3002,"
         "http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002"
     )
-    jwt_dev_secret: str = "dev-only-insecure-secret-change-me"
+    platform_jwt_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 12
 

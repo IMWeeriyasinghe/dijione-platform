@@ -3,39 +3,113 @@
 # One image for every FastAPI service. Build context = repo root.
 #   docker build -f deploy/Dockerfile.api --build-arg SERVICE=platform-api  -t dijione/platform-api .
 #   docker build -f deploy/Dockerfile.api --build-arg SERVICE=talent-api     -t dijione/talent-api .
-#   (also: admin-api, recruitment-api, people-api, commercial-api,
-#    birthday-api, spark-api)
+#   (also: admin-api, recruitment-api, people-api, commercial-api, birthday-api, spark-api)
+#
+# Multi-stage: the build stage installs dependencies into a venv; the run
+# stage copies only the venv + the service code + the shared editable
+# package, drops the build toolchain, and runs as a non-root user.
 #
 # Every *-api requirements.txt installs `packages/auth-client-py` editable
-# via `-e ../../packages/auth-client-py`, so that path must exist relative
-# to the requirements file inside the image — hence the repo-relative
-# layout below. The same image also backs the scheduled Container Apps Jobs
-# (deploy/provision.sh), whose command is a `curl` to an internal endpoint —
-# hence curl is installed.
+# via `-e ../../packages/auth-client-py`. pip resolves that path relative to
+# the CWD, so the install MUST run from /app/apps/${SERVICE} for it to land on
+# /app/packages/auth-client-py — which is copied to the SAME absolute path in
+# both stages so the editable link keeps resolving at runtime.
+#
+# `packages/mail-client-py` (the shared outbound-mail library, DijiBirthday
+# round) follows the identical pattern — copied unconditionally for every
+# service (cheap, matches auth-client-py's own unconditional copy), but only
+# whichever service's requirements.txt actually declares
+# `-e ../../packages/mail-client-py` installs it.
+#
+# The same image also backs the scheduled Container Apps Jobs (deploy/),
+# whose command is a `curl` to an internal endpoint — hence curl is
+# installed in the run stage.
 
 ARG PYTHON_VERSION=3.12
-FROM python:${PYTHON_VERSION}-slim AS run
 
+# ---- build: dependencies into a venv --------------------------------------
+FROM python:${PYTHON_VERSION}-slim AS build
+ARG SERVICE
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    SERVICE=${SERVICE}
+WORKDIR /app
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# Shared editable packages first (referenced by ../../packages/<name>-py).
+COPY packages/auth-client-py ./packages/auth-client-py
+COPY packages/mail-client-py ./packages/mail-client-py
+
+# Dependencies. Run pip FROM the service directory so the requirements file's
+# `-e ../../packages/auth-client-py` resolves to /app/packages/auth-client-py.
+# A failure here MUST fail the build (no `|| true`, no cleanup on the same line).
+COPY apps/${SERVICE}/requirements.txt ./apps/${SERVICE}/requirements.txt
+# Run pip FROM the service directory so `-e ../../packages/<name>-py`
+# resolves against /app/packages/<name>-py.
+RUN cd apps/${SERVICE} && pip install -r requirements.txt
+
+# Drop dev-only tooling. Best-effort ONLY — must never be able to mask the
+# dependency install above.
+RUN pip uninstall -y pytest pytest-asyncio pytest-cov coverage ruff mypy 2>/dev/null || true
+
+# Build-time proof the runtime environment is complete. Phase 2A shipped a
+# technically-successful but empty venv; this makes that impossible.
+RUN python -c "import fastapi, uvicorn, pydantic, pydantic_settings, httpx, auth_client_py; print('core runtime deps OK for ${SERVICE}')" \
+ && if grep -qE '^alembic' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import sqlalchemy, alembic, psycopg; print('db runtime deps OK for ${SERVICE}')"; \
+    else \
+        echo "no db runtime deps expected for ${SERVICE}"; \
+    fi \
+ && if grep -qE 'mail-client-py' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import mail_client_py; print('mail-client-py runtime deps OK for ${SERVICE}')"; \
+    else \
+        echo "mail-client-py not used by ${SERVICE}"; \
+    fi \
+ && if grep -qE '^pyodbc' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import azure.identity; print('azure-identity OK for ${SERVICE} (pyodbc + ODBC Driver 18 verified in the run stage)')"; \
+    else \
+        echo "pyodbc not used by ${SERVICE}"; \
+    fi
+
+# ---- run ----------------------------------------------------------------
+FROM python:${PYTHON_VERSION}-slim AS run
 ARG SERVICE
 ENV SERVICE=${SERVICE} \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PATH="/opt/venv/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 1000 -m -d /home/app app
+
+# Microsoft ODBC Driver 18 (+ unixODBC) ONLY for services whose requirements
+# declare pyodbc (today: onsite-api's bounded Azure SQL attendance_source).
+# Every other image is unchanged. The driver's own load is verified at build.
+COPY apps/${SERVICE}/requirements.txt /tmp/service-requirements.txt
+RUN if grep -qE '^pyodbc' /tmp/service-requirements.txt; then \
+        . /etc/os-release \
+     && curl -fsSL -o /tmp/packages-microsoft-prod.deb "https://packages.microsoft.com/config/debian/${VERSION_ID}/packages-microsoft-prod.deb" \
+     && dpkg -i /tmp/packages-microsoft-prod.deb && rm -f /tmp/packages-microsoft-prod.deb \
+     && apt-get update \
+     && ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends msodbcsql18 unixodbc \
+     && rm -rf /var/lib/apt/lists/* \
+     && odbcinst -q -d -n "ODBC Driver 18 for SQL Server"; \
+    fi \
+    && rm -f /tmp/service-requirements.txt
 
 WORKDIR /app
-
-# Shared editable package first (referenced by ../../packages/auth-client-py).
-COPY packages/auth-client-py ./packages/auth-client-py
-
-# Dependencies (cached layer — only re-runs when requirements.txt changes).
-COPY apps/${SERVICE}/requirements.txt ./apps/${SERVICE}/requirements.txt
-RUN pip install -r apps/${SERVICE}/requirements.txt
-
-# Application code.
+COPY --from=build /opt/venv /opt/venv
+COPY --from=build /app/packages/auth-client-py ./packages/auth-client-py
+COPY --from=build /app/packages/mail-client-py ./packages/mail-client-py
 COPY apps/${SERVICE} ./apps/${SERVICE}
+RUN chown -R app:app /app \
+ && if grep -qE '^pyodbc' "apps/${SERVICE}/requirements.txt"; then \
+        python -c "import pyodbc; assert 'ODBC Driver 18 for SQL Server' in pyodbc.drivers(), pyodbc.drivers(); print('ODBC Driver 18 loadable')"; \
+    fi
 
+USER app
 WORKDIR /app/apps/${SERVICE}
 
 # Container Apps sets $PORT; default 8000 for local runs.

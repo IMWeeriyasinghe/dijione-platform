@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# ============================================================================
+# SUPERSEDED — kept only as a reference until the Bicep path is verified.
+# The DijiOne Azure DEV/UAT/PROD provisioning of record is `deploy/bicep/`
+# (main.bicep + modules + main.<env>.bicepparam) driven by `deploy/deploy.sh`.
+# This script has known gaps the Bicep model fixes: it sets no env vars or
+# secrets, passes no registry credentials to `az containerapp create`, creates
+# apps before images are pushed, configures no health probes, and opens a wide
+# PostgreSQL firewall rule. Do not extend it — extend the Bicep instead.
+# ============================================================================
+#
 # Provision the DijiOne DEV on Azure Container Apps + PostgreSQL Flexible.
 # Idempotent-ish: re-running `create` on an existing resource is a no-op or a
 # harmless error. Edit the variables below, then: ./deploy/provision.sh
@@ -75,11 +85,25 @@ for app in "${WEB_SERVICES[@]}"; do
     --cpu 0.25 --memory 0.5Gi --min-replicas 0 --max-replicas 2 -o none
 done
 
-echo "==> container app (external gateway: shell-web — the ONLY external ingress)"
+echo "==> container app (external gateway: shell-web)"
 az containerapp create -g "$RG" -n shell-web --environment "$ENVIRONMENT" \
   --image "$REGISTRY/dijione/shell-web:latest" \
   --ingress external --target-port 3000 \
   --cpu 0.25 --memory 0.5Gi --min-replicas 1 --max-replicas 3 -o none
+
+echo "==> container app (external client portal: talentflow-portal-web — own hostname, NOT proxied by shell-web)"
+az containerapp create -g "$RG" -n talentflow-portal-web --environment "$ENVIRONMENT" \
+  --image "$REGISTRY/dijione/talentflow-portal-web:latest" \
+  --ingress external --target-port 3000 \
+  --cpu 0.25 --memory 0.5Gi --min-replicas 0 --max-replicas 2 -o none
+
+if [ "$DEPLOY_BIRTHDAY" = "true" ]; then
+  echo "==> container app (external supplier portal: birthday-supplier-web — own hostname)"
+  az containerapp create -g "$RG" -n birthday-supplier-web --environment "$ENVIRONMENT" \
+    --image "$REGISTRY/dijione/birthday-supplier-web:latest" \
+    --ingress external --target-port 3000 \
+    --cpu 0.25 --memory 0.5Gi --min-replicas 0 --max-replicas 2 -o none
+fi
 
 echo "==> scheduled source-sync Jobs (replica-safe — NOT an in-process timer)"
 # Recruitment Source: reconcile Lever every 6 hours.

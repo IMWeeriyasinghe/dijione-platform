@@ -153,7 +153,7 @@ export function PostingsView() {
                   : "rounded-full border border-dt-border px-3 py-1 text-xs text-dt-text-secondary hover:border-dt-orange"
               }
             >
-              {f.label} <span className="opacity-60">({count})</span>
+              {f.label} <span>({count})</span>
             </button>
           );
         })}
@@ -206,6 +206,7 @@ export function PostingsView() {
                       {verifyingId === p.id ? (
                         <div className="flex items-center gap-2">
                           <Select
+                            aria-label="Client for this posting"
                             value={pickClientId ?? ""}
                             onChange={(e) => setPickClientId(Number(e.target.value) || null)}
                           >

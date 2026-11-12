@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002"
     )
 
-    jwt_dev_secret: str = "dev-only-insecure-secret-change-me"
+    platform_jwt_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
 
     platform_api_url: str = "http://localhost:8000"

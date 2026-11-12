@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, AuthGate, Button, Card, EmptyState, ErrorState, LoadingState, formatDateTime } from "@dijione/design-system";
+import { AppShell, AuthGate, Button, Card, EmptyState, ErrorState, LoadingState, VersionFooter, formatDateTime } from "@dijione/design-system";
 import { listNotifications, useAuth, usePlatformAdmin } from "@dijione/auth-client";
 import { useQuery } from "@tanstack/react-query";
 import { Home, ShieldCheck, Sparkles } from "lucide-react";
@@ -52,7 +52,15 @@ function HomeContent() {
       title="DijiOne"
       topNavTitle="DijiOne Home"
       sections={[{ items: navItems }]}
-      footer={<p className="text-xs text-white/60">DijiOne · by Dijital Team</p>}
+      footer={
+        <VersionFooter
+          appName="DijiOne"
+          version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+          gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+          // releaseDate intentionally omitted — not wired to a runtime
+          // RELEASE_DATE source yet (round 3 only did this for birthday-web).
+        />
+      }
     >
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-dt-text-primary">

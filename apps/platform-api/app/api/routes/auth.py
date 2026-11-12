@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
-from app.core.security import get_auth_provider
+from app.core.security import issue_session_token
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
@@ -32,6 +32,16 @@ def _module_roles_payload(user: User, repo: UserRepository) -> list[dict]:
     ]
 
 
+def _with_baseline(assigned: list[dict], baseline: dict[str, str]) -> list[dict]:
+    held = {r["module_key"] for r in assigned if r["enabled"]}
+    extra = [
+        {"module_key": key, "role": role, "client_id": None, "enabled": True}
+        for key, role in baseline.items()
+        if key not in held
+    ]
+    return assigned + extra
+
+
 def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> CurrentUserOut:
     return CurrentUserOut(
         id=user.id,
@@ -40,7 +50,7 @@ def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> Curre
         title=user.title,
         platform_role=user.platform_role,
         avatar_color=user.avatar_color,
-        module_roles=_module_roles_payload(user, repo),
+        module_roles=_with_baseline(_module_roles_payload(user, repo), AuthorizationService(db).baseline_roles(user)),
         platform_permissions=sorted(AuthorizationService(db).platform_permissions(user)),
     )
 
@@ -78,7 +88,7 @@ def dev_login(payload: DevLoginRequest, db: Session = Depends(get_db)) -> TokenR
     # Phase 2.5: the token carries signed authorization claims so
     # talent-api/birthday-api/spark-api can authorize requests without a
     # synchronous call back to Platform Core — see claims_service.py.
-    token = get_auth_provider().issue_token(user.id, **build_claims(user, db))
+    token = issue_session_token(user.id, **build_claims(user, db))
     return TokenResponse(access_token=token, user=_to_current_user_out(user, repo, db))
 
 

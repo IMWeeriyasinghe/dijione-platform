@@ -12,6 +12,7 @@ from __future__ import annotations
 from auth_client_py import PlatformClient
 
 from app.core.config import get_settings
+from app.services.side_effects import dispatch_or_collect
 
 
 class NotificationService:
@@ -32,10 +33,10 @@ class NotificationService:
         related_entity_type: str | None = None,
         related_entity_id: int | None = None,
     ) -> None:
-        self.client.notify_user(
+        dispatch_or_collect(lambda: self.client.notify_user(
             user_id=user_id, type=type, title=title, body=body,
             related_entity_type=related_entity_type, related_entity_id=related_entity_id,
-        )
+        ))
 
     def notify_module_role(
         self,
@@ -49,8 +50,8 @@ class NotificationService:
         related_entity_id: int | None = None,
         client_id: int | None = None,
     ) -> None:
-        self.client.broadcast_notification(
+        dispatch_or_collect(lambda: self.client.broadcast_notification(
             module_key=module_key, role=role, type=type, title=title, body=body,
             related_entity_type=related_entity_type, related_entity_id=related_entity_id,
             client_id=client_id,
-        )
+        ))

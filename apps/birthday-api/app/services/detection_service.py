@@ -12,14 +12,23 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.constants import EligibilityReason, ExceptionReason, LeadTimeClass, OrderStatus, ScanRunStatus
+from app.core.constants import (
+    ActorType,
+    EligibilityReason,
+    ExceptionReason,
+    LeadTimeClass,
+    OrderStatus,
+    ScanRunStatus,
+)
 from app.integrations.people_source.client import EmployeeSourceClient, EmployeeSourceUnavailableError
 from app.integrations.people_source.mapper import map_employee
 from app.models.detection_config import BirthdayDetectionConfig
+from app.models.order_event import OrderEvent
 from app.models.scan_run import ScanRun
 from app.models.supplier import Supplier
 from app.models.supplier_catalogue_item import SupplierCatalogueItem
 from app.repositories.supplier_repository import SupplierRepository
+from app.services import delivery_date_service
 from app.services.eligibility_service import compute_eligibility
 from app.services.order_sequence_service import next_order_reference
 from app.services.order_service import create_or_get_order
@@ -106,17 +115,25 @@ def determine_initial_status(
     supplier: Supplier | None,
     has_work_email: bool,
     has_default_cake: bool,
+    has_employee_number: bool = True,
 ) -> tuple[OrderStatus, str | None]:
     """Returns (status, exception_reason).
 
-    Missing critical employee data (no work_email) is checked first and
-    always wins, regardless of lead time or supplier resolution. A
-    standard, resolvable order lands in PENDING_VERIFICATION — the one
-    routine human checkpoint (plan §F) — never in an auto-approved state;
-    there is no separate approval status any more (decision A).
+    Missing critical employee data is checked first and always wins,
+    regardless of lead time or supplier resolution. A standard, resolvable
+    order lands in PENDING_VERIFICATION — the one routine human checkpoint
+    (plan §F) — never in an auto-approved state; there is no separate
+    approval status any more (decision A).
     """
     if not has_work_email:
         return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.MISSING_EMAIL.value
+
+    if not has_employee_number:
+        # No BambooHR employeeNumber -> the order reference had to fall back
+        # to the internal record id (tagged BDAY-TMP…). A human must supply
+        # the real Team Member ID (or confirm it is genuinely absent) before
+        # the order proceeds — never a silent fallback (Phase 1 §1.0).
+        return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.MISSING_EMPLOYEE_NUMBER.value
 
     if supplier is None:
         return OrderStatus.REQUIRES_ATTENTION, ExceptionReason.NO_SUPPLIER.value
@@ -221,6 +238,7 @@ def run_daily_scan(
             lead_time_class = classify_lead_time(days_remaining, config)
             supplier = resolve_supplier_for_office(employee["office_location"], db)
             has_work_email = bool(employee["work_email"])
+            has_employee_number = bool(employee.get("employee_number"))
             default_catalogue_item = resolve_default_catalogue_item(supplier, db)
 
             status, exception_reason = determine_initial_status(
@@ -229,6 +247,7 @@ def run_daily_scan(
                 supplier=supplier,
                 has_work_email=has_work_email,
                 has_default_cake=default_catalogue_item is not None,
+                has_employee_number=has_employee_number,
             )
             requires_admin_review = status == OrderStatus.PENDING_VERIFICATION and lead_time_class != LeadTimeClass.NORMAL
             hold_reason = "Supplier lead time exceeds remaining days" if status == OrderStatus.ON_HOLD else None
@@ -241,8 +260,19 @@ def run_daily_scan(
 
             # Business-facing Team Member ID (BambooHR employeeNumber), NOT
             # the internal record id — see order_sequence_service docstring.
+            # No silent fallback: when employeeNumber is absent the reference
+            # is tagged BDAY-TMP… and the order carries MISSING_EMPLOYEE_NUMBER.
             team_member_id = employee.get("employee_number") or employee["employee_id"]
-            order_reference = next_order_reference(db, team_member_id, occurrence_year)
+            order_reference = next_order_reference(
+                db, team_member_id, occurrence_year, provisional=not has_employee_number
+            )
+
+            # Working-day-aware default delivery date (§1.1): shift a
+            # weekend / supplier-non-working-day birthday to the nearest
+            # prior working day. Soft flag (OrderEvent), operator can override.
+            delivery_date, date_shifted = delivery_date_service.resolve_delivery_date(
+                occurrence_date, supplier.working_days if supplier else None
+            )
 
             _order, created = create_or_get_order(
                 db,
@@ -253,9 +283,10 @@ def run_daily_scan(
                 order_reference=order_reference,
                 birthday_date=occurrence_date,
                 birthday_year=occurrence_year,
-                # Default delivery date = the birthday occurrence (§8) —
-                # editable later in Fulfilment Assignment.
-                delivery_date=occurrence_date,
+                # Default delivery date = the birthday occurrence, shifted to
+                # the nearest prior working day if that falls on a supplier
+                # non-working day (§1.1) — editable later in Fulfilment Assignment.
+                delivery_date=delivery_date,
                 office_location=employee["office_location"],
                 lead_time_days=days_remaining,
                 lead_time_class=lead_time_class.value,
@@ -278,6 +309,20 @@ def run_daily_scan(
                 orders_created += 1
                 if status in (OrderStatus.REQUIRES_ATTENTION, OrderStatus.ON_HOLD):
                     exceptions += 1
+                if date_shifted:
+                    db.add(
+                        OrderEvent(
+                            order_id=_order.id,
+                            event_type="DELIVERY_DATE_ADJUSTED",
+                            actor_type=ActorType.SYSTEM.value,
+                            actor_display_name="Scheduled Birthday Scan",
+                            detail=(
+                                f"Birthday {occurrence_date.isoformat()} falls on a supplier "
+                                f"non-working day; default delivery date set to "
+                                f"{delivery_date.isoformat()}. Override in Fulfilment Assignment."
+                            ),
+                        )
+                    )
                 # No auto-promotion step here any more: a freshly-detected
                 # order's address is always NOT_CHECKED, so there is never
                 # anything to promote at detection time. Auto-release

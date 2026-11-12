@@ -63,6 +63,7 @@ def test_hold_release_cancel_lifecycle(api_client, db):
     headers = headers_for(5, role="BIRTHDAY_ADMIN")
     payload = {
         "employee_id": "emp-600",
+        "employee_number": "600",
         "employee_name": "Amy Lee",
         "employee_email": "amy@example.com",
         "birthday_date": str(date.today() + timedelta(days=20)),

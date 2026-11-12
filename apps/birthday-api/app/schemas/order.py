@@ -14,6 +14,7 @@ class OrderEventRead(BaseModel):
     to_status: str | None
     actor_id: int | None
     actor_type: str
+    actor_display_name: str | None = None
     detail: str | None
     created_at: datetime
 
@@ -140,6 +141,10 @@ class BirthdayOrderUpdate(BaseModel):
     supplier_id: int | None = None
     delivery_date: date | None = None
     catalogue_item_id: int | None = None
+    # Supplying this on an order flagged MISSING_EMPLOYEE_NUMBER clears the
+    # exception and (while the order has never reached a supplier)
+    # regenerates the provisional BDAY-TMP… reference to BDAY-EMP…
+    employee_number: str | None = None
 
 
 class HoldRequest(BaseModel):
@@ -152,6 +157,12 @@ class ReleaseRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     reason: str | None = None
+
+
+class ReopenRequest(BaseModel):
+    # Mandatory, unlike CancelRequest's optional reason — Phase 1.6 §14
+    # requires an explicit, non-empty reason for every reopen.
+    reason: str
 
 
 class VerifyAddressRequest(BaseModel):
@@ -204,6 +215,34 @@ class OrderIssueRead(BaseModel):
 class ReadinessCheckResponse(BaseModel):
     ready: bool
     missing: list[str] = []
+
+
+class OrderMessageCreate(BaseModel):
+    """A Portal message on an order (Phase 1 §G flows 1 & 2)."""
+
+    body: str
+    issue_id: int | None = None
+    # Internal only: also send an email copy so the supplier is nudged to
+    # check the portal (the portal has no push in Phase 1).
+    also_email: bool = False
+
+
+class TimelineEntryOut(BaseModel):
+    at: datetime | None
+    kind: str
+    channel: str | None = None
+    direction: str | None = None
+    author_type: str | None = None
+    author_id: int | None = None
+    title: str
+    body: str | None = None
+    meta: dict = {}
+
+
+class OrderTimelineResponse(BaseModel):
+    order_id: int
+    order_reference: str
+    entries: list[TimelineEntryOut] = []
 
 
 class BirthdayOrderListResponse(BaseModel):

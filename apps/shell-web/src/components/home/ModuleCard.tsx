@@ -6,15 +6,16 @@ import { Card, cn, stageLabel } from "@dijione/design-system";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { ModuleIcon } from "@/lib/module-icons";
-
-// Maps a module registry key to its owning service's summary endpoint (CR
-// §15). Modules with no entry here have no runtime status to show (e.g. a
-// module.route the shell itself doesn't proxy anywhere).
-const MODULE_SUMMARY_PATH: Record<string, string> = {
-  "talent-flow": "/api/talent/summary",
-  birthday: "/api/birthday/summary",
-  spark: "/api/spark/summary",
-};
+import {
+  deriveModuleHealth,
+  HEALTH_DISPLAY,
+  HEALTH_TIMEOUT_MS,
+  shouldRetryStatus,
+  STATUS_POLL_MS,
+  STATUS_STALE_MS,
+  statusRetryDelay,
+  summaryPathFor,
+} from "@/lib/module-status";
 
 /** Shape returned by each module's `/summary` route. `status` is the only
  * field every service is guaranteed to send back — everything else is
@@ -29,27 +30,24 @@ export type ModuleSummary = {
 
 /** Each card fetches its own service's health independently — never one
  * Promise.all for the whole page — so a single dead backend degrades one
- * card, not the DijiOne Home page (CR §39). A 4s timeout keeps a hung
- * service from blocking the UI indefinitely (CR §17).
+ * card, not the DijiOne Home page (CR §39). The timeout and bounded retries
+ * allow for a cold start; see lib/module-status.ts.
  *
  * Exported so other Home widgets (AttentionPanel, PlatformHealth) can read
  * the same already-resolved React Query cache entry instead of issuing a
  * second, coupled fetch — React Query dedupes identical queryKeys, so this
  * still fires one isolated request per module, never a joint one. */
 export function useRuntimeStatus(moduleKey: string, enabled: boolean) {
-  const summaryPath = MODULE_SUMMARY_PATH[moduleKey];
   return useQuery({
     queryKey: ["module-summary", moduleKey],
-    queryFn: () => request<ModuleSummary>(summaryPath, { signal: AbortSignal.timeout(4000) }),
-    enabled: enabled && Boolean(summaryPath),
-    retry: 0,
-    staleTime: 15_000,
-    refetchInterval: 60_000,
+    queryFn: () => request<ModuleSummary>(summaryPathFor(moduleKey), { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) }),
+    enabled,
+    retry: shouldRetryStatus,
+    retryDelay: statusRetryDelay,
+    staleTime: STATUS_STALE_MS,
+    refetchInterval: STATUS_POLL_MS,
+    refetchOnWindowFocus: false,
   });
-}
-
-export function hasSummaryEndpoint(moduleKey: string): boolean {
-  return Boolean(MODULE_SUMMARY_PATH[moduleKey]);
 }
 
 // Human-readable labels for the operational fields a summary payload may
@@ -65,22 +63,16 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
 
 function RuntimeStatusBadge({ moduleKey, enabled }: { moduleKey: string; enabled: boolean }) {
   const query = useRuntimeStatus(moduleKey, enabled);
-  if (!enabled || !MODULE_SUMMARY_PATH[moduleKey]) return null;
+  if (!enabled) return null;
 
-  if (query.isLoading) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-dt-text-secondary">
-        <span className="size-1.5 rounded-full bg-dt-text-secondary/40" /> Checking…
-      </span>
-    );
-  }
-  if (query.isError) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-dt-danger">
-        <span className="size-1.5 rounded-full bg-dt-danger" /> Temporarily unavailable
-      </span>
-    );
-  }
+  const health = deriveModuleHealth({ isPending: query.isPending, isSuccess: query.isSuccess, error: query.error });
+  const display = HEALTH_DISPLAY[health];
+  const badge = (
+    <span className={cn("flex items-center gap-1.5 text-xs", display.text)} title={display.title}>
+      <span className={cn("size-1.5 rounded-full", display.dot)} /> {display.label}
+    </span>
+  );
+  if (health !== "HEALTHY") return badge;
 
   const stats = Object.entries(SUMMARY_FIELD_LABELS).filter(
     ([field]) => typeof query.data?.[field as keyof ModuleSummary] === "number"
@@ -88,9 +80,7 @@ function RuntimeStatusBadge({ moduleKey, enabled }: { moduleKey: string; enabled
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="flex items-center gap-1.5 text-xs font-medium text-dt-success">
-        <span className="size-1.5 rounded-full bg-dt-success" /> Healthy
-      </span>
+      {badge}
       {stats.length > 0 && (
         <dl className="flex flex-wrap gap-x-4 gap-y-1">
           {stats.map(([field, label]) => (

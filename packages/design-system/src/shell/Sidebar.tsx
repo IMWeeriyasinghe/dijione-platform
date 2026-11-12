@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { LucideIcon } from "lucide-react";
+import { X, type LucideIcon } from "lucide-react";
 import { cn } from "../utils";
 
 export type NavItem = {
@@ -30,6 +30,8 @@ export function Sidebar({
   sections,
   footer,
   homeHref,
+  onNavigate,
+  onClose,
 }: {
   eyebrow?: string;
   title: string;
@@ -39,6 +41,14 @@ export function Sidebar({
    * Always a plain `<a>` (never next/link): this leaves the current zone
    * entirely, same cross-zone rationale as NavItem.external. */
   homeHref?: string;
+  /** Mobile nav drawer only: fires after any nav item / brand link is
+   * clicked, so AppShell can close the drawer on navigation instead of
+   * leaving it open over the newly-loaded page. */
+  onNavigate?: () => void;
+  /** Mobile nav drawer only: renders an explicit close (X) button when
+   * set. Omitted for the persistent desktop sidebar, which has nothing to
+   * close. */
+  onClose?: () => void;
 }) {
   const pathname = usePathname();
 
@@ -67,18 +77,31 @@ export function Sidebar({
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col bg-linear-to-b from-dt-red-deep via-dt-red to-dt-burnt-orange text-white">
-      {homeHref ? (
-        // eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone escape, see NavItem.external
-        <a
-          href={homeHref}
-          title="DijiOne Home"
-          className="flex items-center gap-2.5 px-5 pb-5 pt-6 transition hover:opacity-90"
-        >
-          {brand}
-        </a>
-      ) : (
-        <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">{brand}</div>
-      )}
+      <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
+        {homeHref ? (
+          // eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone escape, see NavItem.external
+          <a
+            href={homeHref}
+            title="DijiOne Home"
+            onClick={onNavigate}
+            className="flex min-w-0 flex-1 items-center gap-2.5 transition hover:opacity-90"
+          >
+            {brand}
+          </a>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">{brand}</div>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation menu"
+            className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-white/80 transition hover:bg-white/10 hover:text-white"
+          >
+            <X className="size-5" />
+          </button>
+        )}
+      </div>
 
       <nav className="dt-scrollbar flex-1 space-y-5 overflow-y-auto px-3 pb-4">
         {sections.map((section, i) => (
@@ -104,11 +127,11 @@ export function Sidebar({
                 );
                 return item.external ? (
                   // eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone, see NavItem.external
-                  <a key={item.href} href={item.href} className={className}>
+                  <a key={item.href} href={item.href} onClick={onNavigate} className={className}>
                     {content}
                   </a>
                 ) : (
-                  <Link key={item.href} href={item.href} className={className}>
+                  <Link key={item.href} href={item.href} onClick={onNavigate} className={className}>
                     {content}
                   </Link>
                 );

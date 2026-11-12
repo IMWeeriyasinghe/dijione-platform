@@ -1,3 +1,4 @@
+from auth_client_py import CorrelationIdMiddleware, assert_trust_anchors_safe
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,6 +6,13 @@ from app.api.routes import admin, health
 from app.core.config import get_settings
 
 settings = get_settings()
+
+# Fail closed: a non-development APP_ENV must not run with the shipped
+# insecure secret default (see auth_client_py.security).
+assert_trust_anchors_safe(
+    settings.app_env,
+    {"INTERNAL_SERVICE_SECRET": settings.internal_service_secret},
+)
 
 app = FastAPI(
     title="DijiOne Admin API",
@@ -24,6 +32,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(CorrelationIdMiddleware)
 
 app.include_router(health.router)
 app.include_router(admin.router)

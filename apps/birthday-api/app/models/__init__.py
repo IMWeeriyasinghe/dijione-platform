@@ -1,6 +1,8 @@
 from app.db.base import Base
 from app.models.birthday_order import BirthdayOrder
+from app.models.birthday_test_email_recipient import BirthdayTestEmailRecipient
 from app.models.detection_config import BirthdayDetectionConfig
+from app.models.inbound_email import InboundEmail, InboundPollState
 from app.models.order_event import OrderEvent
 from app.models.order_issue import OrderIssue
 from app.models.order_sequence import OrderSequence
@@ -16,6 +18,9 @@ __all__ = [
     "Base",
     "BirthdayDetectionConfig",
     "BirthdayOrder",
+    "BirthdayTestEmailRecipient",
+    "InboundEmail",
+    "InboundPollState",
     "OrderEvent",
     "OrderIssue",
     "OrderSequence",

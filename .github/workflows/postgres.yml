@@ -5,6 +5,16 @@ name: postgres
 # `api` / `migrations` workflows stay on SQLite for speed; this job proves
 # migrations apply and the full suite passes against Postgres 16 — the
 # production engine (Azure Database for PostgreSQL Flexible Server).
+#
+# The `_dev`-suffixed database names in the matrix below (platform_dev,
+# talent_dev, ...) are INTENTIONALLY environment-agnostic and unrelated to
+# any real DEV/UAT/PROD Azure database. This job spins up a throwaway
+# `postgres:16` service container per matrix run that exists only for the
+# duration of this CI job and is discarded afterward — it never connects to
+# `psql-dijione-<env>` or any other real, hosted server. Reviewed as part of
+# the deploy/bicep environment-awareness fix (foundation.bicep/main.bicep/
+# init-secrets.sh) and deliberately left unchanged: these are ephemeral CI
+# database names, not an infrastructure environment leak.
 
 on:
   push:

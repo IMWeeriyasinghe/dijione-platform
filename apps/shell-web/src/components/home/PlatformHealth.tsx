@@ -3,44 +3,28 @@
 import type { ModuleOut } from "@dijione/contracts";
 import { Card } from "@dijione/design-system";
 import { CheckCircle2, Clock, XCircle } from "lucide-react";
-import { hasSummaryEndpoint, useRuntimeStatus } from "./ModuleCard";
+import { deriveModuleHealth, HEALTH_DISPLAY } from "@/lib/module-status";
+import { useRuntimeStatus } from "./ModuleCard";
 
 function ModuleHealthRow({ module }: { module: ModuleOut }) {
   const comingSoon = module.status === "COMING_SOON";
-  const enabled = !comingSoon && hasSummaryEndpoint(module.key);
+  const enabled = !comingSoon;
   // Reuses the same isolated per-module query ModuleCard already populates
   // (identical queryKey) — React Query dedupes it, so this never issues a
   // second, coupled request; a dead module still only degrades its own row.
   const query = useRuntimeStatus(module.key, enabled);
 
-  let icon = Clock;
-  let tone = "text-dt-text-secondary";
-  let label = "Coming soon";
-
-  if (enabled) {
-    if (query.isLoading) {
-      icon = Clock;
-      tone = "text-dt-text-secondary";
-      label = "Checking…";
-    } else if (query.isError) {
-      icon = XCircle;
-      tone = "text-dt-danger";
-      label = "Degraded";
-    } else {
-      icon = CheckCircle2;
-      tone = "text-dt-success";
-      label = "Healthy";
-    }
-  } else if (!comingSoon) {
-    // Active module with no summary endpoint wired up — nothing to report.
-    return null;
-  }
+  const health = deriveModuleHealth({ isPending: query.isPending, isSuccess: query.isSuccess, error: query.error });
+  const display = enabled ? HEALTH_DISPLAY[health] : null;
+  const icon = !display ? Clock : health === "HEALTHY" ? CheckCircle2 : health === "UNAVAILABLE" ? XCircle : Clock;
+  const tone = display?.text ?? "font-medium text-dt-text-secondary";
+  const label = display?.label ?? "Coming soon";
 
   const Icon = icon;
   return (
     <li className="flex items-center justify-between gap-3 py-2">
       <span className="truncate text-sm text-dt-text-primary">{module.name}</span>
-      <span className={`flex items-center gap-1.5 text-xs font-medium ${tone}`}>
+      <span className={`flex items-center gap-1.5 text-xs ${tone}`} title={display?.title}>
         <Icon className="size-3.5" /> {label}
       </span>
     </li>

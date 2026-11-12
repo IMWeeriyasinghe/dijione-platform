@@ -17,6 +17,7 @@ from app.models.birthday_order import BirthdayOrder
 from app.repositories.birthday_order_repository import BirthdayOrderRepository
 from app.schemas.dashboard import DashboardSummary, UpcomingOrdersResponse
 from app.schemas.order import BirthdayOrderSummary
+from app.services import attention_service
 
 router = APIRouter(prefix="/api/birthday", tags=["birthday-dashboard"])
 
@@ -58,8 +59,14 @@ def get_dashboard(
         pending_verification_count=repo.count_pending_verification(),
         verification_overdue_count=repo.count_verification_overdue(),
         requires_review_count=repo.count_requires_review(),
-        supplier_not_accepted_count=repo.count_supplier_not_accepted(older_than=sla_cutoff),
+        acceptance_awaiting_count=repo.count_acceptance_awaiting(),
+        acceptance_overdue_count=repo.count_acceptance_overdue(sla_cutoff=sla_cutoff),
         deliveries_today_at_risk_count=repo.count_deliveries_today_at_risk(),
+        on_hold_count=repo.count_on_hold(),
+        overdue_delivery_count=repo.count_overdue_delivery(),
+        open_issues_count=attention_service.count_open_issues(db),
+        unmatched_emails_count=attention_service.count_unmatched_emails(db),
+        detection_health=attention_service.scan_health(db),
     )
 
 

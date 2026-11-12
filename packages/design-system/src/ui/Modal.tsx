@@ -31,8 +31,8 @@ export function Modal({
         onClick={onClose}
         tabIndex={-1}
       />
-      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-dt-border bg-dt-surface p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="relative z-10 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-2xl border border-dt-border bg-dt-surface shadow-xl">
+        <div className="flex items-center justify-between p-6 pb-4">
           <h2 className="text-lg font-semibold text-dt-text-primary">{title}</h2>
           <button
             onClick={onClose}
@@ -42,7 +42,7 @@ export function Modal({
             <X className="size-4" />
           </button>
         </div>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">{children}</div>
       </div>
     </div>
   );

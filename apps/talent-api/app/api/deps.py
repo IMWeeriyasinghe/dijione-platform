@@ -26,7 +26,7 @@ from app.models.magic_link_grant import MagicLinkGrant
 from app.repositories.client_repo import ClientRepository
 
 _settings = get_settings()
-get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
+get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # The external magic-link session decoder — a DELIBERATELY separate trust
 # boundary (approved security amendment). Bound to its own secret AND its
@@ -128,6 +128,12 @@ def get_talent_scope(
             status.HTTP_403_FORBIDDEN, "User has no active DijiTalentFlow module access"
         )
     client_id, client_ids = _resolve_local_client_scope(db, module_claim)
+    # Only staff may run without a single client: repositories read a None
+    # client_id as staff scope, so a client role must never reach them that way.
+    if client_id is None and "talent.workspace.staff" not in module_claim.permissions:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "User has no client assigned for DijiTalentFlow"
+        )
     return TalentScope(
         user=ScopeUser(id=claims.user_id, full_name=claims.full_name),
         role=module_claim.role,

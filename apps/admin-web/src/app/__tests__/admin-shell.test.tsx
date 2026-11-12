@@ -42,6 +42,7 @@ vi.mock("@dijione/design-system", () => ({
       <main>{children}</main>
     </div>
   ),
+  VersionFooter: ({ appName }: { appName: string }) => <p data-testid="version-footer">{appName}</p>,
 }));
 
 import { usePlatformAdmin } from "@dijione/auth-client";

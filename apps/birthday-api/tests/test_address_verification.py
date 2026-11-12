@@ -38,6 +38,48 @@ def test_default_address_verification_status_is_not_checked(db):
     assert order.address_verification_status == "NOT_CHECKED"
 
 
+def test_cannot_verify_an_order_with_no_delivery_destination(api_client, db):
+    """Phase 1 §1.0: VERIFIED is refused (409) when an order has neither an
+    office_location nor any delivery_address_* field — nowhere to deliver."""
+    from app.models.birthday_order import BirthdayOrder
+    from app.models.supplier import Supplier
+
+    supplier = Supplier(name="NoDest Supplier", primary_contact_email="nodest@supplier.example.com")
+    db.add(supplier)
+    db.flush()
+    order = BirthdayOrder(
+        order_reference="BDAY-EMPnodest-2026-00001",
+        employee_id="emp-nodest",
+        employee_name="No Dest",
+        employee_email="nodest@example.com",
+        birthday_date=date.today() + timedelta(days=10),
+        birthday_year=(date.today() + timedelta(days=10)).year,
+        office_location="",
+        status="PENDING_VERIFICATION",
+        supplier_id=supplier.id,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    admin = headers_for(5, role="BIRTHDAY_ADMIN")
+
+    r1 = api_client.post(f"/api/birthday/orders/{order.id}/verify", json={}, headers=admin)
+    assert r1.status_code == 409
+    r2 = api_client.patch(
+        f"/api/birthday/orders/{order.id}/address-verification",
+        json={"status": "VERIFIED"}, headers=admin,
+    )
+    assert r2.status_code == 409
+
+    # Adding an office location makes it verifiable again.
+    api_client.patch(f"/api/birthday/orders/{order.id}", json={"office_location": "Colombo"}, headers=admin)
+    r3 = api_client.patch(
+        f"/api/birthday/orders/{order.id}/address-verification",
+        json={"status": "VERIFIED"}, headers=admin,
+    )
+    assert r3.status_code == 200
+
+
 def test_pnc_can_change_address_verification_status(db, platform_calls):
     from app.core.constants import AddressVerificationStatus
     from app.services.address_verification_service import set_address_verification_status

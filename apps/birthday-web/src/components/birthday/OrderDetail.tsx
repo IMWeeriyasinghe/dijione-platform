@@ -23,6 +23,7 @@ import {
   CardTitle,
   ErrorState,
   FormField,
+  Input,
   LoadingState,
   Modal,
   Select,
@@ -37,8 +38,11 @@ import {
   holdOrder,
   listSupplierCatalogue,
   listSuppliers,
+  postOrderMessage,
   releaseOrder,
+  reopenOrder,
   resendOrderToSupplier,
+  resolveOrderIssue,
   sendOrderToSupplier,
   updateAddressVerification,
   updateDeliveryAddress,
@@ -46,8 +50,11 @@ import {
   verifyAddress,
 } from "@/lib/api";
 import type { BirthdayOrderOut, DeliveryAddressUpdateInput, SupplierOut } from "@dijione/contracts";
+import { OrderTimeline } from "@/components/birthday/OrderTimeline";
+import { EventLogTimeline } from "@/components/birthday/EventLogTimeline";
+import { orderActionPolicy } from "@/lib/order-action-policy";
 
-type ActionKind = "hold" | "release" | "cancel" | null;
+type ActionKind = "hold" | "release" | "cancel" | "reopen" | null;
 
 type FulfilmentEdit = { supplier_id?: string; delivery_date?: string; catalogue_item_id?: string };
 
@@ -80,9 +87,9 @@ const ADDRESS_VERIFICATION_OPTIONS = [
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-xs font-medium uppercase tracking-wide text-dt-text-secondary">{label}</span>
-      <span className="text-sm text-dt-text-primary">{value}</span>
+      <span className="text-sm wrap-break-word text-dt-text-primary">{value}</span>
     </div>
   );
 }
@@ -98,6 +105,9 @@ export function OrderDetail({ orderId }: { orderId: number }) {
   const router = useRouter();
   const [actionOpen, setActionOpen] = useState<ActionKind>(null);
   const [reasonText, setReasonText] = useState("");
+  const [teamMemberIdDraft, setTeamMemberIdDraft] = useState("");
+  const [resolveFor, setResolveFor] = useState<number | null>(null);
+  const [resolveText, setResolveText] = useState("");
   const [addressEditOpen, setAddressEditOpen] = useState(false);
   const [addressForm, setAddressForm] = useState<DeliveryAddressUpdateInput>({});
   // Fulfilment-assignment edits. Each field is `undefined` until the
@@ -163,6 +173,18 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     },
   });
 
+  // §14 — the dedicated Reopen command. Reuses the same modal/reason flow
+  // as Hold/Release/Cancel, but the reason is mandatory (enforced both
+  // client-side, in the modal's Confirm button, and server-side).
+  const reopenMutation = useMutation({
+    mutationFn: (reason: string) => reopenOrder(orderId, reason),
+    onSuccess: () => {
+      invalidate();
+      setActionOpen(null);
+      setReasonText("");
+    },
+  });
+
   const sendToSupplierMutation = useMutation({
     mutationFn: () => sendOrderToSupplier(orderId),
     onSuccess: () => invalidate(),
@@ -216,6 +238,31 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     },
   });
 
+  // §H1 — recover a MISSING_EMPLOYEE_NUMBER order: supplying the real
+  // Team Member ID clears the exception + regenerates the reference.
+  const setTeamMemberIdMutation = useMutation({
+    mutationFn: (employee_number: string) => updateOrder(orderId, { employee_number }),
+    onSuccess: () => {
+      invalidate();
+      setTeamMemberIdDraft("");
+    },
+  });
+
+  // §H5 — resolve an OPEN issue AND tell the supplier what was done, in
+  // one action (composes the two existing endpoints).
+  const resolveIssueMutation = useMutation({
+    mutationFn: async ({ issueId, text }: { issueId: number; text: string }) => {
+      await resolveOrderIssue(orderId, issueId, text);
+      await postOrderMessage(orderId, text, { also_email: true });
+    },
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["order-timeline", orderId] });
+      setResolveFor(null);
+      setResolveText("");
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteOrder(orderId),
     onSuccess: () => {
@@ -231,6 +278,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     holdMutation.isPending ||
     releaseMutation.isPending ||
     cancelMutation.isPending ||
+    reopenMutation.isPending ||
     sendToSupplierMutation.isPending ||
     resendMutation.isPending ||
     verifyMutation.isPending ||
@@ -251,28 +299,19 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     eff.catalogueId !== (order.catalogue_item_id != null ? String(order.catalogue_item_id) : "");
   const catalogueItems = catalogueQuery.data ?? [];
 
-  // "Verification is the approval" (plan §K): the Verify button is the
-  // single routine happy-path action, available any time the address
-  // isn't already VERIFIED. Manual Send/Resend remain for held orders and
-  // exception recovery — mirrors birthday-api's order_email_service._send
-  // reachability check exactly; this is a UX convenience only, never the
-  // enforcement point.
-  const canVerify = order.address_verification_status !== "VERIFIED" && !["CANCELLED", "COMPLETED"].includes(order.status);
-  const canConfirmRelease = order.status === "REQUIRES_REVIEW";
-  const canSendToSupplier =
-    ["PENDING_VERIFICATION", "REQUIRES_ATTENTION"].includes(order.status) &&
-    order.supplier_id != null &&
-    order.address_verification_status === "VERIFIED";
-  const canResend = ["REQUIRES_ATTENTION", "CHANGE_REQUESTED"].includes(order.status) && order.supplier_id != null;
+  // Phase 1.6 §10 (R10) — one shared policy object instead of five
+  // separately-named consts plus inline conditions (the shape that let
+  // Hold drift out of sync with the backend — §B row 3/4).
+  const policy = orderActionPolicy(order);
   const verifyError = verifyMutation.error as Error | null;
-  // Hard delete is PENDING_VERIFICATION-only and never-actioned (server is
-  // the real boundary — see the 409 birthday-api returns otherwise).
-  const canDelete = order.status === "PENDING_VERIFICATION";
+  const holdError = holdMutation.error as Error | null;
+  const reopenError = reopenMutation.error as Error | null;
 
   function submitAction() {
     if (actionOpen === "hold") holdMutation.mutate(reasonText);
     if (actionOpen === "release") releaseMutation.mutate(reasonText);
     if (actionOpen === "cancel") cancelMutation.mutate(reasonText);
+    if (actionOpen === "reopen") reopenMutation.mutate(reasonText);
   }
 
   return (
@@ -285,9 +324,29 @@ export function OrderDetail({ orderId }: { orderId: number }) {
         Back to orders
       </Link>
 
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
+      {/* Responsive review round 2 — round 1's `lg:flex-wrap` + `shrink-0` on
+          both blocks stopped the title from being crushed but did NOT bound
+          the actions block's own width: a shrink-0 flex item's width is its
+          uncapped content size, so once it has a line to itself (via wrap)
+          it can still be wider than its parent and overflow the card. Fix:
+          the actions block is `w-full` (an explicit ceiling, not a shrink
+          negotiation) below `2xl`, so it can never exceed the card's width
+          regardless of button count; it only becomes `w-auto`/`shrink-0`
+          (content-sized, sharing a line with the title) at `2xl` (1536px)+,
+          where there's realistically enough room. `2xl:flex-wrap` on the
+          OUTER row stays on as a safety net even at that width — if the
+          arithmetic is ever wrong (a longer reference, an added button),
+          the whole actions block just drops to its own new line instead of
+          overflowing, rather than relying on the math being exactly right. */}
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-dt-border bg-dt-surface p-5 2xl:flex-row 2xl:flex-wrap 2xl:items-start 2xl:justify-between">
+        <div className="min-w-0 max-w-full">
           <div className="flex flex-wrap items-center gap-2">
+            {/* No wrap-break-word: that permits breaking mid-token (the
+                round-1 "BD"/"AY-" collapse). Default text flow already
+                treats the reference's own hyphens as valid break points,
+                so it wraps at BDAY-/EMP.../2026- boundaries only, if ever
+                needed — and now that this block is never force-shrunk
+                below its natural size, it normally won't need to at all. */}
             <h1 className="text-xl font-semibold text-dt-text-primary">{order.order_reference}</h1>
             <StatusBadge status={order.status} />
             {order.requires_admin_review && <StatusBadge status="PENDING" label="Needs review" />}
@@ -300,90 +359,116 @@ export function OrderDetail({ orderId }: { orderId: number }) {
         </div>
 
         {scope?.isAdmin && (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={!canVerify || isMutating}
-              loading={verifyMutation.isPending}
-              onClick={() => verifyMutation.mutate()}
-              title="The one routine checkpoint — marks the address VERIFIED and auto-releases a standard order to the supplier"
-            >
-              <BadgeCheck className="size-4" />
-              Verify Address
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={!canConfirmRelease || isMutating}
-              loading={confirmReleaseMutation.isPending}
-              onClick={() => confirmReleaseMutation.mutate()}
-              title="This order was flagged for a look before release — confirm to send it to the supplier"
-            >
-              Confirm &amp; Release
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!canSendToSupplier || isMutating}
-              loading={sendToSupplierMutation.isPending}
-              onClick={() => sendToSupplierMutation.mutate()}
-            >
-              <Send className="size-4" />
-              Send to Supplier
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!canResend || isMutating}
-              loading={resendMutation.isPending}
-              onClick={() => resendMutation.mutate()}
-            >
-              <RefreshCcw className="size-4" />
-              Resend
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={order.status === "ON_HOLD" || isMutating}
-              onClick={() => setActionOpen("hold")}
-            >
-              <PauseCircle className="size-4" />
-              Hold
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={order.status !== "ON_HOLD" || isMutating}
-              onClick={() => setActionOpen("release")}
-            >
-              <PlayCircle className="size-4" />
-              Release
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={["CANCELLED", "COMPLETED"].includes(order.status) || isMutating}
-              onClick={() => setActionOpen("cancel")}
-            >
-              <XCircle className="size-4" />
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={!canDelete || isMutating}
-              loading={deleteMutation.isPending}
-              title={!canDelete ? "Only never-actioned DRAFT orders can be deleted — use Cancel instead" : undefined}
-              onClick={() => {
-                if (window.confirm("Permanently delete this draft order? This cannot be undone.")) {
-                  deleteMutation.mutate();
-                }
-              }}
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
+          // Grouped by meaning (Primary / Secondary / Destructive), separated
+          // by spacing alone (gap-x-4 between groups vs gap-2 within one) —
+          // no vertical border, which would look awkward once a group wraps
+          // onto its own line at narrow widths.
+          <div className="flex w-full min-w-0 flex-wrap gap-x-4 gap-y-2 2xl:w-auto 2xl:shrink-0">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!policy.canVerify || isMutating}
+                loading={verifyMutation.isPending}
+                onClick={() => verifyMutation.mutate()}
+                title="The one routine checkpoint — marks the address VERIFIED and auto-releases a standard order to the supplier"
+              >
+                <BadgeCheck className="size-4" />
+                Verify Address
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!policy.canConfirmRelease || isMutating}
+                loading={confirmReleaseMutation.isPending}
+                onClick={() => confirmReleaseMutation.mutate()}
+                title="This order was flagged for a look before release — confirm to send it to the supplier"
+              >
+                Confirm &amp; Release
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!policy.canSendToSupplier || isMutating}
+                loading={sendToSupplierMutation.isPending}
+                onClick={() => sendToSupplierMutation.mutate()}
+              >
+                <Send className="size-4" />
+                Send to Supplier
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!policy.canResend || isMutating}
+                loading={resendMutation.isPending}
+                onClick={() => resendMutation.mutate()}
+              >
+                <RefreshCcw className="size-4" />
+                Resend
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!policy.canHold || isMutating}
+                title={!policy.canHold ? "This order is complete, cancelled, or already on hold and can no longer be held" : undefined}
+                onClick={() => setActionOpen("hold")}
+              >
+                <PauseCircle className="size-4" />
+                Hold
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!policy.canRelease || isMutating}
+                onClick={() => setActionOpen("release")}
+              >
+                <PlayCircle className="size-4" />
+                Release
+              </Button>
+              {policy.canReopen && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isMutating}
+                  title="Reopen this cancelled order — reruns readiness or, if it had already reached the supplier, routes to a fresh review before re-release"
+                  onClick={() => setActionOpen("reopen")}
+                >
+                  <RefreshCcw className="size-4" />
+                  Reopen order
+                </Button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={!policy.canCancel || isMutating}
+                title={!policy.canCancel ? "This order is already complete, delivered, or cancelled" : undefined}
+                onClick={() => setActionOpen("cancel")}
+              >
+                <XCircle className="size-4" />
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={!policy.canDelete || isMutating}
+                loading={deleteMutation.isPending}
+                title={!policy.canDelete ? "Only never-actioned DRAFT orders can be deleted — use Cancel instead" : undefined}
+                onClick={() => {
+                  if (window.confirm("Permanently delete this draft order? This cannot be undone.")) {
+                    deleteMutation.mutate();
+                  }
+                }}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -393,9 +478,80 @@ export function OrderDetail({ orderId }: { orderId: number }) {
           Could not verify: {verifyError.message}.
         </div>
       )}
+      {holdError && (
+        <div className="mb-6 rounded-xl border border-dt-danger/40 bg-dt-danger/5 p-3 text-sm text-dt-danger">
+          Could not place this order on hold: {holdError.message}.
+        </div>
+      )}
+      {reopenError && (
+        <div className="mb-6 rounded-xl border border-dt-danger/40 bg-dt-danger/5 p-3 text-sm text-dt-danger">
+          Could not reopen this order: {reopenError.message}.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
+          {scope?.isAdmin && order.exception_reason === "MISSING_EMPLOYEE_NUMBER" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Team Member ID needed</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-sm text-dt-text-secondary">
+                  This team member has no BambooHR employee number, so the order carries a
+                  provisional reference. Enter the real Team Member ID to clear the exception —
+                  the reference is regenerated and the order returns to verification.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Input
+                    placeholder="e.g. 239"
+                    value={teamMemberIdDraft}
+                    onChange={(e) => setTeamMemberIdDraft(e.target.value)}
+                    className="w-40"
+                  />
+                  <Button
+                    size="sm"
+                    loading={setTeamMemberIdMutation.isPending}
+                    disabled={teamMemberIdDraft.trim() === ""}
+                    onClick={() => setTeamMemberIdMutation.mutate(teamMemberIdDraft.trim())}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {scope?.isAdmin && order.status === "ON_HOLD" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>On hold — lead time is too short</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-sm text-dt-text-secondary">
+                  {order.hold_reason ?? "The supplier needs more notice than the days remaining."}{" "}
+                  Choose how to proceed:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    loading={releaseMutation.isPending}
+                    onClick={() => releaseMutation.mutate("")}
+                    title="Send it back into verification anyway — it will route through one-click review because of the short notice."
+                  >
+                    Expedite anyway
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setFulfilmentEdit({})}>
+                    Change delivery date
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => setActionOpen("cancel")}>
+                    Cancel order
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Order Details</CardTitle>
@@ -600,7 +756,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <StatusBadge status={order.address_verification_status} />
                 {scope?.isAdmin && (
                   <Select
@@ -650,52 +806,79 @@ export function OrderDetail({ orderId }: { orderId: number }) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Supplier Communications</CardTitle>
+              <CardTitle>Issues</CardTitle>
             </CardHeader>
             <CardContent>
-              {/* birthday-api's BirthdayOrderRead does not yet include a
-                  `communications` field, so there is nothing to list here
-                  today. Send/Resend actions above still work — this card
-                  will start rendering entries automatically once the
-                  backend response includes them, no frontend change
-                  required beyond adding the field to BirthdayOrderOut. */}
-              <p className="text-sm text-dt-text-secondary">
-                Supplier communication history is not yet exposed by the order API. Use Order History
-                below to see send/resend events in the meantime.
-              </p>
+              {order.issues.length === 0 ? (
+                <p className="text-sm text-dt-text-secondary">No issues raised on this order.</p>
+              ) : (
+                <ul className="flex flex-col gap-3">
+                  {order.issues.map((issue) => (
+                    <li key={issue.id} className="rounded-xl border border-dt-border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-dt-text-primary">
+                          {issue.type.replace(/_/g, " ")} · raised by {issue.raised_by_type.toLowerCase()}
+                        </span>
+                        <StatusBadge status={issue.status} />
+                      </div>
+                      <p className="mt-1 text-sm text-dt-text-secondary">{issue.detail}</p>
+                      {issue.resolution_detail && (
+                        <p className="mt-1 text-xs text-dt-success">Resolved: {issue.resolution_detail}</p>
+                      )}
+                      {scope?.isAdmin && issue.status === "OPEN" && (
+                        <div className="mt-2">
+                          {resolveFor === issue.id ? (
+                            <div className="flex flex-col gap-2">
+                              <Textarea
+                                value={resolveText}
+                                onChange={(e) => setResolveText(e.target.value)}
+                                placeholder="What was done? This is sent to the supplier and closes the issue."
+                                rows={2}
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  loading={resolveIssueMutation.isPending}
+                                  disabled={resolveText.trim() === ""}
+                                  onClick={() =>
+                                    resolveIssueMutation.mutate({ issueId: issue.id, text: resolveText.trim() })
+                                  }
+                                >
+                                  Resolve &amp; notify supplier
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={() => setResolveFor(null)}>
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button size="sm" variant="secondary" onClick={() => setResolveFor(issue.id)}>
+                              Resolve &amp; notify supplier
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
+
+          <OrderTimeline orderId={orderId} />
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Order History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {order.events.length === 0 ? (
-              <p className="text-sm text-dt-text-secondary">No events recorded.</p>
-            ) : (
-              <ol className="flex flex-col gap-4">
-                {order.events.map((event) => (
-                  <li key={event.id} className="border-l-2 border-dt-border pl-3">
-                    <p className="text-sm font-medium text-dt-text-primary">
-                      {event.event_type.replace(/_/g, " ")}
-                    </p>
-                    {event.from_status && event.to_status && (
-                      <p className="text-xs text-dt-text-secondary">
-                        {event.from_status} → {event.to_status}
-                      </p>
-                    )}
-                    {event.detail && <p className="mt-0.5 text-xs text-dt-text-secondary">{event.detail}</p>}
-                    <p className="mt-0.5 text-xs text-dt-text-secondary">
-                      {new Date(event.created_at).toLocaleString()} · {event.actor_type}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardContent>
-        </Card>
+        {/* Phase 1.6 §17 — expanded by default (desktop); the content is
+            useful enough for operational testing/audit that it shouldn't
+            require an extra click to see. */}
+        <details open className="rounded-2xl border border-dt-border bg-dt-surface">
+          <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-dt-text-primary">
+            Raw event log ({order.events.length})
+          </summary>
+          <div className="px-5 pb-4">
+            <EventLogTimeline events={order.events} />
+          </div>
+        </details>
       </div>
 
       <Modal
@@ -709,10 +892,19 @@ export function OrderDetail({ orderId }: { orderId: number }) {
             ? "Put order on hold"
             : actionOpen === "release"
               ? "Release order from hold"
-              : "Cancel order"
+              : actionOpen === "reopen"
+                ? "Reopen cancelled order"
+                : "Cancel order"
         }
       >
         <div className="flex flex-col gap-4">
+          {actionOpen === "reopen" && (
+            <p className="text-sm text-dt-text-secondary">
+              {order.released_at
+                ? "This order had already reached the supplier — it will move to Requires Review, and a deliberate re-release is needed to notify the supplier again."
+                : "This order never reached the supplier — readiness will be rerun and it will return to Pending Verification (or Requires Attention if something it needs, like a supplier, is missing)."}
+            </p>
+          )}
           <FormField
             label={actionOpen === "release" ? "Note (optional)" : "Reason"}
             htmlFor="action-reason"
@@ -722,7 +914,13 @@ export function OrderDetail({ orderId }: { orderId: number }) {
               id="action-reason"
               value={reasonText}
               onChange={(e) => setReasonText(e.target.value)}
-              placeholder={actionOpen === "hold" ? "Why is this order on hold?" : "Optional detail"}
+              placeholder={
+                actionOpen === "hold"
+                  ? "Why is this order on hold?"
+                  : actionOpen === "reopen"
+                    ? "Why is this order being reopened?"
+                    : "Optional detail"
+              }
             />
           </FormField>
           <div className="flex justify-end gap-2">
@@ -733,7 +931,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
               variant={actionOpen === "cancel" ? "danger" : "primary"}
               size="sm"
               loading={isMutating}
-              disabled={actionOpen === "hold" && reasonText.trim() === ""}
+              disabled={(actionOpen === "hold" || actionOpen === "reopen") && reasonText.trim() === ""}
               onClick={submitAction}
             >
               Confirm

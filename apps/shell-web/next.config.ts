@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import pkg from "./package.json";
 
 // DijiOne Shell is the single public entry point (CR §14): the browser only
 // ever talks to shell-web's origin. Page requests for /admin, /talent-flow,
@@ -15,15 +16,28 @@ const up = (name: string, fallback: string): string => process.env[name] ?? fall
 const ADMIN_WEB_URL = up("ADMIN_WEB_URL", "http://localhost:3001");
 const TALENT_WEB_URL = up("TALENT_WEB_URL", "http://localhost:3002");
 const BIRTHDAY_WEB_URL = up("BIRTHDAY_WEB_URL", "http://localhost:3003");
+const ONSITE_WEB_URL = up("ONSITE_WEB_URL", "http://localhost:3004");
+const ATWORK_WEB_URL = up("ATWORK_WEB_URL", "http://localhost:3005");
 const PLATFORM_API_URL = up("PLATFORM_API_URL", "http://localhost:8000");
 const ADMIN_API_URL = up("ADMIN_API_URL", "http://localhost:8001");
 const TALENT_API_URL = up("TALENT_API_URL", "http://localhost:8002");
 const BIRTHDAY_API_URL = up("BIRTHDAY_API_URL", "http://localhost:8003");
 const SPARK_API_URL = up("SPARK_API_URL", "http://localhost:8004");
+const ONSITE_API_URL = up("ONSITE_API_URL", "http://localhost:8008");
+const ATWORK_API_URL = up("ATWORK_API_URL", "http://localhost:8009");
 
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@dijione/design-system", "@dijione/auth-client", "@dijione/contracts"],
+  // Per-app footer version/build metadata (docs/platform/versioning.md) —
+  // version always comes from THIS app's own package.json, never a shared
+  // platform-wide value; GIT_SHA/BUILD_DATE come from the Docker build args
+  // deploy/Dockerfile.web sets (dev default "dev"/"unknown" for `next dev`).
+  env: {
+    NEXT_PUBLIC_APP_VERSION: pkg.version,
+    NEXT_PUBLIC_GIT_SHA: up("GIT_SHA", "dev"),
+    NEXT_PUBLIC_BUILD_DATE: up("BUILD_DATE", ""),
+  },
   async rewrites() {
     return [
       { source: "/admin", destination: `${ADMIN_WEB_URL}/admin` },
@@ -32,6 +46,12 @@ const nextConfig: NextConfig = {
       { source: "/talent-flow/:path*", destination: `${TALENT_WEB_URL}/talent-flow/:path*` },
       { source: "/birthday", destination: `${BIRTHDAY_WEB_URL}/birthday` },
       { source: "/birthday/:path*", destination: `${BIRTHDAY_WEB_URL}/birthday/:path*` },
+      // Diji On-site zone — routing only; inert if the module is not deployed.
+      { source: "/onsite", destination: `${ONSITE_WEB_URL}/onsite` },
+      { source: "/onsite/:path*", destination: `${ONSITE_WEB_URL}/onsite/:path*` },
+      // DijiAtWork zone — routing only; inert if the module is not deployed.
+      { source: "/atwork", destination: `${ATWORK_WEB_URL}/atwork` },
+      { source: "/atwork/:path*", destination: `${ATWORK_WEB_URL}/atwork/:path*` },
 
       { source: "/api/auth/:path*", destination: `${PLATFORM_API_URL}/api/auth/:path*` },
       { source: "/api/modules", destination: `${PLATFORM_API_URL}/api/modules` },
@@ -40,6 +60,8 @@ const nextConfig: NextConfig = {
       { source: "/api/talent/:path*", destination: `${TALENT_API_URL}/api/talent/:path*` },
       { source: "/api/birthday/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/:path*` },
       { source: "/api/spark/:path*", destination: `${SPARK_API_URL}/api/spark/:path*` },
+      { source: "/api/onsite/:path*", destination: `${ONSITE_API_URL}/api/onsite/:path*` },
+      { source: "/api/atwork/:path*", destination: `${ATWORK_API_URL}/api/atwork/:path*` },
     ];
   },
 };

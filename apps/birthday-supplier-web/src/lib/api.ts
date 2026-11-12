@@ -1,6 +1,7 @@
 import type {
   OrderIssueOut,
   OrderIssueType,
+  OrderTimelineResponse,
   SupplierOrderListResponse,
   SupplierOrderView,
 } from "@dijione/contracts";
@@ -41,6 +42,15 @@ async function request<T>(path: string, token: string | null, init?: RequestInit
   return res.json() as Promise<T>;
 }
 
+// --- Supplier auth mode (drives which sign-in UI to render) -----------
+export type SupplierAuthMode = "dev" | "entra";
+
+export const getSupplierAuthConfig = () =>
+  request<{ supplier_auth_mode: SupplierAuthMode }>(
+    "/api/birthday/supplier/auth/config",
+    null,
+  );
+
 // --- Dev-only persona auth (see lib/supplier-auth.tsx) -----------------
 export type DevSupplierPersona = {
   supplier_user_id: number;
@@ -62,7 +72,17 @@ export const devSupplierLogin = (supplier_user_id: number) =>
 // --- Supplier portal ------------------------------------------------
 export const listPortalOrders = (
   token: string,
-  params: { search?: string; sort_by?: string; sort_direction?: string; page?: number; page_size?: number } = {}
+  params: {
+    search?: string;
+    status_filter?: string;
+    due?: "today" | "tomorrow" | "overdue";
+    has_open_issue?: boolean;
+    completed?: "today";
+    sort_by?: string;
+    sort_direction?: string;
+    page?: number;
+    page_size?: number;
+  } = {}
 ) => request<SupplierOrderListResponse>(`/api/birthday/portal/orders${qs(params)}`, token);
 
 export const getPortalOrder = (token: string, id: number) =>
@@ -89,8 +109,26 @@ export const raisePortalIssue = (token: string, id: number, type: OrderIssueType
 export const listPortalOrderIssues = (token: string, id: number) =>
   request<OrderIssueOut[]>(`/api/birthday/portal/orders/${id}/issues`, token);
 
+// Unified Timeline (§G), supplier-filtered — the conversation + lifecycle.
+export const getPortalOrderTimeline = (token: string, id: number) =>
+  request<OrderTimelineResponse>(`/api/birthday/portal/orders/${id}/timeline`, token);
+
+// Flow 1 (§G): the supplier posts a Portal message on this order. Plain
+// conversation — it does NOT create an issue or change status.
+export const postPortalOrderMessage = (
+  token: string,
+  id: number,
+  body: string,
+  issue_id?: number | null,
+) =>
+  request<OrderTimelineResponse>(`/api/birthday/portal/orders/${id}/messages`, token, {
+    method: "POST",
+    body: JSON.stringify({ body, issue_id: issue_id ?? null }),
+  });
+
 export type SupplierDashboardSummary = {
   new_orders: number;
+  preparing: number;
   due_today: number;
   due_tomorrow: number;
   overdue: number;
@@ -101,3 +139,6 @@ export type SupplierDashboardSummary = {
 
 export const getPortalDashboard = (token: string) =>
   request<SupplierDashboardSummary>("/api/birthday/portal/dashboard", token);
+
+export type PortalMe = { supplier_name: string; user_name: string; read_only: boolean };
+export const getPortalMe = (token: string) => request<PortalMe>("/api/birthday/portal/me", token);

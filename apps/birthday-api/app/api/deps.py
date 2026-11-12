@@ -17,7 +17,7 @@ _settings = get_settings()
 # Platform Core authorization integration seam (CR §9): birthday-api
 # authorizes exactly the way talent-api does — decoding Platform Core's
 # signed JWT claims locally, no database, no synchronous call back.
-get_claims = make_get_claims(secret=_settings.jwt_dev_secret, algorithm=_settings.jwt_algorithm)
+get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # Gate for service-to-service calls with no human actor behind them (the
 # scan-trigger endpoint, invoked by an OS/cloud scheduler, not a browser
@@ -75,6 +75,17 @@ def require_birthday_permission(permission_key: str):
     return _dependency
 
 
+def require_non_production() -> None:
+    """Hard environment guard for the Email Safety test-recipient admin
+    surface (app/api/routes/admin.py) — a non-production-only safety
+    feature that must never become an active control surface in PROD
+    (docs/platform/email-architecture.md). Enforced at the router boundary,
+    independently of whether the frontend nav item is shown — 404, not 403,
+    so PROD gives no signal the route exists at all."""
+    if get_settings().is_production:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+
+
 @dataclass
 class SupplierScope:
     """Resolved supplier-portal authorization scope (Phase-Next §5).
@@ -88,6 +99,12 @@ class SupplierScope:
     supplier_user_id: int
     supplier_id: int
     permissions: frozenset[str] = field(default_factory=frozenset)
+    read_only: bool = False
+    impersonated_by: int | None = None
+    # Phase 1.6 §17 — resolved from the SupplierUser row this function
+    # already loads below, at zero extra query cost. Feeds
+    # actor_display_name on every OrderEvent/message this session writes.
+    full_name: str = ""
 
     def has(self, permission_key: str) -> bool:
         return permission_key in self.permissions
@@ -114,6 +131,9 @@ def get_supplier_scope(
         supplier_user_id=supplier_user.id,
         supplier_id=supplier_user.supplier_id,
         permissions=module_claim.permissions,
+        read_only=claims.supplier.read_only,
+        impersonated_by=claims.supplier.impersonated_by,
+        full_name=supplier_user.full_name or supplier_user.email,
     )
 
 

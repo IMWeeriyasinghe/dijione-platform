@@ -7,14 +7,19 @@ Production automatic detection is an EXTERNAL scheduler (Azure Function
 Timer / Logic App recurrence) calling ``POST /run-daily-scan`` daily —
 there is deliberately no in-process scheduler here (decision C)."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_internal_service
 from app.api.routes.config import get_or_create_config
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.integrations.factory import get_employee_source
 from app.models.scan_run import ScanRun
+from app.services import attention_service, inbound_email_service, order_email_service
 from app.services.detection_service import run_daily_scan
 
 router = APIRouter(prefix="/api/birthday/internal", tags=["birthday-internal"])
@@ -31,6 +36,62 @@ def run_daily_scan_endpoint(
     config = get_or_create_config(db)
     client = get_employee_source()
     return run_daily_scan(db, client, config, trigger="SCHEDULED")
+
+
+@router.post("/run-comms")
+def run_comms_endpoint(
+    db: Session = Depends(get_db), _service: None = Depends(require_internal_service)
+) -> dict:
+    """Driven by ``birthday-comms-job`` (~10 min): automatic outbound-email
+    backoff retry, and (Phase 1 §1.5) inbound supplier-email polling."""
+    return {
+        "email_retry": order_email_service.retry_failed_outbound(db),
+        "inbound_email": inbound_email_service.poll(db),
+    }
+
+
+@router.post("/run-attention")
+def run_attention_endpoint(
+    db: Session = Depends(get_db), _service: None = Depends(require_internal_service)
+) -> dict:
+    """Driven by ``birthday-attention-job`` (daily): the SLA / attention /
+    detection-health sweep (§O). Emits digest notifications to
+    BIRTHDAY_ADMIN; scan success stays silent."""
+    return attention_service.run_attention_sweep(db)
+
+
+class _DevInboundEmail(BaseModel):
+    from_address: str
+    subject: str = ""
+    body: str = ""
+    in_reply_to: str | None = None
+    provider_message_id: str | None = None
+
+
+@router.post("/dev/inbound-email")
+def dev_inject_inbound_email(
+    payload: _DevInboundEmail,
+    db: Session = Depends(get_db),
+    _service: None = Depends(require_internal_service),
+) -> dict:
+    """DEV-only: feed a supplier email reply straight into the ingestion
+    pipeline (correlation / sender validation / quarantine), so §1.5 is
+    provable in hosted DEV without a real mailbox. 404 unless
+    EMAIL_SENDING_MODE=mock (mirrors the dev supplier-persona routes)."""
+    if get_settings().email_sending_mode != "mock":
+        raise HTTPException(status_code=404, detail="Not found")
+    from app.integrations.inbound_mail.client import InboundMessage
+
+    msg = InboundMessage(
+        id=payload.provider_message_id or f"dev-{datetime.now(UTC).timestamp()}",
+        from_address=payload.from_address,
+        subject=payload.subject,
+        body_text=payload.body,
+        received_at=datetime.now(UTC),
+        in_reply_to=[payload.in_reply_to] if payload.in_reply_to else [],
+    )
+    outcome = inbound_email_service.ingest_message(db, msg)
+    return {"outcome": outcome, "provider_message_id": msg.id}
 
 
 def _scan_run_to_dict(run: ScanRun) -> dict:

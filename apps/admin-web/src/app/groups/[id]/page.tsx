@@ -48,6 +48,7 @@ function GroupModuleAssignmentEditor({
   moduleStatus,
   availableRoles,
   clients,
+  supportsClientScope = true,
   current,
   onSaved,
 }: {
@@ -57,11 +58,17 @@ function GroupModuleAssignmentEditor({
   moduleStatus: string;
   availableRoles: { key: string; name: string }[];
   clients: { id: number; name: string }[];
+  /** False for modules whose authorization ignores client scope. */
+  supportsClientScope?: boolean;
   current: { role: string; enabled: boolean; all_clients: boolean; client_ids: number[] } | undefined;
   onSaved: () => void;
 }) {
   const [enabled, setEnabled] = useState(current?.enabled ?? false);
-  const [role, setRole] = useState(current?.role ?? availableRoles[0]?.key ?? "");
+  const [role, setRole] = useState(
+    // Least privilege: a new assignment never inherits the first (often most
+    // privileged) role — the administrator picks one, unless there is only one.
+    current?.role ?? (availableRoles.length === 1 ? availableRoles[0].key : ""),
+  );
   const [allClients, setAllClients] = useState(current?.all_clients ?? true);
   const [clientIds, setClientIds] = useState<number[]>(current?.client_ids ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +78,7 @@ function GroupModuleAssignmentEditor({
       upsertGroupModuleAssignment(groupId, moduleKey, {
         role,
         enabled,
-        client_scope: { all_clients: allClients, client_ids: allClients ? [] : clientIds },
+        client_scope: supportsClientScope ? { all_clients: allClients, client_ids: allClients ? [] : clientIds } : undefined,
       }),
     onSuccess: () => {
       setError(null);
@@ -117,6 +124,7 @@ function GroupModuleAssignmentEditor({
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-dt-text-primary">Role</label>
           <Select value={role} onChange={(e) => setRole(e.target.value)} disabled={!enabled}>
+            {!current && availableRoles.length > 1 && <option value="">Select a role…</option>}
             {availableRoles.map((r) => (
               <option key={r.key} value={r.key}>
                 {r.name}
@@ -125,16 +133,18 @@ function GroupModuleAssignmentEditor({
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-dt-text-primary">Client Scope</label>
-          <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
-            <input type="checkbox" checked={allClients} onChange={(e) => setAllClients(e.target.checked)} disabled={!enabled} />
-            All Clients
-          </label>
-        </div>
+        {supportsClientScope && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-dt-text-primary">Client Scope</label>
+            <label className="flex items-center gap-2 text-sm text-dt-text-secondary">
+              <input type="checkbox" checked={allClients} onChange={(e) => setAllClients(e.target.checked)} disabled={!enabled} />
+              All Clients
+            </label>
+          </div>
+        )}
       </div>
 
-      {!allClients && (
+      {supportsClientScope && !allClients && (
         <div className="mt-3 flex flex-wrap gap-3 rounded-lg border border-dt-border bg-dt-surface-warm p-3">
           {clients.map((c) => (
             <label key={c.id} className="flex items-center gap-1.5 text-sm text-dt-text-primary">
@@ -155,7 +165,7 @@ function GroupModuleAssignmentEditor({
       {error && <p className="mt-3 text-sm text-dt-danger">{error}</p>}
 
       <div className="mt-4 flex items-center gap-2">
-        <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
+        <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending} disabled={!role}>
           Save {moduleName} Access
         </Button>
         {current && (
@@ -334,11 +344,11 @@ export default function AdminGroupDetailPage() {
       </Link>
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-dt-text-primary">{group.display_name}</h1>
-          <p className="text-sm text-dt-text-secondary">{group.key} · {group.group_type}</p>
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-semibold text-dt-text-primary">{group.display_name}</h1>
+          <p className="truncate text-sm text-dt-text-secondary">{group.key} · {group.group_type}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <StatusBadge status={group.status === "ACTIVE" ? "ACTIVE_CLIENT" : "INACTIVE"} label={group.status === "ACTIVE" ? "Active" : "Inactive"} />
           <Button
             size="sm"
@@ -477,6 +487,7 @@ export default function AdminGroupDetailPage() {
               moduleName={m.name}
               moduleStatus={m.status}
               availableRoles={moduleRoles}
+              supportsClientScope={m.supports_client_scope !== false}
               clients={clients}
               current={
                 assignment

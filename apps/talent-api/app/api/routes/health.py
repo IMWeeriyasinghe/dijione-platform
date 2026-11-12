@@ -1,10 +1,15 @@
+from pathlib import Path
+
 import httpx
+from auth_client_py import alembic_head_status
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
+
+_ALEMBIC_DIR = str(Path(__file__).resolve().parents[3] / "alembic")
 
 router = APIRouter(tags=["health"])
 
@@ -29,11 +34,14 @@ def health_deep(db: Session = Depends(get_db)) -> dict:
         checks["database"] = f"error: {exc.__class__.__name__}"
         ok = False
 
+    # Applied revision + drift vs. head — diagnostic only (not the readiness probe).
     try:
         rev = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
         checks["migration_revision"] = rev or "none"
+        checks["migration"] = alembic_head_status(_ALEMBIC_DIR, rev)
     except Exception:  # noqa: BLE001
         checks["migration_revision"] = "unknown"
+        checks["migration"] = {"current": "unknown", "head": "unknown", "up_to_date": None}
 
     checks["integrations_mode"] = settings.integrations_mode
 

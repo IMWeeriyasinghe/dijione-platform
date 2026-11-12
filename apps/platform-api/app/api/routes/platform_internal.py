@@ -14,16 +14,17 @@ unavailable. See docs/platform/failure-isolation.md.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_internal_service
 from app.db.session import get_db
 from app.models.client import Client
-from app.models.user import UserModuleRole
-from app.services.audit_service import AuditService
+from app.models.user import User, UserModuleRole
+from app.services.audit_service import AuditEventConflict, AuditService
+from app.services.authorization_service import AuthorizationService
 from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/api/platform/internal", tags=["platform-internal"])
@@ -52,6 +53,7 @@ def list_clients(
 
 
 class AuditEventIn(BaseModel):
+    event_id: str | None = Field(default=None, min_length=1, max_length=64)
     actor_id: int | None = None
     action: str
     entity_type: str
@@ -64,20 +66,24 @@ class AuditEventIn(BaseModel):
 @router.post("/audit-events", status_code=201)
 def create_audit_event(
     payload: AuditEventIn,
+    response: Response,
     db: Session = Depends(get_db),
     _service: None = Depends(require_internal_service),
 ) -> dict:
-    AuditService(db).log(
-        actor_id=payload.actor_id,
-        action=payload.action,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-        previous_state=payload.previous_state,
-        new_state=payload.new_state,
-        metadata=payload.metadata,
-    )
+    fields = payload.model_dump(exclude={"event_id"})
+    if payload.event_id is None:
+        AuditService(db).log(**fields)
+        db.commit()
+        return {"status": "ok"}
+    try:
+        recorded = AuditService(db).log_once(event_id=payload.event_id, **fields)
+    except AuditEventConflict as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "event_id already used for different content") from exc
     db.commit()
-    return {"status": "ok"}
+    if not recorded:
+        response.status_code = status.HTTP_200_OK
+    return {"status": "ok" if recorded else "duplicate", "event_id": payload.event_id}
 
 
 class NotificationIn(BaseModel):
@@ -142,6 +148,64 @@ def broadcast_notification(
     )
     db.commit()
     return {"status": "ok"}
+
+
+class NotificationDeliverIn(BaseModel):
+    dedupe_key: str = Field(min_length=1, max_length=200)
+    type: str = Field(max_length=64)
+    title: str = Field(max_length=255)
+    body: str = Field(default="", max_length=2000)
+    link_url: str | None = Field(default=None, max_length=500, pattern=r"^/[^/\\]")
+    user_id: int | None = None
+    module_key: str | None = None
+    required_permissions: list[str] = Field(default_factory=list)
+    exclude_user_ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _one_target(self) -> NotificationDeliverIn:
+        by_permission = bool(self.module_key and self.required_permissions)
+        if (self.user_id is not None) == by_permission:
+            raise ValueError("Give either user_id or module_key with required_permissions.")
+        return self
+
+
+@router.post("/notifications/deliver", status_code=201)
+def deliver_notification(
+    payload: NotificationDeliverIn,
+    db: Session = Depends(get_db),
+    _service: None = Depends(require_internal_service),
+) -> dict:
+    """Idempotent, permission-aware delivery for services with a retrying outbox."""
+    service = NotificationService(db)
+    recipients = (
+        service.active_users({payload.user_id})
+        if payload.user_id is not None
+        else service.holders_of(payload.module_key, set(payload.required_permissions))
+    ) - set(payload.exclude_user_ids)
+    created = service.create_once(
+        user_ids=recipients,
+        dedupe_key=payload.dedupe_key,
+        type=payload.type,
+        title=payload.title,
+        body=payload.body,
+        link_url=payload.link_url,
+    )
+    db.commit()
+    return {"status": "ok", "recipients": len(recipients), "created": created}
+
+
+@router.get("/users/{user_id}/modules/{module_key}/permissions")
+def live_module_permissions(
+    user_id: int,
+    module_key: str,
+    db: Session = Depends(get_db),
+    _service: None = Depends(require_internal_service),
+) -> dict:
+    """Current effective permissions, for services that must not trust older claims."""
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        return {"active": False, "permissions": []}
+    return {"active": True, "permissions": sorted(AuthorizationService(db).effective_permissions(user, module_key))}
 
 
 class ModuleRoleHoldersOut(BaseModel):

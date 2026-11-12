@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import ApplicationStatus, CanonicalStage
@@ -34,7 +34,7 @@ class RecruitmentCandidacy(TimestampMixin, Base):
         String(32), default=CanonicalStage.SOURCING.value
     )
     status: Mapped[str] = mapped_column(String(32), default=ApplicationStatus.ACTIVE.value)
-    lever_archive_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lever_archive_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     candidate: Mapped[RecruitmentCandidate] = relationship()  # noqa: F821
     posting: Mapped[Posting] = relationship()  # noqa: F821

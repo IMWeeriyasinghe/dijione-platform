@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 
 from app.models.posting import Posting
 from app.models.recruitment_candidacy import RecruitmentCandidacy
@@ -17,7 +17,9 @@ class RecruitmentCandidacyRepository:
             )
         ).scalars().first()
 
-    def list(self, *, posting_id: int | None = None, limit: int = 200) -> list[RecruitmentCandidacy]:
+    def list(
+        self, *, posting_id: int | None = None, limit: int = 200, after_opportunity_id: str | None = None
+    ) -> list[RecruitmentCandidacy]:
         # INNER joins on posting + candidate: a candidacy whose posting or
         # contact did not resolve locally (a confidential/filtered posting,
         # an archive-timing gap, or a stale FK) is not projectable to
@@ -30,8 +32,15 @@ class RecruitmentCandidacyRepository:
                 RecruitmentCandidate,
                 RecruitmentCandidacy.recruitment_candidate_id == RecruitmentCandidate.id,
             )
-            .order_by(RecruitmentCandidacy.updated_at.desc())
+            .options(contains_eager(RecruitmentCandidacy.posting), contains_eager(RecruitmentCandidacy.candidate))
         )
+        if after_opportunity_id is None:
+            stmt = stmt.order_by(RecruitmentCandidacy.updated_at.desc())
+        else:
+            # Keyset order on the unique id: stable across pages, whatever a sync updates.
+            stmt = stmt.where(RecruitmentCandidacy.lever_opportunity_id > after_opportunity_id).order_by(
+                RecruitmentCandidacy.lever_opportunity_id
+            )
         if posting_id is not None:
             stmt = stmt.where(RecruitmentCandidacy.posting_id == posting_id)
         return list(self.db.execute(stmt.limit(limit)).scalars().all())

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -12,13 +12,18 @@ import { describe, expect, it, vi } from "vitest";
 // user across zones, only a full navigation is correct here) — so `request`
 // is mocked to a pending promise (no real fetch, no need to await/settle
 // the runtime-status badge for what this test asserts).
+vi.mock("@/lib/module-status", async (orig) => ({
+  ...(await orig<typeof import("@/lib/module-status")>()),
+  statusRetryDelay: () => 0,
+}));
+
 vi.mock("@dijione/auth-client", () => ({
   useAuth: vi.fn(),
   request: vi.fn(() => new Promise(() => {})),
 }));
 
-import { useAuth } from "@dijione/auth-client";
-import { ModuleCard } from "../ModuleCard";
+import { request, useAuth } from "@dijione/auth-client";
+import { ModuleCard, useRuntimeStatus } from "../ModuleCard";
 
 const mockedUseAuth = vi.mocked(useAuth);
 
@@ -78,5 +83,77 @@ describe("ModuleCard", () => {
     );
 
     expect(screen.queryByText(/Your role:/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ModuleCard status", () => {
+  const active = {
+    id: 9, key: "future-app", name: "Future", description: "d", icon: "Users",
+    route: "/future-app", status: "ACTIVE", enabled: true, display_order: 9,
+  } as never;
+  const mockedRequest = vi.mocked(request);
+
+  function setup() {
+    mockedUseAuth.mockReturnValue({ user: { module_roles: [] } } as never);
+    mockedRequest.mockReset();
+  }
+
+  it("shows Healthy and uses the standard path for a newly registered module", async () => {
+    setup();
+    mockedRequest.mockResolvedValue({ status: "healthy" });
+    renderWithQueryClient(<ModuleCard module={active} />);
+    expect(await screen.findByText("Healthy")).toBeInTheDocument();
+    expect(mockedRequest.mock.calls[0][0]).toBe("/api/future-app/summary");
+  });
+
+  it("recovers from a cold-start timeout without showing a failure", async () => {
+    setup();
+    mockedRequest.mockRejectedValueOnce(new DOMException("t", "TimeoutError")).mockResolvedValue({ status: "healthy" });
+    renderWithQueryClient(<ModuleCard module={active} />);
+    expect(await screen.findByText("Healthy")).toBeInTheDocument();
+    expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+  });
+
+  it("shows a neutral result and keeps Open after repeated timeouts", async () => {
+    setup();
+    mockedRequest.mockRejectedValue(new DOMException("t", "TimeoutError"));
+    const { container } = renderWithQueryClient(<ModuleCard module={active} />);
+    expect(await screen.findByText("Status not confirmed")).toBeInTheDocument();
+    expect(mockedRequest).toHaveBeenCalledTimes(3);
+    expect(container.querySelector('a[href="/future-app"]')).toBeInTheDocument();
+    expect(screen.getByText("Open")).toBeInTheDocument();
+  });
+
+  it("shows Unavailable for a confirmed server failure", async () => {
+    setup();
+    mockedRequest.mockRejectedValue(Object.assign(new Error("x"), { status: 500 }));
+    renderWithQueryClient(<ModuleCard module={active} />);
+    expect(await screen.findByText("Unavailable")).toBeInTheDocument();
+  });
+
+  it("does not retry or alarm on an unauthorized response", async () => {
+    setup();
+    mockedRequest.mockRejectedValue(Object.assign(new Error("x"), { status: 401 }));
+    renderWithQueryClient(<ModuleCard module={active} />);
+    expect(await screen.findByText("Status not confirmed")).toBeInTheDocument();
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes one request for several consumers of the same module", async () => {
+    setup();
+    mockedRequest.mockResolvedValue({ status: "healthy" });
+    const Other = () => {
+      useRuntimeStatus("future-app", true);
+      return null;
+    };
+    renderWithQueryClient(
+      <>
+        <ModuleCard module={active} />
+        <Other />
+        <Other />
+      </>
+    );
+    await screen.findByText("Healthy");
+    await waitFor(() => expect(mockedRequest).toHaveBeenCalledTimes(1));
   });
 });

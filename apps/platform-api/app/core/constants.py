@@ -19,3 +19,5 @@ class PlatformRole(StrEnum):
 MODULE_TALENT_FLOW = "talent-flow"
 MODULE_BIRTHDAY = "birthday"
 MODULE_SPARK = "spark"
+MODULE_ONSITE = "onsite"
+MODULE_ATWORK = "atwork"

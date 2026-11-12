@@ -1,7 +1,7 @@
 "use client";
 
 import { usePlatformAdmin } from "@dijione/auth-client";
-import { AppShell, AuthGate, EmptyState } from "@dijione/design-system";
+import { AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import {
   BookOpen,
@@ -66,13 +66,23 @@ function AdminGate({ children }: { children: React.ReactNode }) {
       topNavTitle="DijiOne Admin"
       sections={ADMIN_SECTIONS}
       footer={
-        // eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone escape, see above
-        <a
-          href="/"
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-sm font-medium text-white hover:bg-white/25"
-        >
-          Back to DijiOne Home
-        </a>
+        <div className="space-y-3">
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone escape, see above */}
+          <a
+            href="/"
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-sm font-medium text-white hover:bg-white/25"
+          >
+            Back to DijiOne Home
+          </a>
+          <VersionFooter
+            appName="Admin Center"
+            version={process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+            gitSha={process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+            // releaseDate intentionally omitted — this app hasn't wired a
+            // runtime RELEASE_DATE source yet (round 3 only did this for
+            // birthday-web); VersionFooter simply omits the 3rd line.
+          />
+        </div>
       }
     >
       {children}

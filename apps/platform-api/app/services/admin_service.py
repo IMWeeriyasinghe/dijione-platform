@@ -335,6 +335,17 @@ class AdminService:
 
     # --- Module assignments ------------------------------------------------
 
+    def _effective_client_scope(self, module_key: str, client_scope: ClientScopeIn | None) -> ClientScopeIn | None:
+        """Modules that don't read client scope ignore whatever is submitted
+        and store the neutral "all clients" scope (unrestricted), replacing
+        any specific client rows saved before the capability flag existed."""
+        module = self.db.execute(
+            select(ApplicationModule).where(ApplicationModule.key == module_key)
+        ).scalars().first()
+        if module is not None and not module.supports_client_scope:
+            return ClientScopeIn(all_clients=True, client_ids=[])
+        return client_scope
+
     def upsert_module_assignment(
         self,
         *,
@@ -352,6 +363,7 @@ class AdminService:
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
+        client_scope = self._effective_client_scope(module_key, client_scope)
         ref_map = self._resolve_client_scope_refs(client_scope)
 
         stmt = select(UserModuleRole).where(
@@ -457,7 +469,7 @@ class AdminService:
             AdminModuleOut(
                 id=m.id, key=m.key, name=m.name, description=m.description, icon=m.icon, route=m.route,
                 status=m.status, enabled=m.enabled, display_order=m.display_order,
-                user_count=counts.get(m.key, 0),
+                user_count=counts.get(m.key, 0), supports_client_scope=m.supports_client_scope,
             )
             for m in modules
         ]
@@ -570,6 +582,7 @@ class AdminService:
             is_active=user.is_active,
             platform_permissions=sorted(self.authz.platform_permissions(user)),
             modules=modules_out,
+            default_access_excluded=[key for key, _role in self.authz.baseline_exclusions(user)],
         )
 
     # --- Access Groups (Phase 2.6, additive) --------------------------------
@@ -770,6 +783,7 @@ class AdminService:
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
+        client_scope = self._effective_client_scope(module_key, client_scope)
         ref_map = self._resolve_client_scope_refs(client_scope)
 
         stmt = select(GroupModuleRole).where(
@@ -884,6 +898,7 @@ class AdminService:
             status=module.status, enabled=module.enabled,
             assigned_users=assigned_users, assigned_groups=assigned_groups,
             direct_user_count=len(assigned_users), group_count=len(assigned_groups),
+            supports_client_scope=module.supports_client_scope,
         )
 
     # --- Dashboard ----------------------------------------------------------
