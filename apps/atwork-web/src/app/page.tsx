@@ -14,6 +14,11 @@ import { useAttendanceAction, useLiveStatus, useLiveToday, useOnline, usePolicy,
 
 function liveTotals(session: Session, serverTime: string, serverNow: number) {
   const elapsed = Math.max(0, Math.floor((serverNow - new Date(serverTime).getTime()) / 1000));
+  if (session.unverified) {
+    // Shown for transparency only; none of it counts as working time.
+    const raw = (session.elapsed_seconds ?? 0) + elapsed;
+    return { gross: raw, breaks: 0, net: 0 };
+  }
   const onBreak = session.breaks.some((b) => b.ended_at === null);
   const gross = session.totals.gross_seconds + elapsed;
   const breaks = session.totals.break_seconds + (onBreak ? elapsed : 0);
@@ -159,9 +164,18 @@ function TodayScreen() {
         {session && totals && (
           <div>
             <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
-              {state === "ON_BREAK" ? <Timer label="Current break" seconds={breakSeconds} large /> : <Timer label="Net working time" seconds={totals.net} large />}
-              <Timer label="Session elapsed" seconds={totals.gross} />
-              {state === "ON_BREAK" ? <Timer label="Net working time" seconds={totals.net} /> : <Timer label="Break time" seconds={totals.breaks} />}
+              {session.unverified ? (
+                <>
+                  <Timer label="Session elapsed (unverified)" seconds={totals.gross} large />
+                  <p className="self-center text-sm text-dt-warning">Not counted as working time until confirmed.</p>
+                </>
+              ) : (
+                <>
+                  {state === "ON_BREAK" ? <Timer label="Current break" seconds={breakSeconds} large /> : <Timer label="Net working time" seconds={totals.net} large />}
+                  <Timer label="Session elapsed" seconds={totals.gross} />
+                  {state === "ON_BREAK" ? <Timer label="Net working time" seconds={totals.net} /> : <Timer label="Break time" seconds={totals.breaks} />}
+                </>
+              )}
             </div>
             <p className="mt-4 text-sm text-dt-text-secondary">{WORK_MODE_LABEL[session.work_mode]} · Started {time(session.check_in_at, status.data.time_zone, format)}{openBreak ? ` · On break since ${time(openBreak.started_at, status.data.time_zone, format)}` : ""}</p>
             {canRecord && (

@@ -88,8 +88,11 @@ export function SessionRow({ session, zone, format, href }: { session: Session; 
         <SessionBadge session={session} />
       </div>
       <p className="mt-1 text-sm text-dt-text-secondary">
-        {WORK_MODE_LABEL[session.work_mode]} · Gross {shortDuration(session.totals.gross_seconds)} · Break {shortDuration(session.totals.break_seconds)} · Net{" "}
-        {shortDuration(session.totals.net_seconds)}
+        {session.unverified ? (
+          <>{WORK_MODE_LABEL[session.work_mode]} · Elapsed {shortDuration(session.elapsed_seconds ?? 0)} · <span className="text-dt-warning">unverified, not counted</span></>
+        ) : (
+          <>{WORK_MODE_LABEL[session.work_mode]} · Gross {shortDuration(session.totals.gross_seconds)} · Break {shortDuration(session.totals.break_seconds)} · Net{" "}{shortDuration(session.totals.net_seconds)}</>
+        )}
       </p>
     </Link>
   );
@@ -105,9 +108,9 @@ export function SessionDetails({ session, zone, format }: { session: Session; zo
             ["Work mode", WORK_MODE_LABEL[session.work_mode]],
             ["Check-in", dateTime(session.check_in_at, zone, format)],
             ["Check-out", session.check_out_at ? dateTime(session.check_out_at, zone, format) : "In progress"],
-            ["Gross", duration(session.totals.gross_seconds)],
-            ["Breaks", duration(session.totals.break_seconds)],
-            ["Net", duration(session.totals.net_seconds)],
+            ...(session.unverified
+              ? [["Elapsed", duration(session.elapsed_seconds ?? 0)], ["Counted", "Not counted: unverified"]]
+              : [["Gross", duration(session.totals.gross_seconds)], ["Breaks", duration(session.totals.break_seconds)], ["Net", duration(session.totals.net_seconds)]]),
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between gap-4">
               <dt className="text-dt-text-secondary">{k}</dt>

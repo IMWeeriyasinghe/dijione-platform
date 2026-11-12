@@ -59,6 +59,9 @@ def _totals(totals: Totals) -> TotalsOut:
 
 
 def _session(session: AttendanceSession, now: datetime, threshold: int | None = None) -> SessionOut:
+    raw = session_totals(session, now)
+    unverified = is_unverified(session, now, threshold)
+    counted = Totals(provisional_seconds=raw.net_seconds) if unverified else raw
     return SessionOut(
         id=session.id,
         work_mode=session.work_mode,
@@ -69,8 +72,9 @@ def _session(session: AttendanceSession, now: datetime, threshold: int | None = 
         origin=session.origin,
         correction_count=session.correction_count,
         breaks=[BreakOut(id=b.id, started_at=b.started_at, ended_at=b.ended_at) for b in session.breaks],
-        totals=_totals(session_totals(session, now)),
-        unverified=is_unverified(session, now, threshold),
+        totals=_totals(counted),
+        unverified=unverified,
+        elapsed_seconds=raw.gross_seconds,
     )
 
 

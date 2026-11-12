@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint, event, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import WORK_MODES
 from app.db.base import Base, TimestampMixin, UTCDateTime, utcnow
+
+if TYPE_CHECKING:
+    from app.models.corrections import CorrectionRequest
 
 _MODES_SQL = ", ".join(f"'{mode}'" for mode in WORK_MODES)
 _OPEN = text("status = 'OPEN'")
@@ -69,6 +73,28 @@ class AttendanceSession(TimestampMixin, Base):
         order_by="AttendanceBreak.started_at",
         lazy="selectin",
     )
+
+    approved_corrections: Mapped[list[CorrectionRequest]] = relationship(
+        primaryjoin="and_(AttendanceSession.id == foreign(CorrectionRequest.session_id), CorrectionRequest.status == 'APPROVED')",
+        viewonly=True,
+        lazy="selectin",
+    )
+
+    @property
+    def times_confirmed(self) -> bool:
+        """Management approved this session's recorded times, not just its work mode."""
+        return any(approval_confirms_times(c.original, c.proposed) for c in self.approved_corrections)
+
+
+def approval_confirms_times(original: dict | None, proposed: dict) -> bool:
+    """True when an approved correction created the session, changed its times, or
+    confirmed it unchanged. A correction that changed only the work mode does not."""
+    if original is None:
+        return True
+    times = ("check_in_at", "check_out_at", "breaks")
+    if any(original.get(k) != proposed.get(k) for k in times):
+        return True
+    return all(original.get(k) == v for k, v in proposed.items())
 
 
 class AttendanceBreak(TimestampMixin, Base):
