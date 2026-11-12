@@ -46,8 +46,10 @@ export type Break = { id: string; started_at: string; ended_at: string | null };
 export type Session = {
   id: string; work_mode: WorkMode; status: "OPEN" | "COMPLETED"; check_in_at: string; check_out_at: string | null;
   time_zone: string; origin: string; correction_count: number; breaks: Break[]; totals: Totals;
-  /** Longer than the missed check-out threshold and not yet confirmed by Management. */
+  /** Longer than the missed check-out threshold and not yet confirmed by Management.
+   * Its totals then count nothing; the raw duration is elapsed_seconds. */
   unverified?: boolean;
+  elapsed_seconds?: number;
 };
 export type Status = { state: AttendanceState; server_time: string; time_zone: string; session: Session | null };
 export type ActionResult = { replayed: boolean; state: AttendanceState; server_time: string; session: Session };

@@ -73,14 +73,14 @@ def is_unverified(session: SessionLike, now: datetime, threshold_seconds: int | 
     """Longer than the missed check-out threshold and not confirmed by Management.
 
     An open session is unverified once it passes the threshold. A completed one stays
-    unverified until an approved correction confirms its times, so a late check-out
-    cannot turn days of open time into confirmed hours by itself.
+    unverified until Management approves its recorded times (``times_confirmed``), so
+    neither a late check-out nor a work-mode-only correction confirms days of open time.
     """
     if threshold_seconds is None:
         return False
     if (_session_end(session, now) - session.check_in_at).total_seconds() <= threshold_seconds:
         return False
-    return session.check_out_at is None or not getattr(session, "correction_count", 0)
+    return session.check_out_at is None or not getattr(session, "times_confirmed", False)
 
 
 def daily_totals(

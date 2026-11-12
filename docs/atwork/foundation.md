@@ -60,8 +60,11 @@ Navigation follows permissions; `atwork-api` enforces them.
 - A session longer than that threshold is **unverified**: its time is shown
   separately as unverified and is not counted in confirmed totals, reports or export
   hours. An open session becomes unverified when it passes the threshold. A completed
-  one stays unverified, even after a late check-out, until Management approves a
-  correction for it. A genuine long session is confirmed by an unchanged correction.
+  one stays unverified, even after a late check-out, until Management approves its
+  recorded times: a correction that changes them, or an unchanged one that confirms a
+  genuine long session. A correction that only changes the work mode does not confirm
+  it. Single-session views show an unverified session's raw duration as elapsed time
+  only, never as net working time.
 - Downgrading migration `0002_atwork_corrections` is refused while correction or
   voided-break history exists.
 

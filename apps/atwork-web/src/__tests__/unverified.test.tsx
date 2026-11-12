@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { DayHeading, SessionBadge, TotalsCards } from "@/components/ui";
+import { DayHeading, SessionBadge, SessionDetails, SessionRow, TotalsCards } from "@/components/ui";
 import type { Session } from "@/lib/api";
 
 const base: Session = {
@@ -33,5 +33,29 @@ describe("unverified attendance", () => {
   it("shows a day's unverified time next to its confirmed totals", () => {
     render(<DayHeading day="2026-11-11" totals={{ gross_seconds: 0, break_seconds: 0, net_seconds: 0, provisional_seconds: 24 * 3600 }} />);
     expect(screen.getByText(/Unverified 24h/)).toBeInTheDocument();
+  });
+});
+
+describe("single-session views", () => {
+  const unverified: Session = { ...base, unverified: true, elapsed_seconds: 60 * 3600,
+    totals: { gross_seconds: 0, break_seconds: 0, net_seconds: 0, provisional_seconds: 60 * 3600 } };
+
+  it("lists an unverified session as elapsed and not counted, never as net", () => {
+    render(<SessionRow session={unverified} zone="Asia/Colombo" format="24h" href="/x" />);
+    expect(screen.getByText(/Elapsed 60h 00m/)).toBeInTheDocument();
+    expect(screen.getByText(/unverified, not counted/)).toBeInTheDocument();
+    expect(screen.queryByText(/Net/)).not.toBeInTheDocument();
+  });
+
+  it("shows details without a net figure for an unverified session", () => {
+    render(<SessionDetails session={unverified} zone="Asia/Colombo" format="24h" />);
+    expect(screen.getByText("Elapsed")).toBeInTheDocument();
+    expect(screen.getByText("Not counted: unverified")).toBeInTheDocument();
+    expect(screen.queryByText("Net")).not.toBeInTheDocument();
+  });
+
+  it("keeps gross, break and net for a normal session", () => {
+    render(<SessionDetails session={{ ...base, status: "COMPLETED", check_out_at: "2026-11-10T15:16:19Z", totals: { gross_seconds: 8 * 3600, break_seconds: 0, net_seconds: 8 * 3600 } }} zone="Asia/Colombo" format="24h" />);
+    expect(screen.getByText("Net")).toBeInTheDocument();
   });
 });

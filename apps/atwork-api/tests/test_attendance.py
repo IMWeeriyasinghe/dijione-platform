@@ -235,7 +235,9 @@ def test_long_session_can_check_out_and_is_never_auto_closed(api, clock):
     api.check_in()
     clock.advance(hours=72)
     assert api.get("status").json()["state"] == "WORKING"
-    assert api.post("check-out").json()["session"]["totals"]["gross_seconds"] == 259200
+    out = api.post("check-out").json()["session"]
+    # Recorded in full, but unverified: nothing counts until Management confirms it.
+    assert out["elapsed_seconds"] == 259200 and out["unverified"] and out["totals"]["gross_seconds"] == 0
 
 
 def test_clock_behind_latest_record_is_rejected_not_adjusted(api, clock):
