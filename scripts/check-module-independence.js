@@ -46,6 +46,7 @@ const SHARED_ALLOWED_FILES = [
   // Gateway routing + Home-card runtime-status path (shell-web).
   "apps/shell-web/next.config.ts",
   "apps/platform-api/alembic/versions/p6q7r8s9t0u1_module_baseline_roles.py",
+  "apps/platform-api/alembic/versions/e1f3a5b7c9d0_activate_atwork_uat_prod.py",
   "apps/platform-api/tests/test_default_module_access.py",
   "apps/shell-web/src/proxy.ts",
   "apps/shell-web/src/__tests__/proxy.test.ts",

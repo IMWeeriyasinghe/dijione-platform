@@ -1,16 +1,20 @@
-// Targeted DijiAtWork release for DEV. Creates ONLY atwork-api, atwork-web,
-// migrate-atwork-api and atwork-notifications-job, mirroring main.bicep.
-// Pre-requisites: the atwork_dev database and the database-url-atwork secret.
+// Targeted DijiAtWork release. Creates ONLY atwork-api, atwork-web,
+// migrate-atwork-api and atwork-notifications-job in an existing environment,
+// mirroring main.bicep, so no other application can be re-imaged by it.
+// Pre-requisites: the atwork_<env> database and the database-url-atwork secret.
 
-@allowed([ 'dev' ])
+@allowed([ 'dev', 'uat', 'prod' ])
 param environmentName string = 'dev'
 param location string = 'southeastasia'
+
+@description('crdijionenonprod.azurecr.io for DEV and UAT; crdijioneprod.azurecr.io for PROD (digests imported, never rebuilt).')
 param imageRegistryLoginServer string = 'crdijionenonprod.azurecr.io'
 
 @description('Exact digests: { "atwork-api": "sha256:…", "atwork-web": "sha256:…" }')
 param imageDigests object
 
 var tags = { platform: 'dijione', env: environmentName, managedBy: 'bicep' }
+var appEnv = environmentName == 'dev' ? 'development' : environmentName
 
 resource cae 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: 'cae-dijione-${environmentName}'
@@ -47,7 +51,7 @@ module atworkApi 'modules/containerapp.bicep' = {
     location: location
     tags: tags
     envVars: [
-      { name: 'APP_ENV', value: 'development' }
+      { name: 'APP_ENV', value: appEnv }
       { name: 'EMAIL_SENDING_MODE', value: 'mock' }
       { name: 'API_CORS_ORIGINS', value: 'https://shell-web.${envDomain}' }
       { name: 'INTEGRATIONS_MODE', value: 'mock' }
@@ -93,7 +97,7 @@ module migrateAtwork 'modules/job.bicep' = {
     tags: tags
     command: [ '/bin/sh', '-c' ]
     args: [ 'alembic upgrade head' ]
-    envVars: [ { name: 'APP_ENV', value: 'development' } ]
+    envVars: [ { name: 'APP_ENV', value: appEnv } ]
     secretRefs: [ dbSecret ]
   }
 }

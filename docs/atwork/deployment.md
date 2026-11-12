@@ -97,9 +97,35 @@ Container Apps environment, with the internal service secret.
 - [ ] Start `atwork-notifications-job` manually; it succeeds. A second run creates nothing new.
 - [ ] Download CSV and Excel; check filename, time zone and Export Information.
 
-## Rollback
+## UAT and Production release
 
-Redeploy the previous image digests. Do not downgrade migrations in a shared
+Targeted, in this order per environment. Nothing else is rebuilt or redeployed.
+`shell-web` needs no change: UAT and PROD already run `0437a89`, which has the
+`/atwork` routes. `admin-web` is deferred: the current build shows default access as
+an unlabeled inherited source, which is cosmetic.
+
+| Step | Component | Change |
+|---|---|---|
+| 1 | Preflight | No running Azure activity; PostgreSQL `Ready`; `platform_<env>` at `c9d2e4f6a8b1` |
+| 2 | PROD only | On-demand PostgreSQL backup; `az acr import` the three digests into `crdijioneprod` |
+| 3 | Database | `atwork_<env>` and `database-url-atwork`, derived from the server's existing URL |
+| 4 | DijiAtWork | `atwork-release.bicep`, `environmentName=<env>`; what-if must show exactly 4 creates |
+| 5 | DijiAtWork | Run `migrate-atwork-api`; `/health/deep` at `0003_atwork_notifications` |
+| 6 | Platform Core | `migrate-platform-api` image to the release digest; run to `e1f3a5b7c9d0` |
+| 7 | Platform Core | `platform-api` image to the same digest, with `ENTRA_INTERNAL_EMAIL_DOMAINS=dijitalteam.com` |
+| 8 | Verify | Smoke test, plus every existing module's route and health; compare all images with the snapshot |
+
+`e1f3a5b7c9d0` is data only: it sets the `atwork` row `ACTIVE` and enables the
+`ATWORK_USER` baseline when `APP_ENV` is `uat` or `prod`. Default access still grants
+nothing until that environment's Entra registration emits `acct` and step 7 sets the
+domain list. Until then, access needs an explicit assignment.
+
+`ATWORK_MANAGER` sees every employee. Assign it only to named people, ideally through
+one Access Group, until team scoping exists.
+
+
+Redeploy the previous image digests. To withdraw the Home card, disable the
+`atwork` module in the Admin Center. Do not downgrade migrations in a shared
 environment: the additions are backward compatible, and `0002` refuses to
 downgrade while correction history exists. To stop alerts only, stop the job.
 
