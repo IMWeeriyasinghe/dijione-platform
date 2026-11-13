@@ -37,6 +37,19 @@ class CandidateOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+CANDIDATE_PAGE_SIZES = (10, 20, 50, 100)
+
+
+class CandidatePageOut(BaseModel):
+    """Server-side paginated Candidate Pool response."""
+
+    items: list[CandidateOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class ClientSafeCandidateOut(BaseModel):
     """Candidate DTO filtered for client visibility (CLAUDE.md §35).
 

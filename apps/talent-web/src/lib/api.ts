@@ -56,6 +56,17 @@ export const updateTalentRequestTaStatus = (id: number, ta_status: string) =>
 // --- Candidates -------------------------------------------------
 export const listCandidates = (search?: string) =>
   request<CandidateOut[]>(`/api/talent/candidates${qs({ search })}`);
+/** Response of GET /api/talent/candidates/paged (talent-api CandidatePageOut). */
+export type CandidatePageOut = {
+  items: CandidateOut[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+export const CANDIDATE_PAGE_SIZES = [10, 20, 50, 100] as const;
+export const listCandidatesPaged = (params: { search?: string; page: number; page_size: number }) =>
+  request<CandidatePageOut>(`/api/talent/candidates/paged${qs(params)}`);
 export const getCandidate = (id: number) => request<CandidateOut>(`/api/talent/candidates/${id}`);
 // NOTE: no createCandidate — the Candidate master originates from the
 // Recruitment Source (Lever) now, not manual entry (retired 2026-09-02).

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
@@ -57,6 +57,49 @@ class CandidateRepository:
             )
         stmt = stmt.order_by(Candidate.full_name)
         return list(self.db.execute(stmt).scalars().all())
+
+    def list_page(
+        self,
+        *,
+        search: str | None = None,
+        allowed_client_ids: list[int] | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[Candidate], int]:
+        """Database-level page of the Candidate Pool plus the total match
+        count. Same scoping/search semantics as ``list_all``. Ordering is
+        ``(full_name, id)`` so pages are stable even when names repeat.
+        Portfolio scoping uses an ``id IN (subquery)`` filter rather than
+        JOIN + DISTINCT so LIMIT/OFFSET and COUNT apply to unique
+        candidates."""
+        conds = []
+        if allowed_client_ids is not None:
+            scoped_ids = (
+                select(Application.candidate_id)
+                .join(TalentRequest, TalentRequest.id == Application.talent_request_id)
+                .where(TalentRequest.client_id.in_(allowed_client_ids))
+            )
+            conds.append(Candidate.id.in_(scoped_ids))
+        if search and search.strip():
+            like = f"%{search.strip()}%"
+            conds.append(
+                (Candidate.full_name.ilike(like)) | (Candidate.professional_title.ilike(like))
+            )
+        total = self.db.execute(
+            select(func.count()).select_from(Candidate).where(*conds)
+        ).scalar_one()
+        rows = (
+            self.db.execute(
+                select(Candidate)
+                .where(*conds)
+                .order_by(Candidate.full_name, Candidate.id)
+                .limit(limit)
+                .offset(offset)
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows), int(total)
 
     def add(self, candidate: Candidate) -> Candidate:
         self.db.add(candidate)

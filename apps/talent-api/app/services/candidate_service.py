@@ -103,6 +103,20 @@ class CandidateService:
         applications = self.application_repo.list_for_candidate(
             candidate.id, allowed_client_ids=allowed_client_ids
         )
+        return self._build_out(candidate, applications)
+
+    def to_out_many(
+        self, candidates: list[Candidate], *, allowed_client_ids: list[int] | None = None
+    ) -> list[CandidateOut]:
+        """List form of ``to_out`` that loads all applications in batch
+        rather than one query per candidate (Candidate Pool timeout fix)."""
+        grouped = self.application_repo.list_for_candidates(
+            [c.id for c in candidates], allowed_client_ids=allowed_client_ids
+        )
+        return [self._build_out(c, grouped.get(c.id, [])) for c in candidates]
+
+    @staticmethod
+    def _build_out(candidate: Candidate, applications: list[Application]) -> CandidateOut:
         summaries = [
             CandidateApplicationSummary(
                 application_id=app.id,

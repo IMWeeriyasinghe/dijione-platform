@@ -1,11 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import TalentScope, get_talent_scope, require_staff_scope
 from app.db.session import get_db
 from app.repositories.application_repo import ApplicationRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
-from app.schemas.candidate import CandidateCreate, CandidateOut, ClientSafeCandidateOut
+from app.schemas.candidate import (
+    CANDIDATE_PAGE_SIZES,
+    CandidateCreate,
+    CandidateOut,
+    CandidatePageOut,
+    ClientSafeCandidateOut,
+)
 from app.services.candidate_service import CandidateService
 
 router = APIRouter(prefix="/api/talent", tags=["talent-candidates"])
@@ -19,7 +25,41 @@ def list_candidates(
 ) -> list[CandidateOut]:
     service = CandidateService(db)
     candidates = service.repo.list_all(search=search, allowed_client_ids=scope.client_ids)
-    return [service.to_out(c, allowed_client_ids=scope.client_ids) for c in candidates]
+    return service.to_out_many(candidates, allowed_client_ids=scope.client_ids)
+
+
+@router.get("/candidates/paged", response_model=CandidatePageOut)
+def list_candidates_paged(
+    search: str | None = Query(default=None, max_length=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10),
+    scope: TalentScope = Depends(require_staff_scope),
+    db: Session = Depends(get_db),
+) -> CandidatePageOut:
+    """Server-side paginated Candidate Pool. The legacy unpaginated
+    ``GET /candidates`` is kept unchanged for existing consumers (e.g. the
+    Add Application picker). Same staff-only authorization and portfolio
+    scoping. A page past the end returns an empty ``items`` with the real
+    ``total`` so the client can clamp."""
+    if page_size not in CANDIDATE_PAGE_SIZES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"page_size must be one of {list(CANDIDATE_PAGE_SIZES)}",
+        )
+    service = CandidateService(db)
+    candidates, total = service.repo.list_page(
+        search=search,
+        allowed_client_ids=scope.client_ids,
+        limit=page_size,
+        offset=(page - 1) * page_size,
+    )
+    return CandidatePageOut(
+        items=service.to_out_many(candidates, allowed_client_ids=scope.client_ids),
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=max(1, -(-total // page_size)),
+    )
 
 
 @router.post("/candidates", response_model=CandidateOut, status_code=status.HTTP_201_CREATED)

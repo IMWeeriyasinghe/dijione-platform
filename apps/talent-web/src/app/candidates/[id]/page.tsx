@@ -79,7 +79,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         Applications ({candidate.applications.length})
       </h2>
       <p className="mb-4 text-xs text-dt-text-secondary">
-        One candidate, many client engagements — the same profile is reused across requests (CLAUDE.md §19).
+        One candidate, many client engagements — the same profile is reused across requests.
       </p>
       <div className="flex flex-col gap-3">
         {candidate.applications.map((app) => (
