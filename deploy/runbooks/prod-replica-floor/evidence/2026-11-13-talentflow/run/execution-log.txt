@@ -1,0 +1,37 @@
+2026-11-13T07:12:35Z precheck rg-dijione-prod as sa-***@dijitalteam.com: live spec, revision and digest vs recorded baseline
+2026-11-13T07:12:37Z   talent-api    OK    rev=talent-api--0000002 min=0 max=2 sha256:afee55613199e7bacceeb82de8b796629a41eb1ef602eb9833a1595cf971fd7c spec=769f32cd19a0
+2026-11-13T07:12:38Z   talent-web    OK    rev=talent-web--0000001 min=0 max=2 sha256:3aad7d10ce49e83efdc844b3d7e32fa6d365a8829043f6c19751ec8440712326 spec=b442b9363962
+2026-11-13T07:12:38Z precheck: other PROD deployment activity
+2026-11-13T07:13:05Z   BLOCKER recent write Microsoft.App/containerApps/write on onsite-web at 2026-11-13T06:28:09 by sa-***@dijitalteam.com (Accepted)
+2026-11-13T07:13:05Z   BLOCKER recent write Microsoft.App/containerApps/write on onsite-api at 2026-11-13T06:23:33 by sa-***@dijitalteam.com (Accepted)
+2026-11-13T07:13:05Z   BLOCKER recent write Microsoft.App/containerApps/write on atwork-web at 2026-11-13T06:18:18 by sa-***@dijitalteam.com (Accepted)
+2026-11-13T07:13:05Z precheck: related jobs per app (checked again before each update)
+2026-11-13T07:13:10Z   talent-api    bootstrap-talent-clients(0 running), migrate-talent-api(0 running), talent-audit-outbox-job(0 running), talent-reconcile-job(0 running)
+2026-11-13T07:13:10Z   talent-web    -
+2026-11-13T07:13:10Z PRECHECK FAIL - stop and re-plan
+2026-11-13T07:13:20Z precheck rg-dijione-prod as sa-***@dijitalteam.com: live spec, revision and digest vs recorded baseline
+2026-11-13T07:13:22Z   talent-api    OK    rev=talent-api--0000002 min=0 max=2 sha256:afee55613199e7bacceeb82de8b796629a41eb1ef602eb9833a1595cf971fd7c spec=769f32cd19a0
+2026-11-13T07:13:23Z   talent-web    OK    rev=talent-web--0000001 min=0 max=2 sha256:3aad7d10ce49e83efdc844b3d7e32fa6d365a8829043f6c19751ec8440712326 spec=b442b9363962
+2026-11-13T07:13:23Z precheck: other PROD deployment activity
+2026-11-13T07:13:38Z   ignored 6 activity-log event(s) belonging to this runbook's own recorded operations
+2026-11-13T07:13:38Z   none: no ARM deployment running, all apps/jobs Succeeded, no migration running, no foreign Container Apps/deployment writes in the last 60 min
+2026-11-13T07:13:38Z precheck: related jobs per app (checked again before each update)
+2026-11-13T07:13:41Z   talent-api    bootstrap-talent-clients(0 running), migrate-talent-api(0 running), talent-audit-outbox-job(0 running), talent-reconcile-job(0 running)
+2026-11-13T07:13:41Z   talent-web    -
+2026-11-13T07:13:41Z PRECHECK PASS
+2026-11-13T07:14:08Z   ignored 6 activity-log event(s) belonging to this runbook's own recorded operations
+2026-11-13T07:14:09Z   job bootstrap-talent-clients: no execution running
+2026-11-13T07:14:09Z   job migrate-talent-api: no execution running
+2026-11-13T07:14:11Z   job talent-audit-outbox-job: no execution running
+2026-11-13T07:14:12Z   job talent-reconcile-job: no execution running
+2026-11-13T07:14:13Z talent-api: az containerapp update --min-replicas 1 (current revision talent-api--0000002, spec 769f32cd19a0)
+2026-11-13T07:15:20Z talent-api: PASS in 67s - talent-api--0000003: health=Healthy prov=Provisioned replicas=1 traffic=100 ready=talent-api--0000003; spec 769f32cd19a0 -> 769f32cd19a0 (identical: image, env, secrets, probes, resources, ingress unchanged)
+2026-11-13T07:15:22Z talent-api: latest=talent-api--0000003 ready=talent-api--0000003 prov=Succeeded running=Running min=1 max=2
+2026-11-13T07:15:23Z   active talent-api--0000003: health=Healthy prov=Provisioned running=Running replicas=1 traffic=100
+2026-11-13T07:22:06Z   ignored 6 activity-log event(s) belonging to this runbook's own recorded operations
+2026-11-13T07:22:08Z talent-web: az containerapp update --min-replicas 1 (current revision talent-web--0000001, spec b442b9363962)
+2026-11-13T07:23:17Z talent-web: PASS in 69s - talent-web--0000002: health=Healthy prov=Provisioned replicas=1 traffic=100 ready=talent-web--0000002; spec b442b9363962 -> b442b9363962 (identical: image, env, secrets, probes, resources, ingress unchanged)
+2026-11-13T07:23:19Z talent-web: latest=talent-web--0000002 ready=talent-web--0000002 prov=Succeeded running=Running min=1 max=2
+2026-11-13T07:23:20Z   active talent-web--0000002: health=Healthy prov=Provisioned running=Running replicas=1 traffic=100
+2026-11-13T07:23:26Z   talent-api    APPLIED  spec=baseline prov=Succeeded active: talent-api--0000003(Healthy,100%,replicas=1)
+2026-11-13T07:23:28Z   talent-web    APPLIED  spec=baseline prov=Succeeded active: talent-web--0000002(Healthy,100%,replicas=1)

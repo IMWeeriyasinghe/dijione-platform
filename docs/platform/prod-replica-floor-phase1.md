@@ -128,3 +128,39 @@ Pending:
 - **The 7-day cost observation**, per app per day. Thresholds: ≤ AUD 0.45/day for each warm app, and ≤ AUD 0.66/day for `onsite-api`.
 
 Cost figures in this record are **forecasts** until they are observed in billing.
+
+## Phase 1b — DijiTalentFlow (2026-11-13, 07:12–07:35 UTC)
+
+The user approved the same `minReplicas` 0 → 1 change, scoped to DijiTalentFlow. The template change is in PR #99, merged as `e45e800`. Evidence is in `deploy/runbooks/prod-replica-floor/evidence/2026-11-13-talentflow/`.
+
+**Scope.**
+- In scope: `talent-api` (Home card `/api/talent/summary`) and `talent-web` (`/talent-flow`).
+- Not in scope:
+  - `recruitment-api`: not on any page-load path. The UI's freshness line reads `talent-api`'s own database.
+  - `talentflow-portal-web`: 2 cold starts in 7 days; a separate decision.
+- `talent-audit-outbox-job` runs its own `python` container and doesn't wake `talent-api`.
+
+**Precheck at 07:13:41 UTC: PASS.**
+- No drift: the live revisions were exactly those of the 12 November release.
+- The first precheck stopped on this morning's Phase 1 writes, because this run started with a fresh ledger. They were matched against the Phase 1 ledger by app, caller, time window and correlation id, and are the runbook's own operations, so nothing foreign remained.
+
+| App | Revision before → after | min | Spec SHA-256 (before = after) | Applied |
+|---|---|---|---|---|
+| `talent-api` | `--0000002` → `--0000003` | 0 → 1 | `769f32cd19a0` | 07:14–07:15, 67 s |
+| `talent-web` | `--0000001` → `--0000002` | 0 → 1 | `b442b9363962` | 07:22–07:23, 69 s |
+
+No rollback was needed.
+
+**Stability.**
+- 0 restarts on either app.
+- No `ProbeFailed` events and no scale-from-zero activations.
+- Every `talent-audit-outbox-job` run since 07:14 Succeeded.
+
+**Measurements.** Server time for the first request after an idle gap of at least 10 minutes:
+
+| Target | Before (cold) | After |
+|---|---|---|
+| DijiTalentFlow Home card | 17.44 s (26.1–28.7 s in earlier runs that day) | **0.28 s** |
+| `/talent-flow` application page | 19.58 s (14.1–14.2 s in earlier runs that day) | **0.40 s** |
+
+**Cost.** The forecast is about +AUD 22/month: two warm replicas at the measured warm-idle rate of about AUD 0.37/day. Before the change, `talent-api` cost about AUD 0.8/month and `talent-web` about 0. This is a forecast until it is observed in billing.

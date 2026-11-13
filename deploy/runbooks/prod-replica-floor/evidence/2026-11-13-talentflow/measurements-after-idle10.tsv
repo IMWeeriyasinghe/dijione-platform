@@ -1,0 +1,66 @@
+utc	phase	label	path	app	replicas_before	sample	http	connect_s	tls_s	ttfb_s	total_s	bytes
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	first	200	0.313153	0.552496	0.796106	0.796682	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.241273	0.474213	0.815566	0.81604	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.085374	0.170301	0.252165	0.252567	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.274189	0.525101	0.829223	0.829692	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.077562	0.161809	0.256631	0.257064	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.249767	0.521788	0.825773	0.826219	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.235576	0.471	0.79723	0.797705	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.279939	0.522149	0.797609	0.79806	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.062231	0.128957	0.198899	0.19936	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.23962	0.485935	0.72729	0.727835	2505
+2026-11-13T07:34:35Z	after-idle10	M1 home	/	shell-web	1	warm	200	0.337468	0.603449	0.849149	0.849569	2505
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	first	401	0.235341	0.494294	0.743927	0.744255	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.233124	0.46804	0.71849	0.718766	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.077365	0.151706	0.235223	0.235493	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.073013	0.161923	0.239338	0.239654	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.259634	0.548858	0.875506	0.875809	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.070395	0.146783	0.216872	0.217165	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.064214	0.150154	0.222016	0.22224	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.240072	0.493146	0.754085	0.754285	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.069794	0.139427	0.211094	0.211422	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.240483	0.482224	0.738174	0.738376	33
+2026-11-13T07:34:44Z	after-idle10	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.240517	0.498231	0.756874	0.757229	33
+2026-11-13T07:34:51Z	after-idle10	M2 card atwork	/api/atwork/summary	atwork-api	1	first	200	0.064085	0.15326	0.242688	0.242964	43
+2026-11-13T07:34:51Z	after-idle10	M2 card atwork	/api/atwork/summary	atwork-api	1	warm	200	0.249776	0.514169	0.767521	0.767752	43
+2026-11-13T07:34:51Z	after-idle10	M2 card atwork	/api/atwork/summary	atwork-api	1	warm	200	0.245457	0.520468	0.763608	0.763834	43
+2026-11-13T07:34:51Z	after-idle10	M2 card atwork	/api/atwork/summary	atwork-api	1	warm	200	0.250568	0.570386	0.873563	0.873863	43
+2026-11-13T07:34:51Z	after-idle10	M2 card atwork	/api/atwork/summary	atwork-api	1	warm	200	0.24634	0.48134	0.797994	0.798294	43
+2026-11-13T07:34:51Z	after-idle10	M2 card atwork	/api/atwork/summary	atwork-api	1	warm	200	0.25042	0.510582	0.763463	0.763674	43
+2026-11-13T07:34:57Z	after-idle10	M2 card birthday	/api/birthday/summary	birthday-api	1	first	200	0.23656	0.487136	0.741679	0.742029	130
+2026-11-13T07:34:57Z	after-idle10	M2 card birthday	/api/birthday/summary	birthday-api	1	warm	200	0.079061	0.16855	0.269931	0.270203	130
+2026-11-13T07:34:57Z	after-idle10	M2 card birthday	/api/birthday/summary	birthday-api	1	warm	200	0.235636	0.493395	0.760772	0.761059	130
+2026-11-13T07:34:57Z	after-idle10	M2 card birthday	/api/birthday/summary	birthday-api	1	warm	200	0.233239	0.531645	0.797774	0.798064	130
+2026-11-13T07:34:57Z	after-idle10	M2 card birthday	/api/birthday/summary	birthday-api	1	warm	200	0.241917	0.530563	0.796216	0.796543	130
+2026-11-13T07:34:57Z	after-idle10	M2 card birthday	/api/birthday/summary	birthday-api	1	warm	200	0.075842	0.15253	0.262524	0.262606	130
+2026-11-13T07:35:02Z	after-idle10	M2 card onsite	/api/onsite/summary	onsite-api	1	first	401	0.058846	0.142711	0.248281	0.248632	33
+2026-11-13T07:35:02Z	after-idle10	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.236358	0.480015	0.726152	0.72646	33
+2026-11-13T07:35:02Z	after-idle10	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.324505	0.634856	0.868985	0.86927	33
+2026-11-13T07:35:02Z	after-idle10	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.252459	0.561727	0.820202	0.820508	33
+2026-11-13T07:35:02Z	after-idle10	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.236583	0.465897	0.696599	0.696911	33
+2026-11-13T07:35:02Z	after-idle10	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.078768	0.155805	0.231968	0.232271	33
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	first	200	0.137805	0.224932	0.357455	0.357918	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.256901	0.511705	0.768434	0.76891	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.249317	0.533574	0.790879	0.791066	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.247896	0.49991	0.748989	0.749395	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.251803	0.507098	0.781331	0.781715	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.238561	0.484279	0.814093	0.814486	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.073813	0.153705	0.225365	0.225757	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.077019	0.171124	0.262938	0.263335	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.236786	0.492168	0.728782	0.729224	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.081594	0.167055	0.261763	0.262149	2523
+2026-11-13T07:35:07Z	after-idle10	M3 open /atwork	/atwork	atwork-web	1	warm	200	0.069212	0.145802	0.219885	0.220349	2523
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	first	200	0.239752	0.493794	0.772747	0.773221	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.079533	0.154014	0.224101	0.224565	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.062154	0.137473	0.214338	0.214737	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.07679	0.151065	0.239684	0.240114	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.239188	0.47462	0.731488	0.731955	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.076278	0.157246	0.230521	0.230899	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.067906	0.148104	0.228762	0.229171	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.06741	0.152192	0.244627	0.245046	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.0721	0.158439	0.253338	0.253756	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.075172	0.151579	0.227166	0.22751	2541
+2026-11-13T07:35:14Z	after-idle10	M4 open /onsite	/onsite	onsite-web	1	warm	200	0.246564	0.530525	0.787078	0.787528	2541
+2026-11-13T07:35:19Z	after-idle10	M9 control talent card	/api/talent/summary	talent-api	1	first	200	0.258442	0.517637	0.797045	0.797404	107
+2026-11-13T07:35:21Z	after-idle10	M9 control /talent-flow	/talent-flow	talent-web	1	first	200	0.301118	0.554621	0.952678	0.953368	2660
+2026-11-13T07:35:23Z	after-idle10	M9 control /admin	/admin	admin-web	0	first	200	0.067745	0.144351	20.469361	20.469688	2558
