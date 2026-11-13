@@ -26,6 +26,8 @@ const SPARK_API_URL = up("SPARK_API_URL", "http://localhost:8004");
 const ONSITE_API_URL = up("ONSITE_API_URL", "http://localhost:8008");
 const ATWORK_API_URL = up("ATWORK_API_URL", "http://localhost:8009");
 
+export const BIRTHDAY_API_PUBLIC_SOURCE = "/api/birthday/:path((?!internal(?:/|$)).*)";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@dijione/design-system", "@dijione/auth-client", "@dijione/contracts"],
@@ -58,7 +60,11 @@ const nextConfig: NextConfig = {
       { source: "/api/notifications/:path*", destination: `${PLATFORM_API_URL}/api/notifications/:path*` },
       { source: "/api/admin/:path*", destination: `${ADMIN_API_URL}/api/admin/:path*` },
       { source: "/api/talent/:path*", destination: `${TALENT_API_URL}/api/talent/:path*` },
-      { source: "/api/birthday/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/:path*` },
+      // Everything EXCEPT /api/birthday/internal/*: those routes (scheduled
+      // jobs, dev helpers) are called only over internal ACA networking
+      // (http://birthday-api), never through this public hostname, so the
+      // shell must not forward them. Not forwarded => Next 404s here.
+      { source: BIRTHDAY_API_PUBLIC_SOURCE, destination: `${BIRTHDAY_API_URL}/api/birthday/:path` },
       { source: "/api/spark/:path*", destination: `${SPARK_API_URL}/api/spark/:path*` },
       { source: "/api/onsite/:path*", destination: `${ONSITE_API_URL}/api/onsite/:path*` },
       { source: "/api/atwork/:path*", destination: `${ATWORK_API_URL}/api/atwork/:path*` },
