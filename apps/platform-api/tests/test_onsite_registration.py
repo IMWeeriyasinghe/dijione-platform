@@ -29,7 +29,9 @@ from app.models.user import User, UserModuleRole
 from tests.conftest import auth_headers
 
 VIEWER = {"onsite.dashboard.read", "onsite.attendance.read", "onsite.exceptions.read"}
-ADMIN = VIEWER | {"onsite.health.read", "onsite.identity.read", "onsite.sync.request", "onsite.sites.manage"}
+ADMIN = VIEWER | {
+    "onsite.health.read", "onsite.identity.read", "onsite.identity.manage", "onsite.sync.request", "onsite.sites.manage",
+}
 APP_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -333,3 +335,13 @@ def test_release_activation_uat_prod_only(tmp_path):
         assert rows["onsite"] == "ACTIVE"
         assert rows.get("spark", "COMING_SOON") == "COMING_SOON"  # other modules untouched
     assert status("development")["onsite"] == "ACTIVE"  # DEV via k1l2m3n4o5p6
+
+
+def test_identity_manage_registration_migration_is_onsite_admin_only():
+    path = APP_ROOT / "alembic" / "versions" / "f2a4b6c8d0e2_register_onsite_identity_manage.py"
+    spec = importlib.util.spec_from_file_location("onsite_identity_manage_migration", path)
+    mig = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mig)
+    assert mig.down_revision == "e1f3a5b7c9d0"
+    assert mig.PERMISSION_KEY == "onsite.identity.manage" and mig.ROLE_KEY == "ONSITE_ADMIN"
+    assert "onsite.identity.manage" not in _role("ONSITE_VIEWER").permissions

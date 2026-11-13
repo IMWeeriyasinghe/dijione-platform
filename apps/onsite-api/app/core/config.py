@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     # Optional: when empty or unreachable, On-site shows raw EmpCodes only.
     people_api_url: str = "http://localhost:8006"
     people_api_timeout_seconds: float = 30.0
+    # Identity redesign switches (architecture review §I.2 / §I.4).
+    # ONSITE_LEGACY_CONTRACT keeps the pre-redesign response shapes and the
+    # code-addressed employee routes for the running onsite-web (values are
+    # always derived from verified mappings). ONSITE_IDENTITY_WRITES_ENABLED=false
+    # freezes Identity Management writes (forward-only recovery).
+    onsite_legacy_contract: bool = True
+    onsite_identity_writes_enabled: bool = True
     workforce_cache_ttl_seconds: int = 600
 
     @property
