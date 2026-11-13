@@ -48,11 +48,11 @@ az containerapp list -g rg-dijione-prod \
 | `talentflow-portal-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0/1 → 0/2 | — |
 | `birthday-supplier-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0/1 → 0/2 | — |
 | `admin-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
-| `talent-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
+| `talent-web` | Next.js | internal | 3000 | 0/1 → **1**/2 | — |
 | `birthday-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
 | `platform-api` | FastAPI | internal | 8000 | 0/1 → **1**/3 | `platform_dev` |
 | `admin-api` | FastAPI (zero-DB BFF) | internal | 8000 | 0/1 → 0/2 | — |
-| `talent-api` | FastAPI | internal | 8000 | 0/1 → 0/2 (→ 1 if TalentFlow is the primary daily surface) | `talent_dev` |
+| `talent-api` | FastAPI | internal | 8000 | 0/1 → **1**/2 | `talent_dev` |
 | `recruitment-api` | FastAPI (source domain — Lever) | internal | 8000 | 0/1 → 0/2 | `recruitment_dev` |
 | `people-api` | FastAPI (source domain — BambooHR) | internal | 8000 | 0/1 → **1**/2 | `people_dev` |
 | `birthday-api` | FastAPI | internal | 8000 | 0/1 → **1**/2 | `birthday_dev` |
@@ -71,7 +71,7 @@ request/response, no in-process schedulers/threads — all cron is Jobs); DEV/UA
 run them all at `minReplicas = 0` and accept the cold start. PROD pins
 `platform-api` (every request path crosses the JWT issuer) and `shell-web` (the
 entry point), plus — from the 2026-11 performance decision — `people-api`,
-`birthday-api`, `onsite-api`, `onsite-web`, `atwork-api` and `atwork-web`, whose
+`birthday-api`, `onsite-api`, `onsite-web`, `atwork-api`, `atwork-web`, `talent-api` and `talent-web`, whose
 15–24 s cold starts were user-visible (module open, Home cards, the Diji On-site
 Workforce Directory reload) or which scheduled Jobs kept waking at the higher
 active billing rate. Raise the rest per the scaling-trigger table, not
