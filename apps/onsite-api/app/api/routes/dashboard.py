@@ -90,7 +90,7 @@ def recent_activity(site_id: str | None = None, limit: int = Query(15, ge=1, le=
 @router.get("/today")
 def today(site_id: str | None = None, date_: date | None = Query(None, alias="date"), q: str | None = None,
           department: str | None = None, review: str | None = None, emp_code: str | None = None,
-          identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
+          bamboohr_id: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
           sort: str = Query("first_activity", pattern="^-?(first_activity|latest_activity|punch_count|span|employee|flags)$"),
           page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=200),
           scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)), db: Session = Depends(get_db)):
@@ -99,13 +99,14 @@ def today(site_id: str | None = None, date_: date | None = Query(None, alias="da
     site, tz, day = _site_and_day(db, scope, site_id, date_)
     return svc.today_view(db, scope.allowed_site_ids, site, tz, day, workforce_directory.load(), q=q,
                           department=department, review=review, sort=sort, page=page, page_size=page_size,
-                          emp_code=emp_code, identity_class=identity_class)
+                          emp_code=emp_code, identity_class=identity_class, bamboohr_id=bamboohr_id)
 
 
 @router.get("/activity")
 def activity(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
              q: str | None = None, department: str | None = None, terminal: str | None = None,
-             emp_code: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
+             emp_code: str | None = None, bamboohr_id: str | None = None,
+             identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
              flag: str | None = Query(None, pattern=_FLAG_PATTERN),
              hour: int | None = Query(None, ge=0, le=23, description="Site-local clock hour on every date in the range"),
              sort: str = Query("-time", pattern="^-?time$"),
@@ -120,7 +121,7 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
     data = svc.activity(db, scope.allowed_site_ids, site, start, end, workforce_directory.load(), q=q,
                         department=department, terminal=terminal, identity_class=identity_class, flag=flag,
                         page=page, page_size=page_size, technical=technical, tz=tz, emp_code=emp_code,
-                        hour=hour, oldest_first=sort == "time")
+                        hour=hour, oldest_first=sort == "time", bamboohr_id=bamboohr_id)
     if fmt == "json":
         return data
     if data["total"] > page_size:  # never silently truncate the CSV
@@ -142,7 +143,8 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
 @router.get("/employees")
 def employees(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
               q: str | None = None, department: str | None = None, employment_status: str | None = None,
-              emp_code: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
+              emp_code: str | None = None, bamboohr_id: str | None = None,
+              identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
               activity: str | None = Query(None, pattern="^(with_activity|no_activity)$"),
               sort: str = Query("-events", pattern="^-?(events|activity_days|review_flags|employee|last_activity)$"),
               page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=200),
@@ -152,7 +154,7 @@ def employees(site_id: str | None = None, date_from: date | None = None, date_to
     return svc.employees(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), q=q,
                          department=department, status_filter=employment_status, activity_filter=activity,
                          page=page, page_size=page_size, emp_code=emp_code, identity_class=identity_class,
-                         sort=sort)
+                         sort=sort, bamboohr_id=bamboohr_id)
 
 
 def _photo_response(photo) -> Response:
@@ -223,7 +225,7 @@ def employee_detail(emp_code: str, site_id: str | None = None, date_from: date |
 @router.get("/exceptions")
 def exceptions(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
                flag: str | None = Query(None, pattern=_FLAG_PATTERN), q: str | None = None,
-               emp_code: str | None = None, department: str | None = None,
+               emp_code: str | None = None, department: str | None = None, bamboohr_id: str | None = None,
                identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
                sort: str = Query("-date", pattern="^-?(date|employee|flags|punch_count)$"),
                page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=200),
@@ -232,4 +234,4 @@ def exceptions(site_id: str | None = None, date_from: date | None = None, date_t
     start, end = svc.resolve_range(date_from, date_to, default_days=7, today=today_)
     return svc.exceptions(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), flag=flag, q=q,
                           page=page, page_size=page_size, emp_code=emp_code, department=department,
-                          identity_class=identity_class, sort=sort)
+                          identity_class=identity_class, sort=sort, bamboohr_id=bamboohr_id)

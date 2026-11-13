@@ -516,13 +516,14 @@ def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, e
 
 def employee_for_code(db: Session, allowed, site_id: str, code: str, start: date, end: date,
                       directory: DirectorySnapshot) -> str | None:
-    """LEGACY addressing: the verified employee who owned ``code`` in the period
-    (the most recent owner when the ID was reassigned); None if unverified."""
-    periods = [p for p in MappingIndex.load(db, allowed_site_ids=allowed, directory=directory)
-               .periods_for_code(site_id, code) if p.clip(start, end)]
-    if not periods:
-        return None
-    return max(periods, key=lambda p: (p.valid_to or date.max, p.valid_from)).bamboohr_id
+    """LEGACY addressing: the single verified employee who owned ``code`` during
+    the period. FAILS CLOSED (None -> 404) when the ID is unverified in the
+    period or was owned by more than one employee in it (reassigned/reused
+    ID): the legacy route must never show the wrong person. The new contract
+    addresses employees by BambooHR id instead."""
+    owners = {p.bamboohr_id for p in MappingIndex.load(db, allowed_site_ids=allowed, directory=directory)
+              .periods_for_code(site_id, code) if p.clip(start, end)}
+    return owners.pop() if len(owners) == 1 else None
 
 
 def employee_detail(db: Session, allowed, site_id: str, tz: str | None, bamboohr_id: str, start: date, end: date,

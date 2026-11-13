@@ -174,3 +174,81 @@ def test_mapping_detail_and_csv(api_client, db, directory, audit_calls):
     text = api_client.get(f"{BASE}/mappings?format=csv", headers=headers_for()).text
     assert text.splitlines()[0].startswith("id,site_id,zk_emp_code,bamboohr_id")
     assert date.fromisoformat(body["valid_from"]) == date(2026, 1, 1)
+
+
+def _mutation_routes():
+    from app.api.routes import identity_admin
+
+    return sorted((r.path, sorted(r.methods)) for r in identity_admin.router.routes
+                  if set(r.methods) & {"POST", "PUT", "PATCH", "DELETE"})
+
+
+def test_every_mutation_route_requires_manage_permission():
+    """Introspection guard: a mutation added later without the manage dependency fails here."""
+    from app.api.routes import identity_admin
+
+    routes = [r for r in identity_admin.router.routes if set(r.methods) & {"POST", "PUT", "PATCH", "DELETE"}]
+    assert {r.path for r in routes} == {
+        "/api/onsite/admin/identity/mappings", "/api/onsite/admin/identity/mappings/{mapping_id}/close",
+        "/api/onsite/admin/identity/mappings/{mapping_id}/correct",
+        "/api/onsite/admin/identity/codes/{zk_emp_code}/reassign", "/api/onsite/admin/identity/rejections",
+        "/api/onsite/admin/identity/rejections/{rejection_id}/withdraw", "/api/onsite/admin/identity/import",
+    }
+    for r in routes:
+        deps = {d.call for d in r.dependant.dependencies}
+        assert identity_admin._MANAGE in deps, r.path
+        assert identity_admin._writes_enabled in deps, r.path
+
+
+def test_mutations_cannot_reach_another_sites_records(api_client, db, directory, audit_calls):
+    """Mappings/rejections of a site outside the caller's scope are invisible (404), never changed."""
+    from tests.conftest import make_mapping
+
+    ready(api_client)  # only dev-site enabled
+    other = make_mapping(db, site_id="syd-site", code="110", bamboohr_id="10", valid_from="2020-01-01")
+    from app.models.identity import IdentityRejection
+
+    rej = IdentityRejection(site_id="syd-site", zk_emp_code="110", bamboohr_id="1", reason="synthetic rejection",
+                            status="ACTIVE", rejected_by_user_id=1)
+    db.add(rej)
+    db.commit()
+    h = headers_for()
+    assert api_client.post(f"{BASE}/mappings/{other.id}/close", headers=h,
+                           json={"valid_to": "2026-01-01", "reason": "out of scope attempt"}).status_code == 404
+    assert api_client.post(f"{BASE}/mappings/{other.id}/correct", headers=h,
+                           json={"reason": "out of scope attempt"}).status_code == 404
+    assert api_client.post(f"{BASE}/rejections/{rej.id}/withdraw", headers=h,
+                           json={"reason": "out of scope attempt"}).status_code == 404
+    assert api_client.post(f"{BASE}/codes/110/reassign", headers=h, json={
+        "site_id": "syd-site", "effective_from": "2026-01-01", "reason": "out of scope attempt",
+        "new": {"bamboohr_id": "1", "evidence": EVIDENCE}}).status_code == 403
+    assert api_client.get(f"{BASE}/mappings/{other.id}", headers=h).status_code == 404
+    db.expire_all()
+    assert db.get(IdentityMapping, other.id).valid_to is None and db.get(IdentityRejection, rej.id).status == "ACTIVE"
+
+
+def test_every_successful_mutation_is_audited_and_historised(api_client, db, directory, audit_calls):
+    ready(api_client)
+    h = headers_for()
+    a = create(api_client, code="101", bid="1", valid_from="2026-01-01").json()["id"]
+    api_client.post(f"{BASE}/mappings/{a}/close", headers=h, json={"valid_to": "2026-06-30", "reason": "left in June"})
+    b = create(api_client, code="102", bid="2", valid_from="2026-01-01").json()["id"]
+    api_client.post(f"{BASE}/mappings/{b}/correct", headers=h, json={"reason": "wrong person selected"})
+    c = create(api_client, code="0107", bid="7", valid_from="2026-01-01").json()["id"]
+    r = api_client.post(f"{BASE}/codes/0107/reassign", headers=h, json={
+        "site_id": "dev-site", "effective_from": "2026-11-01", "reason": "code reissued by IT",
+        "new": {"bamboohr_id": "10", "evidence": EVIDENCE, "acknowledged_warnings": [
+            "NO_ATTENDANCE_FOR_CODE", "CODE_REUSED", "ADJACENT_MAPPING", "PRIOR_UNMAPPED_ACTIVITY"]}})
+    assert r.status_code == 200, r.text
+    rej = api_client.post(f"{BASE}/rejections", headers=h, json={
+        "site_id": "dev-site", "zk_emp_code": "999", "bamboohr_id": "1", "reason": "HR: not this person"}).json()
+    api_client.post(f"{BASE}/rejections/{rej['id']}/withdraw", headers=h, json={"reason": "entered in error"})
+    actions = [x["action"] for x in audit_calls if x.get("entity_type", "").startswith("OnsiteIdentity")]
+    assert actions == [
+        "onsite.identity.mapping.created", "onsite.identity.mapping.closed", "onsite.identity.mapping.created",
+        "onsite.identity.mapping.corrected", "onsite.identity.mapping.created", "onsite.identity.mapping.reassigned",
+        "onsite.identity.rejection.created", "onsite.identity.rejection.withdrawn"]
+    assert all(x["actor_id"] == 1 for x in audit_calls if x.get("entity_type", "").startswith("OnsiteIdentity"))
+    hist = {(e.entity_type, e.entity_id, e.action) for e in db.query(IdentityEvent).all()}
+    assert {("MAPPING", a, "CLOSED"), ("MAPPING", b, "CORRECTED"), ("MAPPING", c, "REASSIGNED"),
+            ("REJECTION", rej["id"], "REJECTION_CREATED"), ("REJECTION", rej["id"], "REJECTION_WITHDRAWN")} <= hist

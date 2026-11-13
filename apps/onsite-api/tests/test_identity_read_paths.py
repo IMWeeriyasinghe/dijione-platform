@@ -177,8 +177,13 @@ def test_reassigned_code_splits_attendance_between_owners(api_client, db, direct
     b = _get(api_client, f"/api/onsite/employees/by-id/2?{RANGE}").json()
     assert (a["summary"]["events"], b["summary"]["events"]) == (2, 1)
     assert {e["local_date"] for e in a["events"]} == {DAY1} and {e["local_date"] for e in b["events"]} == {DAY2}
-    # Legacy code addressing opens the most recent verified owner in the period.
-    assert _get(api_client, f"/api/onsite/employees/101?{RANGE}").json()["profile"]["bamboohr_id"] == "2"
+    # Legacy code addressing fails closed when the ID had two owners in the period ...
+    assert _get(api_client, f"/api/onsite/employees/101?{RANGE}").status_code == 404
+    # ... and resolves only when one owner applies to the whole requested period.
+    assert _get(api_client, f"/api/onsite/employees/101?date_from={DAY1}&date_to={DAY1}").json()[
+        "profile"]["bamboohr_id"] == "1"
+    assert _get(api_client, f"/api/onsite/employees/101?date_from={DAY2}&date_to={DAY2}").json()[
+        "profile"]["bamboohr_id"] == "2"
     act = {(i["local_date"], i["bamboohr_id"]) for i in _get(api_client, f"/api/onsite/activity?{RANGE}"
                                                             "&emp_code=101").json()["items"]}
     assert act == {(DAY1, "1"), (DAY2, "2")}
@@ -240,3 +245,51 @@ def test_exports_never_contain_unverified_ids(api_client, db, directory, audit_c
     text = _xlsx_text(_get(api_client, path))
     for code in ("999", "TEST-AZURE-001", "0107", "105"):
         assert f"| {code} |" not in text and f"| {code}\n" not in text, (path, code)
+
+
+def test_legacy_photo_follows_only_todays_verified_owner(api_client, db, audit_calls, monkeypatch):
+    """A reused ID must never expose a previous owner's photo; an ended mapping
+    and an ID owned by different people at two sites both fail closed."""
+    from app.services import employee_photos, workforce_directory
+    from app.services.employee_photos import Photo
+    from tests.conftest import DIRECTORY, enable_site
+
+    entries = [dict(e, has_photo=True) for e in DIRECTORY]
+    snap = workforce_directory.DirectorySnapshot(available=True, entries=entries)
+    monkeypatch.setattr(workforce_directory, "load", lambda force=False: snap)
+    employee_photos.cache.clear()
+    served = []
+    monkeypatch.setattr(employee_photos.cache, "_fetch",
+                        lambda bid: (served.append(bid), (Photo(b"img-" + bid.encode(), "image/png"), 60))[1])
+    ready(api_client)
+    make_mapping(db, code="101", bamboohr_id="1", valid_from="2020-01-01", valid_to="2026-10-13")
+    make_mapping(db, code="101", bamboohr_id="2", valid_from="2026-10-14")  # reassigned to B, still current
+    resp = _get(api_client, "/api/onsite/employees/101/photo")
+    assert resp.status_code == 200 and resp.content == b"img-2" and served == ["2"]  # never the old owner
+    make_mapping(db, code="777", bamboohr_id="3", valid_from="2020-01-01", valid_to="2021-01-01")  # ended
+    assert _get(api_client, "/api/onsite/employees/777/photo").status_code == 404
+    enable_site(api_client, "syd-site")
+    make_mapping(db, site_id="dev-site", code="555", bamboohr_id="1", valid_from="2020-01-01")
+    make_mapping(db, site_id="syd-site", code="555", bamboohr_id="2", valid_from="2020-01-01")
+    assert _get(api_client, "/api/onsite/employees/555/photo").status_code == 404  # two owners across sites
+    employee_photos.cache.clear()
+
+
+def test_legacy_profile_for_date_inapplicable_mapping_is_404(api_client, db, directory, audit_calls):
+    ready(api_client)
+    make_mapping(db, code="101", bamboohr_id="1", valid_from="2025-01-01", valid_to="2025-12-31")
+    assert _get(api_client, f"/api/onsite/employees/101?{RANGE}").status_code == 404
+
+
+def test_bamboohr_id_filter_selects_one_employee_across_ids(api_client, db, directory, audit_calls):
+    ready(api_client)
+    make_mapping(db, code="101", bamboohr_id="1", valid_from="2020-01-01")
+    make_mapping(db, code="0107", bamboohr_id="1", valid_from="2020-01-01")
+    make_mapping(db, code="102", bamboohr_id="2", valid_from="2020-01-01")
+    act = _get(api_client, f"/api/onsite/activity?{RANGE}&bamboohr_id=1").json()
+    assert act["total"] == 5 and {i["bamboohr_id"] for i in act["items"]} == {"1"}
+    assert {r["bamboohr_id"] for r in _get(api_client, f"/api/onsite/today?date={DAY1}&bamboohr_id=2").json()[
+        "items"]} == {"2"}
+    assert [r["bamboohr_id"] for r in _get(api_client, f"/api/onsite/employees?{RANGE}&bamboohr_id=1").json()[
+        "items"]] == ["1"]
+    assert _get(api_client, f"/api/onsite/activity?{RANGE}&bamboohr_id=5").json()["total"] == 0  # unverified
