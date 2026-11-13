@@ -91,6 +91,25 @@ Apps ingress is desired-state, so a binding missing from the param file is
 removed by a deployment. Add new hostnames there after the DNS + managed
 certificate exist.
 
+**`az containerapp update --image` on a service does NOT update that
+service's `migrate-<service>` job.** They are two separate Container App resources, each with its own
+independent `image` field. A full `main.bicep` deploy updates both from
+the same `imageDigests` object, so this never bites there — but an
+ad-hoc single-resource image swap (used for a DEV-only feature deploy
+outside a full environment rollout, as above) only touches the one
+resource named. Confirmed live: after updating DEV's `birthday-api` to
+the invitation-workflow image and running `migrate-birthday-api`, the job
+reported `Succeeded` while silently running the *old* image underneath —
+`alembic upgrade head` had nothing new to apply from that old code's own
+migration history, so the new `invite_count`/`last_invited_by` columns
+were never created despite a clean "Succeeded" job run. **Whenever an
+ad-hoc `az containerapp update --image` targets a service that owns a
+`migrate-<service>` job, update that job's image with the identical
+digest in the same step — never assume a "Succeeded" migration run means
+the intended migration actually applied without confirming the job was
+running the digest you think it was.**
+
+
 ## Prerequisites (user)
 
 - `az login` on a subscription with spend approved (see
