@@ -1,0 +1,63 @@
+{
+  "enums": {
+    "feed_state": [
+      "STALE"
+    ],
+    "status": [
+      "SUCCEEDED"
+    ]
+  },
+  "shape": {
+    "last_successful_sync_at": "str",
+    "latest_run": {
+      "completed_at": "str",
+      "error_summary": "null",
+      "events_existing": "int",
+      "events_inserted": "int",
+      "events_read": "int",
+      "high_water_received_utc": "str",
+      "requested_at": "str",
+      "run_id": "str",
+      "sites_discovered": "int",
+      "source_unavailable": "bool",
+      "started_at": "str",
+      "status": "str",
+      "trigger_type": "str"
+    },
+    "reconciliation": [
+      {
+        "in_sync": "bool",
+        "mirror_count": "int",
+        "mirror_max_received_utc": "str",
+        "site_id": "str",
+        "source_count": "int",
+        "source_epoch": "int",
+        "source_max_received_utc": "str"
+      }
+    ],
+    "sites": [
+      {
+        "agent": {
+          "agent_version": "str",
+          "dead_letter_count": "int",
+          "health_reason": "null",
+          "high_water_id": "int",
+          "last_delivery_utc": "str",
+          "last_error": "null",
+          "oldest_pending_age_seconds": "null",
+          "pending_count": "int",
+          "source_connected": "bool",
+          "source_epoch": "int"
+        },
+        "agent_health": "str",
+        "agent_heartbeat_utc": "str",
+        "feed_state": "str",
+        "latest_punch_utc": "str",
+        "latest_received_utc": "str",
+        "site_id": "str"
+      }
+    ],
+    "source_configured": "bool"
+  },
+  "status": 200
+}

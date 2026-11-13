@@ -1,0 +1,48 @@
+{
+  "enums": {
+    "employment_status": [
+      "Active",
+      "Inactive"
+    ],
+    "identity_class": [
+      "AMBIGUOUS",
+      "MATCHED_ACTIVE",
+      "MATCHED_INACTIVE",
+      "UNMATCHED"
+    ]
+  },
+  "shape": {
+    "directory_available": "bool",
+    "rows": [
+      {
+        "emp_code": "str",
+        "event_count": "int",
+        "first_seen": "str",
+        "identity_class": "str",
+        "last_seen": "str",
+        "matches": [
+          {
+            "bamboohr_id": "str",
+            "department": "str",
+            "display_name": "str",
+            "employment_status": "str",
+            "has_photo": "bool"
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "AMBIGUOUS": "int",
+      "MATCHED_ACTIVE": "int",
+      "MATCHED_BEFORE_HIRE": "int",
+      "MATCHED_INACTIVE": "int",
+      "UNMATCHED": "int",
+      "attendance_emp_codes": "int",
+      "directory_blank_employee_numbers": "int",
+      "directory_duplicate_employee_numbers": "int",
+      "directory_entries_without_attendance": "int",
+      "directory_total": "int"
+    }
+  },
+  "status": 200
+}

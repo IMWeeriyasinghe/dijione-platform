@@ -1,0 +1,16 @@
+{
+  "enums": {},
+  "shape": [
+    {
+      "display_name": "str",
+      "enabled": "bool",
+      "expected_location_values": "null",
+      "label": "null",
+      "last_seen_at": "str",
+      "site_id": "str",
+      "source_active": "bool",
+      "time_zone": "str"
+    }
+  ],
+  "status": 200
+}

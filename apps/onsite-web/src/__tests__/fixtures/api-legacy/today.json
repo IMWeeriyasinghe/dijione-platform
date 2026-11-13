@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-13",
+  "departments": [
+    "Bench"
+  ],
+  "directory_available": true,
+  "items": [
+    {
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "first_activity_local": "2026-10-13T08:30:00+05:30",
+      "first_activity_utc": "2026-10-13T03:00:00",
+      "flags": [],
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-13T17:30:00+05:30",
+      "latest_activity_utc": "2026-10-13T12:00:00",
+      "local_date": "2026-10-13",
+      "punch_count": 2,
+      "site_id": "dev-site",
+      "span_minutes": 540,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": "Bench",
+      "emp_code": "102",
+      "employee_name": "B",
+      "employment_status": "Active",
+      "first_activity_local": "2026-10-13T08:35:00+05:30",
+      "first_activity_utc": "2026-10-13T03:05:00",
+      "flags": [
+        "SINGLE_PUNCH"
+      ],
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-13T08:35:00+05:30",
+      "latest_activity_utc": "2026-10-13T03:05:00",
+      "local_date": "2026-10-13",
+      "punch_count": 1,
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": "Bench",
+      "emp_code": "0107",
+      "employee_name": "F",
+      "employment_status": "Active",
+      "first_activity_local": "2026-10-13T08:37:00+05:30",
+      "first_activity_utc": "2026-10-13T03:07:00",
+      "flags": [
+        "POSSIBLE_DUPLICATE_TAP"
+      ],
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-13T08:37:20+05:30",
+      "latest_activity_utc": "2026-10-13T03:07:20",
+      "local_date": "2026-10-13",
+      "punch_count": 2,
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": null,
+      "emp_code": "999",
+      "employee_name": null,
+      "employment_status": null,
+      "first_activity_local": "2026-10-13T08:39:00+05:30",
+      "first_activity_utc": "2026-10-13T03:09:00",
+      "flags": [
+        "SINGLE_PUNCH",
+        "UNMATCHED_CODE"
+      ],
+      "has_photo": false,
+      "identity_class": "UNMATCHED",
+      "latest_activity_local": "2026-10-13T08:39:00+05:30",
+      "latest_activity_utc": "2026-10-13T03:09:00",
+      "local_date": "2026-10-13",
+      "punch_count": 1,
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    }
+  ],
+  "page": 1,
+  "page_size": 10,
+  "site_id": "dev-site",
+  "total": 4
+}

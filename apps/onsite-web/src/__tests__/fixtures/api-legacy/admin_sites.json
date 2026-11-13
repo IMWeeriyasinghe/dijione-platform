@@ -1,0 +1,22 @@
+[
+  {
+    "display_name": "DEV Site (Colombo)",
+    "enabled": true,
+    "expected_location_values": null,
+    "label": null,
+    "last_seen_at": "2026-11-13T21:10:24.272177",
+    "site_id": "dev-site",
+    "source_active": true,
+    "time_zone": "Asia/Colombo"
+  },
+  {
+    "display_name": "Sydney Office",
+    "enabled": false,
+    "expected_location_values": null,
+    "label": null,
+    "last_seen_at": "2026-11-13T21:10:24.272177",
+    "site_id": "syd-site",
+    "source_active": true,
+    "time_zone": "Australia/Sydney"
+  }
+]

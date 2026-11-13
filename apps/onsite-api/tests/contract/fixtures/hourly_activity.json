@@ -1,0 +1,17 @@
+{
+  "enums": {},
+  "shape": {
+    "date": "str",
+    "date_from": "str",
+    "date_to": "str",
+    "hours": [
+      {
+        "employees": "int",
+        "events": "int",
+        "hour": "int"
+      }
+    ],
+    "site_id": "str"
+  },
+  "status": 200
+}

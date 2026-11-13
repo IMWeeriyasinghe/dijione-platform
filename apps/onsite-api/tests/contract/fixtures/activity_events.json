@@ -1,0 +1,36 @@
+{
+  "enums": {
+    "employment_status": [
+      "Active"
+    ],
+    "identity_class": [
+      "MATCHED_ACTIVE"
+    ]
+  },
+  "shape": {
+    "directory_available": "bool",
+    "items": [
+      {
+        "area": "str",
+        "department": "str",
+        "emp_code": "str",
+        "employee_name": "str",
+        "employment_status": "str",
+        "has_photo": "bool",
+        "identity_class": "str",
+        "local_date": "str",
+        "local_time": "str",
+        "punch_state_raw": "str",
+        "review_flags": [
+          "str"
+        ],
+        "terminal": "str",
+        "tz_consistent": "bool"
+      }
+    ],
+    "page": "int",
+    "page_size": "int",
+    "total": "int"
+  },
+  "status": 200
+}

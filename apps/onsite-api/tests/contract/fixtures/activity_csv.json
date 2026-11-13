@@ -1,0 +1,5 @@
+{
+  "content_type": "text/csv",
+  "header": "local_time,emp_code,employee_name,department,terminal,area,identity_class,punch_state_raw,tz_consistent",
+  "status": 200
+}

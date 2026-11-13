@@ -1,0 +1,29 @@
+{
+  "last_successful_sync_at": "2026-11-13T21:10:24.765324+00:00",
+  "latest_run": {
+    "completed_at": "2026-11-13T21:10:24.765324",
+    "error_summary": null,
+    "events_existing": 0,
+    "events_inserted": 13,
+    "events_read": 13,
+    "high_water_received_utc": "2026-10-14T12:00:13",
+    "requested_at": "2026-11-13T21:10:24.735561",
+    "run_id": "93d5b388-3f5f-4921-b59d-ffd905251a11",
+    "sites_discovered": 2,
+    "source_unavailable": false,
+    "started_at": "2026-11-13T21:10:24.741071",
+    "status": "SUCCEEDED",
+    "trigger_type": "SCHEDULED"
+  },
+  "sites": [
+    {
+      "agent_health": "Healthy",
+      "agent_heartbeat_utc": "2026-10-14T12:00:00+00:00",
+      "feed_state": "STALE",
+      "latest_punch_utc": "2026-10-14T04:15:00+00:00",
+      "latest_received_utc": "2026-10-14T12:00:10+00:00",
+      "site_id": "dev-site"
+    }
+  ],
+  "source_configured": true
+}

@@ -1,0 +1,120 @@
+{
+  "directory_available": true,
+  "rows": [
+    {
+      "emp_code": "0107",
+      "event_count": 2,
+      "first_seen": "2026-10-13",
+      "identity_class": "MATCHED_ACTIVE",
+      "last_seen": "2026-10-13",
+      "matches": [
+        {
+          "bamboohr_id": "7",
+          "department": "Bench",
+          "display_name": "F",
+          "employment_status": "Active",
+          "has_photo": false
+        }
+      ]
+    },
+    {
+      "emp_code": "101",
+      "event_count": 3,
+      "first_seen": "2026-10-13",
+      "identity_class": "MATCHED_ACTIVE",
+      "last_seen": "2026-10-14",
+      "matches": [
+        {
+          "bamboohr_id": "1",
+          "department": "Bench",
+          "display_name": "A",
+          "employment_status": "Active",
+          "has_photo": false
+        }
+      ]
+    },
+    {
+      "emp_code": "102",
+      "event_count": 1,
+      "first_seen": "2026-10-13",
+      "identity_class": "MATCHED_ACTIVE",
+      "last_seen": "2026-10-13",
+      "matches": [
+        {
+          "bamboohr_id": "2",
+          "department": "Bench",
+          "display_name": "B",
+          "employment_status": "Active",
+          "has_photo": false
+        }
+      ]
+    },
+    {
+      "emp_code": "103",
+      "event_count": 1,
+      "first_seen": "2026-10-14",
+      "identity_class": "MATCHED_INACTIVE",
+      "last_seen": "2026-10-14",
+      "matches": [
+        {
+          "bamboohr_id": "3",
+          "department": "Bench",
+          "display_name": "C",
+          "employment_status": "Inactive",
+          "has_photo": false
+        }
+      ]
+    },
+    {
+      "emp_code": "105",
+      "event_count": 1,
+      "first_seen": "2026-10-14",
+      "identity_class": "AMBIGUOUS",
+      "last_seen": "2026-10-14",
+      "matches": [
+        {
+          "bamboohr_id": "5",
+          "department": "X",
+          "display_name": "D",
+          "employment_status": "Active",
+          "has_photo": false
+        },
+        {
+          "bamboohr_id": "6",
+          "department": "Y",
+          "display_name": "E",
+          "employment_status": "Active",
+          "has_photo": false
+        }
+      ]
+    },
+    {
+      "emp_code": "999",
+      "event_count": 1,
+      "first_seen": "2026-10-13",
+      "identity_class": "UNMATCHED",
+      "last_seen": "2026-10-13",
+      "matches": []
+    },
+    {
+      "emp_code": "TEST-AZURE-001",
+      "event_count": 1,
+      "first_seen": "2026-10-14",
+      "identity_class": "UNMATCHED",
+      "last_seen": "2026-10-14",
+      "matches": []
+    }
+  ],
+  "summary": {
+    "AMBIGUOUS": 1,
+    "MATCHED_ACTIVE": 3,
+    "MATCHED_BEFORE_HIRE": 0,
+    "MATCHED_INACTIVE": 1,
+    "UNMATCHED": 2,
+    "attendance_emp_codes": 7,
+    "directory_blank_employee_numbers": 1,
+    "directory_duplicate_employee_numbers": 1,
+    "directory_entries_without_attendance": 3,
+    "directory_total": 9
+  }
+}

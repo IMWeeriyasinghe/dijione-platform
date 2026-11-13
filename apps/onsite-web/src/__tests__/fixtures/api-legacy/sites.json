@@ -1,0 +1,18 @@
+[
+  {
+    "departments": [
+      "Bench",
+      "X",
+      "Y"
+    ],
+    "first_activity_date": "2026-10-13",
+    "last_activity_date": "2026-10-14",
+    "name": "DEV Site (Colombo)",
+    "site_id": "dev-site",
+    "terminals": [
+      "Main Door"
+    ],
+    "time_zone": "Asia/Colombo",
+    "today": "2026-11-14"
+  }
+]

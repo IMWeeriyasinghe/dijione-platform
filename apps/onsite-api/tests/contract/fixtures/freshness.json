@@ -1,0 +1,40 @@
+{
+  "enums": {
+    "feed_state": [
+      "STALE"
+    ],
+    "status": [
+      "SUCCEEDED"
+    ]
+  },
+  "shape": {
+    "last_successful_sync_at": "str",
+    "latest_run": {
+      "completed_at": "str",
+      "error_summary": "null",
+      "events_existing": "int",
+      "events_inserted": "int",
+      "events_read": "int",
+      "high_water_received_utc": "str",
+      "requested_at": "str",
+      "run_id": "str",
+      "sites_discovered": "int",
+      "source_unavailable": "bool",
+      "started_at": "str",
+      "status": "str",
+      "trigger_type": "str"
+    },
+    "sites": [
+      {
+        "agent_health": "str",
+        "agent_heartbeat_utc": "str",
+        "feed_state": "str",
+        "latest_punch_utc": "str",
+        "latest_received_utc": "str",
+        "site_id": "str"
+      }
+    ],
+    "source_configured": "bool"
+  },
+  "status": 200
+}

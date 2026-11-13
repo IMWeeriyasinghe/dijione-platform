@@ -1,0 +1,54 @@
+{
+  "enums": {
+    "employment_status": [
+      "Active",
+      "null"
+    ],
+    "flags": [
+      "POSSIBLE_DUPLICATE_TAP",
+      "SINGLE_PUNCH",
+      "UNMATCHED_CODE"
+    ],
+    "identity_class": [
+      "MATCHED_ACTIVE",
+      "UNMATCHED"
+    ]
+  },
+  "shape": {
+    "date": "str",
+    "departments": [
+      "str"
+    ],
+    "directory_available": "bool",
+    "items": [
+      {
+        "department": "null|str",
+        "emp_code": "str",
+        "employee_name": "null|str",
+        "employment_status": "null|str",
+        "first_activity_local": "str",
+        "first_activity_utc": "str",
+        "flags": [
+          "str"
+        ],
+        "has_photo": "bool",
+        "identity_class": "str",
+        "latest_activity_local": "str",
+        "latest_activity_utc": "str",
+        "local_date": "str",
+        "punch_count": "int",
+        "site_id": "str",
+        "span_minutes": "int",
+        "terminal_names": [
+          "str"
+        ],
+        "terminals": "int"
+      }
+    ],
+    "page": "int",
+    "page_size": "int",
+    "site_id": "str",
+    "total": "int"
+  },
+  "status": 200
+}

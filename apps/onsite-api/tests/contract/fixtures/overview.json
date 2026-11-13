@@ -1,0 +1,48 @@
+{
+  "enums": {
+    "feed_state": [
+      "STALE"
+    ],
+    "review_breakdown_keys": [
+      "AMBIGUOUS_CODE",
+      "BEFORE_HIRE_ACTIVITY",
+      "HIGH_PUNCH_COUNT",
+      "INACTIVE_EMPLOYEE_ACTIVITY",
+      "POSSIBLE_DUPLICATE_TAP",
+      "SINGLE_PUNCH",
+      "TZ_INCONSISTENT",
+      "UNMATCHED_CODE"
+    ]
+  },
+  "shape": {
+    "agent_heartbeat_utc": "str",
+    "date": "str",
+    "date_from": "str",
+    "date_to": "str",
+    "directory_available": "bool",
+    "kpis": {
+      "activity_days": "int",
+      "employees_needing_review": "int",
+      "employees_with_activity": "int",
+      "feed_state": "str",
+      "single_punch_employees": "int",
+      "total_events": "int",
+      "unmatched_codes": "int"
+    },
+    "last_successful_sync_at": "str",
+    "latest_received_utc": "str",
+    "review_breakdown": {
+      "AMBIGUOUS_CODE": "int",
+      "BEFORE_HIRE_ACTIVITY": "int",
+      "HIGH_PUNCH_COUNT": "int",
+      "INACTIVE_EMPLOYEE_ACTIVITY": "int",
+      "POSSIBLE_DUPLICATE_TAP": "int",
+      "SINGLE_PUNCH": "int",
+      "TZ_INCONSISTENT": "int",
+      "UNMATCHED_CODE": "int"
+    },
+    "site_id": "str",
+    "time_zone": "str"
+  },
+  "status": 200
+}

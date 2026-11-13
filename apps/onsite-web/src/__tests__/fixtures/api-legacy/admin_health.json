@@ -1,0 +1,70 @@
+{
+  "last_successful_sync_at": "2026-11-13T21:10:23.934323+00:00",
+  "latest_run": {
+    "completed_at": "2026-11-13T21:10:23.934323",
+    "error_summary": null,
+    "events_existing": 0,
+    "events_inserted": 13,
+    "events_read": 13,
+    "high_water_received_utc": "2026-10-14T12:00:13",
+    "requested_at": "2026-11-13T21:10:23.906646",
+    "run_id": "6fa3b44d-1cd1-4646-a3c0-d5bba1342f70",
+    "sites_discovered": 2,
+    "source_unavailable": false,
+    "started_at": "2026-11-13T21:10:23.911802",
+    "status": "SUCCEEDED",
+    "trigger_type": "SCHEDULED"
+  },
+  "reconciliation": [
+    {
+      "in_sync": true,
+      "mirror_count": 1,
+      "mirror_max_received_utc": "2026-10-14 12:00:10",
+      "site_id": "dev-site",
+      "source_count": 1,
+      "source_epoch": 1,
+      "source_max_received_utc": "2026-10-14 12:00:10"
+    },
+    {
+      "in_sync": true,
+      "mirror_count": 9,
+      "mirror_max_received_utc": "2026-10-14 12:00:09",
+      "site_id": "dev-site",
+      "source_count": 9,
+      "source_epoch": 1000,
+      "source_max_received_utc": "2026-10-14 12:00:09"
+    },
+    {
+      "in_sync": true,
+      "mirror_count": 3,
+      "mirror_max_received_utc": "2026-10-14 12:00:13",
+      "site_id": "syd-site",
+      "source_count": 3,
+      "source_epoch": 1,
+      "source_max_received_utc": "2026-10-14 12:00:13"
+    }
+  ],
+  "sites": [
+    {
+      "agent": {
+        "agent_version": "1.0.0",
+        "dead_letter_count": 0,
+        "health_reason": null,
+        "high_water_id": 43594,
+        "last_delivery_utc": "2026-10-14T12:00:00+00:00",
+        "last_error": null,
+        "oldest_pending_age_seconds": null,
+        "pending_count": 0,
+        "source_connected": true,
+        "source_epoch": 1
+      },
+      "agent_health": "Healthy",
+      "agent_heartbeat_utc": "2026-10-14T12:00:00+00:00",
+      "feed_state": "STALE",
+      "latest_punch_utc": "2026-10-14T04:15:00+00:00",
+      "latest_received_utc": "2026-10-14T12:00:10+00:00",
+      "site_id": "dev-site"
+    }
+  ],
+  "source_configured": true
+}

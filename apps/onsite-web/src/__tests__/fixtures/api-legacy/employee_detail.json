@@ -1,0 +1,103 @@
+{
+  "date_from": "2026-10-13",
+  "date_to": "2026-10-14",
+  "days": [
+    {
+      "emp_code": "101",
+      "first_activity_local": "2026-10-14T08:48:00+05:30",
+      "first_activity_utc": "2026-10-14T03:18:00",
+      "flags": [
+        "SINGLE_PUNCH"
+      ],
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-14T08:48:00+05:30",
+      "latest_activity_utc": "2026-10-14T03:18:00",
+      "local_date": "2026-10-14",
+      "punch_count": 1,
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "emp_code": "101",
+      "first_activity_local": "2026-10-13T08:30:00+05:30",
+      "first_activity_utc": "2026-10-13T03:00:00",
+      "flags": [],
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-13T17:30:00+05:30",
+      "latest_activity_utc": "2026-10-13T12:00:00",
+      "local_date": "2026-10-13",
+      "punch_count": 2,
+      "site_id": "dev-site",
+      "span_minutes": 540,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    }
+  ],
+  "directory_available": true,
+  "events": [
+    {
+      "area": "Ground Floor",
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "local_date": "2026-10-14",
+      "local_time": "2026-10-14T08:48:00+05:30",
+      "punch_state_raw": "255",
+      "terminal": "Main Door",
+      "tz_consistent": true
+    },
+    {
+      "area": "Ground Floor",
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "local_date": "2026-10-13",
+      "local_time": "2026-10-13T17:30:00+05:30",
+      "punch_state_raw": "255",
+      "terminal": "Main Door",
+      "tz_consistent": true
+    },
+    {
+      "area": "Ground Floor",
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "local_date": "2026-10-13",
+      "local_time": "2026-10-13T08:30:00+05:30",
+      "punch_state_raw": "255",
+      "terminal": "Main Door",
+      "tz_consistent": true
+    }
+  ],
+  "profile": {
+    "department": "Bench",
+    "emp_code": "101",
+    "employee_name": "A",
+    "employment_status": "Active",
+    "has_photo": false,
+    "identity_class": "MATCHED_ACTIVE",
+    "job_title": null,
+    "match_count": 1
+  },
+  "site_id": "dev-site",
+  "summary": {
+    "activity_days": 2,
+    "events": 3,
+    "review_flags": 1
+  }
+}

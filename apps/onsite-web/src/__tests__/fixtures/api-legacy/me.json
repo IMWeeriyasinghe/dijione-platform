@@ -1,0 +1,8 @@
+{
+  "permissions": [
+    "onsite.attendance.read",
+    "onsite.dashboard.read",
+    "onsite.exceptions.read"
+  ],
+  "role": "ONSITE_VIEWER"
+}

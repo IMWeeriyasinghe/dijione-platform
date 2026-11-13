@@ -1,0 +1,53 @@
+{
+  "enums": {
+    "employment_status": [
+      "Active",
+      "Inactive",
+      "null"
+    ],
+    "identity_class": [
+      "AMBIGUOUS",
+      "MATCHED_ACTIVE",
+      "MATCHED_BEFORE_HIRE",
+      "MATCHED_INACTIVE",
+      "UNMATCHED"
+    ]
+  },
+  "shape": {
+    "date_from": "str",
+    "date_to": "str",
+    "departments": [
+      "str"
+    ],
+    "directory_available": "bool",
+    "items": [
+      {
+        "activity_days": "int",
+        "department": "null|str",
+        "emp_code": "str",
+        "employee_name": "null|str",
+        "employment_status": "null|str",
+        "events": "int",
+        "has_photo": "bool",
+        "identity_class": "str",
+        "in_directory": "bool",
+        "last_activity_local": "null|str",
+        "review_flags": "int"
+      }
+    ],
+    "page": "int",
+    "page_size": "int",
+    "site_id": "str",
+    "summary": {
+      "active": "int",
+      "employees": "int",
+      "inactive": "int",
+      "matched": "int",
+      "needing_review": "int",
+      "not_in_directory": "int",
+      "with_activity": "int"
+    },
+    "total": "int"
+  },
+  "status": 200
+}
