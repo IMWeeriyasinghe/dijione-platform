@@ -679,3 +679,33 @@ git rev-parse origin/release/onsite-v1   # integration branch; was 6e20849 on 20
 
 No secrets appear in this document. Values shown are resource names, digests, app/object IDs and
 non-secret env vars; secret values were redacted at collection time.
+
+---
+
+## 20. Reconciliation addendum (2026-11-13, branch `chore/birthday-reconcile-release`)
+
+Built from `origin/release/onsite-v1` @ `6e20849`. Supersedes §2's "only on
+feat/onsite-dashboard-v1" table, §17 P0-1/P1-2/P1-3, and corrects §17 P1-1's ordering.
+
+| Handover item | State on this branch |
+|---|---|
+| `d6512fb` `70bcd6a` `18de64c` `ab2f5f8` | Cherry-picked; Birthday app/package source is byte-identical to `ab2f5f8` |
+| `9d1478b` `8dca96b` `8ac99f8` `d4efb92` | Reapplied by hand on top of release (replica floors, `entraInternalEmailDomains`, AtWork/On-site/TalentFlow params kept) |
+| PROD/UAT Entra, supplier URLs, integration modes, mail | In bicepparams; read-only `what-if` against live DEV/UAT/PROD shows **no change** for any of them |
+| `birthday-web` `APP_ENV` (§7 #1) | Declared in `main.bicep`; `/api/meta` now also fails closed (unset ⇒ production) |
+| `RELEASE_DATE` (§7 #2) | `releaseDates` param + `deploy/release-dates.sh` carry-forward wrapper |
+| Dev-route exposure (§7 #4) | Injector requires `APP_ENV=development`; supplier-web rewrites only the two persona paths |
+| **New:** custom domains not in IaC | `customDomains` param declares the six live bindings; a full `main.bicep` run would otherwise have removed them |
+
+**Corrected deployment order for `ad84ec92abcb`.** The migration is additive
+(old API works on the new schema; the new API breaks every `SupplierUser`
+query on the old schema). So: update `migrate-birthday-api` to the new digest
+→ run it and confirm `alembic_version = ad84ec92abcb` → `birthday-api` (same
+digest) → `birthday-web` → `birthday-supplier-web`. A full `main.bicep` run sets
+both images from one `imageDigests`, but the migration still has to finish before
+API traffic; for an ad hoc rollout, follow the order above.
+
+**Found outside Birthday by the same `what-if` (not changed here):** PROD and DEV
+`talent-api` would lose live `EXTERNAL_PORTAL_BASE_URL` (no `externalPortalBaseUrl`
+in those param files); DEV `recruitment-api` `minReplicas` 1 → 0; `shell-web`
+gains the On-site/AtWork upstream URLs. These belong to their owning modules.
