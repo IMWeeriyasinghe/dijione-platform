@@ -709,3 +709,38 @@ API traffic; for an ad hoc rollout, follow the order above.
 `talent-api` would lose live `EXTERNAL_PORTAL_BASE_URL` (no `externalPortalBaseUrl`
 in those param files); DEV `recruitment-api` `minReplicas` 1 → 0; `shell-web`
 gains the On-site/AtWork upstream URLs. These belong to their owning modules.
+
+---
+
+## 21. Release record — DEV / UAT / PROD (2026-11-13)
+
+Release line `release/onsite-v1` @ `d970e31` (PRs #101 reconciliation, #102 config drift, #103 Birthday
+version bumps, #104 shell `/api/birthday/internal/*` no longer forwarded publicly). Built once into
+`crdijionenonprod`; PROD received digest-identical `az acr import --repository` copies. No rebuild.
+
+| Image | Digest | Built from |
+|---|---|---|
+| birthday-api (+ `migrate-birthday-api`) | `sha256:01438a3f64909b3b827f1d96cee71aa8f26ef1c06fcefe588b9b08a7a9eda5d5` | `16030e7` |
+| birthday-web 1.2.0 | `sha256:7477f8faa85fa1b49eef88e4415a3e7c79d735650677caa07f504c3b0f56598e` | `16030e7` |
+| birthday-supplier-web 1.1.0 | `sha256:c604e134412ba8530cccc803e8d77312553741295d3773e5986d480f91694866` | `16030e7` |
+| shell-web 1.0.3 | `sha256:280deea3076a7c48777a37de3687090061b0890543f495ba21596f1130d0f494` | `d970e31` |
+
+Order in every environment: `migrate-birthday-api` on the new API digest → migration verified →
+birthday-api → birthday-web → birthday-supplier-web → shell-web, each Healthy before the next.
+
+| Env | Migration | New revisions (api / web / supplier-web / shell-web) | Rollback revisions | RELEASE_DATE |
+|---|---|---|---|---|
+| DEV | already `ad84ec92abcb` (no-op run) | `--0000021` / `--0000019` / `--0000012` / `--0000017` | `--0000020` / `--0000018` / `--0000011` / `--0000016` | 2026-11-13T11:01:02Z |
+| UAT | `ab10ac1cdce1 → ad84ec92abcb` | `--0000004` / `--0000001` / `--0000002` / `--0000004` | `--0000003` / `--udxrkc3` / `--0000001` / `--0000003` | 2026-11-13T12:15:52Z |
+| PROD | `ab10ac1cdce1 → ad84ec92abcb` | `--0000007` / `--0000001` / `--0000002` / `--0000005` | `--0000006` / `--9zcmdb5` / `--0000001` / `--0000004` | 2026-11-13T12:26:26Z |
+
+Previous images (rollback): birthday-api `98656e2e…` (UAT/PROD), `edbfe6a0…` (DEV); birthday-web
+`9584a369…`; birthday-supplier-web `ef97b18b…` (UAT/PROD), `c7c9d048…` (DEV); shell-web `628a0e59…`
+(UAT/PROD), `42db1bbd…` (DEV). The schema change is additive, so rolling an app back does not require
+a DB downgrade.
+
+`birthday-web` `APP_ENV` was set to `uat`/`prod` during the rollout (as declared in `main.bicep`).
+
+**PROD live send:** PROD holds genuine orders (54 at release time) and already has one
+`SENT/SUBMITTED` Graph send (2026-09-28). No send was triggered for this release; the next
+admin-released genuine order is the post-release live-send check.
