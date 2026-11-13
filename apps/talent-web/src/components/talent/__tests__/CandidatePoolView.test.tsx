@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => api);
 
 import { CandidatePoolView } from "../CandidatePoolView";
-import { pageWindow } from "../CandidatePagination";
+import { pageWindow } from "../TalentPagination";
 
 function wrap(node: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

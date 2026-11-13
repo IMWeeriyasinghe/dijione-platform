@@ -4,17 +4,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { listApplications, updateApplicationVisibility } from "@/lib/api";
+import { listApplicationsPaged, updateApplicationVisibility } from "@/lib/api";
+import { TABLE_PAGE_SIZES, keepPageWhile, useDebouncedSearch, usePaging } from "@/lib/paging";
+import { TalentPagination } from "./TalentPagination";
 import { PageHeader } from "@dijione/design-system";
 import { StatusBadge } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { Table, Thead, Th, Tr, Td } from "@dijione/design-system";
-
-// Lever-sourced applications carry the offer as their stage, not their status.
-function matchesStatus(a: { status: string; current_stage: string }, filter: string) {
-  if (a.status === filter) return true;
-  return filter === "OFFER" && a.current_stage === "OFFER" && ["ACTIVE", "SHORTLISTED", "CLIENT_REVIEW"].includes(a.status);
-}
 
 export function ApplicationsView({
   initialSearch = "",
@@ -24,18 +20,26 @@ export function ApplicationsView({
   initialStatus?: string;
 }) {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState(initialSearch);
-  // The API has no status_filter for applications — this is a frontend-only
-  // filter applied after fetch, used by the Operations Dashboard's "Offers
-  // in Progress" click-through (?status=OFFER).
+  const paging = usePaging(TABLE_PAGE_SIZES[0]);
+  const { input, setInput, search } = useDebouncedSearch(paging.reset, initialSearch);
+  // Status filter (e.g. the Operations Dashboard's "Offers in Progress"
+  // click-through, ?status=OFFER) is applied server-side, including Lever
+  // offers carried as stage=OFFER, so totals and pages are exact.
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [shareError, setShareError] = useState(false);
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["applications", "all", search],
-    queryFn: () => listApplications({ search: search || undefined }),
+  const filterKey = [search, statusFilter];
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
+    queryKey: ["applications", "paged", ...filterKey, paging.page, paging.pageSize],
+    queryFn: () =>
+      listApplicationsPaged({
+        search: search || undefined,
+        status_filter: statusFilter || undefined,
+        page: paging.page,
+        page_size: paging.pageSize,
+      }),
+    placeholderData: keepPageWhile((k) => JSON.stringify(k.slice(2, 4)) === JSON.stringify(filterKey)),
   });
-
-  const rows = statusFilter ? data?.filter((a) => matchesStatus(a, statusFilter)) : data;
+  const rows = data?.items;
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ["applications"] });
@@ -52,8 +56,9 @@ export function ApplicationsView({
         <div className="relative max-w-md flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-dt-text-secondary" />
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            aria-label="Search applications"
             placeholder="Search by designation…"
             className="w-full rounded-lg border border-dt-border bg-dt-surface py-2 pl-9 pr-3 text-sm focus:border-dt-orange focus:outline-none focus:ring-2 focus:ring-dt-orange/20"
           />
@@ -61,7 +66,10 @@ export function ApplicationsView({
         {statusFilter && (
           <button
             type="button"
-            onClick={() => setStatusFilter("")}
+            onClick={() => {
+              setStatusFilter("");
+              paging.reset();
+            }}
             className="flex items-center gap-1.5 rounded-full border border-dt-orange/30 bg-dt-surface-warm px-3 py-1 text-xs font-medium text-dt-burnt-orange"
           >
             Status: {statusFilter}
@@ -71,15 +79,24 @@ export function ApplicationsView({
       </div>
 
       {isLoading && <LoadingState label="Loading applications…" />}
-      {isError && <ErrorState onRetry={() => refetch()} />}
+      {isError && !data && <ErrorState onRetry={() => refetch()} />}
       {shareError && (
         <p role="alert" className="mb-3 text-sm text-dt-danger">
           Candidate sharing could not be updated. Please try again.
         </p>
       )}
-      {rows && rows.length === 0 && <EmptyState title="No applications found" />}
+      {data && data.total === 0 && <EmptyState title="No applications found" />}
+      {data && data.total > 0 && rows && rows.length === 0 && (
+        <p className="mb-4 text-sm text-dt-text-secondary">
+          This page is now empty — the list has changed.{" "}
+          <button type="button" className="underline" onClick={() => paging.setPage(data.total_pages)}>
+            Go to the last page
+          </button>
+        </p>
+      )}
 
       {rows && rows.length > 0 && (
+        <div aria-busy={isFetching} className={isFetching ? "opacity-70 transition-opacity" : undefined}>
         <Table>
           <Thead>
             <tr>
@@ -137,6 +154,32 @@ export function ApplicationsView({
             ))}
           </tbody>
         </Table>
+        </div>
+      )}
+      {data && data.total > 0 && (
+        <>
+          {isError && (
+            <p role="alert" className="mt-4 text-sm text-dt-danger">
+              Couldn&apos;t load that page.{" "}
+              <button type="button" className="underline" onClick={() => refetch()}>
+                Try again
+              </button>
+            </p>
+          )}
+          <TalentPagination
+            page={Math.min(paging.page, data.total_pages)}
+            pageSize={paging.pageSize}
+            pageSizes={TABLE_PAGE_SIZES}
+            total={data.total}
+            totalPages={data.total_pages}
+            onPageChange={(p) => {
+              paging.setPage(p);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onPageSizeChange={paging.setPageSize}
+            noun={["application", "applications"]}
+          />
+        </>
       )}
     </div>
   );

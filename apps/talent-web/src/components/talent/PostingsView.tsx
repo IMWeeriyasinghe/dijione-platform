@@ -17,10 +17,13 @@ import {
 } from "@dijione/design-system";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { TABLE_PAGE_SIZES, keepPageWhile, usePaging } from "@/lib/paging";
+import { TalentPagination } from "./TalentPagination";
 import {
   type PostingRow,
+  type PostingView,
   listClientPortfolios,
-  listRecruitmentPostings,
+  listRecruitmentPostingsPaged,
   reopenPostingMapping,
   unmapPostingMapping,
   verifyPostingMapping,
@@ -70,30 +73,32 @@ function Badge({ tone, children }: { tone: keyof typeof TONE_CLASS; children: Re
 // correct fail-closed behaviour but useless as a default TA view. Default
 // to what a TA acts on now; every other cut stays one click away, and
 // "All" is an explicit escape hatch (nothing is hidden from diagnosis).
-type PostingFilter = "active" | "verified" | "unmapped" | "review" | "all";
+// The filters are applied server-side (/postings/paged ?view=…) with the
+// same definitions this page used to apply in the browser; ``counts`` gives
+// every chip's total for the current authorized scope.
+type PostingFilter = PostingView;
 
-const FILTERS: { key: PostingFilter; label: string; match: (p: PostingRow) => boolean }[] = [
-  { key: "active", label: "Recent / Active", match: (p) => p.state !== "closed" },
-  { key: "verified", label: "Verified", match: (p) => p.mapping_status === "VERIFIED" },
-  { key: "unmapped", label: "Unmapped", match: (p) => p.mapping_status === "UNMAPPED" },
-  {
-    key: "review",
-    label: "Needs review",
-    match: (p) => p.mapping_status !== "VERIFIED" && NEEDS_REVIEW.has(p.resolution_status),
-  },
-  { key: "all", label: "All", match: () => true },
+const FILTERS: { key: PostingFilter; label: string }[] = [
+  { key: "active", label: "Recent / Active" },
+  { key: "verified", label: "Verified" },
+  { key: "unmapped", label: "Unmapped" },
+  { key: "review", label: "Needs review" },
+  { key: "all", label: "All" },
 ];
 
 export function PostingsView() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<PostingFilter>("active");
+  const paging = usePaging(TABLE_PAGE_SIZES[0]);
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
   const [pickClientId, setPickClientId] = useState<number | null>(null);
   const [unmapTarget, setUnmapTarget] = useState<PostingRow | null>(null);
 
   const postings = useQuery({
-    queryKey: ["recruitment-postings"],
-    queryFn: () => listRecruitmentPostings(),
+    queryKey: ["recruitment-postings", "paged", filter, paging.page, paging.pageSize],
+    queryFn: () =>
+      listRecruitmentPostingsPaged({ view: filter, page: paging.page, page_size: paging.pageSize }),
+    placeholderData: keepPageWhile((k) => k[2] === filter),
   });
   const clients = useQuery({ queryKey: ["client-portfolios"], queryFn: listClientPortfolios });
 
@@ -125,11 +130,10 @@ export function PostingsView() {
   });
 
   if (postings.isLoading) return <LoadingState label="Loading recruitment postings…" />;
-  if (postings.isError || !postings.data)
-    return <ErrorState onRetry={() => postings.refetch()} />;
+  if (!postings.data) return <ErrorState onRetry={() => postings.refetch()} />;
 
-  const all = postings.data;
-  const rows = all.filter(FILTERS.find((f) => f.key === filter)!.match);
+  const page = postings.data;
+  const rows = page.items;
 
   return (
     <div>
@@ -140,13 +144,17 @@ export function PostingsView() {
 
       <div className="mb-2 flex flex-wrap gap-2">
         {FILTERS.map((f) => {
-          const count = all.filter(f.match).length;
+          const count = page.counts[f.key];
           const active = filter === f.key;
           return (
             <button
               key={f.key}
               type="button"
-              onClick={() => setFilter(f.key)}
+              aria-pressed={active}
+              onClick={() => {
+                setFilter(f.key);
+                paging.reset();
+              }}
               className={
                 active
                   ? "rounded-full border border-dt-orange bg-dt-cream px-3 py-1 text-xs font-medium text-dt-burnt-orange"
@@ -159,16 +167,25 @@ export function PostingsView() {
         })}
       </div>
       <p className="mb-4 text-xs text-dt-text-secondary">
-        Showing {rows.length} of {all.length} postings
-        {filter === "active" && all.length > rows.length
-          ? ` — ${all.length - rows.length} closed/older hidden (use "All")`
-          : ""}
+        {filter === "active" && page.counts.all > page.counts.active
+          ? `${page.counts.all - page.counts.active} closed/older postings hidden (use "All")`
+          : " "}
       </p>
 
-      {rows.length === 0 ? (
+      {page.total === 0 ? (
         <EmptyState title="Nothing here" description="No postings match the current filter." />
+      ) : rows.length === 0 ? (
+        <p className="mb-4 text-sm text-dt-text-secondary">
+          This page is now empty — the list has changed.{" "}
+          <button type="button" className="underline" onClick={() => paging.setPage(page.total_pages)}>
+            Go to the last page
+          </button>
+        </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div
+          aria-busy={postings.isFetching}
+          className={`overflow-x-auto${postings.isFetching ? " opacity-70 transition-opacity" : ""}`}
+        >
           <Table>
             <Thead>
               <Tr>
@@ -265,6 +282,30 @@ export function PostingsView() {
             </tbody>
           </Table>
         </div>
+      )}
+
+      {postings.isError && (
+        <p role="alert" className="mt-4 text-sm text-dt-danger">
+          Couldn&apos;t load that page.{" "}
+          <button type="button" className="underline" onClick={() => postings.refetch()}>
+            Try again
+          </button>
+        </p>
+      )}
+      {page.total > 0 && (
+        <TalentPagination
+          page={Math.min(paging.page, page.total_pages)}
+          pageSize={paging.pageSize}
+          pageSizes={TABLE_PAGE_SIZES}
+          total={page.total}
+          totalPages={page.total_pages}
+          onPageChange={(p) => {
+            paging.setPage(p);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          onPageSizeChange={paging.setPageSize}
+          noun={["posting", "postings"]}
+        />
       )}
 
       <Modal open={unmapTarget !== null} onClose={() => setUnmapTarget(null)} title="Remove client mapping?">

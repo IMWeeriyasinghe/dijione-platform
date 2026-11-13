@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.application import Application
@@ -87,22 +87,16 @@ class ApplicationRepository:
                 grouped[app.candidate_id].append(app)
         return grouped
 
-    def list_for_scope(
+    def _scope_stmt(
         self,
+        stmt,
         *,
         client_id: int | None,
         search: str | None = None,
         talent_request_id: int | None = None,
         allowed_client_ids: list[int] | None = None,
-    ) -> list[Application]:
-        stmt = (
-            select(Application)
-            .options(
-                joinedload(Application.candidate),
-                joinedload(Application.talent_request).joinedload(TalentRequest.client),
-            )
-            .join(TalentRequest)
-        )
+    ):
+        stmt = stmt.join(TalentRequest, TalentRequest.id == Application.talent_request_id)
         if talent_request_id is not None:
             stmt = stmt.where(Application.talent_request_id == talent_request_id)
         if client_id is not None:
@@ -112,8 +106,103 @@ class ApplicationRepository:
         if search:
             like = f"%{search}%"
             stmt = stmt.where(TalentRequest.designation.ilike(like))
+        return stmt
+
+    def list_for_scope(
+        self,
+        *,
+        client_id: int | None,
+        search: str | None = None,
+        talent_request_id: int | None = None,
+        allowed_client_ids: list[int] | None = None,
+    ) -> list[Application]:
+        stmt = select(Application).options(
+            joinedload(Application.candidate),
+            joinedload(Application.talent_request).joinedload(TalentRequest.client),
+        )
+        stmt = self._scope_stmt(
+            stmt,
+            client_id=client_id,
+            search=search,
+            talent_request_id=talent_request_id,
+            allowed_client_ids=allowed_client_ids,
+        )
         stmt = stmt.order_by(Application.updated_at.desc())
         return list(self.db.execute(stmt).scalars().all())
+
+    def list_page(
+        self,
+        *,
+        search: str | None = None,
+        talent_request_id: int | None = None,
+        status: str | None = None,
+        offer_statuses: tuple[str, ...] = (),
+        allowed_client_ids: list[int] | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[Application], int]:
+        """Staff Applications table page + total. Same scoping/search as
+        ``list_for_scope``; ``status`` is applied in SQL. ``status ==
+        "OFFER"`` also matches Lever-sourced applications whose *stage* is
+        OFFER while their status is one of ``offer_statuses`` (Lever carries
+        the offer as a stage) — the rule the table previously applied in the
+        browser. Ordered ``updated_at DESC, id DESC`` (stable)."""
+        conds = []
+        if status:
+            cond = Application.status == status
+            if status == "OFFER" and offer_statuses:
+                cond = or_(
+                    cond,
+                    and_(
+                        Application.current_stage == "OFFER",
+                        Application.status.in_(offer_statuses),
+                    ),
+                )
+            conds.append(cond)
+        scope = dict(
+            client_id=None,
+            search=search.strip() if search and search.strip() else None,
+            talent_request_id=talent_request_id,
+            allowed_client_ids=allowed_client_ids,
+        )
+        total = self.db.execute(
+            self._scope_stmt(select(func.count(Application.id)), **scope).where(*conds)
+        ).scalar_one()
+        stmt = self._scope_stmt(
+            select(Application).options(
+                joinedload(Application.candidate),
+                joinedload(Application.talent_request).joinedload(TalentRequest.client),
+            ),
+            **scope,
+        ).where(*conds)
+        stmt = stmt.order_by(Application.updated_at.desc(), Application.id.desc())
+        rows = self.db.execute(stmt.limit(limit).offset(offset)).unique().scalars().all()
+        return list(rows), int(total)
+
+    def active_counts_by_request(
+        self,
+        request_ids: list[int],
+        statuses: set[str] | frozenset[str],
+        *,
+        client_visible_only: bool = False,
+    ) -> dict[int, int]:
+        """One GROUP BY query instead of loading every application (and its
+        candidate) per request card just to count the active ones."""
+        if not request_ids:
+            return {}
+        stmt = (
+            select(Application.talent_request_id, func.count(Application.id))
+            .where(
+                Application.talent_request_id.in_(request_ids),
+                Application.status.in_(list(statuses)),
+            )
+            .group_by(Application.talent_request_id)
+        )
+        if client_visible_only:
+            stmt = stmt.where(Application.is_client_visible.is_(True))
+        counts = {rid: 0 for rid in request_ids}
+        counts.update({rid: n for rid, n in self.db.execute(stmt).all()})
+        return counts
 
     def get_for_pair(
         self, candidate_id: int, talent_request_id: int

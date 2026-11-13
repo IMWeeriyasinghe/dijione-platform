@@ -1,12 +1,38 @@
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import PostingClientMappingStatus
+from app.models.client import Client
 from app.models.posting_client_mapping import PostingClientMapping
 from app.models.recruitment_posting_ref import RecruitmentPostingRef
 
 _VERIFIED = PostingClientMappingStatus.VERIFIED.value
 _UNMAPPED = PostingClientMappingStatus.UNMAPPED.value
+
+# DTC resolution outcomes a TA must look at (mirrors the staff UI's list).
+NEEDS_REVIEW_RESOLUTIONS = (
+    "UNKNOWN_CLIENT_IDENTIFIER",
+    "AMBIGUOUS_MULTIPLE_TAGS",
+    "AMBIGUOUS_CLIENT_NAME",
+    "MALFORMED_TAG",
+    "CONFLICT_MANUAL_OVERRIDE",
+)
+POSTING_VIEWS = ("active", "verified", "unmapped", "review", "all")
+
+
+def _view_condition(view: str):
+    """SQL form of the Postings page filters. A posting with no mapping row
+    is UNMAPPED (that is how it is presented), never VERIFIED or in review."""
+    M, R = PostingClientMapping, RecruitmentPostingRef
+    if view == "active":
+        return R.state != "closed"
+    if view == "verified":
+        return M.status == _VERIFIED
+    if view == "unmapped":
+        return or_(M.id.is_(None), M.status == _UNMAPPED)
+    if view == "review":
+        return and_(M.status != _VERIFIED, M.resolution_status.in_(NEEDS_REVIEW_RESOLUTIONS))
+    return None
 
 
 class PostingRepository:
@@ -49,6 +75,61 @@ class PostingRepository:
             )
         stmt = stmt.order_by(RecruitmentPostingRef.last_seen_at.desc().nullslast())
         return [(row[0], row[1]) for row in self.db.execute(stmt).all()]
+
+    def list_page_for_staff(
+        self,
+        *,
+        view: str,
+        search: str | None = None,
+        allowed_client_ids: list[int] | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[tuple[RecruitmentPostingRef, PostingClientMapping | None, str | None]], int, dict[str, int]]:
+        """Staff Postings page: (posting, mapping, client name) rows, the
+        total for ``view``, and per-view counts — all under the same scope and
+        search. Portfolio staff see their clients' postings plus postings no
+        client holds yet (same rule as the route's ``_can_view``), now in SQL
+        so totals are exact. Client name comes from a join (no per-row
+        lookup). Ordered ``last_seen_at DESC NULLS LAST, id DESC``."""
+        M, R = PostingClientMapping, RecruitmentPostingRef
+        join_on = (M.posting_external_id == R.external_id) & (M.provider == R.provider)
+        base = []
+        if allowed_client_ids is not None:
+            base.append(
+                or_(M.id.is_(None), M.client_id.is_(None), M.client_id.in_(allowed_client_ids))
+            )
+        if search and search.strip():
+            like = f"%{search.strip()}%"
+            base.append(or_(R.title.ilike(like), R.location.ilike(like)))
+
+        counts_row = self.db.execute(
+            select(
+                *[
+                    func.coalesce(func.sum(case((_view_condition(v), 1), else_=0)), 0).label(v)
+                    if v != "all"
+                    else func.count(R.id).label(v)
+                    for v in POSTING_VIEWS
+                ]
+            )
+            .select_from(R)
+            .outerjoin(M, join_on)
+            .where(*base)
+        ).one()
+        counts = {v: int(getattr(counts_row, v)) for v in POSTING_VIEWS}
+
+        cond = _view_condition(view)
+        where = base + ([cond] if cond is not None else [])
+        stmt = (
+            select(R, M, Client.name)
+            .outerjoin(M, join_on)
+            .outerjoin(Client, Client.id == M.client_id)
+            .where(*where)
+            .order_by(R.last_seen_at.desc().nullslast(), R.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = [(r[0], r[1], r[2]) for r in self.db.execute(stmt).all()]
+        return rows, counts[view], counts
 
     # --- client-scoped, fail-closed --------------------------------
 

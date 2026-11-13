@@ -81,3 +81,13 @@ class TalentRequestStageUpdate(BaseModel):
 
 class TalentRequestTaStatusUpdate(BaseModel):
     ta_status: str
+
+
+class TalentRequestPageOut(BaseModel):
+    """Server-side paginated All Requests / My Requests response."""
+
+    items: list[TalentRequestOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

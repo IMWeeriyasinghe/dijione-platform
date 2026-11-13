@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
-  listRecruitmentPostings: vi.fn(),
+  listRecruitmentPostingsPaged: vi.fn(),
   listClientPortfolios: vi.fn(),
   verifyPostingMapping: vi.fn(),
   unmapPostingMapping: vi.fn(),
@@ -41,10 +41,38 @@ function posting(over: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+const REVIEW = ["UNKNOWN_CLIENT_IDENTIFIER", "AMBIGUOUS_MULTIPLE_TAGS", "AMBIGUOUS_CLIENT_NAME", "MALFORMED_TAG", "CONFLICT_MANUAL_OVERRIDE"];
+const VIEWS: Record<string, (p: ReturnType<typeof posting>) => boolean> = {
+  active: (p) => p.state !== "closed",
+  verified: (p) => p.mapping_status === "VERIFIED",
+  unmapped: (p) => p.mapping_status === "UNMAPPED",
+  review: (p) => p.mapping_status !== "VERIFIED" && REVIEW.includes(p.resolution_status as string),
+  all: () => true,
+};
+
+/** Server-like fake for /postings/paged: view filter, page and counts. */
+function serve(rows: ReturnType<typeof posting>[]) {
+  api.listRecruitmentPostingsPaged.mockImplementation(
+    async ({ view, page, page_size }: { view: string; page: number; page_size: number }) => {
+      const matched = rows.filter(VIEWS[view]);
+      const start = (page - 1) * page_size;
+      return {
+        items: matched.slice(start, start + page_size),
+        total: matched.length,
+        page,
+        page_size,
+        total_pages: Math.max(1, Math.ceil(matched.length / page_size)),
+        counts: Object.fromEntries(Object.entries(VIEWS).map(([k, f]) => [k, rows.filter(f).length])),
+      };
+    },
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
   api.listClientPortfolios.mockResolvedValue([]);
-  api.listRecruitmentPostings.mockResolvedValue([
+  serve([
     posting({ title: "Open A", state: "published", mapping_status: "VERIFIED" }),
     posting({ title: "Open B", state: "internal", mapping_status: "UNMAPPED" }),
     posting({ title: "Old closed 1", state: "closed", mapping_status: "UNMAPPED" }),
@@ -59,8 +87,9 @@ describe("PostingsView filter chips", () => {
     expect(await screen.findByText("Open A")).toBeInTheDocument();
     expect(screen.getByText("Open B")).toBeInTheDocument();
     expect(screen.queryByText("Old closed 1")).not.toBeInTheDocument();
-    expect(screen.getByText(/Showing 2 of 5 postings/)).toBeInTheDocument();
-    expect(screen.getByText(/3 closed\/older hidden/)).toBeInTheDocument();
+    expect(screen.getByText("Showing 1–2 of 2 postings")).toBeInTheDocument();
+    expect(screen.getByText(/3 closed\/older postings hidden/)).toBeInTheDocument();
+    expect(api.listRecruitmentPostingsPaged).toHaveBeenCalledWith({ view: "active", page: 1, page_size: 20 });
   });
 
   it('"All" reveals every posting', async () => {
@@ -68,8 +97,8 @@ describe("PostingsView filter chips", () => {
     wrap(<PostingsView />);
     await screen.findByText("Open A");
     await user.click(screen.getByRole("button", { name: /^All / }));
-    expect(screen.getByText("Old closed 1")).toBeInTheDocument();
-    expect(screen.getByText(/Showing 5 of 5 postings/)).toBeInTheDocument();
+    expect(await screen.findByText("Old closed 1")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1–5 of 5 postings")).toBeInTheDocument();
   });
 
   it('"Verified" shows only VERIFIED postings, across all states', async () => {
@@ -77,6 +106,7 @@ describe("PostingsView filter chips", () => {
     wrap(<PostingsView />);
     await screen.findByText("Open A");
     await user.click(screen.getByRole("button", { name: /^Verified / }));
+    expect(await screen.findByText("Old closed 3")).toBeInTheDocument();
     expect(screen.getByText("Open A")).toBeInTheDocument();
     expect(screen.getByText("Old closed 3")).toBeInTheDocument(); // verified-but-closed still shown
     expect(screen.queryByText("Open B")).not.toBeInTheDocument();
@@ -85,7 +115,7 @@ describe("PostingsView filter chips", () => {
 
 describe("PostingsView — Created column", () => {
   it("shows the formatted lever_created_at, or a dash when absent", async () => {
-    api.listRecruitmentPostings.mockResolvedValue([
+    serve([
       posting({ title: "Has Date", lever_created_at: "2026-08-12T00:00:00Z" }),
       posting({ title: "No Date", lever_created_at: null }),
     ]);
@@ -101,7 +131,7 @@ describe("PostingsView — Created column", () => {
 
 describe("PostingsView — four mapping states", () => {
   it("labels auto-verified, manually verified, manually unmapped and unmapped distinctly", async () => {
-    api.listRecruitmentPostings.mockResolvedValue([
+    serve([
       posting({ title: "Auto", mapping_status: "VERIFIED", mapping_source: "LEVER_DTC_TAG" }),
       posting({ title: "Manual", mapping_status: "VERIFIED", mapping_source: "MANUAL" }),
       posting({ title: "Unmapped-manually", mapping_status: "REJECTED", mapping_source: "MANUAL" }),
@@ -122,7 +152,7 @@ describe("PostingsView — four mapping states", () => {
 describe("PostingsView — unmap / reopen", () => {
   it("Unmap opens a confirmation, then calls the API and refreshes on confirm", async () => {
     const user = userEvent.setup();
-    api.listRecruitmentPostings.mockResolvedValue([
+    serve([
       posting({
         id: 501, title: "Verified Role", mapping_status: "VERIFIED", mapping_source: "MANUAL",
         mapping_client_name: "ABC Company",
@@ -145,7 +175,7 @@ describe("PostingsView — unmap / reopen", () => {
 
   it("Cancel on the confirmation does not call the API", async () => {
     const user = userEvent.setup();
-    api.listRecruitmentPostings.mockResolvedValue([
+    serve([
       posting({ id: 502, title: "Verified Role", mapping_status: "VERIFIED", mapping_source: "MANUAL" }),
     ]);
     wrap(<PostingsView />);
@@ -160,7 +190,7 @@ describe("PostingsView — unmap / reopen", () => {
 
   it("a manually-unmapped posting shows Reopen instead of Verify/Unmap", async () => {
     const user = userEvent.setup();
-    api.listRecruitmentPostings.mockResolvedValue([
+    serve([
       posting({ id: 503, title: "Unmapped Role", mapping_status: "REJECTED", mapping_source: "MANUAL" }),
     ]);
     api.reopenPostingMapping.mockResolvedValue(
@@ -177,7 +207,7 @@ describe("PostingsView — unmap / reopen", () => {
   });
 
   it("a plain unmapped posting has no Unmap action, only Verify manually", async () => {
-    api.listRecruitmentPostings.mockResolvedValue([
+    serve([
       posting({ id: 504, title: "Fresh Role", mapping_status: "UNMAPPED", mapping_source: "" }),
     ]);
     wrap(<PostingsView />);
@@ -185,5 +215,35 @@ describe("PostingsView — unmap / reopen", () => {
     expect(await screen.findByRole("button", { name: "Verify manually" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Unmap" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument();
+  });
+});
+
+describe("PostingsView — server-side pagination", () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      posting({ id: i + 1, title: `P${i + 1}`, state: i < 30 ? "closed" : "published", mapping_status: i % 4 ? "UNMAPPED" : "VERIFIED" }),
+    );
+
+  it("defaults to 20 rows per page with 20/50/100 and server chip counts", async () => {
+    serve(many(130));
+    wrap(<PostingsView />);
+    expect(await screen.findByText("Showing 1–20 of 100 postings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Recent \/ Active \(100\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^All \(130\)/ })).toBeInTheDocument();
+    const opts = [...(screen.getByLabelText("Postings per page") as HTMLSelectElement).options].map((o) => o.value);
+    expect(opts).toEqual(["20", "50", "100"]);
+  });
+
+  it("changing the filter returns to page 1 and keeps the page size", async () => {
+    const user = userEvent.setup();
+    serve(many(130));
+    wrap(<PostingsView />);
+    await screen.findByText("Showing 1–20 of 100 postings");
+    await user.selectOptions(screen.getByLabelText("Postings per page"), "50");
+    await user.click(await screen.findByLabelText("Page 2"));
+    await screen.findByText("Showing 51–100 of 100 postings");
+    await user.click(screen.getByRole("button", { name: /^All / }));
+    expect(await screen.findByText("Showing 1–50 of 130 postings")).toBeInTheDocument();
+    expect(api.listRecruitmentPostingsPaged).toHaveBeenLastCalledWith({ view: "all", page: 1, page_size: 50 });
   });
 });

@@ -11,10 +11,17 @@ being reachable. Source diagnostics are never exposed on the client path.
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import TalentScope, get_talent_scope, require_staff_scope
+from app.api.pagination import (
+    TABLE_DEFAULT_PAGE_SIZE,
+    TABLE_PAGE_SIZES,
+    offset_for,
+    require_page_size,
+    total_pages,
+)
 from app.core.constants import (
     DtcResolutionStatus,
     PostingClientMappingSource,
@@ -23,9 +30,14 @@ from app.core.constants import (
 from app.db.session import get_db
 from app.repositories.client_repo import ClientRepository
 from app.repositories.posting_client_mapping_repo import PostingClientMappingRepository
-from app.repositories.posting_repo import PostingRepository
+from app.repositories.posting_repo import POSTING_VIEWS, PostingRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
-from app.schemas.posting import ClientSafePostingOut, PostingClientMappingVerify, PostingOut
+from app.schemas.posting import (
+    ClientSafePostingOut,
+    PostingClientMappingVerify,
+    PostingOut,
+    PostingPageOut,
+)
 from app.services.audit_service import AuditService
 from app.services.client_access_service import retire_request, withdraw_request_access
 
@@ -97,6 +109,41 @@ def list_postings_staff(
             client_name = client.name if client else None
         out.append(_to_posting_out(ref, mapping, client_name))
     return out
+
+
+@router.get("/paged", response_model=PostingPageOut)
+def list_postings_staff_paged(
+    view: str = Query(default="active"),
+    search: str | None = Query(default=None, max_length=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=TABLE_DEFAULT_PAGE_SIZE),
+    scope: TalentScope = Depends(require_staff_scope),
+    db: Session = Depends(get_db),
+) -> PostingPageOut:
+    """Server-side paginated staff postings table (20/50/100, default 20).
+    Display/retrieval only — no change to Lever sync, DTC resolution or
+    mapping rules. ``counts`` gives every view's total under the same scope
+    and search (for the filter chips and the dashboard review count)."""
+    require_page_size(page_size, TABLE_PAGE_SIZES)
+    if view not in POSTING_VIEWS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"view must be one of {list(POSTING_VIEWS)}"
+        )
+    rows, total, counts = PostingRepository(db).list_page_for_staff(
+        view=view,
+        search=search,
+        allowed_client_ids=scope.client_ids,
+        limit=page_size,
+        offset=offset_for(page, page_size),
+    )
+    return PostingPageOut(
+        items=[_to_posting_out(ref, mapping, client_name) for ref, mapping, client_name in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages(total, page_size),
+        counts=counts,
+    )
 
 
 @router.post("/{ref_id}/verify-mapping", response_model=PostingOut)

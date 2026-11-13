@@ -44,3 +44,17 @@ class ClientSafePostingOut(BaseModel):
 
 class PostingClientMappingVerify(BaseModel):
     client_id: int
+
+
+class PostingPageOut(BaseModel):
+    """Server-side paginated Recruitment Postings response. ``counts`` holds
+    the per-view totals (active/verified/unmapped/review/all) for the same
+    authorized scope and search, so the filter chips stay accurate without
+    downloading every posting."""
+
+    items: list[PostingOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    counts: dict[str, int]

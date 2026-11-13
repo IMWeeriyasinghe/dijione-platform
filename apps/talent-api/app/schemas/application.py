@@ -52,3 +52,13 @@ class ApplicationOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ApplicationPageOut(BaseModel):
+    """Server-side paginated Applications table response."""
+
+    items: list[ApplicationOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
