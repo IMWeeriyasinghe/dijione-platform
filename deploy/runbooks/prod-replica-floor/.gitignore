@@ -1,0 +1,5 @@
+# Raw Azure snapshots of PROD apps stay on the operator's machine (they carry
+# internal resource IDs and configuration values). The committed evidence is
+# the execution log and the per-app spec hashes.
+evidence/**/*.json
+!evidence/**/spec-hashes.json

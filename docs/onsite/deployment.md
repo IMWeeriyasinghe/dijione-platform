@@ -97,9 +97,14 @@ from the 6-hour default in CLAUDE.md rule 10, still using the replica-safe
 scheduled Job.
 
 **Cost.** ~1,440 job executions/day per environment, each a short `curl`
-container (seconds of 0.25 vCPU) — inside or near the Container Apps free
-grant. Because the job calls `onsite-api` every minute, `onsite-api` no
-longer scales to zero; that always-on replica is the main cost increase.
+container (seconds of 0.25 vCPU). The monthly Container Apps free grant is
+shared across the subscription and is used up early in the month, so these
+executions are billed (measured 2026-11: ≈ AUD 0.60/day for the PROD job).
+Because the job calls `onsite-api` every minute, `onsite-api` never scales to
+zero anyway; in PROD it is therefore pinned at `minReplicas=1` (2026-11
+performance decision), so the replica bills at the idle rate between ticks
+instead of the active rate. `onsite-web` is pinned in PROD too, so Diji On-site
+opens without a cold start. DEV and UAT stay at `minReplicas=0`.
 Azure SQL load per tick is one index seek on `IX_AttendanceEvents_Received`
 (added in the Agent repository's `schema.sql`) plus small `Sites`/`AgentStatus`
 reads. Measured 2026-11-03: 9 logical reads per tick (was ~4,125, a full scan +

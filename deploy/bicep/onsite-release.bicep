@@ -40,6 +40,11 @@ param onsiteSyncCron string = '* * * * *'
 @description('Create the generic people-workforce-sync-job (Workforce Directory refresh, 6-hourly).')
 param deployWorkforceSyncJob bool = true
 
+@description('Replica floor for onsite-api and onsite-web. PROD keeps one warm replica (2026-11 performance decision; keep in step with main.prod.bicepparam); UAT scales to zero.')
+@minValue(0)
+@maxValue(1)
+param minReplicas int = environmentName == 'prod' ? 1 : 0
+
 var tags = {
   platform: 'dijione'
   env: environmentName
@@ -89,7 +94,7 @@ module onsiteApi 'modules/containerapp.bicep' = {
     targetPort: 8000
     isApi: true
     external: false
-    minReplicas: 0
+    minReplicas: minReplicas
     maxReplicas: 1
     location: location
     tags: tags
@@ -117,7 +122,7 @@ module onsiteWeb 'modules/containerapp.bicep' = {
     targetPort: 3000
     isApi: false
     external: false
-    minReplicas: 0
+    minReplicas: minReplicas
     maxReplicas: 1
     location: location
     tags: tags

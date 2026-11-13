@@ -1,0 +1,37 @@
+// Phase 1 post-change checks (Log Analytics workspace of law-dijione-prod). Read-only.
+// Set `since` to the execution start (UTC). Run each block separately.
+let since = datetime(2026-11-13T17:00:00Z);
+let phase1 = dynamic(['people-api','birthday-api','atwork-api','atwork-web','onsite-api','onsite-web']);
+
+// M7 - scale-from-zero churn per app per day (target: 0 for the six apps)
+ContainerAppSystemLogs_CL
+| where TimeGenerated > since and Reason_s == 'KEDAScaleTargetActivated'
+| summarize activations = count() by app = ContainerAppName_s, day = bin(TimeGenerated, 1d)
+| order by day asc, app asc;
+
+// M8 - stability: probe failures, terminations, revision events since the change
+ContainerAppSystemLogs_CL
+| where TimeGenerated > since and ContainerAppName_s in (phase1)
+| where Reason_s in ('ProbeFailed','ContainerTerminated','ContainerCrashing','ResourceUpdateFailed',
+                     'FetchingSecretFromAzureKeyVaultFailed','SyncingSecretFromAzureKeyVaultForContainerAppFailed')
+| summarize n = count(), first = min(TimeGenerated), last = max(TimeGenerated) by app = ContainerAppName_s, Reason_s
+| order by app asc;
+
+// M8 - Diji On-site sync health since the change (abandoned / failed runs)
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > since and ContainerAppName_s == 'onsite-api'
+| where Log_s has 'onsite mirror sync' and (Log_s has 'abandoned' or Log_s has 'failed')
+| project TimeGenerated, line = substring(Log_s, 0, 200)
+| order by TimeGenerated asc;
+
+// M6 - Workforce Directory reloads hitting a freshly started people-api (target: 0)
+let gets = ContainerAppConsoleLogs_CL
+| where TimeGenerated > since and ContainerAppName_s == 'people-api' and Log_s has 'GET /api/people/workforce-directory'
+| project tGet = TimeGenerated, replica = ContainerGroupName_s;
+let ready = ContainerAppConsoleLogs_CL
+| where TimeGenerated > since and ContainerAppName_s == 'people-api' and Log_s has 'Application startup complete'
+| project tReady = TimeGenerated, replica = ContainerGroupName_s;
+gets
+| join kind = leftouter ready on replica
+| extend sinceReady_s = datetime_diff('millisecond', tGet, tReady) / 1000.0
+| summarize reloads = count(), coldReloads = countif(sinceReady_s between (0.0 .. 20.0));

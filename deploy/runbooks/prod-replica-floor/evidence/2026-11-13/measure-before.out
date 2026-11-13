@@ -1,0 +1,11 @@
+before: /Volumes/SD_APFS/Diji Projects/DijiOne/dijione-platform/.worktrees/prod-replica-floor/deploy/runbooks/prod-replica-floor/evidence/2026-11-13/measurements-before.tsv
+M1 home                  replicas-before=1  first   0.87s (HTTP 200, connect 375 ms)  warm p50 757 ms / max 890 ms (n=10)
+M1 auth/me               replicas-before=1  first   0.71s (HTTP 401, connect 218 ms)  warm p50 233 ms / max 787 ms (n=10)
+M2 card atwork           replicas-before=0  first  24.00s (HTTP 200, connect 69 ms)  warm p50 727 ms / max 736 ms (n=5)
+M2 card birthday         replicas-before=0  first  27.35s (HTTP 200, connect 96 ms)  warm p50 780 ms / max 804 ms (n=5)
+M2 card onsite           replicas-before=1  first   0.28s (HTTP 401, connect 83 ms)  warm p50 726 ms / max 745 ms (n=5)
+M3 open /atwork          replicas-before=0  first  22.51s (HTTP 200, connect 76 ms)  warm p50 259 ms / max 779 ms (n=10)
+M4 open /onsite          replicas-before=0  first  20.86s (HTTP 200, connect 74 ms)  warm p50 247 ms / max 813 ms (n=10)
+M9 control talent card   replicas-before=0  first  26.63s (HTTP 200, connect 242 ms)  
+M9 control /talent-flow  replicas-before=0  first  14.38s (HTTP 200, connect 65 ms)  
+M9 control /admin        replicas-before=0  first  20.65s (HTTP 200, connect 249 ms)  

@@ -17,19 +17,37 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
-// Initial PROD (Amendment 8): smallest validated container size; ONLY the JWT
-// issuer + the entry point stay warm, everything else scales to zero. Raise
+// PROD sizing (Amendment 8): smallest validated container size, unchanged.
+// PROD replica floors (2026-11 performance decision, Phase 1): the JWT issuer,
+// the entry point and the module paths that showed user-visible 15–24 s cold
+// starts keep one warm replica; everything else scales to zero. Raise further
 // per the scaling-trigger table, not preemptively.
+// KEEP IN STEP: atwork-release.bicep and onsite-release.bicep set the same PROD
+// floors for the apps they own. deployAtwork/deployOnsite are false here, so
+// the onsite-*/atwork-* entries only take effect if main.bicep ever deploys
+// them — they exist so that path cannot revert PROD to scale-to-zero.
 param containerCpu = '0.25'
 param containerMemory = '0.5Gi'
 param minReplicas = {
   'platform-api': 1
   'shell-web': 1
+  'people-api': 1
+  'birthday-api': 1
+  'onsite-api': 1
+  'onsite-web': 1
+  'atwork-api': 1
+  'atwork-web': 1
 }
 param maxReplicasDefault = 2
 param maxReplicasOverrides = {
   'platform-api': 3
   'shell-web': 3
+  // Same ceilings as the targeted release templates, so a main.bicep run
+  // never changes them.
+  'onsite-api': 1
+  'onsite-web': 1
+  'atwork-api': 1
+  'atwork-web': 1
 }
 
 // SECURITY: pinned explicitly (never left to main.bicep's default, which is

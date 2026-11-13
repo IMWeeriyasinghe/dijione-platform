@@ -1,0 +1,66 @@
+utc	phase	label	path	app	replicas_before	sample	http	connect_s	tls_s	ttfb_s	total_s	bytes
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	first	200	0.375041	0.639073	0.871842	0.871906	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.232	0.4752	0.720494	0.720582	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.24984	0.513012	0.791915	0.791971	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.325371	0.582631	0.836722	0.836801	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.300635	0.554641	0.838747	0.838857	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.274982	0.542394	0.88955	0.889625	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.226948	0.479134	0.72208	0.722181	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.062158	0.134014	0.223613	0.223691	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.071271	0.149055	0.216583	0.216662	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.081978	0.169636	0.253388	0.253453	2505
+2026-11-13T05:59:02Z	before	M1 home	/	shell-web	1	warm	200	0.240112	0.495238	0.801696	0.801762	2505
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	first	401	0.218	0.457038	0.714996	0.715031	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.090703	0.168272	0.258029	0.258075	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.06731	0.133081	0.209334	0.209397	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.068164	0.137266	0.230036	0.23008	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.062895	0.145182	0.228186	0.228221	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.237132	0.482055	0.724761	0.724803	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.253552	0.510925	0.749615	0.749653	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.246577	0.532109	0.786846	0.786887	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.059094	0.136831	0.221982	0.222019	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.066231	0.133376	0.236404	0.236456	33
+2026-11-13T05:59:11Z	before	M1 auth/me	/api/auth/me	platform-api	1	warm	401	0.061862	0.150299	0.22328	0.223406	33
+2026-11-13T05:59:16Z	before	M2 card atwork	/api/atwork/summary	atwork-api	0	first	200	0.068707	0.157853	23.997471	23.997565	43
+2026-11-13T05:59:16Z	before	M2 card atwork	/api/atwork/summary	atwork-api	0	warm	200	0.246373	0.480551	0.727311	0.727352	43
+2026-11-13T05:59:16Z	before	M2 card atwork	/api/atwork/summary	atwork-api	0	warm	200	0.075573	0.138507	0.225768	0.225828	43
+2026-11-13T05:59:16Z	before	M2 card atwork	/api/atwork/summary	atwork-api	0	warm	200	0.255953	0.498517	0.727215	0.72727	43
+2026-11-13T05:59:16Z	before	M2 card atwork	/api/atwork/summary	atwork-api	0	warm	200	0.248076	0.487418	0.735881	0.73612	43
+2026-11-13T05:59:16Z	before	M2 card atwork	/api/atwork/summary	atwork-api	0	warm	200	0.070038	0.146657	0.24518	0.245233	43
+2026-11-13T05:59:44Z	before	M2 card birthday	/api/birthday/summary	birthday-api	0	first	200	0.095913	0.183496	27.350995	27.351092	130
+2026-11-13T05:59:44Z	before	M2 card birthday	/api/birthday/summary	birthday-api	0	warm	200	0.24946	0.508198	0.779908	0.779981	130
+2026-11-13T05:59:44Z	before	M2 card birthday	/api/birthday/summary	birthday-api	0	warm	200	0.235845	0.481373	0.742212	0.742528	130
+2026-11-13T05:59:44Z	before	M2 card birthday	/api/birthday/summary	birthday-api	0	warm	200	0.251653	0.524799	0.804167	0.804249	130
+2026-11-13T05:59:44Z	before	M2 card birthday	/api/birthday/summary	birthday-api	0	warm	200	0.25957	0.503559	0.770286	0.770404	130
+2026-11-13T05:59:44Z	before	M2 card birthday	/api/birthday/summary	birthday-api	0	warm	200	0.243589	0.511837	0.790363	0.790555	130
+2026-11-13T06:00:17Z	before	M2 card onsite	/api/onsite/summary	onsite-api	1	first	401	0.082669	0.175551	0.282811	0.282926	33
+2026-11-13T06:00:17Z	before	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.240499	0.484473	0.726422	0.726712	33
+2026-11-13T06:00:17Z	before	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.252431	0.50105	0.743266	0.743462	33
+2026-11-13T06:00:17Z	before	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.242863	0.492165	0.745455	0.745602	33
+2026-11-13T06:00:17Z	before	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.064495	0.14909	0.22883	0.229352	33
+2026-11-13T06:00:17Z	before	M2 card onsite	/api/onsite/summary	onsite-api	1	warm	401	0.087743	0.151622	0.26164	0.26184	33
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	first	200	0.076373	0.147975	22.505233	22.505843	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.241659	0.491599	0.746263	0.746544	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.062757	0.169544	0.258143	0.258373	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.241492	0.50663	0.77858	0.778961	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.062672	0.168109	0.251593	0.252057	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.247524	0.493575	0.75139	0.751741	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.252538	0.499346	0.768606	0.76907	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.069519	0.153418	0.260162	0.260579	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.068039	0.16897	0.251669	0.252099	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.070217	0.160065	0.244339	0.244782	2523
+2026-11-13T06:00:21Z	before	M3 open /atwork	/atwork	atwork-web	0	warm	200	0.057773	0.14195	0.217951	0.218359	2523
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	first	200	0.074124	0.150445	20.857921	20.858091	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.243572	0.53174	0.781296	0.781395	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.259159	0.531992	0.813191	0.813315	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.065536	0.14528	0.23809	0.238285	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.077976	0.147406	0.238651	0.239056	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.066228	0.155351	0.239331	0.239631	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.062208	0.137704	0.230631	0.230926	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.256077	0.506473	0.755758	0.75618	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.233621	0.469634	0.8054	0.805793	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.084653	0.167246	0.23805	0.23846	2541
+2026-11-13T06:00:50Z	before	M4 open /onsite	/onsite	onsite-web	0	warm	200	0.084717	0.167574	0.254054	0.254279	2541
+2026-11-13T06:01:16Z	before	M9 control talent card	/api/talent/summary	talent-api	0	first	200	0.241975	0.498224	26.628802	26.629036	107
+2026-11-13T06:01:44Z	before	M9 control /talent-flow	/talent-flow	talent-web	0	first	200	0.065035	0.143058	14.375733	14.376234	2660
+2026-11-13T06:02:00Z	before	M9 control /admin	/admin	admin-web	0	first	200	0.248764	0.489643	20.64517	20.645581	2558
