@@ -85,7 +85,7 @@ az deployment group create -g "$RG" -n "dijione-foundation-${GITSHA}" \
 echo "== 2. BUILD ONCE into $ACR + record digests =="
 # Build stage lives in deploy/build-images.sh so it can be run in isolation.
 _DIGEST_TSV="$(mktemp)"
-"$(dirname "${BASH_SOURCE[0]}")/build-images.sh" "$ACR" "$GITSHA" "$_DIGEST_TSV"
+bash "$(dirname "${BASH_SOURCE[0]}")/build-images.sh" "$ACR" "$GITSHA" "$_DIGEST_TSV"
 DIGESTS="$(python -c "import sys,json;print(json.dumps({r.split(chr(9))[0]:r.split(chr(9))[2] for r in open(sys.argv[1]).read().splitlines() if r.strip()}))" "$_DIGEST_TSV")"
 rm -f "$_DIGEST_TSV"
 
@@ -104,7 +104,7 @@ done
 echo "== 4. WORKLOADS (deploy by immutable digest) =="
 # Per-app RELEASE_DATE: carry every live value forward; stamp only the
 # explicit release targets in RELEASE_APPS (comma list, may be empty).
-RELEASE_DATES="$("$(dirname "${BASH_SOURCE[0]}")/release-dates.sh" "$RG")"
+RELEASE_DATES="$(bash "$(dirname "${BASH_SOURCE[0]}")/release-dates.sh" "$RG")"
 echo "   releaseDates: $RELEASE_DATES"
 az deployment group create -g "$RG" -n "dijione-workloads-${GITSHA}" \
   -f "$BICEP_DIR/main.bicep" -p "$BICEP_DIR/main.${ENV}.bicepparam" \
