@@ -58,6 +58,35 @@ class ApplicationRepository:
             stmt = stmt.join(TalentRequest).where(TalentRequest.client_id.in_(allowed_client_ids))
         return list(self.db.execute(stmt).scalars().all())
 
+    def list_for_candidates(
+        self, candidate_ids: list[int], *, allowed_client_ids: list[int] | None = None
+    ) -> dict[int, list[Application]]:
+        """Batch form of ``list_for_candidate``: every application for the
+        given candidates (same portfolio scoping), grouped by candidate id.
+
+        The Candidate Pool list previously ran ``list_for_candidate`` once
+        per candidate; with a Lever-sized pool that N+1 pattern exceeded the
+        gateway's 30 s proxy timeout. This issues one query per chunk of
+        ids instead (chunked to stay well under driver bind-parameter
+        limits)."""
+        grouped: dict[int, list[Application]] = {cid: [] for cid in candidate_ids}
+        chunk = 1000
+        for start in range(0, len(candidate_ids), chunk):
+            ids = candidate_ids[start : start + chunk]
+            stmt = (
+                select(Application)
+                .options(joinedload(Application.talent_request).joinedload(TalentRequest.client))
+                .where(Application.candidate_id.in_(ids))
+                .order_by(Application.id)
+            )
+            if allowed_client_ids is not None:
+                stmt = stmt.join(TalentRequest).where(
+                    TalentRequest.client_id.in_(allowed_client_ids)
+                )
+            for app in self.db.execute(stmt).unique().scalars().all():
+                grouped[app.candidate_id].append(app)
+        return grouped
+
     def list_for_scope(
         self,
         *,
