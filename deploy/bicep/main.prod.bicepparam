@@ -117,3 +117,8 @@ param customDomains = {
 param birthdayMailTransport = 'graph'
 param birthdayMailPolicy = 'production'
 param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'
+
+// External DijiTalentFlow client portal origin used by talent-api for portal
+// links (EXTERNAL_PORTAL_BASE_URL). Equals live PROD talent-api (verified
+// 2026-11-13); omitting it made a full main.bicep run remove the variable.
+param externalPortalBaseUrl = 'https://talentflow-portal-web.icybush-52a8142b.southeastasia.azurecontainerapps.io'

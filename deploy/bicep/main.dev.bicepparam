@@ -28,11 +28,16 @@ param onsiteIntegrationsMode = 'live'
 param onsiteSqlServer = 'sql-diji-onsite-attendance.database.windows.net'
 param onsiteSqlDatabase = 'sqldb-diji-onsite-attendance'
 
-// Lean DEV (Amendment 8): smallest container size; EVERY service scales to
-// zero (minReplicas empty => 0); ceiling of 1. Cold start is acceptable in DEV.
+// Lean DEV (Amendment 8): smallest container size; every service scales to
+// zero except the floors below; ceiling of 1. Cold start is acceptable in DEV.
 param containerCpu = '0.25'
 param containerMemory = '0.5Gi'
-param minReplicas = {}
+// recruitment-api keeps one warm replica in DEV — equals live DEV
+// (min 1 / max 1, verified 2026-11-13). Declared so a full main.bicep run
+// does not silently scale it back to zero.
+param minReplicas = {
+  'recruitment-api': 1
+}
 param maxReplicasDefault = 1
 param maxReplicasOverrides = {}
 param seedDevIdentities = true
@@ -92,3 +97,8 @@ param customDomains = {
 param birthdayMailTransport = 'graph'
 param birthdayMailPolicy = 'internal_allowlist'
 param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'
+
+// External DijiTalentFlow client portal origin used by talent-api for portal
+// links (EXTERNAL_PORTAL_BASE_URL). Equals live DEV talent-api (verified
+// 2026-11-13); omitting it made a full main.bicep run remove the variable.
+param externalPortalBaseUrl = 'https://talentflow-portal-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io'
