@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { dynamic, GET } from "../route";
+import { dynamic, GET, isProductionAppEnv } from "../route";
 
 // Round 3 — /api/meta exposes this container's real, runtime RELEASE_DATE
 // (docs/platform/versioning.md). The `dynamic = "force-dynamic"` export is
@@ -40,7 +40,7 @@ describe("/api/meta route (release metadata + runtime environment)", () => {
   // moment that image ran in a different environment. force-dynamic (see
   // the "never statically prerenderable" test above) is what makes reading
   // process.env.APP_ENV here safe to do at all.
-  it("reports is_production=true only when APP_ENV=prod", async () => {
+  it("reports is_production=false only for APP_ENV=development|uat (fail closed)", async () => {
     process.env.APP_ENV = "prod";
     let body = await GET().json();
     expect(body.is_production).toBe(true);
@@ -53,8 +53,18 @@ describe("/api/meta route (release metadata + runtime environment)", () => {
     body = await GET().json();
     expect(body.is_production).toBe(false);
 
+    // Fail closed: a deployment that lost APP_ENV (as PROD birthday-web did
+    // before it was declared in main.bicep) must hide the non-production
+    // Email Safety nav, not show a page whose API 404s.
     delete process.env.APP_ENV;
     body = await GET().json();
-    expect(body.is_production).toBe(false);
+    expect(body.is_production).toBe(true);
   });
+
+  it.each([undefined, "", "prod", "production", "PROD", "staging"])(
+    "treats APP_ENV=%s as production",
+    (env) => {
+      expect(isProductionAppEnv(env)).toBe(true);
+    },
+  );
 });

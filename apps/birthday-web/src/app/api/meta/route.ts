@@ -27,9 +27,19 @@ import { NextResponse } from "next/server";
  */
 export const dynamic = "force-dynamic";
 
+// Fail closed: only an explicitly non-production APP_ENV counts as
+// non-production. Unset / misspelled / any other value is treated as
+// production, so a deployment that loses APP_ENV hides the non-production
+// Email Safety nav instead of showing a page whose API 404s.
+const NON_PRODUCTION_APP_ENVS = new Set(["development", "uat"]);
+
+export function isProductionAppEnv(appEnv: string | undefined): boolean {
+  return !NON_PRODUCTION_APP_ENVS.has((appEnv ?? "").trim());
+}
+
 export function GET() {
   return NextResponse.json({
     release_date: process.env.RELEASE_DATE ?? null,
-    is_production: process.env.APP_ENV === "prod",
+    is_production: isProductionAppEnv(process.env.APP_ENV),
   });
 }

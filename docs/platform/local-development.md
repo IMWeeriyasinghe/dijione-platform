@@ -94,6 +94,10 @@ mock behaviour for a session:
 | `EMAIL_SENDING_MODE` | `mock` |
 | `MAIL_TRANSPORT` | `null` |
 
+`birthday-web` treats a missing or unknown `APP_ENV` as production and hides
+the non-production Email Safety page. Start it with `APP_ENV=development` to
+see that page locally.
+
 Windows (PowerShell):
 
 ```powershell
