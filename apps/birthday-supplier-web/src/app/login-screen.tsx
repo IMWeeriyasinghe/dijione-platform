@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { BrandLogo } from "@dijione/design-system";
 import {
@@ -57,13 +58,22 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 function EntraSignIn() {
+  // AppShell swaps LoginScreen in for `children` without ever navigating
+  // away from the requested URL (e.g. an email's /orders/123 deep link),
+  // so the current pathname here IS the page the supplier actually meant
+  // to reach — pass it through so /login can carry it across the Entra
+  // round trip and land the supplier back on it, not the portal home.
+  const pathname = usePathname();
+  const loginHref =
+    pathname && pathname !== "/" ? `/login?return_to=${encodeURIComponent(pathname)}` : "/login";
+
   return (
     <Frame>
       <p className="mt-2 text-sm text-dt-text-secondary">
         Sign in with the Microsoft account your organisation was invited with.
       </p>
       <a
-        href="/login"
+        href={loginHref}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-dt-burnt-orange px-4 py-2.5 text-sm font-medium text-white transition hover:bg-dt-orange-deep"
       >
         Sign in with Microsoft

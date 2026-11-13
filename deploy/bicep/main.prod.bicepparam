@@ -17,6 +17,27 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
+// Phase 4: controlled read-only source integrations. Flip a service to
+// 'live' ONLY after its Key Vault key exists:
+//   recruitment-api  -> lever-api-key-prod        (Lever, GET-only)
+//   people-api       -> bamboohr-api-key-prod  + bamboohrSubdomain (read-only)
+// Validated first in UAT (339 real BambooHR employee records, 880 read /
+// 1028 created Lever recruitment records, zero errors) before this flip.
+// Reconciled from 8dca96b (feat/onsite-dashboard-v1); equals live PROD env.
+param recruitmentIntegrationsMode = 'live'
+param peopleIntegrationsMode = 'live'
+param birthdayIntegrationsMode = 'live'
+param bamboohrSubdomain = 'dijitalteam'
+
+// Canonical client-directory sync (talent-api's clients extension rows,
+// keyed on platform_client_id) — a one-time bootstrap task needed for the
+// governed DTC tag -> Client resolution, NOT DEV persona/seeding behavior.
+// seedDevIdentities is deliberately left at its default (false): PROD uses
+// real Microsoft Entra sign-in (authMode=entra below), so the passwordless
+// dev-login persona switcher must never be seeded/exposed here.
+// Reconciled from d4efb92; the bootstrap-talent-clients job already exists in PROD.
+param seedTalentClientExtensions = true
+
 // PROD sizing (Amendment 8): smallest validated container size, unchanged.
 // PROD replica floors (2026-11 performance decision, Phase 1): the JWT issuer,
 // the entry point and the module paths that showed user-visible 15–24 s cold
@@ -59,15 +80,40 @@ param maxReplicasOverrides = {
 // instead of real Microsoft Entra ID sign-in. Found during the
 // PLATFORM_JWT_SECRET environment-cleanliness audit; see main.dev.bicepparam
 // for the fully-wired reference (DEV itself already runs authMode=entra).
-// entraTenantId / entraClientId / publicBaseUrl and the supplier equivalents
-// are intentionally left unset here — they require PROD's own Entra app
-// registrations, a human Entra-tenant action outside this repository's
-// authority (CLAUDE.md). Until those are provisioned and these four params
-// are filled in (plus the entra-client-secret-prod /
-// birthday-supplier-entra-secret-prod Key Vault secrets), a PROD deployment
-// attempt correctly FAILS rather than silently falling back to DEV identity
-// mode.
+//
+// PROD's own Entra app registrations exist (confirmed values, no secrets
+// here — client secrets live only in kv-dijione-prod as
+// entra-client-secret-prod / birthday-supplier-entra-secret-prod, never in
+// source control):
+//   dijione-prod                     (internal DijiOne sign-in)
+//   dijione-birthday-supplier-prod   (Birthday Supplier Portal B2B guest sign-in)
+// Reconciled from 9d1478b + 8dca96b; every value equals live PROD env
+// (platform-api ENTRA_*, birthday-api SUPPLIER_ENTRA_*, shell-web
+// PUBLIC_BASE_URL, birthday-supplier-web SUPPLIER_PUBLIC_BASE_URL).
 param authMode = 'entra'
+param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 // Default module access needs a verified internal employee (docs/atwork/deployment.md).
 param entraInternalEmailDomains = 'dijitalteam.com'
+param entraClientId = '98b1f056-68a2-492e-9d37-ae2e5eb0d218'
+// Custom domain. The old shell-web.icybush-52a8142b... callback stays
+// registered in Entra as a rollback fallback but is not the public URL.
+param publicBaseUrl = 'https://dijione.dijitalteam.com'
+
 param supplierAuthMode = 'entra'
+param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
+param supplierEntraClientId = '572564e5-acad-495b-92e7-029ecabba8e7'
+param supplierPublicBaseUrl = 'https://supplierportal.dijitalteam.com'
+
+// Custom-domain ingress bindings that exist live (DNS + managed certificate
+// created out-of-band). Declared so a main.bicep run keeps them instead of
+// silently removing them (ACA ingress is desired-state).
+param customDomains = {
+  'shell-web': [ { name: 'dijione.dijitalteam.com', certificateName: 'mc-cae-dijione-pr-dijione-dijitalt-2592' } ]
+  'birthday-supplier-web': [ { name: 'supplierportal.dijitalteam.com', certificateName: 'mc-cae-dijione-pr-supplierportal-d-5970' } ]
+}
+
+// DijiBirthday outbound mail — equals live PROD birthday-api env (previously
+// set ad hoc). PROD sends to the assigned supplier via birthday-api's own managed identity, Exchange RBAC-scoped to this one mailbox. Never internal_allowlist here (main.bicep refuses it).
+param birthdayMailTransport = 'graph'
+param birthdayMailPolicy = 'production'
+param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'

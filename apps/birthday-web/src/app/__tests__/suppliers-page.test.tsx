@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockButtonProps, MockFieldProps, MockHeadingProps, MockInputProps, MockLinkProps, MockModalProps, MockSelectProps, MockSortableThProps, MockStatusProps, MockTdProps, MockTextareaProps, MockThProps, MockTrProps } from "@/test-support/mock-props";
 
 // Round 4 — Suppliers list ported to the same FIELDS/card responsive
 // pattern as Cake Orders and Upcoming Birthdays: a table on wide
@@ -12,7 +13,7 @@ const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children }: any) => <a href={href}>{children}</a>,
+  default: ({ href, children }: MockLinkProps) => <a href={href}>{children}</a>,
 }));
 
 vi.mock("@dijione/auth-client", () => ({ useBirthdayScope: () => ({ isAdmin: true }) }));
@@ -20,30 +21,30 @@ vi.mock("@dijione/auth-client", () => ({ useBirthdayScope: () => ({ isAdmin: tru
 vi.mock("@dijione/design-system", () => {
   const P = ({ children }: { children: ReactNode }) => <div>{children}</div>;
   return {
-    Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+    Button: ({ children, ...props }: MockButtonProps) => <button {...props}>{children}</button>,
     EmptyState: () => <p>empty</p>,
     ErrorState: () => <p>error</p>,
-    FormField: ({ children }: any) => <div>{children}</div>,
-    Input: (props: any) => <input {...props} />,
+    FormField: ({ children }: MockFieldProps) => <div>{children}</div>,
+    Input: (props: MockInputProps) => <input {...props} />,
     LoadingState: () => <p>loading</p>,
-    Modal: ({ open, children, title }: any) => (open ? <div role="dialog" aria-label={title}>{children}</div> : null),
+    Modal: ({ open, children, title }: MockModalProps) => (open ? <div role="dialog" aria-label={title}>{children}</div> : null),
     Pagination: () => <div>pagination</div>,
-    PageHeader: ({ title, action }: any) => (
+    PageHeader: ({ title, action }: MockHeadingProps) => (
       <div>
         <h1>{title}</h1>
         {action}
       </div>
     ),
-    SearchInput: (props: any) => <input {...props} />,
-    Select: ({ children, ...props }: any) => <select {...props}>{children}</select>,
-    SortableTh: ({ label }: any) => <th>{label}</th>,
-    StatusBadge: ({ status }: any) => <span>{status}</span>,
+    SearchInput: (props: MockInputProps) => <input {...props} />,
+    Select: ({ children, ...props }: MockSelectProps) => <select {...props}>{children}</select>,
+    SortableTh: ({ label }: MockSortableThProps) => <th>{label}</th>,
+    StatusBadge: ({ status }: MockStatusProps) => <span>{status}</span>,
     Table: P,
-    Td: ({ children, ...rest }: any) => <td {...rest}>{children}</td>,
-    Textarea: (props: any) => <textarea {...props} />,
-    Th: ({ children }: any) => <th>{children}</th>,
+    Td: ({ children, ...rest }: MockTdProps) => <td {...rest}>{children}</td>,
+    Textarea: (props: MockTextareaProps) => <textarea {...props} />,
+    Th: ({ children }: MockThProps) => <th>{children}</th>,
     Thead: P,
-    Tr: ({ children, ...rest }: any) => <tr {...rest}>{children}</tr>,
+    Tr: ({ children, ...rest }: MockTrProps) => <tr {...rest}>{children}</tr>,
     useSortToggle: (
       _sortBy: string | null,
       _sortDirection: string,

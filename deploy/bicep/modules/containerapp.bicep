@@ -34,6 +34,9 @@ param isApi bool = true
 @description('true = public ingress (shell-web + the two external portals only).')
 param external bool = false
 
+@description('Custom-domain bindings to DECLARE on this app\'s ingress: [{ name: <hostname>, certificateName: <managedCertificates name on the environment> }]. Container Apps ingress is desired-state, so any binding that exists live but is missing here is REMOVED by a deployment. Default [] = no custom domain.')
+param customDomains array = []
+
 param minReplicas int = 0
 param maxReplicas int = 2
 param cpu string = '0.25'
@@ -103,6 +106,11 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: targetPort
         transport: 'auto'
         allowInsecure: false
+        customDomains: [for d in customDomains: {
+          name: d.name
+          bindingType: 'SniEnabled'
+          certificateId: '${managedEnvironmentId}/managedCertificates/${d.certificateName}'
+        }]
       }
       registries: [
         {

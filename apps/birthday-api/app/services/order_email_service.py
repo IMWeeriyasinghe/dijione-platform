@@ -35,6 +35,7 @@ from app.models.order_event import OrderEvent
 from app.models.supplier_communication import SupplierCommunication
 from app.services import order_status_service
 from app.services.notification_service import NotificationService
+from app.services.supplier_email_template import render_supplier_order_email
 
 
 class NoSupplierAssignedError(Exception):
@@ -62,40 +63,24 @@ _SENDABLE_STATUSES = {
 }
 
 
-def render_supplier_email(order: BirthdayOrder) -> tuple[str, str]:
-    """Renders (subject, body). MUST include ``order_reference``, employee
-    name, birthday date, delivery/office location, and quantity.
+def render_supplier_email(order: BirthdayOrder) -> tuple[str, str, str]:
+    """Renders (subject, html_body, text_body) via supplier_email_template —
+    MUST include ``order_reference``, employee name, birthday date,
+    delivery/office location, and quantity, plus a Supplier Portal deep
+    link to this order when SUPPLIER_PUBLIC_BASE_URL is configured.
 
     Isolation (plan §11, critical): SUPPLIER_INSTRUCTION-kind special
     requirements are included; INTERNAL_NOTE-kind text is NEVER included in
     the rendered email, by construction — only requirements whose kind
     equals SUPPLIER_INSTRUCTION are read into the template at all.
     """
-    subject = f"[{order.order_reference}] Birthday Cake Order — {order.employee_name}"
-
-    lines = [
-        f"Order Reference: {order.order_reference}",
-        f"Employee: {order.employee_name}",
-        f"Birthday Date: {order.birthday_date.isoformat()}",
-        f"Delivery / Office Location: {order.office_location}",
-        f"Quantity: {order.quantity}",
-    ]
-
     supplier_instructions = [
         req.text
         for req in (order.special_requirements or [])
         if req.kind == SpecialRequirementKind.SUPPLIER_INSTRUCTION.value
     ]
-    if supplier_instructions:
-        lines.append("")
-        lines.append("Special Instructions:")
-        lines.extend(f"- {text}" for text in supplier_instructions)
-
-    lines.append("")
-    lines.append(f"Please confirm receipt of order {order.order_reference}.")
-
-    body = "\n".join(lines)
-    return subject, body
+    content = render_supplier_order_email(order, supplier_instructions)
+    return content.subject, content.html_body, content.text_body
 
 
 _RETRY_BASE_MINUTES = 5
@@ -107,19 +92,31 @@ def _backoff_minutes(attempt: int) -> int:
     return min(_RETRY_BASE_MINUTES * (2 ** max(attempt, 0)), _RETRY_CAP_MINUTES)
 
 
-def _release_subject(order: BirthdayOrder) -> str:
-    return f"[{order.order_reference}] Birthday Cake Order — {order.employee_name}"
+def _release_subject_prefix(order: BirthdayOrder) -> str:
+    return f"[{order.order_reference}]"
+
+
+# Text common to both the pre- and post-redesign release-subject wording
+# ("[REF] Birthday Cake Order — Name" / "[REF] New Birthday Cake Order —
+# Name"), but never present in send_ad_hoc_message's "[REF] Update — Name"
+# subject — keeps the two kinds of SupplierCommunication rows distinct
+# despite sharing the same "[REF]" prefix.
+_RELEASE_SUBJECT_MARKER = "Birthday Cake Order"
 
 
 def _has_successful_release(db: Session, order: BirthdayOrder) -> bool:
-    """A SENT outbound EMAIL for this order carrying the order-release
-    subject — used to guard against sending the release twice."""
+    """A SENT outbound EMAIL for this order whose subject is a release
+    email (not an ad-hoc message) — used to guard against sending the
+    release twice. Matches on prefix + marker rather than the full exact
+    string so rows sent under the pre-redesign subject wording still
+    satisfy this guard."""
     stmt = select(SupplierCommunication.id).where(
         SupplierCommunication.order_id == order.id,
         SupplierCommunication.channel == CommunicationChannel.EMAIL.value,
         SupplierCommunication.direction == CommunicationDirection.OUTBOUND.value,
         SupplierCommunication.status == CommunicationStatus.SENT.value,
-        SupplierCommunication.subject == _release_subject(order),
+        SupplierCommunication.subject.startswith(_release_subject_prefix(order)),
+        SupplierCommunication.subject.contains(_RELEASE_SUBJECT_MARKER),
     )
     return db.execute(stmt).first() is not None
 
@@ -256,7 +253,7 @@ def _send(
             f"{order.address_verification_status})"
         )
 
-    subject, body = render_supplier_email(order)
+    subject, body, _text_body = render_supplier_email(order)
     retry_count = (order.retry_count or 0) + 1 if order.status == OrderStatus.REQUIRES_ATTENTION.value else 0
 
     # First automatic retry is scheduled ~5 min out; the sweep escalates.
@@ -267,6 +264,7 @@ def _send(
             to=order.supplier.primary_contact_email,
             subject=subject,
             body=body,
+            content_type="HTML",
         )
     except Exception as exc:  # noqa: BLE001 - integration failures must never propagate silently
         _record_communication(
@@ -415,9 +413,14 @@ def retry_failed_outbound(db: Session, *, now: datetime | None = None) -> dict:
                 pass
             continue
         retried += 1
+        # A retried row's own stored subject tells us which template rendered
+        # it originally (release vs. send_ad_hoc_message) — resend with the
+        # same content type it was actually sent as.
+        retry_content_type = "HTML" if _RELEASE_SUBJECT_MARKER in (comm.subject or "") else "Text"
         try:
             result = get_email_client(db).send(
                 to=order.supplier.primary_contact_email, subject=comm.subject, body=comm.body,
+                content_type=retry_content_type,
             )
             ok = _business_accepted(result.outcome)
             err = None if ok else _OUTCOME_ERROR_TEXT.get(result.outcome, result.error or f"send failed ({result.outcome.value})")

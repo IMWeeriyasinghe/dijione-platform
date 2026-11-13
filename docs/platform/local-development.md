@@ -1,40 +1,59 @@
-# DijiOne Local Development (Phase 2.5)
+# DijiOne Local Development
 
-Running all eight DijiOne services locally. See
+Running every DijiOne service locally on **Windows or macOS**. See
 `docs/platform/service-architecture.md` for what each service is and
 `docs/setup.md` for the pre-split single-app setup this superseded.
 
+Each machine has its own clone and restores its own dependencies. Never copy
+`.venv` or `node_modules` between operating systems: they contain
+platform-specific binaries.
+
 ## Prerequisites
 
-- Node.js 20+, Python 3.12 (matches `.venv` if you reuse the one already
-  in the repo root).
-- One shared Python virtualenv at the repo root (`./.venv`) with every
-  backend service's `requirements.txt` installed into it — there's no need
-  for five separate venvs in dev, only separate processes/ports:
+- Node.js 20 (`.nvmrc`) and Python 3.12 (`.python-version`).
+- One shared Python virtualenv at the repo root (`./.venv`) holding every
+  backend service's requirements. Separate processes and ports are enough in
+  development; separate virtualenvs are not needed.
 
-  ```bash
-  python -m venv .venv
-  ./.venv/Scripts/pip install -r apps/platform-api/requirements.txt
-  ./.venv/Scripts/pip install -r apps/admin-api/requirements.txt
-  ./.venv/Scripts/pip install -r apps/talent-api/requirements.txt
-  ./.venv/Scripts/pip install -r apps/birthday-api/requirements.txt
-  ./.venv/Scripts/pip install -r apps/spark-api/requirements.txt
-  ./.venv/Scripts/pip install -r apps/recruitment-api/requirements.txt
-  ./.venv/Scripts/pip install -r apps/people-api/requirements.txt
-  ./.venv/Scripts/pip install -r apps/commercial-api/requirements.txt
-  ```
+| | Windows | macOS |
+|---|---|---|
+| Create the virtualenv | `py -3.12 -m venv .venv` | `python3.12 -m venv .venv` |
+| Activate (optional) | `.venv\Scripts\Activate.ps1` | `source .venv/bin/activate` |
+| Python executable | `.venv\Scripts\python.exe` | `.venv/bin/python` |
 
-  (`requirements.txt` for `admin-api`, `talent-api`, `birthday-api`,
-  `spark-api` each include `-e ../../packages/auth-client-py`, so one of
-  those installs also makes `packages/auth-client-py` importable.)
+On macOS, call `python3.12` explicitly, because bare `python3` may be a
+different version and bare `python` may not exist.
 
-- `npm install` at the repo root — this is a real npm workspace now
-  (`apps/shell-web`, `apps/admin-web`, `apps/talent-web`,
-  `packages/design-system`, `packages/auth-client-ts`,
-  `packages/contracts`), so one install wires up every workspace package
-  as a symlink under `node_modules/@dijione/*`.
+Install the requirements **from each service's directory**, because they use
+relative `-e ../../packages/...` paths.
 
-## Ports
+Windows (PowerShell, from the repo root):
+
+```powershell
+Get-ChildItem apps -Directory -Filter *-api | ForEach-Object {
+  Push-Location $_.FullName
+  ..\..\.venv\Scripts\python.exe -m pip install -r requirements.txt
+  Pop-Location
+}
+```
+
+macOS (from the repo root):
+
+```bash
+for s in apps/*-api; do
+  (cd "$s" && ../../.venv/bin/python -m pip install -r requirements.txt)
+done
+```
+
+### npm workspace
+
+Run `npm ci` at the repo root. It installs exactly what `package-lock.json`
+pins and links every workspace package under `node_modules/@dijione/*`. Use
+`npm install` only when you intend to change dependencies.
+
+`npm ci` deletes any existing `node_modules` first.
+
+## Applications and ports
 
 | Service | Port | Health check |
 |---|---|---|
@@ -42,9 +61,10 @@ Running all eight DijiOne services locally. See
 | `admin-web` | 3001 | `GET http://localhost:3001/admin` (its `basePath`) |
 | `talent-web` | 3002 | `GET http://localhost:3002/talent-flow` (its `basePath`) |
 | `birthday-web` | 3003 | `GET http://localhost:3003/birthday` (its `basePath`) |
-| `onsite-web` *(planned)* | 3004 | `GET http://localhost:3004/onsite` (its `basePath`) |
+| `onsite-web` | 3004 | `GET http://localhost:3004/onsite` (its `basePath`) |
 | `atwork-web` | 3005 | `GET http://localhost:3005/atwork` (its `basePath`) |
 | `birthday-supplier-web` | 3006 | `GET http://localhost:3006/` (own hostname in prod; not proxied through shell-web) |
+| `talentflow-portal-web` | 3100 | `GET http://localhost:3100/` (external workspace; not proxied through shell-web) |
 | `platform-api` | 8000 | `GET http://localhost:8000/health` |
 | `admin-api` | 8001 | `GET http://localhost:8001/health` |
 | `talent-api` | 8002 | `GET http://localhost:8002/health` |
@@ -53,13 +73,75 @@ Running all eight DijiOne services locally. See
 | `recruitment-api` | 8005 | `GET http://localhost:8005/health` (internal ingress only — no gateway route) |
 | `people-api` | 8006 | `GET http://localhost:8006/health` (internal ingress only — no gateway route) |
 | `commercial-api` | 8007 | `GET http://localhost:8007/health` (internal ingress only — skeleton) |
-| `onsite-api` *(planned)* | 8008 | `GET http://localhost:8008/health` |
+| `onsite-api` | 8008 | `GET http://localhost:8008/health` |
 | `atwork-api` | 8009 | `GET http://localhost:8009/health` |
 
-Always develop against `http://localhost:3000` — that's the gateway.
-`admin-web`/`talent-web` are independently runnable on their own ports for
-isolated testing, but a browser visiting them directly bypasses shell-web's
-common nav/auth chrome and cross-zone links back to Home.
+Always develop against `http://localhost:3000` — that's the gateway. The
+zones are independently runnable on their own ports for isolated testing, but
+a browser visiting them directly bypasses shell-web's common nav/auth chrome
+and cross-zone links back to Home.
+
+## Local mock settings
+
+Services default to mock integrations and disabled outbound email, but a
+service's `apps/<service>/.env` can override those defaults. Process
+environment variables take priority over `.env`, so set these to guarantee
+mock behaviour for a session:
+
+| Variable | Value |
+|---|---|
+| `INTEGRATIONS_MODE` | `mock` |
+| `EMAIL_SENDING_MODE` | `mock` |
+| `MAIL_TRANSPORT` | `null` |
+
+`birthday-web` treats a missing or unknown `APP_ENV` as production and hides
+the non-production Email Safety page. Start it with `APP_ENV=development` to
+see that page locally.
+
+Windows (PowerShell):
+
+```powershell
+$env:INTEGRATIONS_MODE="mock"; $env:EMAIL_SENDING_MODE="mock"; $env:MAIL_TRANSPORT="null"
+```
+
+macOS:
+
+```bash
+export INTEGRATIONS_MODE=mock EMAIL_SENDING_MODE=mock MAIL_TRANSPORT=null
+```
+
+Real `.env` files are per-machine and never committed; start from each
+service's `.env.example`.
+
+## Databases and migrations
+
+By default each database-backed service uses its own local SQLite file,
+`apps/<service>/<name>.db`. `admin-api` and `spark-api` have no database. Each
+machine's files are separate and are not synchronised through Git.
+
+- Run `python -m alembic upgrade head` from a service's directory, using the
+  virtualenv's Python, after pulling changes that touch its `alembic/` folder.
+- Copy a `.db` file somewhere safe before migrating it if you care about its
+  contents.
+- `DATABASE_URL` overrides the default, and Alembic reads the same setting, so
+  you can try a migration on a throwaway file first:
+
+  ```bash
+  # macOS, from apps/<service>; path is an example
+  DATABASE_URL="sqlite:////tmp/dijione-try.db" ../../.venv/bin/python -m alembic upgrade head
+  ```
+
+  ```powershell
+  # Windows, from apps\<service>; path is an example
+  $env:DATABASE_URL="sqlite:///C:/Temp/dijione-try.db"
+  ..\..\.venv\Scripts\python.exe -m alembic upgrade head
+  Remove-Item Env:DATABASE_URL
+  ```
+
+- **`scripts/seed.py --reset` and `scripts/bootstrap-dev.sh` reset local
+  data.** Only run them when you mean to discard it.
+- Run tests with a throwaway `DATABASE_URL` if you want to leave existing
+  `test_*.db` files untouched.
 
 ## One command
 
@@ -67,12 +149,24 @@ common nav/auth chrome and cross-zone links back to Home.
 npm run dev:all
 ```
 
-Runs `scripts/dev-all.js`, which spawns all thirteen processes (eight
-Python services via the repo-root `.venv`, five Next.js apps via their own
-workspace `dev` script), tags every log line with a colored `[service-name]` prefix,
-and shuts everything down together on Ctrl-C. No Docker required — this is
-plain `child_process.spawn`, chosen as the lowest-complexity option that
-actually works (CR §31).
+Runs `scripts/dev-all.js`, which spawns all sixteen processes (nine Python
+services via the repo-root `.venv`, seven Next.js apps via their own workspace
+`dev` script), tags every log line with a colored `[service-name]` prefix, and
+shuts everything down together on Ctrl-C. No Docker required — this is plain
+`child_process.spawn`, chosen as the lowest-complexity option that actually
+works (CR §31).
+
+- It looks for `.venv/Scripts/python.exe` on Windows and `.venv/bin/python` on
+  macOS, so the virtualenv must exist at the repo root and be built on that
+  operating system.
+- It opens each service's **existing local database** and reads its `.env`. It
+  does not run migrations.
+- Set the mock variables above first.
+- For a startup check that leaves local databases alone, also set
+  `DATABASE_URL` to one throwaway SQLite file before running it. Every service
+  then shares that file, so use this only to check startup, not to work.
+- Stop it with Ctrl-C. If you kill only the parent process, Next.js servers can
+  be left running; see Troubleshooting.
 
 **Windows note**: the script deliberately does *not* pass `shell: true` to
 the Python child processes — only to `npm` — since `shell: true` combined
@@ -83,11 +177,21 @@ after modifying `scripts/dev-all.js`, this is almost certainly why.
 
 ## Seeding demo data
 
-Seed **platform-api first, then talent-api**:
+**This discards the data in the local databases it touches.** Seed
+**platform-api first, then talent-api**.
+
+Windows (PowerShell):
+
+```powershell
+cd apps\platform-api; ..\..\.venv\Scripts\python.exe scripts\seed.py --reset
+cd ..\talent-api;   ..\..\.venv\Scripts\python.exe scripts\seed.py --reset
+```
+
+macOS:
 
 ```bash
-cd apps/platform-api && ../../.venv/Scripts/python scripts/seed.py --reset
-cd ../talent-api      && ../../.venv/Scripts/python scripts/seed.py --reset
+cd apps/platform-api && ../../.venv/bin/python scripts/seed.py --reset
+cd ../talent-api      && ../../.venv/bin/python scripts/seed.py --reset
 ```
 
 `platform-api`'s seed script is the **permanent** owner of canonical Client
@@ -121,11 +225,13 @@ partial/inconsistent local state.
 
 ## Running one service in isolation
 
-Every backend service is a normal FastAPI app — from its own directory:
+Every backend service is a normal FastAPI app — from its own directory, using
+`..\..\.venv\Scripts\python.exe` on Windows or `../../.venv/bin/python` on
+macOS in place of `<python>`:
 
 ```bash
 cd apps/talent-api
-../../.venv/Scripts/python -m uvicorn app.main:app --port 8002 --reload
+<python> -m uvicorn app.main:app --port 8002 --reload
 ```
 
 Every frontend app is a normal Next.js app:
@@ -142,17 +248,17 @@ dependencies in tests — see e.g. `apps/talent-api/tests/conftest.py`'s
 platform/talent apps):
 
 ```bash
-cd apps/talent-api && ../../.venv/Scripts/python -m pytest
-cd apps/talent-web && npm run build && npx eslint .
+cd apps/talent-api && <python> -m ruff check . && <python> -m pytest
+cd apps/talent-web && npm run lint && npm run test && npm run build
 ```
 
 ## Troubleshooting
 
-- **Port already in use.** `npm run dev:all` doesn't reuse ports across
-  restarts cleanly on Windows if a previous run's process is still alive
-  (uvicorn's `--reload` spawns a reloader *and* a worker process — killing
-  one doesn't always kill the other). Find the real listener and kill it
-  by PID: `netstat -ano | findstr :8002` then `taskkill /F /PID <pid>`.
+- **Port already in use.** A previous run's process may still be alive
+  (uvicorn's `--reload` spawns a reloader *and* a worker process, and Next.js
+  runs a separate server process). Find the real listener and stop it by PID.
+  Windows: `netstat -ano | findstr :8002`, then `taskkill /F /PID <pid>`.
+  macOS: `lsof -nP -iTCP:8002 -sTCP:LISTEN`, then `kill <pid>`.
 - **A module card is stuck on "Checking…" forever.** That query has a 4s
   timeout — if it's still spinning past that, the browser tab may be
   throttled (backgrounded) rather than the service being slow; React

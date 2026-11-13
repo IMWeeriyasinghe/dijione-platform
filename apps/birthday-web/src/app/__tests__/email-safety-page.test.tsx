@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockButtonProps, MockErrorProps, MockFieldProps, MockHeadingProps, MockInputProps, MockModalProps, MockSelectProps, MockStatusProps, MockTdProps, MockThProps, MockTrProps } from "@/test-support/mock-props";
 
 // Round 6 — Email Safety admin page (DijiBirthday-owned non-production
 // outbound-recipient allowlist, docs/platform/email-architecture.md). The
@@ -25,51 +26,51 @@ vi.mock("@dijione/auth-client", () => ({
 vi.mock("@dijione/design-system", () => {
   const P = ({ children }: { children: ReactNode }) => <div>{children}</div>;
   return {
-    Button: ({ children, loading, ...props }: any) => (
+    Button: ({ children, loading, ...props }: MockButtonProps) => (
       <button {...props} data-loading={loading ? "true" : "false"}>
         {children}
       </button>
     ),
-    EmptyState: ({ title, description }: any) => (
+    EmptyState: ({ title, description }: MockHeadingProps) => (
       <div data-testid="empty-state">
         <p>{title}</p>
         {description && <p>{description}</p>}
       </div>
     ),
-    ErrorState: ({ onRetry }: any) => (
+    ErrorState: ({ onRetry }: MockErrorProps) => (
       <div>
         <p>error</p>
         <button onClick={onRetry}>retry</button>
       </div>
     ),
-    FormField: ({ label, children }: any) => (
+    FormField: ({ label, children }: MockFieldProps) => (
       <label>
         {label}
         {children}
       </label>
     ),
-    Input: (props: any) => <input {...props} />,
+    Input: (props: MockInputProps) => <input {...props} />,
     LoadingState: () => <p>loading</p>,
-    Modal: ({ open, children, title }: any) =>
+    Modal: ({ open, children, title }: MockModalProps) =>
       open ? (
         <div role="dialog" aria-label={title}>
           {children}
         </div>
       ) : null,
-    PageHeader: ({ title, description, action }: any) => (
+    PageHeader: ({ title, description, action }: MockHeadingProps) => (
       <div>
         <h1>{title}</h1>
         <p>{description}</p>
         {action}
       </div>
     ),
-    Select: ({ children, ...props }: any) => <select {...props}>{children}</select>,
-    StatusBadge: ({ label, status }: any) => <span>{label ?? status}</span>,
+    Select: ({ children, ...props }: MockSelectProps) => <select {...props}>{children}</select>,
+    StatusBadge: ({ label, status }: MockStatusProps) => <span>{label ?? status}</span>,
     Table: P,
-    Td: ({ children, ...rest }: any) => <td {...rest}>{children}</td>,
-    Th: ({ children }: any) => <th>{children}</th>,
+    Td: ({ children, ...rest }: MockTdProps) => <td {...rest}>{children}</td>,
+    Th: ({ children }: MockThProps) => <th>{children}</th>,
     Thead: P,
-    Tr: ({ children, ...rest }: any) => <tr {...rest}>{children}</tr>,
+    Tr: ({ children, ...rest }: MockTrProps) => <tr {...rest}>{children}</tr>,
   };
 });
 
@@ -183,7 +184,7 @@ describe("Email Safety admin page", () => {
   it("surfaces a duplicate-recipient API error inside the modal", async () => {
     const user = userEvent.setup();
     const { ApiError } = await import("@dijione/auth-client");
-    createTestEmailRecipient.mockRejectedValue(new (ApiError as any)(409, "already an approved recipient"));
+    createTestEmailRecipient.mockRejectedValue(new (ApiError as unknown as new (status: number, message: string) => Error)(409, "already an approved recipient"));
     wrap(<EmailSafetyPage />);
     await screen.findAllByText("madushanka.weeriyasinghe@dijitalteam.com");
 

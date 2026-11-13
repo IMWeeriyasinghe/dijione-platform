@@ -13,7 +13,7 @@ class _CountingTransport(MailTransport):
     def __init__(self):
         self.call_count = 0
 
-    def send(self, *, to, subject, body, correlation_id):
+    def send(self, *, to, subject, body, correlation_id, content_type="Text"):
         self.call_count += 1
         return MailResult(correlation_id=correlation_id, outcome=MailOutcome.SUBMITTED, sent=True)
 

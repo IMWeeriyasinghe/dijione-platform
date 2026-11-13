@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockHeadingProps, MockMetricProps, MockStatusProps } from "@/test-support/mock-props";
 
 // Phase 1.5 §D — every internal dashboard tile is clickable, and each
 // Upcoming Birthdays row navigates to its order.
@@ -18,9 +19,9 @@ vi.mock("@dijione/design-system", () => {
     Card: P, CardContent: P, CardHeader: P, CardTitle: P,
     ErrorState: () => <p>error</p>,
     LoadingState: () => <p>loading</p>,
-    PageHeader: ({ title }: any) => <h1>{title}</h1>,
-    StatusBadge: ({ status }: any) => <span>{status}</span>,
-    MetricCard: ({ label, value }: any) => (
+    PageHeader: ({ title }: MockHeadingProps) => <h1>{title}</h1>,
+    StatusBadge: ({ status }: MockStatusProps) => <span>{status}</span>,
+    MetricCard: ({ label, value }: MockMetricProps) => (
       <div>
         <span>{label}</span>
         <span>{value}</span>

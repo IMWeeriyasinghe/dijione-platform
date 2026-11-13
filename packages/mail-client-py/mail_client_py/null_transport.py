@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class NullMailTransport(MailTransport):
-    def send(self, *, to: str, subject: str, body: str, correlation_id: str) -> MailResult:
+    def send(
+        self, *, to: str, subject: str, body: str, correlation_id: str, content_type: str = "Text"
+    ) -> MailResult:
         if not to:
             # The deliberate hook consuming services use to simulate a
             # failed send (e.g. missing/invalid recipient) without real

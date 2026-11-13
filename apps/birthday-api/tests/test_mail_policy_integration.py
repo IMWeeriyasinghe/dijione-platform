@@ -23,7 +23,7 @@ class _ProbeTransport:
     def __init__(self):
         self.calls = []
 
-    def send(self, *, to, subject, body, correlation_id):
+    def send(self, *, to, subject, body, correlation_id, content_type="Text"):
         self.calls.append(to)
         return MailResult(correlation_id=correlation_id, outcome=MailOutcome.SUBMITTED, sent=True)
 

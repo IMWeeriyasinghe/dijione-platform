@@ -262,6 +262,12 @@ export const updateSupplierUser = (supplierId: number, userId: number, payload: 
     body: JSON.stringify(payload),
   });
 
+export const inviteSupplierUser = (supplierId: number, userId: number) =>
+  request<import("@dijione/contracts").SupplierUserInviteOut>(
+    `/api/birthday/suppliers/${supplierId}/users/${userId}/invite`,
+    { method: "POST" },
+  );
+
 // --- Admin -------------------------------------------------
 // Calls the same detection service the production external scheduler
 // triggers — for UAT/ops use, never a separate/duplicated detection path.

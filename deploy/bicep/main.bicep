@@ -133,6 +133,35 @@ param supplierPublicBaseUrl string = ''
 // Directory), never tied to one application module.
 var deployPeople = deployBirthday || deployOnsite
 
+// ---- DijiBirthday outbound mail (birthday-api only) ------------------------
+// Previously set ad hoc with `az containerapp update --set-env-vars`, which a
+// full main.bicep run silently wiped (env is desired-state). Empty transport
+// = emit nothing = the app's fail-closed defaults (null transport, disabled
+// policy). See docs/platform/email-architecture.md, docs/birthday/email-safety.md.
+@description('birthday-api MAIL_TRANSPORT. "" = not set (app default "null"); "null" = simulated, never sends; "graph" = Microsoft Graph sendMail via birthday-api\'s own system-assigned managed identity.')
+@allowed([ '', 'null', 'graph' ])
+param birthdayMailTransport string = ''
+
+@description('birthday-api MAIL_POLICY. "disabled" fails closed; "internal_allowlist" = DEV/UAT Email Safety allowlist only (never PROD); "production" = real supplier recipients.')
+@allowed([ '', 'disabled', 'internal_allowlist', 'production' ])
+param birthdayMailPolicy string = ''
+
+@description('birthday-api MAIL_SHARED_MAILBOX — the one mailbox the managed identity sends as (Exchange RBAC-scoped). Required when birthdayMailTransport == "graph".')
+param birthdayMailSharedMailbox string = ''
+
+// ---- per-app runtime RELEASE_DATE (docs/platform/versioning.md) -----------
+@description('Per-service runtime RELEASE_DATE, keyed by service name. NEVER hand-edit in a .bicepparam: deploy/deploy.sh and deploy/promote.sh build it with deploy/release-dates.sh, which carries every live value forward and stamps only the apps named in RELEASE_APPS. A service absent from the map gets no RELEASE_DATE.')
+param releaseDates object = {}
+
+@description('Custom-domain ingress bindings per service name: { \'shell-web\': [{ name: \'dijione.example.com\', certificateName: \'mc-...\' }] }. The certificate is an existing managed certificate on this environment\'s Container Apps Environment (created when the DNS-validated domain was first bound). Declared here because ACA ingress is desired-state: a deployment that omits a live binding REMOVES it, which would break Entra sign-in redirects and the supplier portal hostname.')
+param customDomains object = {}
+
+@description('Override the Key Vault Secrets User role-assignment name that modules/identity.bicep creates — only needed when that (scope, role, principal) grant already exists in this environment under a different assignment id (created out-of-band before this template first ran here). Leave empty (the default) for a normal deployment.')
+param existingIdentityKvSecretsUserRoleAssignmentName string = ''
+
+@description('Same override, for the bootstrap identity AcrPull role assignment (modules/acr-pull.bicep). Leave empty (the default) for a normal deployment.')
+param existingIdentityAcrPullRoleAssignmentName string = ''
+
 var tags = {
   platform: 'dijione'
   env: environmentName
@@ -161,6 +190,7 @@ module identity 'modules/identity.bicep' = {
     location: location
     tags: tags
     keyVaultName: kvName
+    existingKvSecretsUserRoleAssignmentName: existingIdentityKvSecretsUserRoleAssignmentName
   }
 }
 
@@ -172,6 +202,7 @@ module uamiAcrPull 'modules/acr-pull.bicep' = {
     acrName: imageRegistryName
     granteeName: uamiName
     principalId: identity.outputs.principalId
+    existingAcrPullRoleAssignmentName: existingIdentityAcrPullRoleAssignmentName
   }
 }
 
@@ -241,6 +272,24 @@ var commonApiEnv = [
   { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName }
   { name: 'EMAIL_SENDING_MODE', value: 'mock' }
   { name: 'API_CORS_ORIGINS', value: corsOrigins }
+]
+
+// Fail-closed guards evaluated at deployment time: PROD must never run the
+// DEV/UAT Email Safety allowlist, and graph transport needs its mailbox.
+var _mailPolicyForEnv = environmentName == 'prod' && birthdayMailPolicy == 'internal_allowlist' ? int('PROD must not use birthdayMailPolicy=internal_allowlist') : 0
+var _mailMailboxPresent = birthdayMailTransport == 'graph' && empty(birthdayMailSharedMailbox) ? int('birthdayMailTransport=graph requires birthdayMailSharedMailbox') : 0
+
+var birthdayApiMailEnv = (_mailPolicyForEnv + _mailMailboxPresent) != 0 || empty(birthdayMailTransport) ? [] : concat(
+  [ { name: 'MAIL_TRANSPORT', value: birthdayMailTransport } ],
+  empty(birthdayMailPolicy) ? [] : [ { name: 'MAIL_POLICY', value: birthdayMailPolicy } ],
+  empty(birthdayMailSharedMailbox) ? [] : [ { name: 'MAIL_SHARED_MAILBOX', value: birthdayMailSharedMailbox } ]
+)
+
+// Web apps don't get commonApiEnv. birthday-web reads APP_ENV (its
+// /birthday/api/meta is_production flag hides the non-prod Email Safety nav),
+// so it gets APP_ENV explicitly. Other web apps don't read it, so they're unchanged.
+var birthdayWebEnv = [
+  { name: 'APP_ENV', value: environmentName == 'dev' ? 'development' : environmentName }
 ]
 
 // Per-service configuration — internal service URLs (ACA internal DNS is
@@ -419,13 +468,14 @@ module apps 'modules/containerapp.bicep' = [
       targetPort: s.kind == 'api' ? 8000 : 3000
       isApi: s.kind == 'api'
       external: s.external
+      customDomains: customDomains[?s.name] ?? []
       minReplicas: minReplicas[?s.name] ?? 0
       maxReplicas: maxReplicasOverrides[?s.name] ?? maxReplicasDefault
       cpu: containerCpu
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase, externalPortalBaseUrl))
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], s.name == 'birthday-web' ? birthdayWebEnv : [], s.name == 'birthday-api' ? birthdayApiMailEnv : [], contains(releaseDates, s.name) ? [ { name: 'RELEASE_DATE', value: string(releaseDates[s.name]) } ] : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase, externalPortalBaseUrl))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
       //   matching *IntegrationsMode == 'live'

@@ -51,7 +51,8 @@ param authMode = 'entra'
 param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param entraInternalEmailDomains = 'dijitalteam.com'
 param entraClientId = '2ea7f6b8-d3c2-4dda-b806-32549efeadb6'
-param publicBaseUrl = 'https://shell-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io'
+// Custom domain — equals live DEV platform-api ENTRA_REDIRECT_URI/PUBLIC_BASE_URL.
+param publicBaseUrl = 'https://dijione-dev.dijitalteam.com'
 
 // Phase 4: controlled read-only source integrations. Flip a service to
 // 'live' ONLY after its Key Vault key exists:
@@ -75,4 +76,19 @@ param bamboohrSubdomain = 'dijitalteam'
 param supplierAuthMode = 'entra'
 param supplierEntraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param supplierEntraClientId = '30e36193-f0e4-40d5-875b-db1ef6a3f2b0'
-param supplierPublicBaseUrl = 'https://birthday-supplier-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io'
+// Custom domain — equals live DEV birthday-api SUPPLIER_ENTRA_REDIRECT_URI/SUPPLIER_PUBLIC_BASE_URL.
+param supplierPublicBaseUrl = 'https://supplierportal-dev.dijitalteam.com'
+
+// Custom-domain ingress bindings that exist live (DNS + managed certificate
+// created out-of-band). Declared so a main.bicep run keeps them instead of
+// silently removing them (ACA ingress is desired-state).
+param customDomains = {
+  'shell-web': [ { name: 'dijione-dev.dijitalteam.com', certificateName: 'mc-cae-dijione-de-dijione-dev-diji-9506' } ]
+  'birthday-supplier-web': [ { name: 'supplierportal-dev.dijitalteam.com', certificateName: 'mc-cae-dijione-de-supplierportal-d-3863' } ]
+}
+
+// DijiBirthday outbound mail — equals live DEV birthday-api env (previously
+// set ad hoc). DEV sends real mail ONLY to active Email Safety recipients (docs/birthday/email-safety.md).
+param birthdayMailTransport = 'graph'
+param birthdayMailPolicy = 'internal_allowlist'
+param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'

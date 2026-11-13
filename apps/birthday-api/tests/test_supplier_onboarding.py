@@ -18,9 +18,14 @@ def _supplier(api_client, admin, **extra):
 def test_onboarding_state_progresses(api_client, db):
     admin = _admin()
     sup = _supplier(api_client, admin)
+    # send_invitation=False here: this test is specifically about the
+    # onboarding_state state machine (including the legacy manual
+    # mark_invited path below), not the new auto-invite-on-create default —
+    # that has its own tests in test_supplier_invitation.py.
     user = api_client.post(
         f"/api/birthday/suppliers/{sup['id']}/users",
-        json={"email": "baker@ob.example.com", "full_name": "Baker"}, headers=admin,
+        json={"email": "baker@ob.example.com", "full_name": "Baker", "send_invitation": False},
+        headers=admin,
     ).json()
     assert user["onboarding_state"] == "NOT_INVITED"
 
