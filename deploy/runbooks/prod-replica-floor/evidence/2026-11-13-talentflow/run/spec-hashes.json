@@ -1,0 +1,38 @@
+{
+ "talent-api": {
+  "post": {
+   "at": "2026-11-13T07:14:56Z",
+   "image_digest": "sha256:afee55613199e7bacceeb82de8b796629a41eb1ef602eb9833a1595cf971fd7c",
+   "maxReplicas": 2,
+   "minReplicas": 1,
+   "revision": "talent-api--0000003",
+   "spec_sha256": "769f32cd19a0a952a596ffab9521f666031260c5be3486379a52a8434fe29084"
+  },
+  "pre": {
+   "at": "2026-11-13T07:14:13Z",
+   "image_digest": "sha256:afee55613199e7bacceeb82de8b796629a41eb1ef602eb9833a1595cf971fd7c",
+   "maxReplicas": 2,
+   "minReplicas": 0,
+   "revision": "talent-api--0000002",
+   "spec_sha256": "769f32cd19a0a952a596ffab9521f666031260c5be3486379a52a8434fe29084"
+  }
+ },
+ "talent-web": {
+  "post": {
+   "at": "2026-11-13T07:22:52Z",
+   "image_digest": "sha256:3aad7d10ce49e83efdc844b3d7e32fa6d365a8829043f6c19751ec8440712326",
+   "maxReplicas": 2,
+   "minReplicas": 1,
+   "revision": "talent-web--0000002",
+   "spec_sha256": "b442b93639625d955e1136497d29935ff88fa87b4f062578be1d235db3b1b9b8"
+  },
+  "pre": {
+   "at": "2026-11-13T07:22:08Z",
+   "image_digest": "sha256:3aad7d10ce49e83efdc844b3d7e32fa6d365a8829043f6c19751ec8440712326",
+   "maxReplicas": 2,
+   "minReplicas": 0,
+   "revision": "talent-web--0000001",
+   "spec_sha256": "b442b93639625d955e1136497d29935ff88fa87b4f062578be1d235db3b1b9b8"
+  }
+ }
+}
