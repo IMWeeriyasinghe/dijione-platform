@@ -86,6 +86,17 @@ def require_non_production() -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
 
 
+def require_dev_environment() -> None:
+    """Hard environment guard for DEV-only helper routes (e.g. the inbound
+    supplier-email injector in app/api/routes/internal.py). Allows ONLY
+    APP_ENV=development (hosted DEV, local dev, tests). UAT, PROD and any
+    unknown/misspelled value fail closed with a 404 — a mode flag such as
+    EMAIL_SENDING_MODE=mock is never enough on its own, because PROD runs
+    with EMAIL_SENDING_MODE=mock (inbound polling is mocked there)."""
+    if get_settings().app_env != "development":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+
+
 @dataclass
 class SupplierScope:
     """Resolved supplier-portal authorization scope (Phase-Next §5).

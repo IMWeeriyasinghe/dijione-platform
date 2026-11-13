@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_internal_service
+from app.api.deps import require_dev_environment, require_internal_service
 from app.api.routes.config import get_or_create_config
 from app.core.config import get_settings
 from app.db.session import get_db
@@ -72,12 +72,14 @@ class _DevInboundEmail(BaseModel):
 def dev_inject_inbound_email(
     payload: _DevInboundEmail,
     db: Session = Depends(get_db),
+    _dev_only: None = Depends(require_dev_environment),
     _service: None = Depends(require_internal_service),
 ) -> dict:
     """DEV-only: feed a supplier email reply straight into the ingestion
     pipeline (correlation / sender validation / quarantine), so §1.5 is
-    provable in hosted DEV without a real mailbox. 404 unless
-    EMAIL_SENDING_MODE=mock (mirrors the dev supplier-persona routes)."""
+    provable in hosted DEV without a real mailbox. 404 unless BOTH
+    APP_ENV=development (require_dev_environment — environment, not a mode
+    flag: PROD also runs EMAIL_SENDING_MODE=mock) AND EMAIL_SENDING_MODE=mock."""
     if get_settings().email_sending_mode != "mock":
         raise HTTPException(status_code=404, detail="Not found")
     from app.integrations.inbound_mail.client import InboundMessage

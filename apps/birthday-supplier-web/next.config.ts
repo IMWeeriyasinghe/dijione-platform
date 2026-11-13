@@ -12,6 +12,8 @@ const up = (name: string, fallback: string): string => process.env[name] ?? fall
 
 const BIRTHDAY_API_URL = up("BIRTHDAY_API_URL", "http://localhost:8003");
 
+export const DEV_PERSONA_PATHS = ["supplier-users", "supplier-login"] as const;
+
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@dijione/design-system", "@dijione/contracts"],
@@ -27,7 +29,14 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: "/api/birthday/portal/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/portal/:path*` },
-      { source: "/api/birthday/internal/dev/:path*", destination: `${BIRTHDAY_API_URL}/api/birthday/internal/dev/:path*` },
+      // DEV persona picker only. Exactly these two paths — never the whole
+      // internal/dev prefix, which would expose birthday-api's other DEV
+      // helpers (e.g. the inbound-email injector) on this public hostname.
+      // birthday-api still 404s both unless SUPPLIER_AUTH_MODE=dev.
+      ...DEV_PERSONA_PATHS.map((p) => ({
+        source: `/api/birthday/internal/dev/${p}`,
+        destination: `${BIRTHDAY_API_URL}/api/birthday/internal/dev/${p}`,
+      })),
       // Supplier Entra sign-in config + the code exchange. The /login and
       // /api/auth/callback routes are handled by this app's own route.ts
       // (filesystem routes win over rewrites).
