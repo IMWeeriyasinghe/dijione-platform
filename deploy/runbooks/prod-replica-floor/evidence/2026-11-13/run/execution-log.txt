@@ -1,0 +1,17 @@
+2026-11-13T05:36:10Z precheck rg-dijione-prod as sa-***@dijitalteam.com: live spec, revision and digest vs recorded baseline
+2026-11-13T05:36:12Z   people-api    OK    rev=people-api--0000003 min=0 max=2 sha256:21b77405c4490744a3058799cbc48b491256a624e152ea546e2ec52acc871cb2 spec=19be23287c2d
+2026-11-13T05:36:14Z   birthday-api  OK    rev=birthday-api--0000005 min=0 max=2 sha256:98656e2eed0cf267dbf126f03ab09ee9d44ac5b7079ac99f6d0b42025cb34ccd spec=69ba0e31aa86
+2026-11-13T05:36:15Z   atwork-api    OK    rev=atwork-api--tjl96gz min=0 max=1 sha256:66e16c9dc9668acffbf11c46634e6e3dd7acd34fc7f2827c93f178e77133239c spec=e8f95fc35fa2
+2026-11-13T05:36:17Z   atwork-web    OK    rev=atwork-web--zu0g4z2 min=0 max=1 sha256:71c34c94544e486440b028f562848f5926b16835f311f195569ad85f252efbd5 spec=c27a1edfc43a
+2026-11-13T05:36:18Z   onsite-api    OK    rev=onsite-api--0000004 min=0 max=1 sha256:4e71488b4cb87539e71106f62f20a349e6e3fc459e2d3938c9b996ff818e727b spec=f1d9bb3fed3a
+2026-11-13T05:36:19Z   onsite-web    OK    rev=onsite-web--0000003 min=0 max=1 sha256:c156ba8c787fe3405e4e096a5f4474cd2c29f0fefe4cfb45d8dc5e517028fae1 spec=2a0b9cd716d0
+2026-11-13T05:36:19Z precheck: other PROD deployment activity
+2026-11-13T05:36:32Z   none: no ARM deployment running, all apps/jobs Succeeded, no migration running, no foreign Container Apps/deployment writes in the last 60 min
+2026-11-13T05:36:32Z precheck: related jobs per app (checked again before each update)
+2026-11-13T05:36:36Z   people-api    birthday-scan-job(0 running), migrate-people-api(0 running), people-sync-job(0 running), people-workforce-sync-job(0 running)
+2026-11-13T05:36:39Z   birthday-api  birthday-attention-job(0 running), birthday-comms-job(0 running), birthday-scan-job(0 running), migrate-birthday-api(0 running)
+2026-11-13T05:36:41Z   atwork-api    atwork-notifications-job(0 running), migrate-atwork-api(0 running)
+2026-11-13T05:36:41Z   atwork-web    -
+2026-11-13T05:36:43Z   onsite-api    migrate-onsite-api(0 running), onsite-sync-job(0 running)
+2026-11-13T05:36:43Z   onsite-web    -
+2026-11-13T05:36:43Z PRECHECK PASS

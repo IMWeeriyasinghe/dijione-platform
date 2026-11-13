@@ -1,0 +1,15 @@
+// Investigation 2026-11-13: Workforce Directory GETs on people-api relative to replica readiness (cold reloads). Read-only.
+let gets = ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(7d) and ContainerAppName_s == 'people-api' and Log_s has 'GET /api/people/workforce-directory'
+| project tGet=todatetime(time_t), replica=ContainerGroupName_s;
+let starts = ContainerAppSystemLogs_CL
+| where TimeGenerated > ago(7d) and ContainerAppName_s == 'people-api' and Reason_s == 'ContainerStarted'
+| project tStart=todatetime(time_t), replica=ReplicaName_s;
+let ready = ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(7d) and ContainerAppName_s == 'people-api' and Log_s has 'Application startup complete'
+| project tReady=todatetime(time_t), replica=ContainerGroupName_s;
+gets
+| join kind=leftouter starts on replica
+| join kind=leftouter ready on replica
+| extend sinceReady_s = datetime_diff('millisecond', tGet, tReady)/1000.0, sinceStart_s = datetime_diff('millisecond', tGet, tStart)/1000.0
+| summarize n=count(), coldGets=countif(sinceReady_s between (0.0 .. 20.0)), p50_afterReady=percentile(sinceReady_s,50), p90_afterReady=percentile(sinceReady_s,90), minAfterReady=min(sinceReady_s)

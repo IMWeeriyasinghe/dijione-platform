@@ -1,0 +1,20 @@
+// Investigation 2026-11-13: cold-start anatomy per app over 7 days (KEDA activation -> container start -> app ready). Read-only.
+let act = ContainerAppSystemLogs_CL
+| where TimeGenerated > ago(7d) and Reason_s == 'KEDAScaleTargetActivated'
+| project app=ContainerAppName_s, rev=RevisionName_s, tAct=todatetime(time_t);
+let started = ContainerAppSystemLogs_CL
+| where TimeGenerated > ago(7d) and Reason_s == 'ContainerStarted' and isnotempty(ContainerAppName_s)
+| project app=ContainerAppName_s, rev=RevisionName_s, replica=ReplicaName_s, tStart=todatetime(time_t);
+let ready = ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(7d) and (Log_s has 'Application startup complete' or Log_s has 'Ready in')
+| project app=ContainerAppName_s, replica=ContainerGroupName_s, tReady=todatetime(time_t);
+act
+| join kind=inner started on app, rev
+| where tStart between (tAct .. tAct + 3m)
+| summarize arg_min(tStart, replica) by app, rev, tAct
+| join kind=leftouter ready on app, replica
+| where isnull(tReady) or tReady between (tStart .. tStart + 3m)
+| summarize tReady=min(tReady) by app, rev, tAct, tStart
+| extend platform_s = datetime_diff('millisecond', tStart, tAct)/1000.0, app_s = datetime_diff('millisecond', tReady, tStart)/1000.0, total_s = datetime_diff('millisecond', tReady, tAct)/1000.0
+| summarize n=count(), platform_p50=percentile(platform_s,50), platform_p95=percentile(platform_s,95), app_p50=percentile(app_s,50), app_p95=percentile(app_s,95), total_p50=percentile(total_s,50), total_p90=percentile(total_s,90), total_p95=percentile(total_s,95), total_max=max(total_s) by app
+| order by n desc
