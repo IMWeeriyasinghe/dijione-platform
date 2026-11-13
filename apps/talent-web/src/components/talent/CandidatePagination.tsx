@@ -16,8 +16,20 @@ export function pageWindow(page: number, totalPages: number, radius = 1): (numbe
   return out;
 }
 
-const btn =
-  "inline-flex min-w-9 items-center justify-center gap-1 rounded-lg border border-dt-border bg-dt-surface px-2.5 py-1.5 text-sm text-dt-text-primary transition hover:border-dt-orange focus:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange/30 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-dt-border";
+// Colour classes live in exactly one state set below, so an element never
+// carries two competing utilities for the same property — Tailwind orders
+// same-property utilities by name, not by class order, which is why the old
+// "bg-dt-surface ... bg-dt-orange text-white" active page rendered
+// white-on-white. The active outline is an inset ring (box-shadow), not a
+// border colour: talent-web's globals.css has an unlayered
+// `* { border-color: var(--dt-border) }` that overrides every border-dt-*
+// utility. Focus uses `outline` so it never fights the active ring.
+const base =
+  "inline-flex min-w-9 items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dt-orange";
+const idle =
+  "bg-dt-surface text-dt-text-primary hover:bg-dt-surface-warm disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-dt-surface";
+const active = "bg-dt-orange/10 font-bold text-dt-text-primary ring-2 ring-inset ring-dt-orange";
+const btn = `${base} ${idle}`;
 
 export function CandidatePagination({
   page,
@@ -95,11 +107,7 @@ export function CandidatePagination({
                 onClick={() => onPageChange(p)}
                 aria-label={`Page ${p}`}
                 aria-current={p === page ? "page" : undefined}
-                className={
-                  p === page
-                    ? `${btn} border-dt-orange bg-dt-orange font-semibold text-white hover:border-dt-orange`
-                    : btn
-                }
+                className={p === page ? `${base} ${active}` : btn}
               >
                 {p}
               </button>

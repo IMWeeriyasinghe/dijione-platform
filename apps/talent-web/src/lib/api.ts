@@ -64,7 +64,9 @@ export type CandidatePageOut = {
   page_size: number;
   total_pages: number;
 };
-export const CANDIDATE_PAGE_SIZES = [10, 20, 50, 100] as const;
+// Multiples of 12 fill whole rows of the 3-column (desktop) / 2-column
+// (tablet) candidate grid.
+export const CANDIDATE_PAGE_SIZES = [12, 24, 48, 96] as const;
 export const listCandidatesPaged = (params: { search?: string; page: number; page_size: number }) =>
   request<CandidatePageOut>(`/api/talent/candidates/paged${qs(params)}`);
 export const getCandidate = (id: number) => request<CandidateOut>(`/api/talent/candidates/${id}`);

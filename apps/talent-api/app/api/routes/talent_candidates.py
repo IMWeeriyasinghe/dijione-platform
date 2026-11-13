@@ -6,6 +6,8 @@ from app.db.session import get_db
 from app.repositories.application_repo import ApplicationRepository
 from app.repositories.talent_request_repo import TalentRequestRepository
 from app.schemas.candidate import (
+    CANDIDATE_DEFAULT_PAGE_SIZE,
+    CANDIDATE_LEGACY_PAGE_SIZES,
     CANDIDATE_PAGE_SIZES,
     CandidateCreate,
     CandidateOut,
@@ -32,7 +34,7 @@ def list_candidates(
 def list_candidates_paged(
     search: str | None = Query(default=None, max_length=200),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10),
+    page_size: int = Query(default=CANDIDATE_DEFAULT_PAGE_SIZE),
     scope: TalentScope = Depends(require_staff_scope),
     db: Session = Depends(get_db),
 ) -> CandidatePageOut:
@@ -41,7 +43,7 @@ def list_candidates_paged(
     Add Application picker). Same staff-only authorization and portfolio
     scoping. A page past the end returns an empty ``items`` with the real
     ``total`` so the client can clamp."""
-    if page_size not in CANDIDATE_PAGE_SIZES:
+    if page_size not in CANDIDATE_PAGE_SIZES + CANDIDATE_LEGACY_PAGE_SIZES:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"page_size must be one of {list(CANDIDATE_PAGE_SIZES)}",
