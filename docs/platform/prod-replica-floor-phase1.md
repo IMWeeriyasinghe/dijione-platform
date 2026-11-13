@@ -164,3 +164,39 @@ No rollback was needed.
 | `/talent-flow` application page | 19.58 s (14.1–14.2 s in earlier runs that day) | **0.40 s** |
 
 **Cost.** The forecast is about +AUD 22/month: two warm replicas at the measured warm-idle rate of about AUD 0.37/day. Before the change, `talent-api` cost about AUD 0.8/month and `talent-web` about 0. This is a forecast until it is observed in billing.
+
+## Follow-up checks — manual procedure (reliable fallback)
+
+The 24-hour stability check (from 2026-11-14 06:30 UTC) and the 7-day cost check (from 2026-11-22) cover all eight services:
+- Phase 1: `people-api`, `birthday-api`, `atwork-api`, `atwork-web`, `onsite-api`, `onsite-web`;
+- Phase 1b: `talent-api`, `talent-web`.
+
+They may run as session reminders, but **don't assume they ran**. Run them by hand from `deploy/runbooks/prod-replica-floor/` on the operator's Mac, with `az` signed in to PROD. All of these steps are read-only.
+
+### 24-hour stability check
+
+1. **Floors and spec:** all eight must be APPLIED, with the spec matching the baseline and one healthy replica each.
+   ```bash
+   python3 phase1_runbook.py audit
+   PHASE1_APPS="talent-api talent-web" PHASE1_BASELINE_DIR=evidence/2026-11-13-talentflow/baseline \
+     python3 phase1_runbook.py audit
+   ```
+2. **Logs:** in the PROD Log Analytics workspace, run `kql/post-change.kql` with `since = datetime(2026-11-13T06:02:00Z)`, after adding `talent-api` and `talent-web` to `phase1`. Targets:
+   - 0 scale activations;
+   - no consecutive `ProbeFailed` events (watch `atwork-api`'s isolated 1-second timeouts);
+   - 0 restarts;
+   - no abandoned On-site syncs;
+   - 0 cold Workforce Directory reloads.
+3. **Jobs:** `az containerapp job execution list -g rg-dijione-prod -n <job>` for every PROD job. All executions since 2026-11-13 06:02 UTC must be Succeeded.
+4. **Response times:** run `python3 measure.py after-t24h`. Compare server time (`ttfb_s − tls_s`) with `evidence/2026-11-13*/measurements-*.tsv`.
+
+### 7-day cost check
+
+Run this after 2026-11-21, once billing has caught up.
+
+1. **Get the costs:** in Azure Cost Management → Cost analysis, scope `rg-dijione-prod`, select Actual cost, Daily, grouped by Resource, filtered to service *Azure Container Apps*, for 2026-11-14 to 2026-11-20. Or use the same query through `az rest` against `Microsoft.CostManagement/query`.
+2. **Compare each app with:**
+   - **Threshold:** ≤ AUD 0.45/day for each warm app, and ≤ AUD 0.66/day for `onsite-api`.
+   - **Warm-idle reference:** `shell-web` and `platform-api`, at about AUD 0.37/day.
+   - **Pre-change rates (AUD/day):** `people-api` 0.048, `birthday-api` 0.787, `onsite-api` 1.289, `onsite-web` 0.007, `talent-api` 0.026, `talent-web` 0.001, `atwork-*` ≈ 0.
+3. **Rollback trigger:** an app above its threshold for 3 consecutive days, with no explanation. Ask for approval before running `PHASE1_APPROVED=yes python3 phase1_runbook.py rollback <app>`.
