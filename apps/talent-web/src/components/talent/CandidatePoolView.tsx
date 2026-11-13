@@ -12,7 +12,7 @@ import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
 import { CandidatePagination } from "./CandidatePagination";
 
 export const SEARCH_DEBOUNCE_MS = 300;
-const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 12;
 
 export function CandidatePoolView() {
   const [searchInput, setSearchInput] = useState("");

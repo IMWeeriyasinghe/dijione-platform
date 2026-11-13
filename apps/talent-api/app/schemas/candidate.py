@@ -37,7 +37,12 @@ class CandidateOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-CANDIDATE_PAGE_SIZES = (10, 20, 50, 100)
+# 12/24/48/96 fill whole rows of the 3-column (desktop) and 2-column (tablet)
+# card grid. 10/20/50/100 (the original #106 sizes) stay accepted so any
+# existing caller of /candidates/paged keeps working.
+CANDIDATE_PAGE_SIZES = (12, 24, 48, 96)
+CANDIDATE_LEGACY_PAGE_SIZES = (10, 20, 50, 100)
+CANDIDATE_DEFAULT_PAGE_SIZE = 12
 
 
 class CandidatePageOut(BaseModel):
