@@ -28,6 +28,17 @@ class AttendanceRepository:
         return [] if emp_codes is None else [AttendanceEvent.emp_code.in_(list(emp_codes) or [""])]
 
     @staticmethod
+    def _windows(code_windows: Collection[tuple[str, date, date]] | None) -> list:
+        """Verified-identity filter: only events of ``code`` on site-local days
+        ``lo..hi`` (inclusive) of each window. ``None`` = no filter; an empty
+        collection matches nothing (fail closed)."""
+        if code_windows is None:
+            return []
+        clauses = [and_(AttendanceEvent.emp_code == c, AttendanceEvent.site_local_date >= lo,
+                        AttendanceEvent.site_local_date <= hi) for c, lo, hi in code_windows]
+        return [or_(*clauses)] if clauses else [AttendanceEvent.event_id.is_(None)]
+
+    @staticmethod
     def _range(site_id: str, date_from: date, date_to: date) -> list:
         return [
             AttendanceEvent.site_id == site_id,
@@ -141,6 +152,7 @@ class AttendanceRepository:
         emp_codes: Collection[str] | None = None, terminal: str | None = None,
         tz_inconsistent_only: bool = False, offset: int = 0, limit: int = 50,
         utc_windows: Collection[tuple[datetime, datetime]] | None = None, oldest_first: bool = False,
+        code_windows: Collection[tuple[str, date, date]] | None = None,
     ) -> tuple[int, list[AttendanceEvent]]:
         """Newest-first (or oldest-first) raw events plus the total count.
         ``utc_windows`` keeps only events with ``start <= punch_time_utc < end``
@@ -148,7 +160,8 @@ class AttendanceRepository:
         Ordering is total and stable: (punch_time_utc, event_id)."""
         if site_id not in allowed_site_ids:
             return 0, []
-        where = [*self._range(site_id, date_from, date_to), *self._emp_filter(emp_codes)]
+        where = [*self._range(site_id, date_from, date_to), *self._emp_filter(emp_codes),
+                 *self._windows(code_windows)]
         if terminal:
             where.append(AttendanceEvent.terminal_alias == terminal)
         if tz_inconsistent_only:
@@ -219,6 +232,55 @@ class AttendanceRepository:
             select(AttendanceEvent.emp_code, func.max(AttendanceEvent.punch_time_utc))
             .where(AttendanceEvent.site_id == site_id).group_by(AttendanceEvent.emp_code)
         ).all())
+
+    def punch_rows(
+        self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,
+        emp_codes: Collection[str] | None = None,
+    ) -> list[tuple[date, str, datetime, str | None]]:
+        """(local_date, emp_code, punch_time_utc, terminal_sn) ordered by time —
+        used to merge several ZKBioTime IDs of one employee into one day."""
+        if site_id not in allowed_site_ids:
+            return []
+        return [tuple(r) for r in self.db.execute(
+            select(AttendanceEvent.site_local_date, AttendanceEvent.emp_code, AttendanceEvent.punch_time_utc,
+                   AttendanceEvent.terminal_sn)
+            .where(*self._range(site_id, date_from, date_to), *self._emp_filter(emp_codes))
+            .order_by(AttendanceEvent.site_local_date, AttendanceEvent.punch_time_utc, AttendanceEvent.event_id)
+        ).all()]
+
+    def code_day_stats(
+        self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date | None = None,
+        date_to: date | None = None, code_windows: Collection[tuple[str, date, date]] | None = None,
+    ) -> list[tuple[str, date, int, datetime]]:
+        """(emp_code, local_date, events, last_punch_utc) per code-day, optionally
+        restricted to verified-identity windows and/or a date range."""
+        if site_id not in allowed_site_ids:
+            return []
+        where = [AttendanceEvent.site_id == site_id, *self._windows(code_windows)]
+        if date_from is not None:
+            where.append(AttendanceEvent.site_local_date >= date_from)
+        if date_to is not None:
+            where.append(AttendanceEvent.site_local_date <= date_to)
+        return [tuple(r) for r in self.db.execute(
+            select(AttendanceEvent.emp_code, AttendanceEvent.site_local_date, func.count(),
+                   func.max(AttendanceEvent.punch_time_utc))
+            .where(*where).group_by(AttendanceEvent.emp_code, AttendanceEvent.site_local_date)
+        ).all()]
+
+    def code_day_hours(
+        self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,
+        code_windows: Collection[tuple[str, date, date]] | None = None,
+    ) -> list[tuple[str, str, date, int]]:
+        """(local hour "HH", emp_code, local_date, events) — hourly counts that
+        can be resolved to distinct verified employees."""
+        if site_id not in allowed_site_ids:
+            return []
+        hour = func.substr(AttendanceEvent.punch_time_local, 12, 2)
+        return [tuple(r) for r in self.db.execute(
+            select(hour, AttendanceEvent.emp_code, AttendanceEvent.site_local_date, func.count())
+            .where(*self._range(site_id, date_from, date_to), *self._windows(code_windows))
+            .group_by(hour, AttendanceEvent.emp_code, AttendanceEvent.site_local_date)
+        ).all()]
 
     def date_bounds(self, *, allowed_site_ids: Collection[str], site_id: str) -> tuple[date | None, date | None]:
         if site_id not in allowed_site_ids:

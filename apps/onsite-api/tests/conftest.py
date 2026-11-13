@@ -27,7 +27,8 @@ from app.main import app  # noqa: E402
 from app.services import workforce_directory  # noqa: E402
 
 VIEWER = ["onsite.dashboard.read", "onsite.attendance.read", "onsite.exceptions.read"]
-ADMIN = VIEWER + ["onsite.health.read", "onsite.identity.read", "onsite.sync.request", "onsite.sites.manage"]
+ADMIN = VIEWER + ["onsite.health.read", "onsite.identity.read", "onsite.identity.manage", "onsite.sync.request",
+                  "onsite.sites.manage"]
 PERMS = {"ONSITE_VIEWER": VIEWER, "ONSITE_ADMIN": ADMIN}
 
 # Mirrors the shape of people-api's Workforce Directory DTO for the codes in
@@ -121,3 +122,37 @@ def run_sync(api_client) -> dict:
 def enable_site(api_client, site_id: str) -> None:
     resp = api_client.put(f"/api/onsite/admin/sites/{site_id}", json={"enabled": True}, headers=headers_for())
     assert resp.status_code == 200, resp.text
+
+
+def make_mapping(db, *, site_id: str = "dev-site", code: str, bamboohr_id: str, valid_from, valid_to=None,
+                 evidence: str = "synthetic test evidence", user_id: int = 1):
+    """Insert a VERIFIED mapping directly (synthetic test data only)."""
+    from datetime import date as _date
+
+    from app.models.identity import IdentityMapping
+
+    m = IdentityMapping(site_id=site_id, zk_emp_code=code, bamboohr_id=bamboohr_id,
+                        valid_from=_date.fromisoformat(valid_from) if isinstance(valid_from, str) else valid_from,
+                        valid_to=_date.fromisoformat(valid_to) if isinstance(valid_to, str) else valid_to,
+                        status="VERIFIED", evidence=evidence, verified_by_user_id=user_id, source="MANUAL")
+    db.add(m)
+    db.commit()
+    return m
+
+
+# The synthetic verified mappings used by the read-path tests: every mock
+# code that "matched" before the redesign is mapped explicitly, while "999"
+# and "TEST-AZURE-001" stay unmapped. "105" is mapped to ONE of the two
+# directory employees sharing Employee Number 105 (bamboohr 5), proving that
+# a shared Employee Number no longer matters.
+STANDARD_MAPPINGS = [
+    ("dev-site", "101", "1"), ("dev-site", "102", "2"), ("dev-site", "0107", "7"), ("dev-site", "103", "3"),
+    ("dev-site", "105", "5"), ("syd-site", "110", "10"), ("syd-site", "108", "8"),
+]
+
+
+@pytest.fixture()
+def mapped(db):
+    for site, code, bid in STANDARD_MAPPINGS:
+        make_mapping(db, site_id=site, code=code, bamboohr_id=bid, valid_from="2020-01-01")
+    return STANDARD_MAPPINGS
