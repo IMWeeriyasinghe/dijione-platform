@@ -14,7 +14,7 @@ Exit codes: 0 ok | 1 precheck/guard failed | 2 usage | 3 not approved or outside
 
 Environment: PHASE1_RG, PHASE1_AZ (az command, replaceable by a fake for tests), PHASE1_BASELINE_DIR,
 PHASE1_RUN_DIR, PHASE1_POLL_S, PHASE1_READY_TIMEOUT_S, PHASE1_JOB_WAIT_S, PHASE1_WINDOW_UTC ("17:00-18:00"),
-PHASE1_NO_AUTO_ROLLBACK=1.
+PHASE1_NO_AUTO_ROLLBACK=1, PHASE1_APPS (space-separated app list; default: the six Phase 1 apps).
 """
 import difflib, hashlib, json, os, re, shlex, subprocess, sys, time
 from datetime import datetime, timedelta, timezone
@@ -29,7 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 BASELINE = os.environ.get("PHASE1_BASELINE_DIR", os.path.join(HERE, "evidence", "2026-11-13", "baseline"))
 RUN = os.environ.get("PHASE1_RUN_DIR", os.path.join(HERE, "evidence", "2026-11-13", "run"))
 LEDGER = os.path.join(RUN, "ledger.json")
-APPS = ["people-api", "birthday-api", "atwork-api", "atwork-web", "onsite-api", "onsite-web"]
+APPS = os.environ.get("PHASE1_APPS", "people-api birthday-api atwork-api atwork-web onsite-api onsite-web").split()
 # Jobs whose target API calls this app synchronously (verified in code, 2026-11-13).
 INDIRECT = {"people-api": ["birthday-scan-job"]}
 EXEC_DONE = {"Succeeded", "Failed", "Stopped", "Degraded"}          # anything else counts as running

@@ -37,6 +37,9 @@ param minReplicas = {
   'onsite-web': 1
   'atwork-api': 1
   'atwork-web': 1
+  // DijiTalentFlow (2026-11-13, same decision, Phase 1b): Home card + app page.
+  'talent-api': 1
+  'talent-web': 1
 }
 param maxReplicasDefault = 2
 param maxReplicasOverrides = {
