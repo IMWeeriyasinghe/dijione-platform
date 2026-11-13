@@ -381,25 +381,11 @@ run artifact, gitignored — never committed.
 - **`RELEASE_DATE` for the other 5 apps.** Only `birthday-web` has the
   `/api/meta` force-dynamic Route Handler + shell wiring. The pattern is
   documented above; each other app adopts it on its own future release.
-- **`main.bicep` `RELEASE_DATE` persistence.** Deliberately **not**
-  touched this round. A `releaseDates object = {}` parameter with a
-  default-empty map is only safe if every future `main.bicep` deployment
-  reliably repopulates the full map first — shipping the parameter without
-  that wrapper logic in the same change would be a half-built mechanism
-  that silently erases an app's `RELEASE_DATE` the first time someone runs
-  `main.bicep` for an unrelated reason (Container Apps `env` arrays are
-  fully replaced, not merged, by a bicep deployment). **Do not add the
-  bicep parameter without the wrapper logic in the same change.** When this
-  is eventually built: `main.bicep` takes a `releaseDates` object keyed by
-  service name (never one global value), and the deployment wrapper
-  (`deploy/deploy.sh` or equivalent) is responsible for reading every
-  currently-deployed service's live `RELEASE_DATE`, carrying them forward
-  unchanged, and overwriting only the entry for the app(s) actually being
-  released that run, before ever invoking `main.bicep`. Until this exists,
-  **do not run a full multi-service `main.bicep` deployment against an
-  environment that has any app-specific `RELEASE_DATE` set via
-  `az containerapp update`** without first manually capturing and
-  understanding what would be lost.
+- **`main.bicep` `RELEASE_DATE` persistence — implemented.** `main.bicep`
+  takes `releaseDates` (keyed by service name, never one global value);
+  `deploy/release-dates.sh` reads every live `RELEASE_DATE`, carries them
+  forward, and stamps only the apps in `RELEASE_APPS`; `deploy/deploy.sh`
+  and `deploy/promote.sh` call it before every `main.bicep` run.
 
 ## Where this is enforced / referenced
 

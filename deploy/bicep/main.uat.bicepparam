@@ -91,3 +91,6 @@ param customDomains = {
   'shell-web': [ { name: 'dijione-uat.dijitalteam.com', certificateName: 'mc-cae-dijione-ua-dijione-uat-diji-4211' } ]
   'birthday-supplier-web': [ { name: 'supplierportal-uat.dijitalteam.com', certificateName: 'mc-cae-dijione-ua-supplierportal-u-1670' } ]
 }
+
+// DijiBirthday outbound mail: deliberately left unset in UAT (null transport
+// = SIMULATED, never sends), matching live UAT. "Sent" in UAT is not delivery.

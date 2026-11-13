@@ -67,37 +67,29 @@ rule that major version bumps need explicit approval, and why
 `RELEASE_DATE` must be read at request time rather than baked in at build
 time: `docs/platform/versioning.md`.
 
-**Follow-up work, not yet implemented — `main.bicep` does not currently
-know about `RELEASE_DATE` at all.** Because Bicep's `env` array on a
-Container App resource is fully **replaced**, not merged, on every
-deployment, running `main.bicep` against a service that has an ad hoc
-`RELEASE_DATE` set (as above) will **silently wipe it**, with no error. Do
-not add a `releaseDates` (or similarly named) bicep parameter to fix this
-without, in the same change, also giving `deploy.sh`/`deploy/deploy.sh`
-logic that (1) reads every currently-deployed service's live `RELEASE_DATE`
-before the run, (2) carries each one forward into the parameter unless that
-service is itself being released this run, and (3) only then invokes
-`main.bicep`. A bicep parameter with an empty/default value and no such
-wrapper logic is **not safe** — it looks like a real mechanism but silently
-erases every other app's release date the next time someone runs a routine
-`main.bicep` deployment. Until this follow-up lands: **do not run a full
-multi-service `main.bicep` deployment against an environment that has any
-app-specific `RELEASE_DATE` set without first manually capturing
-(`az containerapp show ... --query "properties.template.containers[0].env"`)
-and understanding what would be lost.**
+**`RELEASE_DATE` is carried by `main.bicep`.** `main.bicep` takes a
+`releaseDates` object keyed by service name. `deploy.sh` and `promote.sh`
+build it with `deploy/release-dates.sh <rg>`, which reads every live
+`RELEASE_DATE` in the target resource group, carries each one forward
+unchanged, and stamps the current UTC time only for the apps named in
+`RELEASE_APPS` (comma list — the explicit release targets of that run; empty
+= nobody's date changes). Never hand-write `releaseDates` in a
+`.bicepparam`. An ad hoc `az containerapp update --image` should still set
+`RELEASE_DATE` in the same call.
 
-**Second follow-up, same shape of gap — web apps have no `APP_ENV`.**
-`main.bicep`'s `commonApiEnv` (which sets `APP_ENV`) is only applied when
-`s.kind == 'api'`; no equivalent exists for `kind == 'web'`, so no web app
-(`birthday-web` included) receives `APP_ENV` from Bicep at all. This
-mattered starting with DijiBirthday's Email Safety feature
-(`docs/birthday/email-safety.md`), whose non-production-only nav item reads
-`APP_ENV` via `birthday-web`'s own `/api/meta` route. Until `main.bicep`
-gets a `commonWebEnv`-style addition, `APP_ENV` is set ad hoc on
-`birthday-web` (`az containerapp update --set-env-vars APP_ENV=development`
-in DEV) — same "silently wiped by a full `main.bicep` run" risk as
-`RELEASE_DATE` above, and the same rule applies: capture it first before a
-full redeploy of a web app in an environment where it's been set ad hoc.
+**`APP_ENV` on `birthday-web` and DijiBirthday outbound mail are declared in
+Bicep.** `birthday-web` receives `APP_ENV` (its `/birthday/api/meta`
+`is_production` flag hides the non-prod Email Safety nav). `birthday-api`
+receives `MAIL_TRANSPORT` / `MAIL_POLICY` / `MAIL_SHARED_MAILBOX` from the
+`birthdayMail*` params (DEV: graph + internal_allowlist; UAT: unset =
+simulated; PROD: graph + production). `main.bicep` refuses
+`internal_allowlist` in PROD and `graph` without a mailbox. **Do not** set
+these with `--set-env-vars` any more — change the `.bicepparam`.
+
+**Custom domains are declared in Bicep** (`customDomains` param). Container
+Apps ingress is desired-state, so a binding missing from the param file is
+removed by a deployment. Add new hostnames there after the DNS + managed
+certificate exist.
 
 ## Prerequisites (user)
 

@@ -77,8 +77,13 @@ for name in "${EXPECTED[@]}"; do
 done
 
 echo "== deploy $TO workloads with the promoted digests =="
+# Per-app RELEASE_DATE: carry every live value forward; stamp only the
+# explicit release targets in RELEASE_APPS (comma list, may be empty).
+RELEASE_DATES="$("$(dirname "${BASH_SOURCE[0]}")/release-dates.sh" "$TO_RG")"
+echo "   releaseDates: $RELEASE_DATES"
 az deployment group create -g "$TO_RG" -n "dijione-workloads-${GITSHA}" \
   -f "$BICEP_DIR/main.bicep" -p "$BICEP_DIR/main.${TO}.bicepparam" \
+  -p releaseDates="$RELEASE_DATES" \
   -p imageDigests="$DIGESTS_JSON" \
   -o none
 

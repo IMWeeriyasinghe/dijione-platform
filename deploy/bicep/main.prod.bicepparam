@@ -111,3 +111,9 @@ param customDomains = {
   'shell-web': [ { name: 'dijione.dijitalteam.com', certificateName: 'mc-cae-dijione-pr-dijione-dijitalt-2592' } ]
   'birthday-supplier-web': [ { name: 'supplierportal.dijitalteam.com', certificateName: 'mc-cae-dijione-pr-supplierportal-d-5970' } ]
 }
+
+// DijiBirthday outbound mail — equals live PROD birthday-api env (previously
+// set ad hoc). PROD sends to the assigned supplier via birthday-api's own managed identity, Exchange RBAC-scoped to this one mailbox. Never internal_allowlist here (main.bicep refuses it).
+param birthdayMailTransport = 'graph'
+param birthdayMailPolicy = 'production'
+param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'

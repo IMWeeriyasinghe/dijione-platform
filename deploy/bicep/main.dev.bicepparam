@@ -86,3 +86,9 @@ param customDomains = {
   'shell-web': [ { name: 'dijione-dev.dijitalteam.com', certificateName: 'mc-cae-dijione-de-dijione-dev-diji-9506' } ]
   'birthday-supplier-web': [ { name: 'supplierportal-dev.dijitalteam.com', certificateName: 'mc-cae-dijione-de-supplierportal-d-3863' } ]
 }
+
+// DijiBirthday outbound mail — equals live DEV birthday-api env (previously
+// set ad hoc). DEV sends real mail ONLY to active Email Safety recipients (docs/birthday/email-safety.md).
+param birthdayMailTransport = 'graph'
+param birthdayMailPolicy = 'internal_allowlist'
+param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'
