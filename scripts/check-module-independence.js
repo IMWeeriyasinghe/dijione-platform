@@ -78,6 +78,7 @@ const ONSITE = {
   allowedFiles: new Set([
     ...SHARED_ALLOWED_FILES,
     "apps/platform-api/alembic/versions/i9j0k1l2m3n4_register_onsite_module.py",
+    "apps/platform-api/alembic/versions/f2a4b6c8d0e2_register_onsite_identity_manage.py",
     "apps/platform-api/tests/test_onsite_registration.py",
   ]),
 };
