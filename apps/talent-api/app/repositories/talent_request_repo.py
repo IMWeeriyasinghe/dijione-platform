@@ -1,5 +1,5 @@
 from sqlalchemy import exists, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.constants import PostingClientMappingStatus
 from app.models.posting_client_mapping import PostingClientMapping
@@ -60,17 +60,17 @@ class TalentRequestRepository:
         )
         return self.db.execute(stmt).scalars().first()
 
-    def list_for_scope(
+    def _filtered(
         self,
+        stmt,
         *,
         client_id: int | None,
         search: str | None = None,
         stage: str | None = None,
-        status: str | None = None,
+        statuses: list[str] | None = None,
         filter_client_id: int | None = None,
         allowed_client_ids: list[int] | None = None,
-    ) -> list[TalentRequest]:
-        stmt = select(TalentRequest)
+    ):
         stmt = self._scoped(stmt, client_id, allowed_client_ids)
         if filter_client_id is not None and client_id is None:
             stmt = stmt.where(TalentRequest.client_id == filter_client_id)
@@ -82,10 +82,64 @@ class TalentRequestRepository:
             )
         if stage:
             stmt = stmt.where(TalentRequest.current_stage == stage)
-        if status:
-            stmt = stmt.where(TalentRequest.lifecycle_status == status)
+        if statuses:
+            stmt = stmt.where(TalentRequest.lifecycle_status.in_(statuses))
+        return stmt
+
+    def list_for_scope(
+        self,
+        *,
+        client_id: int | None,
+        search: str | None = None,
+        stage: str | None = None,
+        status: str | None = None,
+        filter_client_id: int | None = None,
+        allowed_client_ids: list[int] | None = None,
+    ) -> list[TalentRequest]:
+        stmt = self._filtered(
+            select(TalentRequest),
+            client_id=client_id,
+            search=search,
+            stage=stage,
+            statuses=[status] if status else None,
+            filter_client_id=filter_client_id,
+            allowed_client_ids=allowed_client_ids,
+        )
         stmt = stmt.order_by(TalentRequest.created_at.desc())
         return list(self.db.execute(stmt).scalars().all())
+
+    def list_page(
+        self,
+        *,
+        client_id: int | None,
+        search: str | None = None,
+        stage: str | None = None,
+        statuses: list[str] | None = None,
+        filter_client_id: int | None = None,
+        allowed_client_ids: list[int] | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[TalentRequest], int]:
+        """One page of requests + the total, with the exact scoping of
+        ``list_for_scope`` (client tenant / staff portfolio, never
+        caller-widened). Ordered ``created_at DESC, id DESC`` so ties never
+        reorder between pages; the client is eager-loaded for the cards."""
+        filters = dict(
+            client_id=client_id,
+            search=search.strip() if search and search.strip() else None,
+            stage=stage,
+            statuses=statuses,
+            filter_client_id=filter_client_id,
+            allowed_client_ids=allowed_client_ids,
+        )
+        total = self.db.execute(
+            self._filtered(select(func.count(TalentRequest.id)), **filters)
+        ).scalar_one()
+        stmt = self._filtered(
+            select(TalentRequest).options(joinedload(TalentRequest.client)), **filters
+        ).order_by(TalentRequest.created_at.desc(), TalentRequest.id.desc())
+        rows = self.db.execute(stmt.limit(limit).offset(offset)).scalars().all()
+        return list(rows), int(total)
 
     def get_by_posting_external_id(
         self, posting_external_id: str, *, provider: str = "LEVER"

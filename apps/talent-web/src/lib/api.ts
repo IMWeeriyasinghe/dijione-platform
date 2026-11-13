@@ -27,6 +27,24 @@ export const listTalentRequests = (params: {
   status_filter?: string;
   client_id?: number;
 } = {}) => request<TalentRequestOut[]>(`/api/talent/requests${qs(params)}`);
+/** Response shape shared by every DijiTalentFlow ``/paged`` endpoint. */
+export type PageOut<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+export type TalentRequestFilters = {
+  search?: string;
+  stage?: string;
+  /** a lifecycle status, or "active" (APPROVED + IN_PROGRESS, server-side) */
+  status_filter?: string;
+  client_id?: number;
+};
+export const listTalentRequestsPaged = (
+  params: TalentRequestFilters & { page: number; page_size: number },
+) => request<PageOut<TalentRequestOut>>(`/api/talent/requests/paged${qs(params)}`);
 export const getTalentRequest = (id: number) =>
   request<TalentRequestOut>(`/api/talent/requests/${id}`);
 // NOTE: no createTalentRequest — DijiTalentFlow is not a client intake
@@ -80,6 +98,13 @@ export const listRequestCandidates = (requestId: number) =>
 // --- Applications -------------------------------------------------
 export const listApplications = (params: { search?: string; talent_request_id?: number } = {}) =>
   request<ApplicationOut[]>(`/api/talent/applications${qs(params)}`);
+export const listApplicationsPaged = (params: {
+  search?: string;
+  talent_request_id?: number;
+  status_filter?: string;
+  page: number;
+  page_size: number;
+}) => request<PageOut<ApplicationOut>>(`/api/talent/applications/paged${qs(params)}`);
 export const createApplication = (payload: {
   candidate_id: number;
   talent_request_id: number;
@@ -173,6 +198,15 @@ export type PostingRow = {
 
 export const listRecruitmentPostings = (unresolvedOnly = false) =>
   request<PostingRow[]>(`/api/talent/postings${qs({ unresolved_only: unresolvedOnly || undefined })}`);
+
+export type PostingView = "active" | "verified" | "unmapped" | "review" | "all";
+export type PostingPageOut = PageOut<PostingRow> & { counts: Record<PostingView, number> };
+export const listRecruitmentPostingsPaged = (params: {
+  view: PostingView;
+  search?: string;
+  page: number;
+  page_size: number;
+}) => request<PostingPageOut>(`/api/talent/postings/paged${qs(params)}`);
 
 export const verifyPostingMapping = (postingId: number, client_id: number) =>
   request<PostingRow>(`/api/talent/postings/${postingId}/verify-mapping`, {

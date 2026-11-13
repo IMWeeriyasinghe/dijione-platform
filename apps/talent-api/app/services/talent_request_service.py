@@ -351,7 +351,9 @@ class TalentRequestService:
         )
         return request
 
-    def to_out(self, request: TalentRequest) -> TalentRequestOut:
+    def to_out(
+        self, request: TalentRequest, *, active_count: int | None = None
+    ) -> TalentRequestOut:
         stage_values = [s.value for s in CANONICAL_STAGE_ORDER]
         current_idx = stage_values.index(request.current_stage)
         last_idx = len(stage_values) - 1
@@ -368,8 +370,11 @@ class TalentRequestService:
                 )
             )
 
-        applications = self.application_repo.list_for_request(request.id)
-        active_count = sum(1 for a in applications if a.status in ACTIVE_APPLICATION_STATUSES)
+        if active_count is None:
+            applications = self.application_repo.list_for_request(request.id)
+            active_count = sum(
+                1 for a in applications if a.status in ACTIVE_APPLICATION_STATUSES
+            )
 
         return TalentRequestOut(
             id=request.id,
@@ -397,21 +402,39 @@ class TalentRequestService:
             updated_at=request.updated_at,
         )
 
-    def to_client_out(self, request: TalentRequest) -> TalentRequestOut:
+    def to_client_out(
+        self, request: TalentRequest, *, shared_active_count: int | None = None
+    ) -> TalentRequestOut:
         """The internal client workspace's view: no staff-only workflow fields,
         and a candidate count covering shared candidates only."""
-        shared = self.application_repo.list_for_request(request.id, client_visible_only=True)
-        return self.to_out(request).model_copy(
+        if shared_active_count is None:
+            shared = self.application_repo.list_for_request(request.id, client_visible_only=True)
+            shared_active_count = sum(
+                1 for a in shared if a.status in ACTIVE_APPLICATION_STATUSES
+            )
+        # The staff count is overwritten below, so skip computing it (0).
+        return self.to_out(request, active_count=0).model_copy(
             update={
                 "notes": "",
                 "ta_status": "",
                 "customer_success_status": "",
                 "priority": "",
-                "active_application_count": sum(
-                    1 for a in shared if a.status in ACTIVE_APPLICATION_STATUSES
-                ),
+                "active_application_count": shared_active_count,
             }
         )
+
+    def to_out_many(
+        self, requests: list[TalentRequest], *, client_view: bool
+    ) -> list[TalentRequestOut]:
+        """Batch form for paged lists: active-application counts come from
+        one GROUP BY query rather than loading every application per card."""
+        ids = [r.id for r in requests]
+        counts = self.application_repo.active_counts_by_request(
+            ids, ACTIVE_APPLICATION_STATUSES, client_visible_only=client_view
+        )
+        if client_view:
+            return [self.to_client_out(r, shared_active_count=counts[r.id]) for r in requests]
+        return [self.to_out(r, active_count=counts[r.id]) for r in requests]
 
     def to_external_out(self, request: TalentRequest) -> ExternalTalentRequestOut:
         """The portal's view; its candidate count covers shared candidates only."""

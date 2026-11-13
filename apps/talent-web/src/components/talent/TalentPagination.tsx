@@ -31,7 +31,12 @@ const idle =
 const active = "bg-dt-orange/10 font-bold text-dt-text-primary ring-2 ring-inset ring-dt-orange";
 const btn = `${base} ${idle}`;
 
-export function CandidatePagination({
+/**
+ * DijiTalentFlow's one pagination control — numbered pages with gaps,
+ * First/Previous/Next/Last, page-size selector and "Showing X–Y of Z".
+ * Used by every paginated TalentFlow list (card grids and tables).
+ */
+export function TalentPagination({
   page,
   pageSize,
   pageSizes,
@@ -39,6 +44,7 @@ export function CandidatePagination({
   totalPages,
   onPageChange,
   onPageSizeChange,
+  noun = ["candidate", "candidates"],
 }: {
   page: number;
   pageSize: number;
@@ -47,7 +53,11 @@ export function CandidatePagination({
   totalPages: number;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
+  /** [singular, plural], e.g. ["request", "requests"]. */
+  noun?: readonly [string, string];
 }) {
+  const [one, many] = noun;
+  const Many = many.charAt(0).toUpperCase() + many.slice(1);
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
   const atFirst = page <= 1;
@@ -55,19 +65,19 @@ export function CandidatePagination({
 
   return (
     <nav
-      aria-label="Candidate pagination"
+      aria-label={`${Many.replace(/s$/, "")} pagination`}
       className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
     >
       <div className="flex flex-wrap items-center gap-3 text-sm text-dt-text-secondary">
         <span aria-live="polite">
           {total === 0
-            ? "No candidates"
-            : `Showing ${start}–${end} of ${total.toLocaleString()} candidate${total === 1 ? "" : "s"}`}
+            ? `No ${many}`
+            : `Showing ${start}–${end} of ${total.toLocaleString()} ${total === 1 ? one : many}`}
         </span>
         <label className="flex items-center gap-2">
           <span>Per page</span>
           <select
-            aria-label="Candidates per page"
+            aria-label={`${Many} per page`}
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
             className="rounded-lg border border-dt-border bg-dt-surface px-2 py-1 text-sm text-dt-text-primary focus:border-dt-orange focus:outline-none focus:ring-2 focus:ring-dt-orange/20"
@@ -126,3 +136,6 @@ export function CandidatePagination({
     </nav>
   );
 }
+
+/** Back-compat name for the Candidate Pool (same component). */
+export const CandidatePagination = TalentPagination;

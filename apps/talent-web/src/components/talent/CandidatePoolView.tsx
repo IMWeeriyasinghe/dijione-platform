@@ -9,7 +9,7 @@ import { PageHeader } from "@dijione/design-system";
 import { Card } from "@dijione/design-system";
 import { StatusBadge } from "@dijione/design-system";
 import { EmptyState, ErrorState, LoadingState } from "@dijione/design-system";
-import { CandidatePagination } from "./CandidatePagination";
+import { CandidatePagination } from "./TalentPagination";
 
 export const SEARCH_DEBOUNCE_MS = 300;
 const DEFAULT_PAGE_SIZE = 12;

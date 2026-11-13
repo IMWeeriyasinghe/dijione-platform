@@ -9,28 +9,15 @@ import Link from "next/link";
 import {
   getRecruitmentFreshness,
   getRecruitmentSyncRun,
-  listRecruitmentPostings,
+  listRecruitmentPostingsPaged,
   requestRecruitmentSync,
 } from "@/lib/api";
-
-const NEEDS_REVIEW = new Set([
-  "UNKNOWN_CLIENT_IDENTIFIER",
-  "AMBIGUOUS_MULTIPLE_TAGS",
-  "AMBIGUOUS_CLIENT_NAME",
-  "MALFORMED_TAG",
-  "CONFLICT_MANUAL_OVERRIDE",
-]);
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return "never";
-  const then = new Date(iso).getTime();
-  const mins = Math.round((Date.now() - then) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
-  return new Date(iso).toLocaleString();
-}
+import {
+  formatSyncAbsolute,
+  formatSyncTooltip,
+  parseSyncInstant,
+  relativeSyncTime,
+} from "@/lib/syncTime";
 
 /**
  * Recruitment Source (Lever) freshness + on-demand sync for internal TA
@@ -76,6 +63,7 @@ export function RecruitmentSyncStatus() {
           setTimeout(() => setFlash(null), 6000);
           await freshness.refetch();
           qc.invalidateQueries({ queryKey: ["ta-dashboard"] });
+          qc.invalidateQueries({ queryKey: ["recruitment-postings"] });
         }
       } catch {
         /* transient — keep polling until the safety timeout */
@@ -97,18 +85,19 @@ export function RecruitmentSyncStatus() {
     },
   });
 
-  const postings = useQuery({
-    queryKey: ["recruitment-postings"],
-    queryFn: () => listRecruitmentPostings(),
+  // Only the count is needed — one small page, not every posting.
+  const reviewPage = useQuery({
+    queryKey: ["recruitment-postings", "review-count"],
+    queryFn: () => listRecruitmentPostingsPaged({ view: "review", page: 1, page_size: 20 }),
     refetchInterval: activeRunId ? false : 120_000,
   });
-  const needsReview = (postings.data ?? []).filter(
-    (p) => p.mapping_status !== "VERIFIED" && NEEDS_REVIEW.has(p.resolution_status),
-  ).length;
+  const needsReview = reviewPage.data?.counts.review ?? 0;
 
   const syncing = Boolean(activeRunId) || syncNow.isPending;
   const latest = freshness.data?.latest_run;
-  const lastOk = freshness.data?.last_successful_sync_at ?? null;
+  // The last SUCCESSFUL completed run (authoritative, from the backend) —
+  // a later failed run never replaces it; it only changes the status text.
+  const lastOk = parseSyncInstant(freshness.data?.last_successful_sync_at);
 
   let statusLine: string;
   if (syncing) statusLine = "Syncing recruitment data…";
@@ -123,7 +112,22 @@ export function RecruitmentSyncStatus() {
       <div>
         <p className="text-sm font-semibold text-dt-text-primary">Recruitment data (Lever)</p>
         <p className="text-xs text-dt-text-secondary">
-          Last synced: {relativeTime(lastOk)} · {statusLine}
+          Last synced: {relativeSyncTime(lastOk)} · {statusLine}
+          {lastOk ? (
+            <>
+              {" · "}
+              <time
+                dateTime={lastOk.toISOString()}
+                title={formatSyncTooltip(lastOk)}
+                data-testid="last-sync-absolute"
+              >
+                {formatSyncAbsolute(lastOk)}
+              </time>
+              <span className="sr-only"> ({formatSyncTooltip(lastOk)})</span>
+            </>
+          ) : (
+            <span data-testid="last-sync-absolute"> · No successful sync recorded yet</span>
+          )}
         </p>
         {/* Truthful, not a live guarantee: this environment has no way to
             prove a scheduler is currently running, so we state the
