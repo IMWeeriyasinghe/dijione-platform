@@ -22,11 +22,25 @@
 
 ## Services
 
-Min/Max replicas below are **DEV/UAT (lean) → PROD (initial)**. In DEV/UAT
-**every** service scales to zero; in initial PROD only the JWT issuer and the
-entry point are pinned. All values are `.bicepparam` parameters
+Min/Max replicas below are **DEV/UAT (lean) → PROD**. In DEV/UAT **every**
+service scales to zero. In PROD the JWT issuer, the entry point and (since the
+2026-11 performance decision) the module paths that showed user-visible cold
+starts are pinned at one replica. All values are `.bicepparam` parameters
 (`minReplicas`, `maxReplicasDefault`, `maxReplicasOverrides`) — see Amendment 8
-in the plan.
+in the plan — except the Diji On-site and DijiAtWork apps, whose PROD floor is
+also set by their targeted release templates (`onsite-release.bicep`,
+`atwork-release.bicep`, whose `minReplicas` parameter defaults to 1 only when
+`environmentName == 'prod'`).
+
+**The PROD floors live in three files — keep them in step:**
+`main.prod.bicepparam` (`minReplicas` map), `atwork-release.bicep` and
+`onsite-release.bicep`. A change in one without the others makes the next run of
+that template revert PROD. After any PROD deployment, confirm the floors:
+
+```bash
+az containerapp list -g rg-dijione-prod \
+  --query "sort_by([].{app:name,min:properties.template.scale.minReplicas,max:properties.template.scale.maxReplicas}, &app)" -o table
+```
 
 | Service | Kind | Ingress | Target port | Min/Max (DEV/UAT → PROD) | Database |
 |---|---|---|---|---|---|
@@ -40,8 +54,12 @@ in the plan.
 | `admin-api` | FastAPI (zero-DB BFF) | internal | 8000 | 0/1 → 0/2 | — |
 | `talent-api` | FastAPI | internal | 8000 | 0/1 → 0/2 (→ 1 if TalentFlow is the primary daily surface) | `talent_dev` |
 | `recruitment-api` | FastAPI (source domain — Lever) | internal | 8000 | 0/1 → 0/2 | `recruitment_dev` |
-| `people-api` | FastAPI (source domain — BambooHR) | internal | 8000 | 0/1 → 0/2 | `people_dev` |
-| `birthday-api` | FastAPI | internal | 8000 | 0/1 → 0/2 | `birthday_dev` |
+| `people-api` | FastAPI (source domain — BambooHR) | internal | 8000 | 0/1 → **1**/2 | `people_dev` |
+| `birthday-api` | FastAPI | internal | 8000 | 0/1 → **1**/2 | `birthday_dev` |
+| `onsite-web` | Next.js | internal | 3000 | 0/1 → **1**/1 | — |
+| `onsite-api` | FastAPI | internal | 8000 | 0/1 → **1**/1 | `onsite_dev` |
+| `atwork-web` | Next.js | internal | 3000 | 0/1 → **1**/1 | — |
+| `atwork-api` | FastAPI | internal | 8000 | 0/1 → **1**/1 | `atwork_dev` |
 | `commercial-api` | FastAPI skeleton (HubSpot, deferred) | — | 8000 | — | `commercial_dev` (later) — **not deployed to the first DEV** |
 | `spark-api` | FastAPI skeleton | — | 8000 | — | — **not deployed** (deliberate) |
 
@@ -50,9 +68,13 @@ Three apps take public ingress: `shell-web` (the gateway), `talentflow-portal-we
 `birthday-supplier-web` (external supplier portal). Neither external portal is
 proxied through `shell-web`. **Every service is scale-to-zero-safe** (stateless
 request/response, no in-process schedulers/threads — all cron is Jobs); DEV/UAT
-run them all at `minReplicas = 0` and accept the cold start. Initial PROD pins
-only `platform-api` (every request path crosses the JWT issuer) and `shell-web`
-(the entry point); raise the rest per the scaling-trigger table, not
+run them all at `minReplicas = 0` and accept the cold start. PROD pins
+`platform-api` (every request path crosses the JWT issuer) and `shell-web` (the
+entry point), plus — from the 2026-11 performance decision — `people-api`,
+`birthday-api`, `onsite-api`, `onsite-web`, `atwork-api` and `atwork-web`, whose
+15–24 s cold starts were user-visible (module open, Home cards, the Diji On-site
+Workforce Directory reload) or which scheduled Jobs kept waking at the higher
+active billing rate. Raise the rest per the scaling-trigger table, not
 preemptively. `commercial-api` and `spark-api` are skeletons and are **not**
 provisioned until they carry real business logic.
 

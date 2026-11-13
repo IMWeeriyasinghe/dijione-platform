@@ -13,6 +13,11 @@ param imageRegistryLoginServer string = 'crdijionenonprod.azurecr.io'
 @description('Exact digests: { "atwork-api": "sha256:…", "atwork-web": "sha256:…" }')
 param imageDigests object
 
+@description('Replica floor for atwork-api and atwork-web. PROD keeps one warm replica (2026-11 performance decision; keep in step with main.prod.bicepparam); DEV and UAT scale to zero.')
+@minValue(0)
+@maxValue(1)
+param minReplicas int = environmentName == 'prod' ? 1 : 0
+
 var tags = { platform: 'dijione', env: environmentName, managedBy: 'bicep' }
 var appEnv = environmentName == 'dev' ? 'development' : environmentName
 
@@ -46,7 +51,7 @@ module atworkApi 'modules/containerapp.bicep' = {
     targetPort: 8000
     isApi: true
     external: false
-    minReplicas: 0
+    minReplicas: minReplicas
     maxReplicas: 1
     location: location
     tags: tags
@@ -72,7 +77,7 @@ module atworkWeb 'modules/containerapp.bicep' = {
     targetPort: 3000
     isApi: false
     external: false
-    minReplicas: 0
+    minReplicas: minReplicas
     maxReplicas: 1
     location: location
     tags: tags
