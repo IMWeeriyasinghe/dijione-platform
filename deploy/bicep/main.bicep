@@ -133,6 +133,15 @@ param supplierPublicBaseUrl string = ''
 // Directory), never tied to one application module.
 var deployPeople = deployBirthday || deployOnsite
 
+@description('Custom-domain ingress bindings per service name: { \'shell-web\': [{ name: \'dijione.example.com\', certificateName: \'mc-...\' }] }. The certificate is an existing managed certificate on this environment\'s Container Apps Environment (created when the DNS-validated domain was first bound). Declared here because ACA ingress is desired-state: a deployment that omits a live binding REMOVES it, which would break Entra sign-in redirects and the supplier portal hostname.')
+param customDomains object = {}
+
+@description('Override the Key Vault Secrets User role-assignment name that modules/identity.bicep creates — only needed when that (scope, role, principal) grant already exists in this environment under a different assignment id (created out-of-band before this template first ran here). Leave empty (the default) for a normal deployment.')
+param existingIdentityKvSecretsUserRoleAssignmentName string = ''
+
+@description('Same override, for the bootstrap identity AcrPull role assignment (modules/acr-pull.bicep). Leave empty (the default) for a normal deployment.')
+param existingIdentityAcrPullRoleAssignmentName string = ''
+
 var tags = {
   platform: 'dijione'
   env: environmentName
@@ -161,6 +170,7 @@ module identity 'modules/identity.bicep' = {
     location: location
     tags: tags
     keyVaultName: kvName
+    existingKvSecretsUserRoleAssignmentName: existingIdentityKvSecretsUserRoleAssignmentName
   }
 }
 
@@ -172,6 +182,7 @@ module uamiAcrPull 'modules/acr-pull.bicep' = {
     acrName: imageRegistryName
     granteeName: uamiName
     principalId: identity.outputs.principalId
+    existingAcrPullRoleAssignmentName: existingIdentityAcrPullRoleAssignmentName
   }
 }
 
@@ -419,6 +430,7 @@ module apps 'modules/containerapp.bicep' = [
       targetPort: s.kind == 'api' ? 8000 : 3000
       isApi: s.kind == 'api'
       external: s.external
+      customDomains: customDomains[?s.name] ?? []
       minReplicas: minReplicas[?s.name] ?? 0
       maxReplicas: maxReplicasOverrides[?s.name] ?? maxReplicasDefault
       cpu: containerCpu
