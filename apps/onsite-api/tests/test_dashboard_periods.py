@@ -1,12 +1,13 @@
 """Period Overview/hourly (date ranges) and server-side sorting for the
 redesigned dashboard. Ranges stay bounded and site-scoped."""
 
-from tests.conftest import enable_site, headers_for, run_sync
+from tests.conftest import DIRECTORY, enable_site, headers_for, map_directory, run_sync
 
 DAY1, DAY2 = "2026-10-13", "2026-10-14"
 
 
 def _ready(api_client):
+    map_directory(DIRECTORY)
     run_sync(api_client)
     enable_site(api_client, "dev-site")
 

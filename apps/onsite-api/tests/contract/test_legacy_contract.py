@@ -11,6 +11,19 @@ green while ``ONSITE_LEGACY_CONTRACT`` is on.
 Re-capturing (``CONTRACT_CAPTURE=1 pytest tests/contract``) is only
 legitimate on the unchanged tree; doing so after Stage 1 would silently
 move the baseline and must be called out explicitly in review.
+
+Since Stage 3 the check is BACKWARD COMPATIBILITY, not equality:
+- every key of the baseline shape is still present with a compatible type
+  (additive new-contract keys such as ``bamboohr_id``/``mapping_status`` are
+  allowed);
+- enum values may only come from the baseline vocabulary (no new
+  ``identity_class``/flag values reach the running onsite-web), while
+  ``review_breakdown``/``counts`` must still carry every baseline key.
+Data comes from explicit synthetic VERIFIED mappings (``map_directory``).
+Excel files are downloads, not parsed by the web app: their sheet names are
+held to the baseline, while their column headers changed deliberately
+(``Employee Number`` was the ZKBioTime ID) and are asserted explicitly in
+``NEW_EXPORT_HEADERS``.
 """
 
 from __future__ import annotations
@@ -23,7 +36,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from tests.conftest import enable_site, headers_for, run_sync
+from tests.conftest import DIRECTORY, enable_site, headers_for, map_directory, run_sync
 
 FIXTURES = Path(__file__).parent / "fixtures"
 WEB_FIXTURES = Path(__file__).resolve().parents[4] / "apps" / "onsite-web" / "src" / "__tests__" / "fixtures" / "api-legacy"
@@ -163,6 +176,8 @@ def workbook_shape(content: bytes) -> dict:
 # --- fixture plumbing ---------------------------------------------------------
 
 def _ready(api_client):
+    if not CAPTURE:
+        map_directory(DIRECTORY)
     run_sync(api_client)
     enable_site(api_client, SITE)
 
@@ -181,12 +196,98 @@ def _store_web_sample(name: str, body) -> None:
     (WEB_FIXTURES / f"{name}.json").write_text(json.dumps(body, indent=2, sort_keys=True) + "\n")
 
 
+_SUPERSET_ENUMS = {"review_breakdown_keys", "exception_count_keys"}
+
+
+def compatible(expected, observed, path: str = "$") -> list[str]:
+    """Problems that would break a consumer written against ``expected``."""
+    if isinstance(expected, dict):
+        if not isinstance(observed, dict):
+            return [f"{path}: expected object"]
+        out = []
+        for k, v in expected.items():
+            if k not in observed:
+                out.append(f"{path}.{k}: missing")
+            else:
+                out += compatible(v, observed[k], f"{path}.{k}")
+        return out
+    if isinstance(expected, list):
+        if not isinstance(observed, list):
+            return [f"{path}: expected array"]
+        if not expected or not observed:
+            return []
+        return compatible(expected[0], observed[0], f"{path}[]")
+    if isinstance(observed, (dict, list)):
+        return [f"{path}: expected scalar"]
+    allowed = set(expected.split("|")) | ({"int"} if "float" in expected else set())
+    extra = set(observed.split("|")) - allowed
+    return [f"{path}: new type(s) {sorted(extra)} (baseline {expected})"] if extra else []
+
+
+def enum_problems(expected: dict, observed: dict) -> list[str]:
+    out = []
+    for k, vals in observed.items():
+        base = set(expected.get(k, []))
+        if k in _SUPERSET_ENUMS:
+            if base - set(vals):
+                out.append(f"{k}: lost {sorted(base - set(vals))}")
+        elif k in expected and set(vals) - base:
+            out.append(f"{k}: new values {sorted(set(vals) - base)}")
+        elif k not in expected and k in ENUM_KEYS:
+            out.append(f"{k}: enum not in baseline")
+    return out
+
+
 def _check(name: str, observed: dict) -> None:
     if CAPTURE:
         _store(name, observed)
         return
     expected = _load(name)
-    assert observed == expected, f"legacy contract drift in {name}:\n{json.dumps(observed, indent=2, sort_keys=True)}"
+    assert observed["status"] == expected["status"]
+    if "shape" in expected:
+        problems = compatible(expected["shape"], observed["shape"]) + enum_problems(expected["enums"],
+                                                                                    observed["enums"])
+        assert not problems, f"legacy contract broken in {name}: {problems}"
+    elif "sheets" in expected:
+        assert sorted(observed["sheets"]) == sorted(expected["sheets"]), name
+        for sheet, exp in expected["sheets"].items():
+            obs = observed["sheets"][sheet]
+            if sheet in NEW_EXPORT_HEADERS:  # tabular report sheets
+                renamed = [LABEL_RENAMES.get(x, x) for x in exp["preamble_labels"]]
+                assert obs["preamble_labels"] == renamed, (name, sheet)
+                assert obs["header"] == NEW_EXPORT_HEADERS[sheet], (name, sheet)
+            else:  # measure sheets (Summary, Hourly Activity, 30-Day Trend): row labels only
+                want = {LABEL_RENAMES.get(x, x) for x in _labels(exp)} - REMOVED_MEASURES
+                got = _labels(obs) - ADDED_MEASURES
+                assert got == want, (name, sheet, sorted(got ^ want))
+    else:
+        assert observed == expected, name
+
+
+def _labels(sheet: dict) -> set[str]:
+    """First-column labels of a measure sheet, ignoring date/time/number rows."""
+    vals = list(sheet["preamble_labels"]) + ([sheet["header"][0]] if sheet["header"] else [])
+    return {v for v in vals if v and not v[:1].isdigit()}
+
+
+# Deliberate, reviewed export changes (identity redesign, Stage 3).
+REMOVED_MEASURES = {"Unmatched codes"}  # unmapped IDs are no longer part of attendance reports
+ADDED_MEASURES = {"Unmapped punches excluded (see Identity Management)"}
+LABEL_RENAMES = {"Employee Number": "ZKBioTime ID"}
+NEW_EXPORT_HEADERS = {
+    "Attendance Report": ["Date", "Employee Name", "BHR Employee ID", "BambooHR Employee Number", "ZKBioTime ID(s)",
+                          "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
+                          "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags"],
+    "Exception Report": ["Date", "Employee Name", "BHR Employee ID", "BambooHR Employee Number", "ZKBioTime ID(s)",
+                         "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
+                         "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags", "Review Reasons"],
+    "Event Detail": ["Local Date", "Local Time", "ZKBioTime ID", "Employee Name", "BHR Employee ID",
+                     "BambooHR Employee Number", "Department", "Terminal", "Verify Type", "Mapping Status",
+                     "Review Flags"],
+    "Employees": ["Employee Name", "BHR Employee ID", "BambooHR Employee Number", "ZKBioTime ID(s)", "Department",
+                  "Employment Status", "Mapping Status", "Activity Days", "Attendance Events", "Review Flags",
+                  "Last Activity (site local)"],
+}
 
 
 # --- tests --------------------------------------------------------------------

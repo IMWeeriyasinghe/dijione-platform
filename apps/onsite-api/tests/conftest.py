@@ -156,3 +156,31 @@ def mapped(db):
     for site, code, bid in STANDARD_MAPPINGS:
         make_mapping(db, site_id=site, code=code, bamboohr_id=bid, valid_from="2020-01-01")
     return STANDARD_MAPPINGS
+
+
+def map_directory(entries, sites=("dev-site", "syd-site"), valid_from="2000-01-01"):
+    """Synthetic test data: register a VERIFIED mapping (code -> bamboohr_id)
+    for every directory entry whose Employee Number is unique and non-blank,
+    so the pre-redesign dashboard tests keep exercising the same people.
+    This is explicit verified data, NOT numeric matching: the application
+    never derives a mapping from an Employee Number. Shared numbers (e.g.
+    "105") stay unmapped."""
+    from collections import Counter
+    from datetime import date as _date
+
+    from app.models.identity import IdentityMapping
+
+    counts = Counter(e.get("employee_number") for e in entries)
+    s = SessionLocal()
+    try:
+        for e in entries:
+            n = e.get("employee_number")
+            if n is None or not str(n).strip() or counts[n] > 1:
+                continue
+            for site in sites:
+                s.add(IdentityMapping(site_id=site, zk_emp_code=n, bamboohr_id=str(e["bamboohr_id"]),
+                                      valid_from=_date.fromisoformat(valid_from), status="VERIFIED",
+                                      evidence="synthetic test mapping", verified_by_user_id=1, source="MANUAL"))
+        s.commit()
+    finally:
+        s.close()

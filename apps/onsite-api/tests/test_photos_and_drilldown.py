@@ -12,13 +12,14 @@ from app.models.mirror import AttendanceEvent
 from app.services import dashboard_service as svc
 from app.services import employee_photos, workforce_directory
 from app.services.employee_photos import Photo, PhotoCache
-from tests.conftest import DIRECTORY, enable_site, headers_for, run_sync
+from tests.conftest import DIRECTORY, enable_site, headers_for, map_directory, run_sync
 
 DAY1, DAY2 = "2026-10-13", "2026-10-14"
 PNG = b"\x89PNG\r\n\x1a\n0000"
 
 
 def _ready(api_client):
+    map_directory(DIRECTORY)
     run_sync(api_client)
     enable_site(api_client, "dev-site")
 
@@ -125,13 +126,16 @@ def test_upstream_status_mapping(monkeypatch):
 # --- photo route ---------------------------------------------------------------
 
 def test_photo_route_serves_only_verified_single_matches(api_client, db, audit_calls, photo_directory, monkeypatch):
+    _ready(api_client)  # verified mappings + enabled site: photos follow the verified owner only
     employee_photos.cache.clear()
     seen = []
     monkeypatch.setattr(employee_photos.cache, "_fetch", lambda bid: (seen.append(bid), (Photo(PNG, "image/png"), 60))[1])
     ok = _get(api_client, "/api/onsite/employees/101/photo")
     assert ok.status_code == 200 and ok.content == PNG
     assert ok.headers["cache-control"] == "private, max-age=86400"
-    assert _get(api_client, "/api/onsite/employees/105/photo").status_code == 404   # ambiguous number: never guessed
+    assert _get(api_client, "/api/onsite/employees/105/photo").status_code == 404   # no verified owner: never guessed
+    assert _get(api_client, "/api/onsite/employees/by-id/1/photo").status_code == 200  # verified employee
+    assert _get(api_client, "/api/onsite/employees/by-id/5/photo").status_code == 404  # has photo, but unverified
     assert _get(api_client, "/api/onsite/employees/999/photo").status_code == 404   # unmatched code
     assert _get(api_client, "/api/onsite/employees/102/photo").status_code == 404   # matched, no photo
     for _ in range(3):
@@ -156,7 +160,7 @@ def test_has_photo_flag_in_dtos(api_client, db, audit_calls, photo_directory):
     url = f"/api/onsite/employees?site_id=dev-site&date_from={DAY1}&date_to={DAY2}&page_size=50"
     rows = _get(api_client, url).json()["items"]
     flags = {r["emp_code"]: r["has_photo"] for r in rows}
-    assert flags["101"] is True and flags["102"] is False and flags.get("105") is False
+    assert flags["101"] is True and flags["102"] is False and "105" not in flags  # 105 unverified
     act = _get(api_client, f"/api/onsite/activity?site_id=dev-site&date_from={DAY1}&date_to={DAY1}&emp_code=101").json()
     assert all(e["has_photo"] for e in act["items"])
 

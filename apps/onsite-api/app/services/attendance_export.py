@@ -21,6 +21,7 @@ from app.repositories.attendance_repository import AttendanceRepository
 from app.services import dashboard_service as svc
 from app.services.attendance_summary import daily_activity
 from app.services.excel_report import Column, Sheet
+from app.services.identity_resolution import MappingIndex
 from app.services.workforce_directory import DirectorySnapshot
 
 MAX_EXPORT_DAY_ROWS = 20_000
@@ -32,10 +33,13 @@ FLAG_LABEL = {
     "INACTIVE_EMPLOYEE_ACTIVITY": "Inactive employee activity", "BEFORE_HIRE_ACTIVITY": "Before-hire activity",
     "TZ_INCONSISTENT": "Time zone inconsistent", "HIGH_PUNCH_COUNT": "High activity count",
 }
-IDENTITY_LABEL = {
-    "MATCHED_ACTIVE": "Matched (active)", "MATCHED_INACTIVE": "Matched (inactive)",
-    "MATCHED_BEFORE_HIRE": "Matched (before hire date)", "AMBIGUOUS": "Ambiguous Employee Number",
-    "UNMATCHED": "No matching Employee Number",
+IDENTITY_LABEL = {  # legacy filter vocabulary (derived from the verified employee)
+    "MATCHED_ACTIVE": "Verified (active)", "MATCHED_INACTIVE": "Verified (inactive)",
+    "MATCHED_BEFORE_HIRE": "Verified (before hire date)", "AMBIGUOUS": "Ambiguous", "UNMATCHED": "Unmapped",
+}
+MAPPING_LABEL = {
+    "MAPPED": "Verified", "MAPPED_DIRECTORY_MISSING": "Verified (employee not in directory)",
+    "DIRECTORY_UNAVAILABLE": "Verified (directory unavailable)",
 }
 _REVIEW_LABEL = {"needs_review": "Needs review", "no_flags": "No review flags", **FLAG_LABEL}
 
@@ -77,49 +81,53 @@ def _time(value: str | None):
 
 def day_rows(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date,
              directory: DirectorySnapshot, f: ExportFilters) -> list[dict]:
-    """Employee-day rows matching every filter, enriched from the Workforce
-    Directory (display/filter only — identity stays exact EmpCode equality)."""
-    ident = svc.Identity(directory)
+    """Verified employee-day rows matching every filter. Unmapped attendance is
+    never exported here (it is counted in the summary and handled in Identity
+    Management)."""
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start,
-                          date_to=end, directory=directory, emp_codes=[f.emp_code] if f.emp_code else None)
-    out = []
-    for r in rows:
-        day = date.fromisoformat(r["local_date"])
-        d = ident.describe(r["emp_code"], day, day)
-        row = {**r, "employee_name": d["employee_name"], "department": d["department"],
-               "employment_status": d["employment_status"]}
-        if svc._match(row, q=f.q, emp_code=f.emp_code, department=f.department, identity_class=f.identity_class,
-                      employment_status=f.employment_status) and svc._review_hit(row, f.review):
-            out.append(row)
+                          date_to=end, directory=directory)
+    out = [r for r in rows if svc._match(r, q=f.q, emp_code=f.emp_code, department=f.department,
+                                         identity_class=f.identity_class, employment_status=f.employment_status)
+           and svc._review_hit(r, f.review)]
     if len(out) > MAX_EXPORT_DAY_ROWS:
         raise too_large(len(out), MAX_EXPORT_DAY_ROWS)
-    svc._with_terminals(db, allowed, site_id, start, end, out, {r["emp_code"] for r in out} or None)
+    svc._with_terminals(db, allowed, site_id, start, end, out, True)
     if f.terminal:
         out = [r for r in out if f.terminal in r["terminal_names"]]
     out.sort(key=lambda r: (r["local_date"], r.get("employee_name") or "~", r["emp_code"]))
     return out
 
 
+def unmapped_punches(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot) -> int:
+    return svc.operational(db, allowed, site_id, start, end,
+                           MappingIndex.load(db, allowed_site_ids=allowed, directory=directory))["unmapped_punches"]
+
+
+def _by_code_day(days: list[dict]) -> dict[tuple[str, str], dict]:
+    return {(r["local_date"], c): r for r in days for c in r["zk_emp_codes"]}
+
+
 def event_rows(db: Session, allowed, site_id: str, start: date, end: date, days: list[dict],
                terminal: str | None) -> list[dict]:
-    """Raw events belonging to the selected employee-days, oldest first."""
+    """Raw events belonging to the selected verified employee-days, oldest first."""
     if not days:
         return []
-    by_day = {(r["local_date"], r["emp_code"]): r for r in days}
+    windows = [(c, date.fromisoformat(r["local_date"]), date.fromisoformat(r["local_date"]))
+               for r in days for c in r["zk_emp_codes"]]
     total, events = AttendanceRepository(db).events_page(
-        allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
-        emp_codes={r["emp_code"] for r in days}, terminal=terminal, offset=0, limit=MAX_EXPORT_EVENTS + 1,
+        allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end, code_windows=windows,
+        terminal=terminal, offset=0, limit=MAX_EXPORT_EVENTS + 1,
     )
     if total > MAX_EXPORT_EVENTS:
         raise too_large(total, MAX_EXPORT_EVENTS)
-    return pair_events(events, by_day)
+    return pair_events(events, _by_code_day(days))
 
 
-def pair_events(events, by_day: dict) -> list[dict]:
-    """Attach each event's employee-day row; oldest first."""
+def pair_events(events, by_code_day: dict) -> list[dict]:
+    """Attach each event's verified employee-day row (keyed by date + ZKBioTime ID); oldest first."""
     out = []
     for e in reversed(events):
-        day = by_day.get((e.site_local_date.isoformat(), e.emp_code))
+        day = by_code_day.get((e.site_local_date.isoformat(), e.emp_code))
         if day is not None:
             out.append({"event": e, "day": day})
     return out
@@ -128,12 +136,16 @@ def pair_events(events, by_day: dict) -> list[dict]:
 # --- sheets ------------------------------------------------------------------
 
 _ATTENDANCE_COLUMNS = [
-    Column("Date", 12, "date"), Column("Employee Number", 16), Column("Employee Name", 26),
-    Column("Department", 20), Column("Employment Status", 14), Column("First Activity", 13, "time"),
-    Column("Latest Activity", 13, "time"), Column("Punch Count", 12, "int"),
-    Column("Activity Span (minutes)", 14, "int"), Column("Terminal(s)", 20, wrap=True),
-    Column("Identity Classification", 24), Column("Review Flags", 32, wrap=True),
+    Column("Date", 12, "date"), Column("Employee Name", 26), Column("BHR Employee ID", 14),
+    Column("BambooHR Employee Number", 16), Column("ZKBioTime ID(s)", 16), Column("Department", 20),
+    Column("Employment Status", 14), Column("First Activity", 13, "time"), Column("Latest Activity", 13, "time"),
+    Column("Punch Count", 12, "int"), Column("Activity Span (minutes)", 14, "int"),
+    Column("Terminal(s)", 20, wrap=True), Column("Mapping Status", 22), Column("Review Flags", 32, wrap=True),
 ]
+
+
+def _mapping_label(r: dict) -> str:
+    return MAPPING_LABEL.get(r.get("mapping_status") or "", r.get("mapping_status") or "")
 
 
 def attendance_sheet(days: list[dict], *, title: str = "Attendance Report", with_reasons: bool = False) -> Sheet:
@@ -142,10 +154,11 @@ def attendance_sheet(days: list[dict], *, title: str = "Attendance Report", with
         cols.append(Column("Review Reasons", 60, wrap=True))
     rows = []
     for r in days:
-        row = [date.fromisoformat(r["local_date"]), r["emp_code"], r.get("employee_name"), r.get("department"),
+        row = [date.fromisoformat(r["local_date"]), r.get("employee_name"), r.get("bamboohr_id"),
+               r.get("employee_number"), ", ".join(r.get("zk_emp_codes") or []), r.get("department"),
                r.get("employment_status"), _time(r["first_activity_local"]), _time(r["latest_activity_local"]),
-               r["punch_count"], r["span_minutes"], ", ".join(r.get("terminal_names") or []),
-               IDENTITY_LABEL.get(r.get("identity_class") or "", "Directory unavailable"), _flags_text(r["flags"])]
+               r["punch_count"], r["span_minutes"], ", ".join(r.get("terminal_names") or []), _mapping_label(r),
+               _flags_text(r["flags"])]
         if with_reasons:
             row.append(" ".join(svc._FLAG_REASON[f] for f in r["flags"]))
         rows.append(row)
@@ -153,32 +166,32 @@ def attendance_sheet(days: list[dict], *, title: str = "Attendance Report", with
 
 
 def event_sheet(events: list[dict]) -> Sheet:
-    cols = [Column("Local Date", 12, "date"), Column("Local Time", 11, "time"), Column("Employee Number", 16),
-            Column("Employee Name", 26), Column("Department", 20), Column("Terminal", 18),
-            Column("Verify Type", 11), Column("Identity Classification", 24), Column("Review Flags", 32, wrap=True)]
+    cols = [Column("Local Date", 12, "date"), Column("Local Time", 11, "time"), Column("ZKBioTime ID", 14),
+            Column("Employee Name", 26), Column("BHR Employee ID", 14), Column("BambooHR Employee Number", 16),
+            Column("Department", 20), Column("Terminal", 18), Column("Verify Type", 11), Column("Mapping Status", 22),
+            Column("Review Flags", 32, wrap=True)]
     rows = []
     for item in events:
         e, day = item["event"], item["day"]
         rows.append([e.site_local_date, _time(e.punch_time_local), e.emp_code, day.get("employee_name"),
-                     day.get("department"), e.terminal_alias, e.verify_type,
-                     IDENTITY_LABEL.get(day.get("identity_class") or "", "Directory unavailable"),
-                     _flags_text(day["flags"])])
+                     day.get("bamboohr_id"), day.get("employee_number"), day.get("department"), e.terminal_alias,
+                     e.verify_type, _mapping_label(day), _flags_text(day["flags"])])
     return Sheet("Event Detail", cols, rows)
 
 
-def summary_sheet(days: list[dict], start: date, end: date) -> Sheet:
+def summary_sheet(days: list[dict], start: date, end: date, unmapped: int | None = None) -> Sheet:
     counts = Counter(f for r in days for f in r["flags"])
-    flagged = {r["emp_code"] for r in days if r["flags"]}
-    unmatched = {r["emp_code"] for r in days if ReviewFlag.UNMATCHED_CODE.value in r["flags"]}
+    flagged = {r["bamboohr_id"] for r in days if r["flags"]}
     rows: list[list] = [
         ["Date range", f"{start.isoformat()} to {end.isoformat()}"],
-        ["Employees with activity", len({r["emp_code"] for r in days})],
+        ["Employees with activity", len({r["bamboohr_id"] for r in days})],
         ["Employee-days with activity", len(days)],
         ["Attendance events", sum(r["punch_count"] for r in days)],
         ["Employees needing review", len(flagged)],
         ["Single-activity days", counts.get(ReviewFlag.SINGLE_PUNCH.value, 0)],
-        ["Unmatched codes", len(unmatched)],
     ]
+    if unmapped is not None:
+        rows.append(["Unmapped punches excluded (see Identity Management)", unmapped])
     rows += [[f"Review flag: {FLAG_LABEL[f]}", counts.get(f, 0)] for f in svc.REVIEW_FLAGS]
     return Sheet("Summary", [Column("Measure", 36), Column("Value", 24)], rows)
 
@@ -187,7 +200,7 @@ def summary_sheet(days: list[dict], start: date, end: date) -> Sheet:
 
 
 def filter_summary(site_name: str, date_label: str, f: ExportFilters) -> list[tuple[str, str]]:
-    labels = {"q": "Employee search", "emp_code": "Employee Number", "department": "Department",
+    labels = {"q": "Employee search", "emp_code": "ZKBioTime ID", "department": "Department",
               "identity_class": "Identity classification", "employment_status": "Employment status",
               "review": "Review / exception type", "terminal": "Terminal"}
     out = [("Site", site_name), ("Date range" if " to " in date_label else "Date", date_label)]

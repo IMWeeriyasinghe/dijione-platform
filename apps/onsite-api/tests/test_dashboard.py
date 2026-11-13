@@ -4,7 +4,7 @@ people-api fallback, raw PunchState preservation, neutral wording."""
 import json
 
 from app.services import workforce_directory
-from tests.conftest import enable_site, headers_for, run_sync
+from tests.conftest import DIRECTORY, enable_site, headers_for, map_directory, run_sync
 
 DAY1, DAY2 = "2026-10-13", "2026-10-14"
 VIEWER_PATHS = [
@@ -16,6 +16,7 @@ VIEWER_PATHS = [
 
 
 def _ready(api_client, *sites):
+    map_directory(DIRECTORY)
     run_sync(api_client)
     for s in sites or ("dev-site",):
         enable_site(api_client, s)
@@ -29,10 +30,15 @@ def test_overview_aggregates(api_client, db, audit_calls, directory):
     _ready(api_client)
     body = _get(api_client, f"/api/onsite/dashboard/overview?site_id=dev-site&date={DAY1}").json()
     k = body["kpis"]
-    # 2026-10-13 at dev-site: 101 x2, 102 x1, 0107 x2 (dup tap), 999 x1 (unmatched)
-    assert (k["employees_with_activity"], k["total_events"]) == (4, 6)
-    assert k["single_punch_employees"] == 2 and k["unmatched_codes"] == 1
-    assert k["employees_needing_review"] == 3
+    # 2026-10-13 at dev-site: 101 x2, 102 x1, 0107 x2 (dup tap) verified; 999 x1 has no verified
+    # mapping -> excluded from identified KPIs (visible only in Identity Management / operational block).
+    assert (k["employees_with_activity"], k["total_events"]) == (3, 5)
+    assert k["single_punch_employees"] == 1 and k["unmatched_codes"] == 0
+    assert k["employees_needing_review"] == 2
+    assert "operational" not in body  # viewers do not get ingestion/identity coverage
+    admin = _get(api_client, f"/api/onsite/dashboard/overview?site_id=dev-site&date={DAY1}", "ONSITE_ADMIN").json()
+    assert admin["operational"] == {"active_codes": 4, "total_punches": 6, "unmapped_codes": 1,
+                                    "unmapped_punches": 1}
     assert body["review_breakdown"]["POSSIBLE_DUPLICATE_TAP"] == 1
     assert set(body["review_breakdown"]) == {
         "SINGLE_PUNCH", "HIGH_PUNCH_COUNT", "POSSIBLE_DUPLICATE_TAP", "UNMATCHED_CODE", "AMBIGUOUS_CODE",
@@ -52,27 +58,27 @@ def test_hourly_grouping_uses_site_local_hour(api_client, db, audit_calls, direc
     hours = _get(api_client, f"/api/onsite/dashboard/hourly-activity?date={DAY1}").json()["hours"]
     assert len(hours) == 24
     by = {h["hour"]: h["events"] for h in hours}
-    assert by[8] == 5  # 03:00-03:09 UTC = 08:30-08:39 Colombo
+    assert by[8] == 4  # 03:00-03:09 UTC = 08:30-08:39 Colombo (999 is unverified -> excluded)
     assert by[17] == 1  # +9h
-    assert sum(by.values()) == 6
+    assert sum(by.values()) == 5
 
 
 def test_activity_trend_range(api_client, db, audit_calls, directory):
     _ready(api_client)
     body = _get(api_client, f"/api/onsite/dashboard/activity-trend?days=2&date_to={DAY2}").json()
-    assert [(d["date"], d["events"]) for d in body["days"]] == [(DAY1, 6), (DAY2, 4)]
+    assert [(d["date"], d["events"]) for d in body["days"]] == [(DAY1, 5), (DAY2, 2)]  # verified only
     assert _get(api_client, "/api/onsite/dashboard/activity-trend?days=200").status_code == 422
 
 
 def test_today_grouping_filters_and_sort(api_client, db, audit_calls, directory):
     _ready(api_client)
     body = _get(api_client, f"/api/onsite/today?date={DAY1}&sort=-punch_count").json()
-    assert body["total"] == 4
+    assert body["total"] == 3  # 999 has no verified mapping
     first = body["items"][0]
     assert first["punch_count"] == 2 and first["terminal_names"] == ["Main Door"]
     assert set(first) >= {"employee_name", "department", "first_activity_local", "latest_activity_local", "span_minutes"}
     review = _get(api_client, f"/api/onsite/today?date={DAY1}&review=needs_review").json()
-    assert review["total"] == 3
+    assert review["total"] == 2
     search = _get(api_client, f"/api/onsite/today?date={DAY1}&q=0107").json()
     assert [r["emp_code"] for r in search["items"]] == ["0107"]
     assert _get(api_client, f"/api/onsite/today?date={DAY1}&review=LATE").status_code == 422
@@ -81,17 +87,17 @@ def test_today_grouping_filters_and_sort(api_client, db, audit_calls, directory)
 def test_activity_explorer_filters_and_raw_punch_state(api_client, db, audit_calls, directory):
     _ready(api_client)
     body = _get(api_client, f"/api/onsite/activity?date_from={DAY1}&date_to={DAY2}&page_size=5").json()
-    assert body["total"] == 10 and len(body["items"]) == 5
+    assert body["total"] == 7 and len(body["items"]) == 5  # 999, 105, TEST-AZURE-001 unverified
     assert {i["punch_state_raw"] for i in body["items"]} == {"255"}  # raw, never IN/OUT
     assert "event_id" not in body["items"][0]  # technical fields are admin-only
     admin = _get(api_client, f"/api/onsite/activity?date_from={DAY1}&date_to={DAY2}", "ONSITE_ADMIN").json()
     assert {"event_id", "source_epoch", "record_hash"} <= set(admin["items"][0])
     unmatched = _get(api_client, f"/api/onsite/activity?date_from={DAY1}&date_to={DAY2}&identity_class=UNMATCHED").json()
-    assert {i["emp_code"] for i in unmatched["items"]} == {"999", "TEST-AZURE-001"}
+    assert unmatched["items"] == []  # unverified IDs never reach viewer activity
     dup = _get(api_client, f"/api/onsite/activity?date_from={DAY1}&date_to={DAY2}&flag=POSSIBLE_DUPLICATE_TAP").json()
     assert {i["emp_code"] for i in dup["items"]} == {"0107"}
     csv = _get(api_client, f"/api/onsite/activity?date_from={DAY1}&date_to={DAY2}&format=csv")
-    assert csv.headers["content-type"].startswith("text/csv") and len(csv.text.strip().splitlines()) == 11
+    assert csv.headers["content-type"].startswith("text/csv") and len(csv.text.strip().splitlines()) == 8
     assert _get(api_client, "/api/onsite/activity?date_from=2026-01-01&date_to=2026-10-14").status_code == 422
 
 
@@ -100,7 +106,8 @@ def test_employees_and_detail(api_client, db, audit_calls, directory):
     body = _get(api_client, f"/api/onsite/employees?date_from={DAY1}&date_to={DAY2}&page_size=200").json()
     rows = {r["emp_code"]: r for r in body["items"]}
     assert rows["101"]["events"] == 3 and rows["101"]["activity_days"] == 2
-    assert rows["999"]["in_directory"] is False  # unmatched attendance codes stay visible
+    assert "999" not in rows and "105" not in rows  # unverified IDs are not employees
+    assert all(r["in_directory"] for r in rows.values())
     assert rows["110"]["events"] == 0  # syd-site not enabled -> no activity counted here
     detail = _get(api_client, f"/api/onsite/employees/0107?date_from={DAY1}&date_to={DAY2}").json()
     assert detail["summary"] == {"activity_days": 1, "events": 2, "review_flags": 1}
@@ -111,10 +118,10 @@ def test_employees_and_detail(api_client, db, audit_calls, directory):
 def test_exceptions_queue(api_client, db, audit_calls, directory):
     _ready(api_client)
     body = _get(api_client, f"/api/onsite/exceptions?date_from={DAY1}&date_to={DAY2}").json()
-    assert body["counts"]["UNMATCHED_CODE"] == 2 and body["counts"]["INACTIVE_EMPLOYEE_ACTIVITY"] == 1
+    assert body["counts"]["UNMATCHED_CODE"] == 0 and body["counts"]["INACTIVE_EMPLOYEE_ACTIVITY"] == 1
     assert all(i["reasons"] and i["flags"] for i in body["items"])
     only = _get(api_client, f"/api/onsite/exceptions?date_from={DAY1}&date_to={DAY2}&flag=AMBIGUOUS_CODE").json()
-    assert [i["emp_code"] for i in only["items"]] == ["105"]
+    assert only["items"] == []  # a shared Employee Number never creates an identity
     text = json.dumps(body).lower()
     for word in ("absent", "\"late\"", "present", "worked_hours"):
         assert word not in text
@@ -144,7 +151,7 @@ def test_people_unavailable_codes_only(api_client, db, audit_calls):
     _ready(api_client)
     workforce_directory.clear_cache()  # PEOPLE_API_URL points at an unreachable port
     today = _get(api_client, f"/api/onsite/today?date={DAY1}").json()
-    assert today["directory_available"] is False and today["total"] == 4
+    assert today["directory_available"] is False and today["total"] == 3  # verified IDs keep attribution
     assert all(r["employee_name"] is None for r in today["items"])
     overview = _get(api_client, f"/api/onsite/dashboard/overview?date={DAY1}").json()
-    assert overview["kpis"]["total_events"] == 6 and overview["kpis"]["unmatched_codes"] == 0
+    assert overview["kpis"]["total_events"] == 5 and overview["kpis"]["unmatched_codes"] == 0
