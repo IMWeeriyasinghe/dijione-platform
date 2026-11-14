@@ -12,6 +12,7 @@ import { BarChart3, ChevronRight } from "lucide-react";
 import type { ReviewFlag } from "@/lib/dashboard";
 import { DATA_QUALITY_FLAGS, FLAG_HELP, FLAG_LABEL } from "@/lib/flags";
 import { fmtNum } from "@/lib/period";
+import { useMinWidth } from "@/lib/use-media";
 import { cx, focusRing, InfoTip } from "./kit";
 
 export type Bar = {
@@ -53,6 +54,8 @@ export function BarChart({ data, measure, summary, selected, onSelect, highlight
   minBarPx?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  // A minimum bar width keeps touch targets usable on phones; desktops fit the full width.
+  const compact = !useMinWidth(1024);
   const total = data.reduce((s, d) => s + d.value, 0);
   const max = niceMax(Math.max(0, ...data.map((d) => d.value)));
   const ticks = [max, max / 2, 0];
@@ -70,7 +73,7 @@ export function BarChart({ data, measure, summary, selected, onSelect, highlight
   return (
     <figure className="min-w-0">
       <div data-scroll-x className="dt-scrollbar overflow-x-auto pb-1">
-      <div style={minBarPx ? { minWidth: data.length * minBarPx + 40 } : undefined}>
+      <div style={minBarPx && compact ? { minWidth: data.length * minBarPx + 40 } : undefined}>
       <div className="flex gap-2">
         <div className="flex shrink-0 flex-col justify-between text-right text-[11px] tabular-nums text-dt-text-secondary" style={{ height }} aria-hidden>
           {ticks.map((t) => <span key={t} className="-translate-y-1/2 first:translate-y-0 last:translate-y-0">{fmtNum(Math.round(t))}</span>)}
@@ -249,5 +252,62 @@ export function StackedBarChart({ data, primaryLabel, secondaryLabel, measure, s
       </div>
       <figcaption className="sr-only">{summary}. Total {fmtNum(total)} {measure}.</figcaption>
     </figure>
+  );
+}
+
+export type Segment = { key: string; label: string; value: number; tone: "success" | "warning" | "danger" | "neutral" | "brand"; help?: string };
+
+const SEGMENT_BG: Record<Segment["tone"], string> = {
+  success: "bg-dt-success", warning: "bg-dt-amber", danger: "bg-dt-danger/80", neutral: "bg-dt-info/50", brand: "bg-dt-orange",
+};
+
+/** A single 100% bar split into labelled parts, with a legend that doubles
+ *  as the accessible alternative (a list of label · count · share). */
+export function SegmentBar({ segments, unit, summary, empty = "Nothing to show for this selection." }: {
+  segments: Segment[]; unit: string; summary: string; empty?: string;
+}) {
+  const total = segments.reduce((n, s) => n + s.value, 0);
+  if (!total) return <p className="text-sm text-dt-text-secondary">{empty}</p>;
+  const pct = (v: number) => `${Math.round((v / total) * 1000) / 10}%`;
+  return (
+    <div className="space-y-2">
+      <div className="flex h-4 w-full overflow-hidden rounded-full bg-dt-border/60" role="img" aria-label={summary}>
+        {segments.filter((s) => s.value > 0).map((s) => (
+          <span key={s.key} className={cx("h-full", SEGMENT_BG[s.tone])} style={{ width: pct(s.value) }} title={`${s.label}: ${fmtNum(s.value)} ${unit} (${pct(s.value)})`} />
+        ))}
+      </div>
+      <ul className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2 xl:grid-cols-3" aria-label={summary}>
+        {segments.map((s) => (
+          <li key={s.key} className="flex min-w-0 items-center gap-2" title={s.help}>
+            <span className={cx("size-2.5 shrink-0 rounded-sm", SEGMENT_BG[s.tone])} aria-hidden />
+            <span className="min-w-0 flex-1 text-dt-text-secondary">{s.label}</span>
+            <span className="font-semibold tabular-nums text-dt-text-primary">{fmtNum(s.value)}</span>
+            <span className="w-12 text-right text-xs tabular-nums text-dt-text-secondary">{pct(s.value)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export type HBar = { key: string; label: string; value: number; sub?: string };
+
+/** Compact horizontal bars for a handful of categories (e.g. backlog age). */
+export function HBarList({ items, unit, summary, tone = "warning" }: {
+  items: HBar[]; unit: string; summary: string; tone?: Segment["tone"];
+}) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return (
+    <ul className="space-y-2" aria-label={summary}>
+      {items.map((i) => (
+        <li key={i.key} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_auto] items-center gap-2 text-sm" title={i.sub}>
+          <span className="text-dt-text-secondary">{i.label}</span>
+          <span className="h-2.5 overflow-hidden rounded-full bg-dt-surface-warm">
+            <span className={cx("block h-full rounded-full", SEGMENT_BG[tone])} style={{ width: `${(i.value / max) * 100}%` }} />
+          </span>
+          <span className="text-right tabular-nums"><span className="font-semibold">{fmtNum(i.value)}</span> <span className="text-xs text-dt-text-secondary">{unit}</span></span>
+        </li>
+      ))}
+    </ul>
   );
 }

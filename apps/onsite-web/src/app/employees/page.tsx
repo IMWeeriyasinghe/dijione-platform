@@ -122,12 +122,12 @@ function EmployeesView() {
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
                 { key: "emp", header: "Team Member", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
-                { key: "bhr", header: "BHR Employee ID", minWidth: "lg", cell: (r) => <span className="font-mono">{r.bamboohr_id ?? "—"}</span> },
+                { key: "bhr", header: "BHR Employee ID", minWidth: "xl", cell: (r) => <span className="font-mono">{r.bamboohr_id ?? "—"}</span> },
                 { key: "num", header: "EMP Number", minWidth: "xl", cell: (r) => <span className="font-mono">{r.employee_number ?? "—"}</span> },
                 { key: "status", header: "Status", cell: (r) => <StatusBadge r={r} /> },
                 { key: "id", header: "Mapping Status", minWidth: "xl", cell: (r) => <MappingBadge status={r.mapping_status} cls={r.identity_class} /> },
                 { key: "last", header: "Last activity", sort: "last_activity", minWidth: "lg", cell: (r) => <span className="whitespace-nowrap tabular-nums">{lastActivity(r)}</span> },
-                { key: "days", header: "Activity days", sort: "activity_days", align: "right", cell: (r) => r.activity_days },
+                { key: "days", header: "Active days", sort: "activity_days", align: "right", cell: (r) => r.activity_days },
                 { key: "events", header: "Events", sort: "events", align: "right", cell: (r) => r.events },
                 { key: "flags", header: "Review flags", sort: "review_flags", align: "right",
                   cell: (r) => r.review_flags ? <span className="font-semibold text-dt-warning">{r.review_flags}</span> : <span className="text-dt-text-secondary">0</span> },

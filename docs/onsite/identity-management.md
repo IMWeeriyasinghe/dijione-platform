@@ -65,7 +65,29 @@ opens the mapping dialog for managers) and an ingestion banner that tells
 a mapping backlog (feed fresh, punches stored, verification pending) apart
 from a feed or sync problem (see Site Health).
 
-### 2.2 Terminology (Diji On-site UI and exports)
+### 2.2 Review status, backlog and drill-down
+
+Every outstanding ZKBioTime ID (at least one punch day not covered by a
+verified mapping) carries a **review status**. It is a presentation label,
+separate from the mapping status, and never means "resolved":
+
+| Label | Meaning | Next action |
+|---|---|---|
+| **Awaiting Review** | No verified owner and no review outcome (readiness `undispositioned`) | Investigate, then map or record "not this person" |
+| **Rejected Association** | A proposed team member was recorded as NOT the owner (readiness `rejected`); the ID is still unmapped | Continue the investigation |
+| **Partly Verified** | Some punch days are verified, others are not | Check whether the uncovered days belong to the same team member |
+
+`GET /api/onsite/admin/identity/unmapped/summary?site_id` (`onsite.identity.read`)
+returns, over all mirrored history and site-local dates, the outstanding-ID
+count, review-status counts, backlog age (oldest unmapped punch day:
+0–7 / 8–30 / 31–90 / over 90 days) and recency (latest unmapped punch day).
+The Unmapped IDs tab shows it with the fully / partly / entirely unmapped
+distribution for the selected period. Every ZKBioTime ID in Identity
+Management (Overview, Readiness, Unmapped IDs, Mappings, Conflicts) opens the
+investigation view, deep-linkable as `/onsite/admin/identity?code=<ID>`;
+managers can map or reject from it, read-only users see why they cannot.
+
+### 2.3 Terminology (Diji On-site UI and exports)
 
 "Team Member(s)" replaces "Employee(s)" for people; "EMP Number" replaces
 "Employee Number"; "ZKBioTime ID" replaces "ZKBioTime Employee Code";

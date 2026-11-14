@@ -139,6 +139,13 @@ MAPPING_COLUMNS = ["id", "site_id", "zk_emp_code", "bamboohr_id", "employee_name
                    "closed_reason", "superseded_reason", "superseded_by_id"]
 
 
+def _site_today(db: Session, site_id: str) -> date:
+    from app.repositories.site_repository import SiteRepository
+    from app.services.time_derivation import site_today
+
+    return site_today(SiteRepository(db).time_zones([site_id]).get(site_id))
+
+
 @router.get("/unmapped")
 def unmapped(site_id: str | None = None, q: str | None = None,
              sort: str = Query("-unmapped_events", pattern="^-?(unmapped_events|event_count|last_unmapped|first_seen|"
@@ -150,6 +157,13 @@ def unmapped(site_id: str | None = None, q: str | None = None,
     if fmt == "csv":
         return _csv(rows, UNMAPPED_COLUMNS, "onsite-unmapped-zkbiotime-ids.csv")
     return _page(rows, page, page_size)
+
+
+@router.get("/unmapped/summary")
+def unmapped_summary(site_id: str, scope: OnsiteScope = Depends(_READ), db: Session = Depends(get_db)):
+    """Outstanding-ID backlog: review state, aging and recency (site-local dates)."""
+    return _run(ia.unmapped_summary, db, _actor(scope), workforce_directory.load(), site_id=site_id,
+                today=_site_today(db, site_id))
 
 
 @router.get("/codes/{zk_emp_code}")
@@ -220,7 +234,8 @@ def coverage(site_id: str, date_from: date | None = None, date_to: date | None =
 @router.get("/readiness")
 def readiness(site_id: str, days: int = Query(30, ge=1, le=92), scope: OnsiteScope = Depends(_READ),
               db: Session = Depends(get_db)):
-    return _run(ia.readiness, db, _actor(scope), workforce_directory.load(), site_id=site_id, days=days)
+    return _run(ia.readiness, db, _actor(scope), workforce_directory.load(), site_id=site_id, days=days,
+                today=_site_today(db, site_id))
 
 
 # --- writes -----------------------------------------------------------------------------
