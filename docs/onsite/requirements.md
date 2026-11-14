@@ -31,19 +31,23 @@ Internal DijiOne staff holding an On-site role:
 | Role | Access |
 |---|---|
 | `ONSITE_VIEWER` | Dashboard, today's activity, history, items needing review |
-| `ONSITE_ADMIN` | Everything above, plus site health, identity match report, "Sync now", site enablement |
+| `ONSITE_ADMIN` | Everything above, plus site health, Identity Management (`onsite.identity.read` / `onsite.identity.manage`), "Sync now", site enablement |
 
 Sites are visible only after an `ONSITE_ADMIN` explicitly enables them
 (fail closed). No client-facing or employee self-service access in V1.
 
 ## Identity rule
 
-`AttendanceEvents.EmpCode` maps to the BambooHR **Employee Number** by exact,
-case-sensitive string equality, through the People Workforce Directory
-(`docs/platform/workforce-directory.md`). No trimming, zero-stripping,
-numeric conversion, fuzzy or name matching. Unmatched, ambiguous (duplicate
-Employee Number), inactive and before-hire cases are reported, never hidden
-or discarded.
+*Superseded 2026-11-14 (identity redesign).* The ZKBioTime ID
+(`AttendanceEvents.EmpCode`) and the BambooHR employee are separate
+identifiers. A punch is attributed to a BambooHR employee (`bamboohr_id`)
+**only** through an administrator-verified mapping whose inclusive,
+site-local ownership period covers the punch's day. BambooHR Employee
+Number equality is never used for attribution (it is shown only as a
+labelled, never-applied hint to administrators); no fuzzy or name matching;
+no automatic mapping. Unmapped or conflicting punches are kept but excluded
+from viewer records and identified KPIs, and are handled in Identity
+Management. Full procedures: `docs/onsite/identity-management.md`.
 
 ## Time
 

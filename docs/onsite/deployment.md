@@ -145,3 +145,14 @@ repository's `deploy/azure/attendance/grant-dijione-reader.ps1 -Env <env>`.
 6. Enable the site from On-site Admin → Sites (never by configuration).
 
 Removal: `docs/onsite/module-removal.md`.
+
+## Identity Management release (identity redesign)
+
+Release order, migration-job handling, verified-only cutover, readiness gate
+and forward-only recovery are specified in
+`docs/onsite/identity-management.md` §6–§7. In short: platform-api
+(`f2a4b6c8d0e2`) before onsite-api (`0002_onsite_identity`, migrate job on the
+same digest), import HR-approved mappings per environment (never promoted),
+then onsite-web. Never redeploy a pre-redesign onsite-api image and never run
+`alembic downgrade` against a live environment.
+

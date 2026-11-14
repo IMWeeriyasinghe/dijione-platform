@@ -39,7 +39,7 @@ boundaries → 1.5 `onsite-web` skeleton).
 | Dependency | Contract |
 |---|---|
 | `platform-api` | JWT claims verified locally (`make_get_claims`); module registry and role/permission catalog as data; audit/notify via `PlatformClient` (best effort) |
-| `people-api` | Workforce Directory HTTP contract only, via `auth_client_py.WorkforceDirectoryClient`. Never the People database. If unreachable or unset, On-site shows EmpCodes only |
+| `people-api` | Workforce Directory HTTP contract only, via `auth_client_py.WorkforceDirectoryClient`. Never the People database. Used for names/departments/photos of *verified* employees (by `bamboohr_id`) and the admin directory search. If unreachable, verified attendance stays attributed without names; mapping changes are refused (503) |
 | Shared packages | `auth-client-py`, `auth-client-ts` (generic `useAuth`/`request`), `design-system` |
 | Azure SQL `onsite.*` | SELECT-only, only through `onsite-api/app/attendance_source/` |
 
@@ -94,7 +94,7 @@ onsite-api/app/attendance_source/      incremental mirror: EventId insert-if-abs
 onsite_<env>                           raw columns verbatim + derived site_local_date
    │                                     ◄── people-api Workforce Directory (HTTP, TTL cache)
    ▼
-On-site domain services                summaries computed on read · EmpCode ↔ Employee Number
+On-site domain services                summaries computed on read · ZKBioTime ID → verified mapping (dated) → bamboohr_id
    ▼
 /api/onsite/*                          claims → permissions + enabled-site allow-list
    ▼
