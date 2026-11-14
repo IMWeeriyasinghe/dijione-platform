@@ -10,9 +10,9 @@ import { ExportButton } from "@/components/ExportButton";
 import { DayControl, DepartmentSelect, IdentitySelect, SearchField, SelectField, SiteSelect } from "@/components/FilterBar";
 import { FlagChips } from "@/components/FlagChips";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
-import { buttonClass, type Chip, EmptyPanel, FilterPanel, InfoTip, PageTop, Pager, Person, Segmented, SkeletonRows } from "@/components/kit";
+import { buttonClass, EmployeeRefCell, EmptyPanel, FilterPanel, InfoTip, Pager, PageTop, Segmented, SkeletonRows, type Chip } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
-import { getToday, REVIEW_FLAGS, type ReviewFlag } from "@/lib/dashboard";
+import { getToday, VIEWER_REVIEW_FLAGS, type ReviewFlag } from "@/lib/dashboard";
 import { FLAG_LABEL, formatSpan, localTime } from "@/lib/flags";
 import { IDENTITY_LABEL } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
@@ -44,7 +44,7 @@ function TodayView() {
   const paging = usePaging("today", s, set, query.data?.total);
   const chips: Chip[] = [
     s.q && { key: "q", label: `Search: ${s.q}`, onClear: () => set({ q: "" }) },
-    s.emp && { key: "emp", label: `Employee Number: ${s.emp}`, onClear: () => set({ emp: "" }) },
+    s.emp && { key: "emp", label: `ZKBioTime ID: ${s.emp}`, onClear: () => set({ emp: "" }) },
     s.dept && { key: "dept", label: s.dept, onClear: () => set({ dept: "" }) },
     s.id && { key: "id", label: IDENTITY_LABEL[s.id as IdentityClass] ?? s.id, onClear: () => set({ id: "" }) },
     s.review && !["needs_review", "no_flags"].includes(s.review) && { key: "review", label: FLAG_LABEL[s.review as ReviewFlag], onClear: () => set({ review: "" }) },
@@ -75,12 +75,12 @@ function TodayView() {
       </div>
 
       <FilterPanel chips={chips} onClearAll={clearAll}>
-        <SearchField label="Search name or code" value={s.q} onChange={(v) => set({ q: v })} />
-        <SearchField label="Employee Number" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact number" />
+        <SearchField label="Search name, BHR ID or Employee Number" value={s.q} onChange={(v) => set({ q: v })} />
+        <SearchField label="ZKBioTime ID" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact ID" />
         <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} departments={query.data?.departments} />
         <IdentitySelect value={s.id} onChange={(v) => set({ id: v })} />
         <SelectField label="Review flag" value={["needs_review", "no_flags"].includes(s.review) ? "" : s.review} onChange={(v) => set({ review: v })}
-          options={[{ value: "", label: "Any flag" }, ...REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
+          options={[{ value: "", label: "Any flag" }, ...VIEWER_REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
         <SelectField label="Sort by" value={s.sort} onChange={(v) => set({ sort: v })} options={SORTS} />
       </FilterPanel>
 
@@ -100,12 +100,12 @@ function TodayView() {
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Employee details unavailable — showing Employee Codes only.</p>}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Employee details unavailable — verified attendance is shown without names.</p>}
             <DataView caption={`Employee activity on ${s.date}`} rows={query.data.items} rowKey={(r) => r.emp_code}
-              rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.emp_code, page: s.page })}
+              rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.bamboohr_id ?? "", page: s.page })}
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
-                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <Person photo={r.has_photo} name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} /> },
+                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
                 { key: "first", header: "First", sort: "first_activity", cell: (r) => <span className="tabular-nums">{localTime(r.first_activity_local)}</span> },
                 { key: "latest", header: "Latest", sort: "latest_activity", cell: (r) => <span className="tabular-nums">{localTime(r.latest_activity_local)}</span> },
                 { key: "count", header: "Events", sort: "punch_count", align: "right", cell: (r) => r.punch_count },
@@ -116,7 +116,7 @@ function TodayView() {
               card={(r) => (
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
-                    <Person photo={r.has_photo} name={r.employee_name} code={r.emp_code} meta={r.department ?? undefined} />
+                    <EmployeeRefCell r={r} meta={r.department ?? undefined} />
                     <span className="shrink-0 rounded-full bg-dt-surface-warm px-2 py-0.5 text-xs font-medium tabular-nums text-dt-text-primary">{r.punch_count} events</span>
                   </div>
                   <Facts cols={3} items={[["First", localTime(r.first_activity_local)], ["Latest", localTime(r.latest_activity_local)], ["Span", formatSpan(r.span_minutes)]]} />

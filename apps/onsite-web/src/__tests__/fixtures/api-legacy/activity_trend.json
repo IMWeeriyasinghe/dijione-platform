@@ -1,0 +1,42 @@
+{
+  "date_from": "2026-11-08",
+  "date_to": "2026-11-14",
+  "days": [
+    {
+      "date": "2026-11-08",
+      "employees": 0,
+      "events": 0
+    },
+    {
+      "date": "2026-11-09",
+      "employees": 0,
+      "events": 0
+    },
+    {
+      "date": "2026-11-10",
+      "employees": 0,
+      "events": 0
+    },
+    {
+      "date": "2026-11-11",
+      "employees": 0,
+      "events": 0
+    },
+    {
+      "date": "2026-11-12",
+      "employees": 0,
+      "events": 0
+    },
+    {
+      "date": "2026-11-13",
+      "employees": 0,
+      "events": 0
+    },
+    {
+      "date": "2026-11-14",
+      "employees": 0,
+      "events": 0
+    }
+  ],
+  "site_id": "dev-site"
+}

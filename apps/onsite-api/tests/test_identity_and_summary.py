@@ -1,46 +1,52 @@
-"""Identity match (exact string equality, all classes, CSV, codes-only when
-people-api is unavailable) and neutral daily facts/flags."""
+"""Legacy Identity Match report (shape kept, verified-mapping semantics) and
+neutral daily facts/flags. Employee Number equality NEVER attributes."""
 
 from datetime import date
 
 from app.services import workforce_directory
 from app.services.attendance_summary import daily_activity
-from app.services.identity_match_service import classify
-from tests.conftest import enable_site, headers_for, run_sync
+from tests.conftest import DIRECTORY, enable_site, headers_for, make_mapping, map_directory, run_sync
 
 
 def _report(api_client, fmt="json"):
     return api_client.get(f"/api/onsite/admin/identity-match?format={fmt}", headers=headers_for())
 
 
-def test_identity_classes(api_client, db, audit_calls, directory):
+def test_identity_report_without_mappings_matches_nobody(api_client, db, audit_calls, directory):
+    """Before any verification every code is UNMATCHED — even codes equal to an Employee Number."""
     run_sync(api_client)
     enable_site(api_client, "dev-site")
     enable_site(api_client, "syd-site")
     report = _report(api_client).json()
-    assert report["directory_available"] is True
+    assert {r["identity_class"] for r in report["rows"]} == {"UNMATCHED"}
+    assert all(r["matches"] == [] for r in report["rows"])
+
+
+def test_identity_classes_from_verified_mappings(api_client, db, audit_calls, directory):
+    map_directory(DIRECTORY)
+    run_sync(api_client)
+    enable_site(api_client, "dev-site")
+    enable_site(api_client, "syd-site")
+    report = _report(api_client).json()
     classes = {r["emp_code"]: r["identity_class"] for r in report["rows"]}
     assert classes == {
         "101": "MATCHED_ACTIVE", "102": "MATCHED_ACTIVE", "0107": "MATCHED_ACTIVE",
-        "103": "MATCHED_INACTIVE", "105": "AMBIGUOUS", "108": "MATCHED_BEFORE_HIRE",
+        "103": "MATCHED_INACTIVE", "105": "UNMATCHED", "108": "MATCHED_BEFORE_HIRE",
         "110": "MATCHED_ACTIVE", "999": "UNMATCHED", "TEST-AZURE-001": "UNMATCHED",
     }
+    assert "AMBIGUOUS" not in classes.values()  # never produced any more
     s = report["summary"]
-    counts = [s[k] for k in ("MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE", "AMBIGUOUS", "UNMATCHED")]
-    assert counts == [4, 1, 1, 1, 2]
+    assert [s[k] for k in ("MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE", "AMBIGUOUS", "UNMATCHED")] == [
+        4, 1, 1, 0, 3]
     assert s["directory_total"] == 9 and s["directory_blank_employee_numbers"] == 1
-    assert s["directory_duplicate_employee_numbers"] == 1
-    assert s["directory_entries_without_attendance"] == 1  # the blank-number entry
 
 
-def test_matching_is_exact_string_equality():
-    entries = [{"bamboohr_id": "7", "employee_number": "0107", "employment_status": "Active", "hire_date": None}]
-    snap = workforce_directory.DirectorySnapshot(True, entries)
-    index = snap.by_employee_number()
-    assert "0107" in index
-    for variant in ("107", " 0107", "0107 ", "00107"):
-        assert variant not in index
-    assert classify(index.get("107", []), date(2026, 1, 1), date(2026, 1, 1)).value == "UNMATCHED"
+def test_shared_employee_number_mapped_to_one_person(api_client, db, audit_calls, directory):
+    make_mapping(db, code="105", bamboohr_id="6", valid_from="2020-01-01")  # E, not D (both have number 105)
+    run_sync(api_client)
+    enable_site(api_client, "dev-site")
+    row = next(r for r in _report(api_client).json()["rows"] if r["emp_code"] == "105")
+    assert row["identity_class"] == "MATCHED_ACTIVE" and [m["bamboohr_id"] for m in row["matches"]] == ["6"]
 
 
 def test_report_only_covers_enabled_sites(api_client, db, audit_calls, directory):
@@ -51,14 +57,16 @@ def test_report_only_covers_enabled_sites(api_client, db, audit_calls, directory
 
 
 def test_identity_csv(api_client, db, audit_calls, directory):
+    map_directory(DIRECTORY)
     run_sync(api_client)
     enable_site(api_client, "dev-site")
     resp = _report(api_client, "csv")
     assert resp.status_code == 200 and resp.headers["content-type"].startswith("text/csv")
     lines = resp.text.strip().splitlines()
     assert lines[0] == "emp_code,identity_class,event_count,first_seen,last_seen,match_count,bamboohr_ids,employment_status"
-    assert any(line.startswith("105,AMBIGUOUS,") and "5;6" in line for line in lines)
-    assert "display_name" not in resp.text  # no names in the export
+    assert any(line.startswith("101,MATCHED_ACTIVE,") and ",1,1," in line for line in lines)
+    assert any(line.startswith("105,UNMATCHED,") for line in lines)
+    assert "display_name" not in resp.text
 
 
 def test_people_unavailable_codes_only(api_client, db, audit_calls, monkeypatch):
@@ -74,6 +82,7 @@ def test_people_unavailable_codes_only(api_client, db, audit_calls, monkeypatch)
 
 
 def test_daily_activity_neutral_facts_and_flags(api_client, db, audit_calls, directory):
+    map_directory(DIRECTORY)
     run_sync(api_client)
     enable_site(api_client, "dev-site")
     rows = daily_activity(
@@ -82,12 +91,12 @@ def test_daily_activity_neutral_facts_and_flags(api_client, db, audit_calls, dir
     )
     by = {(r["local_date"], r["emp_code"]): r for r in rows}
     a = by[("2026-10-13", "101")]
-    assert a["punch_count"] == 2 and a["span_minutes"] == 540 and a["flags"] == []
+    assert a["punch_count"] == 2 and a["span_minutes"] == 540 and a["flags"] == [] and a["bamboohr_id"] == "1"
     assert by[("2026-10-13", "102")]["flags"] == ["SINGLE_PUNCH"]
     assert "POSSIBLE_DUPLICATE_TAP" in by[("2026-10-13", "0107")]["flags"]
-    assert "UNMATCHED_CODE" in by[("2026-10-13", "999")]["flags"]
     assert "INACTIVE_EMPLOYEE_ACTIVITY" in by[("2026-10-14", "103")]["flags"]
-    assert "AMBIGUOUS_CODE" in by[("2026-10-14", "105")]["flags"]
+    # Unverified codes are not rows at all (no UNMATCHED/AMBIGUOUS flags any more).
+    assert not {k for k in by if k[1] in ("999", "105", "TEST-AZURE-001")}
     for r in rows:  # no policy judgements in V1
         assert not set(r) & {"present", "absent", "late", "early", "worked_hours", "status"}
 
@@ -101,6 +110,7 @@ def test_daily_activity_neutral_facts_and_flags(api_client, db, audit_calls, dir
 
 
 def test_daily_activity_respects_site_allow_list(db, directory):
+    map_directory(DIRECTORY)
     assert daily_activity(
         db, allowed_site_ids=(), site_id="dev-site", site_time_zone="Asia/Colombo",
         date_from=date(2026, 10, 13), date_to=date(2026, 10, 14), directory=directory,

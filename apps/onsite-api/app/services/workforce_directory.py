@@ -30,8 +30,14 @@ class DirectorySnapshot:
     available: bool
     entries: list[dict] = field(default_factory=list)
 
+    def by_bamboohr_id(self) -> dict[str, dict]:
+        """The identity key: BambooHR's stable record id (unique in people-api)."""
+        return {str(e["bamboohr_id"]): e for e in self.entries if e.get("bamboohr_id") is not None}
+
     def by_employee_number(self) -> dict[str, list[dict]]:
-        """Exact, case-sensitive string key — no trimming, no zero-stripping,
+        """ADMIN HINT ONLY (Identity Management). Never used for attribution:
+        Employee Number equality is not evidence of identity.
+        Exact, case-sensitive string key — no trimming, no zero-stripping,
         no numeric cast. Blank/None numbers are never keys."""
         out: dict[str, list[dict]] = {}
         for e in self.entries:

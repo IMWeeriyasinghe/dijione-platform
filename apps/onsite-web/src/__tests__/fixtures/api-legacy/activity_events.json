@@ -1,0 +1,55 @@
+{
+  "directory_available": true,
+  "items": [
+    {
+      "area": "Ground Floor",
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "local_date": "2026-10-14",
+      "local_time": "2026-10-14T08:48:00+05:30",
+      "punch_state_raw": "255",
+      "review_flags": [
+        "SINGLE_PUNCH"
+      ],
+      "terminal": "Main Door",
+      "tz_consistent": true
+    },
+    {
+      "area": "Ground Floor",
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "local_date": "2026-10-13",
+      "local_time": "2026-10-13T17:30:00+05:30",
+      "punch_state_raw": "255",
+      "review_flags": [],
+      "terminal": "Main Door",
+      "tz_consistent": true
+    },
+    {
+      "area": "Ground Floor",
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "local_date": "2026-10-13",
+      "local_time": "2026-10-13T08:30:00+05:30",
+      "punch_state_raw": "255",
+      "review_flags": [],
+      "terminal": "Main Door",
+      "tz_consistent": true
+    }
+  ],
+  "page": 1,
+  "page_size": 10,
+  "total": 3
+}

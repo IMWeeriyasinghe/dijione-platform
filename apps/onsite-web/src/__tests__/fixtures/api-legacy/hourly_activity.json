@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-13",
+  "date_from": "2026-10-13",
+  "date_to": "2026-10-13",
+  "hours": [
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 0
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 1
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 2
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 3
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 4
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 5
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 6
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 7
+    },
+    {
+      "employees": 4,
+      "events": 5,
+      "hour": 8
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 9
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 10
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 11
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 12
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 13
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 14
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 15
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 16
+    },
+    {
+      "employees": 1,
+      "events": 1,
+      "hour": 17
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 18
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 19
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 20
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 21
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 22
+    },
+    {
+      "employees": 0,
+      "events": 0,
+      "hour": 23
+    }
+  ],
+  "site_id": "dev-site"
+}

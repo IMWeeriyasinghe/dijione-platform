@@ -1,0 +1,20 @@
+{
+  "enums": {},
+  "shape": [
+    {
+      "departments": [
+        "str"
+      ],
+      "first_activity_date": "str",
+      "last_activity_date": "str",
+      "name": "str",
+      "site_id": "str",
+      "terminals": [
+        "str"
+      ],
+      "time_zone": "str",
+      "today": "str"
+    }
+  ],
+  "status": 200
+}

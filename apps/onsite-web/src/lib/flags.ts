@@ -4,8 +4,8 @@ import type { ReviewFlag } from "./dashboard";
 export const FLAG_LABEL: Record<ReviewFlag, string> = {
   SINGLE_PUNCH: "Single activity",
   POSSIBLE_DUPLICATE_TAP: "Possible duplicate tap",
-  UNMATCHED_CODE: "Unmatched code",
-  AMBIGUOUS_CODE: "Ambiguous code",
+  UNMATCHED_CODE: "Unmapped ZKBioTime ID",
+  AMBIGUOUS_CODE: "Mapping conflict",
   INACTIVE_EMPLOYEE_ACTIVITY: "Inactive employee activity",
   BEFORE_HIRE_ACTIVITY: "Before-hire activity",
   TZ_INCONSISTENT: "Time zone inconsistent",
@@ -37,8 +37,8 @@ export function addDays(isoDate: string, days: number): string {
 export const FLAG_HELP: Record<ReviewFlag, string> = {
   SINGLE_PUNCH: "Only one activity was recorded on this completed day.",
   POSSIBLE_DUPLICATE_TAP: "Two activities were recorded within 60 seconds of each other.",
-  UNMATCHED_CODE: "The Employee Code has no matching Employee Number in the Workforce Directory.",
-  AMBIGUOUS_CODE: "More than one Workforce Directory employee has this Employee Number.",
+  UNMATCHED_CODE: "The ZKBioTime ID has no verified BambooHR mapping for this day.",
+  AMBIGUOUS_CODE: "More than one verified mapping covers this ZKBioTime ID on this day.",
   INACTIVE_EMPLOYEE_ACTIVITY: "Activity is recorded for an employee who is inactive or past their termination date.",
   BEFORE_HIRE_ACTIVITY: "Activity is recorded before the employee's hire date.",
   TZ_INCONSISTENT: "The source local time does not match the site's configured time zone.",

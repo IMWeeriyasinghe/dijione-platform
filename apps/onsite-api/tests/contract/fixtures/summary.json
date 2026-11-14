@@ -1,0 +1,19 @@
+{
+  "enums": {
+    "status": [
+      "ok"
+    ]
+  },
+  "shape": {
+    "enabled_sites": "int",
+    "feed_states": {
+      "dev-site": "str"
+    },
+    "last_successful_sync_at": "str",
+    "mirrored_events": "int",
+    "service": "str",
+    "source_configured": "bool",
+    "status": "str"
+  },
+  "status": 200
+}

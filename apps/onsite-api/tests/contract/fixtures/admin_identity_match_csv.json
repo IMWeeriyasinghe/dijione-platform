@@ -1,0 +1,5 @@
+{
+  "content_type": "text/csv",
+  "header": "emp_code,identity_class,event_count,first_seen,last_seen,match_count,bamboohr_ids,employment_status",
+  "status": 200
+}

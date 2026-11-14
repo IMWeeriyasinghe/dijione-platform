@@ -18,11 +18,11 @@ vi.mock("@/lib/api", async (orig) => ({
 
 const SITE = { site_id: "colombo", name: "Colombo Office", time_zone: "Asia/Colombo", today: "2026-11-04",
   first_activity_date: "2024-11-27", last_activity_date: "2026-11-03", terminals: ["Main Door"], departments: ["Finance"] };
-const row = (code: string, photo: boolean) => ({ emp_code: code, employee_name: `Person ${code}`, department: "Finance", employment_status: "Active",
+const row = (code: string, photo: boolean) => ({ emp_code: code, zk_emp_codes: [code], bamboohr_id: `B${code}`, mapping_status: "MAPPED", employee_name: `Person ${code}`, department: "Finance", employment_status: "Active",
   identity_class: "MATCHED_ACTIVE", in_directory: true, has_photo: photo, events: 3, activity_days: 2, review_flags: 0, last_activity_local: null });
 const EMP = (total: number, items: ReturnType<typeof row>[]) => ({ total, page: 1, page_size: 10, date_from: "x", date_to: "y", departments: [],
   directory_available: true, items, summary: { employees: total, with_activity: total, active: total, inactive: 0, not_in_directory: 0, needing_review: 0, matched: total } });
-const EVENT = (code: string, time: string) => ({ emp_code: code, employee_name: `Person ${code}`, department: "Finance", identity_class: "MATCHED_ACTIVE",
+const EVENT = (code: string, time: string) => ({ emp_code: code, bamboohr_id: `B${code}`, mapping_status: "MAPPED", employee_name: `Person ${code}`, department: "Finance", identity_class: "MATCHED_ACTIVE",
   has_photo: true, local_date: "2026-11-03", local_time: `2026-11-03T${time}:00+05:30`, terminal: "Main Door", area: null, punch_state_raw: "255",
   tz_consistent: true, review_flags: ["POSSIBLE_DUPLICATE_TAP"] });
 
@@ -36,7 +36,7 @@ beforeEach(() => {
   Object.values(api).forEach((f) => f.mockReset());
   window.localStorage.clear();
   api.getSitesInfo.mockResolvedValue([SITE]);
-  api.getEmployeePhoto.mockImplementation(async (code: string) => (code === "101" ? `blob:photo-${code}` : null));
+  api.getEmployeePhoto.mockImplementation(async (bhr: string) => (bhr === "B101" ? `blob:photo-${bhr}` : null));
   api.getOverview.mockResolvedValue({ site_id: "colombo", date: "x", time_zone: "Asia/Colombo", directory_available: true,
     kpis: { employees_with_activity: 2, total_events: 3, employees_needing_review: 0, single_punch_employees: 0, unmatched_codes: 0, feed_state: "FRESH" },
     review_breakdown: {}, last_successful_sync_at: null, latest_received_utc: null, agent_heartbeat_utc: null });
@@ -52,9 +52,9 @@ describe("Profile photos", () => {
     const { default: Page } = await import("@/app/employees/page");
     renderPage(<Page />);
     expect(await screen.findByText("Person 102")).toBeInTheDocument(); // rendered before any photo resolves
-    await waitFor(() => expect(document.querySelector('img[src="blob:photo-101"]')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('img[src="blob:photo-B101"]')).not.toBeNull());
     expect(api.getEmployeePhoto).toHaveBeenCalledTimes(1);              // never requested for has_photo=false
-    expect(api.getEmployeePhoto).toHaveBeenCalledWith("101");
+    expect(api.getEmployeePhoto).toHaveBeenCalledWith("B101"); // photos are fetched only by verified BHR Employee ID
     expect(screen.getAllByText("P1").length).toBeGreaterThan(0);        // initials stay underneath as the fallback
   });
 
@@ -138,7 +138,7 @@ describe("Server-side pagination", () => {
     renderPage(<Page />);
     await screen.findByText("Person 101");
     const calls = api.getEmployees.mock.calls.length;
-    const box = screen.getByLabelText("Search name or code");
+    const box = screen.getByLabelText("Search name, BHR ID or Employee Number");
     for (const v of ["P", "Pe", "Per"]) fireEvent.change(box, { target: { value: v } });
     expect(api.getEmployees.mock.calls.length).toBe(calls); // nothing sent per keystroke
     await waitFor(() => expect(api.getEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ q: "Per", page: 1 })));
@@ -147,10 +147,10 @@ describe("Server-side pagination", () => {
 
 describe("Employee profile lazy loading", () => {
   it("loads the summary without raw events, then one day's events only when shown", async () => {
-    setTestUrl("/employees?open=101");
+    setTestUrl("/employees?open=B101"); // profiles are addressed by BHR Employee ID
     api.getEmployees.mockResolvedValue(EMP(0, []));
-    api.getEmployee.mockResolvedValue({ profile: { emp_code: "101", employee_name: "Person 101", department: "Finance", employment_status: "Active",
-      identity_class: "MATCHED_ACTIVE", job_title: null, match_count: 1, has_photo: true },
+    api.getEmployee.mockResolvedValue({ profile: { emp_code: "101", bamboohr_id: "B101", zk_emp_codes: ["101"], employee_name: "Person 101",
+      department: "Finance", employment_status: "Active", identity_class: "MATCHED_ACTIVE", job_title: null, match_count: 1, has_photo: true },
     summary: { activity_days: 1, events: 2, review_flags: 0 }, events: [], directory_available: true,
     days: [{ local_date: "2026-11-03", emp_code: "101", first_activity_local: "2026-11-03T08:00:00+05:30", latest_activity_local: "2026-11-03T17:00:00+05:30",
       punch_count: 2, span_minutes: 540, terminal_names: ["Main Door"], identity_class: "MATCHED_ACTIVE", flags: [] }] });
@@ -158,9 +158,9 @@ describe("Employee profile lazy loading", () => {
     const { default: Page } = await import("@/app/employees/page");
     renderPage(<Page />);
     const dialog = await screen.findByRole("dialog");
-    expect(api.getEmployee).toHaveBeenCalledWith("101", expect.objectContaining({ include_events: false }));
+    expect(api.getEmployee).toHaveBeenCalledWith("B101", expect.objectContaining({ include_events: false }));
     expect(await within(dialog).findByText("17:00")).toBeInTheDocument();
-    expect(api.getActivity).toHaveBeenCalledWith(expect.objectContaining({ emp_code: "101", date_from: "2026-11-03", date_to: "2026-11-03", page_size: 10 }));
+    expect(api.getActivity).toHaveBeenCalledWith(expect.objectContaining({ bamboohr_id: "B101", date_from: "2026-11-03", date_to: "2026-11-03", page_size: 10 }));
     expect(within(dialog).getByAltText("Profile photo of Person 101")).toBeInTheDocument();
   });
 });
@@ -186,8 +186,8 @@ describe("Chart drill-down", () => {
     setTestUrl("/?from=2026-11-03&to=2026-11-03");
     api.getActivity.mockResolvedValue({ total: 3, page: 1, page_size: 10, directory_available: true,
       items: [EVENT("101", "11:05"), EVENT("102", "11:40"), EVENT("101", "11:59")] });
-    api.getEmployee.mockResolvedValue({ profile: { emp_code: "101", employee_name: "Person 101", department: "Finance", employment_status: "Active",
-      identity_class: "MATCHED_ACTIVE", job_title: null, match_count: 1 }, summary: { activity_days: 0, events: 0, review_flags: 0 }, days: [], events: [], directory_available: true });
+    api.getEmployee.mockResolvedValue({ profile: { emp_code: "101", bamboohr_id: "B101", employee_name: "Person 101", department: "Finance",
+      employment_status: "Active", identity_class: "MATCHED_ACTIVE", job_title: null, match_count: 1 }, summary: { activity_days: 0, events: 0, review_flags: 0 }, days: [], events: [], directory_available: true });
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
     const bar = await screen.findByRole("button", { name: /11:00–11:59 \(Asia\/Colombo\): 3 events/ });

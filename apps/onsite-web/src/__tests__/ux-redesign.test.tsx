@@ -101,7 +101,8 @@ describe("Overview", () => {
     expect(screen.getByRole("link", { name: /Employees with activity/ })).toHaveAttribute("href", "/today?date=2026-11-03");
     expect(screen.getByRole("link", { name: /Needing review/ })).toHaveAttribute("href", "/exceptions?from=2026-11-03&to=2026-11-03");
     expect(screen.getByRole("link", { name: /^Single activity.*View records/ })).toHaveAttribute("href", expect.stringContaining("flag=SINGLE_PUNCH"));
-    expect(screen.getByRole("link", { name: /Unmatched code: 2 employee-days/ })).toHaveAttribute("href", expect.stringContaining("flag=UNMATCHED_CODE"));
+    // Unverified IDs are never part of viewer attendance: no unmapped/conflict category is offered.
+    expect(screen.queryByRole("link", { name: /Unmapped ZKBioTime ID|Unmatched code/ })).not.toBeInTheDocument();
     // Feed → Site Health only for users who may open it.
     expect(screen.queryByRole("link", { name: /Feed/ })).not.toBeInTheDocument();
   });

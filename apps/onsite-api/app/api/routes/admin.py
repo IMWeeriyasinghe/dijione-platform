@@ -15,11 +15,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import OnsiteScope, require_onsite_permission
 from app.core.constants import Perm
 from app.db.session import get_db
-from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.site_repository import SiteRepository
 from app.services import platform_audit, workforce_directory
 from app.services.freshness_service import freshness
-from app.services.identity_match_service import CSV_COLUMNS, build_report, csv_rows
+from app.services.legacy_contract import CSV_COLUMNS, csv_rows, identity_match_report, require_legacy_contract
 from app.services.mirror_sync_service import MirrorSyncService
 
 router = APIRouter(prefix="/api/onsite/admin", tags=["onsite-admin"])
@@ -87,14 +86,14 @@ def site_health(scope: OnsiteScope = Depends(require_onsite_permission(Perm.HEAL
     return data
 
 
-@router.get("/identity-match")
+@router.get("/identity-match", dependencies=[Depends(require_legacy_contract)])
 def identity_match(fmt: str = Query("json", alias="format", pattern="^(json|csv)$"),
                    identity_class: str | None = None, q: str | None = None,
                    page: int | None = Query(None, ge=1), page_size: int = Query(10, ge=1, le=200),
                    scope: OnsiteScope = Depends(require_onsite_permission(Perm.IDENTITY_READ)),
                    db: Session = Depends(get_db)):
-    activity = AttendanceRepository(db).emp_code_activity(allowed_site_ids=scope.allowed_site_ids)
-    report = build_report(activity, workforce_directory.load())
+    # LEGACY shape, verified-mapping semantics (see services/legacy_contract.py).
+    report = identity_match_report(db, scope.allowed_site_ids, workforce_directory.load())
     if fmt == "json":
         if page is None:  # legacy: whole report (small; kept for compatibility)
             return report

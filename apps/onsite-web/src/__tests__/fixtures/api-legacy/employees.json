@@ -1,0 +1,141 @@
+{
+  "date_from": "2026-10-13",
+  "date_to": "2026-10-14",
+  "departments": [
+    "Bench",
+    "X"
+  ],
+  "directory_available": true,
+  "items": [
+    {
+      "activity_days": 2,
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "events": 3,
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "in_directory": true,
+      "last_activity_local": "2026-10-14T08:48:00+05:30",
+      "review_flags": 1
+    },
+    {
+      "activity_days": 1,
+      "department": "Bench",
+      "emp_code": "0107",
+      "employee_name": "F",
+      "employment_status": "Active",
+      "events": 2,
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "in_directory": true,
+      "last_activity_local": "2026-10-13T08:37:20+05:30",
+      "review_flags": 1
+    },
+    {
+      "activity_days": 1,
+      "department": "Bench",
+      "emp_code": "102",
+      "employee_name": "B",
+      "employment_status": "Active",
+      "events": 1,
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "in_directory": true,
+      "last_activity_local": "2026-10-13T08:35:00+05:30",
+      "review_flags": 1
+    },
+    {
+      "activity_days": 1,
+      "department": "Bench",
+      "emp_code": "103",
+      "employee_name": "C",
+      "employment_status": "Inactive",
+      "events": 1,
+      "has_photo": false,
+      "identity_class": "MATCHED_INACTIVE",
+      "in_directory": true,
+      "last_activity_local": "2026-10-14T08:45:00+05:30",
+      "review_flags": 2
+    },
+    {
+      "activity_days": 1,
+      "department": "X",
+      "emp_code": "105",
+      "employee_name": "D",
+      "employment_status": "Active",
+      "events": 1,
+      "has_photo": false,
+      "identity_class": "AMBIGUOUS",
+      "in_directory": true,
+      "last_activity_local": "2026-10-14T08:47:00+05:30",
+      "review_flags": 2
+    },
+    {
+      "activity_days": 1,
+      "department": null,
+      "emp_code": "999",
+      "employee_name": null,
+      "employment_status": null,
+      "events": 1,
+      "has_photo": false,
+      "identity_class": "UNMATCHED",
+      "in_directory": false,
+      "last_activity_local": "2026-10-13T08:39:00+05:30",
+      "review_flags": 2
+    },
+    {
+      "activity_days": 1,
+      "department": null,
+      "emp_code": "TEST-AZURE-001",
+      "employee_name": null,
+      "employment_status": null,
+      "events": 1,
+      "has_photo": false,
+      "identity_class": "UNMATCHED",
+      "in_directory": false,
+      "last_activity_local": "2026-10-14T09:45:00+05:30",
+      "review_flags": 2
+    },
+    {
+      "activity_days": 0,
+      "department": "Bench",
+      "emp_code": "108",
+      "employee_name": "G",
+      "employment_status": "Active",
+      "events": 0,
+      "has_photo": false,
+      "identity_class": "MATCHED_BEFORE_HIRE",
+      "in_directory": true,
+      "last_activity_local": null,
+      "review_flags": 0
+    },
+    {
+      "activity_days": 0,
+      "department": "Bench",
+      "emp_code": "110",
+      "employee_name": "H",
+      "employment_status": "Active",
+      "events": 0,
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "in_directory": true,
+      "last_activity_local": null,
+      "review_flags": 0
+    }
+  ],
+  "page": 1,
+  "page_size": 10,
+  "site_id": "dev-site",
+  "summary": {
+    "active": 6,
+    "employees": 9,
+    "inactive": 1,
+    "matched": 6,
+    "needing_review": 7,
+    "not_in_directory": 2,
+    "with_activity": 7
+  },
+  "total": 9
+}

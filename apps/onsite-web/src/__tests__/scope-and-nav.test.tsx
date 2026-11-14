@@ -31,7 +31,7 @@ describe("navigation follows permissions, not role names", () => {
   });
   it("admin also sees the admin section", () => {
     expect(labels({ role: "ONSITE_ADMIN", permissions: ADMIN })).toEqual([
-      "Overview", "Today", "Activity", "Employees", "Exceptions", "Site Health", "Identity Match", "Sites",
+      "Overview", "Today", "Activity", "Employees", "Exceptions", "Site Health", "Identity Management", "Sites",
     ]);
   });
   it("each admin page needs its own permission", () => {

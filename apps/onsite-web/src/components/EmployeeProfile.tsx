@@ -13,7 +13,7 @@ import { eachDay, fmtDay, fmtNum, fmtPeriod, fmtShortDay, type Period } from "@/
 import { hrefWith } from "@/lib/url-state";
 import { BarChart } from "./charts";
 import { DataView, Facts } from "./DataView";
-import { FlagChips, IdentityBadge } from "./FlagChips";
+import { FlagChips, MappingBadge } from "./FlagChips";
 import { cx, EmptyPanel, focusRing, InfoTip, Initials, Pager, Panel, Segmented, Skeleton } from "./kit";
 import { useSite } from "./SiteContext";
 import { ToneBadge } from "./ToneBadge";
@@ -21,9 +21,11 @@ import { ToneBadge } from "./ToneBadge";
 type Tab = "overview" | "days" | "flags";
 const SPAN_HELP = "Time between the first and latest recorded activity on a day. It is not worked hours.";
 
-/** Employee activity profile: a wide side panel on large screens and a
- *  full-screen sheet on small ones. Keyboard: focus moves into the panel,
- *  Escape closes, focus returns to the opener. */
+/** Employee activity profile of a VERIFIED employee, addressed by BHR
+ *  Employee ID (``code``): attendance from every ZKBioTime ID mapped to them,
+ *  each only inside its verified period. A wide side panel on large screens
+ *  and a full-screen sheet on small ones. Keyboard: focus moves into the
+ *  panel, Escape closes, focus returns to the opener. */
 export function EmployeeProfile({ code, to, onClose }: { code: string; to: string; onClose: () => void }) {
   const { site } = useSite();
   const [days, setDays] = useState<"7" | "30" | "90">("30");
@@ -60,21 +62,34 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
               className={cx("-ml-1 grid size-10 shrink-0 place-items-center rounded-lg text-dt-text-secondary hover:bg-dt-surface-warm lg:hidden", focusRing)}>
               <ArrowLeft className="size-5" aria-hidden />
             </button>
-            <Initials name={name} code={code} size="lg" photo={data?.profile.has_photo} alt={name ? `Profile photo of ${name}` : undefined} />
+            <Initials name={name} code={code} size="lg" photo={data?.profile.has_photo} bhrId={data?.profile.bamboohr_id ?? null}
+              alt={name ? `Profile photo of ${name}` : undefined} />
             <div className="min-w-0 flex-1">
-              <h2 id="employee-profile-title" className="truncate text-lg font-semibold text-dt-text-primary">{name ?? "Unmatched code"}</h2>
+              <h2 id="employee-profile-title" className="truncate text-lg font-semibold text-dt-text-primary">{name ?? "Name unavailable"}</h2>
               <p className="text-sm text-dt-text-secondary">
-                <span className="font-mono">Employee Number {code}</span>
+                <span className="font-mono">BHR Employee ID {code}</span>
+                {data?.profile.employee_number && <> · <span className="font-mono">BambooHR Employee Number {data.profile.employee_number}</span></>}
                 {data?.profile.department && <> · {data.profile.department}</>}
                 {data?.profile.job_title && <span className="hidden sm:inline"> · {data.profile.job_title}</span>}
               </p>
+              <p className="text-xs text-dt-text-secondary">
+                ZKBioTime ID(s): <span className="font-mono">{(data?.profile.zk_emp_codes ?? []).join(", ") || "—"}</span>
+              </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                {data && <IdentityBadge cls={data.profile.identity_class} />}
+                {data && <MappingBadge status={data.profile.mapping_status} cls={data.profile.identity_class} />}
                 {data?.profile.employment_status && (
                   <ToneBadge tone={data.profile.employment_status.toLowerCase() === "active" ? "success" : "neutral"}>{data.profile.employment_status}</ToneBadge>
                 )}
-                {data && data.profile.match_count > 1 && <ToneBadge tone="danger">{data.profile.match_count} directory records share this number</ToneBadge>}
               </div>
+              {data?.mappings && data.mappings.length > 0 && (
+                <ul className="mt-1.5 flex flex-wrap gap-1.5 text-xs text-dt-text-secondary" aria-label="Verified ZKBioTime ID periods">
+                  {data.mappings.map((m) => (
+                    <li key={m.mapping_id} className="rounded-md border border-dt-border px-1.5 py-0.5">
+                      <span className="font-mono">{m.zk_emp_code}</span>: {m.valid_from} → {m.valid_to ?? "open"}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <button type="button" onClick={onClose} aria-label="Close"
               className={cx("hidden size-10 shrink-0 place-items-center rounded-lg text-dt-text-secondary hover:bg-dt-surface-warm lg:grid", focusRing)}>
@@ -109,7 +124,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
           ) : (
             <>
               {!data.directory_available && (
-                <p className="mb-3 text-sm text-dt-burnt-orange">Employee details are unavailable right now — showing the Employee Code only.</p>
+                <p className="mb-3 text-sm text-dt-burnt-orange">Employee details are unavailable right now — verified attendance is shown without the name.</p>
               )}
               {tab === "overview" && (
                 <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" className="space-y-4">
@@ -249,7 +264,7 @@ function DayEvents({ code, date }: { code: string; date: string }) {
   const { site } = useSite();
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
-  const params = { site_id: site.site_id, emp_code: code, date_from: date, date_to: date, sort: "time", page, page_size: size };
+  const params = { site_id: site.site_id, bamboohr_id: code, date_from: date, date_to: date, sort: "time", page, page_size: size };
   const query = useQuery({ queryKey: ["onsite-activity", params], queryFn: () => getActivity(params), ...liveQuery });
   if (query.isLoading) return <Skeleton className="h-16 w-full" />;
   if (!query.data) return <p className="text-sm text-dt-text-secondary">Events could not be loaded. <button type="button" className="underline" onClick={() => query.refetch()}>Retry</button></p>;

@@ -1,0 +1,90 @@
+{
+  "enums": {
+    "employment_status": [
+      "Active",
+      "Inactive",
+      "null"
+    ],
+    "exception_count_keys": [
+      "AMBIGUOUS_CODE",
+      "BEFORE_HIRE_ACTIVITY",
+      "HIGH_PUNCH_COUNT",
+      "INACTIVE_EMPLOYEE_ACTIVITY",
+      "POSSIBLE_DUPLICATE_TAP",
+      "SINGLE_PUNCH",
+      "TZ_INCONSISTENT",
+      "UNMATCHED_CODE"
+    ],
+    "flag": [
+      "AMBIGUOUS_CODE",
+      "INACTIVE_EMPLOYEE_ACTIVITY",
+      "POSSIBLE_DUPLICATE_TAP",
+      "SINGLE_PUNCH",
+      "UNMATCHED_CODE"
+    ],
+    "flags": [
+      "AMBIGUOUS_CODE",
+      "INACTIVE_EMPLOYEE_ACTIVITY",
+      "POSSIBLE_DUPLICATE_TAP",
+      "SINGLE_PUNCH",
+      "UNMATCHED_CODE"
+    ],
+    "identity_class": [
+      "AMBIGUOUS",
+      "MATCHED_ACTIVE",
+      "MATCHED_INACTIVE",
+      "UNMATCHED"
+    ]
+  },
+  "shape": {
+    "counts": {
+      "AMBIGUOUS_CODE": "int",
+      "BEFORE_HIRE_ACTIVITY": "int",
+      "HIGH_PUNCH_COUNT": "int",
+      "INACTIVE_EMPLOYEE_ACTIVITY": "int",
+      "POSSIBLE_DUPLICATE_TAP": "int",
+      "SINGLE_PUNCH": "int",
+      "TZ_INCONSISTENT": "int",
+      "UNMATCHED_CODE": "int"
+    },
+    "date_from": "str",
+    "date_to": "str",
+    "directory_available": "bool",
+    "items": [
+      {
+        "department": "null|str",
+        "emp_code": "str",
+        "employee_name": "null|str",
+        "employment_status": "null|str",
+        "first_activity_local": "str",
+        "first_activity_utc": "str",
+        "flags": [
+          "str"
+        ],
+        "has_photo": "bool",
+        "identity_class": "str",
+        "latest_activity_local": "str",
+        "latest_activity_utc": "str",
+        "local_date": "str",
+        "punch_count": "int",
+        "reasons": [
+          {
+            "flag": "str",
+            "reason": "str"
+          }
+        ],
+        "site_id": "str",
+        "span_minutes": "int",
+        "terminal_names": [
+          "str"
+        ],
+        "terminals": "int"
+      }
+    ],
+    "page": "int",
+    "page_size": "int",
+    "site_id": "str",
+    "total": "int"
+  },
+  "status": 200
+}

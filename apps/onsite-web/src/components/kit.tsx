@@ -151,10 +151,12 @@ export function DeltaText({ value, previous, label }: { value: number; previous:
 const AVATAR_TONES = ["bg-dt-red/10 text-dt-red", "bg-dt-orange/15 text-dt-burnt-orange", "bg-dt-amber/25 text-dt-warning",
   "bg-dt-success/10 text-dt-success", "bg-dt-info/10 text-dt-info"];
 
-export function Initials({ name, code, size = "md", photo = false, alt }: {
+export function Initials({ name, code, size = "md", photo = false, alt, bhrId }: {
   name: string | null | undefined; code: string; size?: "sm" | "md" | "lg";
   /** Request the profile photo (only when the API reports one may exist). */
   photo?: boolean;
+  /** BHR Employee ID of the VERIFIED employee — photos are only ever fetched by it. */
+  bhrId?: string | null;
   /** Alt text when the photo stands alone; omit when the name is shown beside it. */
   alt?: string;
 }) {
@@ -167,7 +169,7 @@ export function Initials({ name, code, size = "md", photo = false, alt }: {
     <span className={cx("relative grid shrink-0 place-items-center overflow-hidden rounded-full font-semibold", dim,
       name ? AVATAR_TONES[h % AVATAR_TONES.length] : "border border-dashed border-dt-border text-dt-text-secondary")}>
       <span aria-hidden>{text}</span>
-      {photo && <EmployeePhoto code={code} alt={alt} />}
+      {photo && bhrId && <EmployeePhoto bhrId={bhrId} alt={alt} />}
     </span>
   );
 }
@@ -176,13 +178,13 @@ export function Initials({ name, code, size = "md", photo = false, alt }: {
  *  avatar is near the viewport, cached per employee for the session (never
  *  refetched by the 30-second dashboard refresh), and silently absent on any
  *  failure — the initials underneath simply stay visible. */
-function EmployeePhoto({ code, alt }: { code: string; alt?: string }) {
+function EmployeePhoto({ bhrId, alt }: { bhrId: string; alt?: string }) {
   const [ref, inView] = useInView<HTMLSpanElement>();
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const query = useQuery({
-    queryKey: ["onsite-photo", code],
-    queryFn: () => getEmployeePhoto(code),
+    queryKey: ["onsite-photo", bhrId],
+    queryFn: () => getEmployeePhoto(bhrId),
     enabled: inView,
     staleTime: Infinity,
     gcTime: 60 * 60_000,
@@ -201,20 +203,34 @@ function EmployeePhoto({ code, alt }: { code: string; alt?: string }) {
   );
 }
 
-export function Person({ name, code, meta, size = "md", photo = false }: {
+export function Person({ name, code, meta, size = "md", photo = false, bhrId }: {
   name: string | null | undefined; code: string; meta?: React.ReactNode; size?: "sm" | "md" | "lg"; photo?: boolean;
+  /** BHR Employee ID of the verified employee (shown, and the only photo key). */
+  bhrId?: string | null;
 }) {
   return (
     <span className="flex min-w-0 items-center gap-2.5">
-      <Initials name={name} code={code} size={size} photo={photo} />
+      <Initials name={name} code={code} size={size} photo={photo} bhrId={bhrId} />
       <span className="min-w-0">
-        <span className="block truncate font-medium text-dt-text-primary">{name ?? "Unmatched code"}</span>
+        <span className="block truncate font-medium text-dt-text-primary">{name ?? (bhrId ? "Name unavailable" : "Unverified ZKBioTime ID")}</span>
         <span className="block truncate text-xs text-dt-text-secondary">
-          <span aria-hidden>#</span><span className="font-mono">{code}</span>{meta ? <> · {meta}</> : null}
+          <span title="ZKBioTime ID">ZK <span className="font-mono">{code}</span></span>
+          {bhrId && <> · <span title="BHR Employee ID">BHR <span className="font-mono">{bhrId}</span></span></>}
+          {meta ? <> · {meta}</> : null}
         </span>
       </span>
     </span>
   );
+}
+
+/** A verified employee row/profile reference (all ZKBioTime IDs, BHR id, photo). */
+export function EmployeeRefCell({ r, meta, size = "md" }: {
+  r: { emp_code: string; zk_emp_codes?: string[]; bamboohr_id?: string | null; employee_name?: string | null;
+    has_photo?: boolean };
+  meta?: React.ReactNode; size?: "sm" | "md" | "lg";
+}) {
+  return <Person photo={!!r.has_photo} bhrId={r.bamboohr_id} name={r.employee_name}
+    code={(r.zk_emp_codes?.length ? r.zk_emp_codes : [r.emp_code]).join(", ")} meta={meta} size={size} />;
 }
 
 /* ------------------------------------------------------- loading / empty */

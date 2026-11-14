@@ -137,7 +137,11 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     url = f"sqlite:///{tmp_path / 'atwork-migration.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["e1f3a5b7c9d0", "(head)"]
+    # Exactly one head, and the AtWork activation migration is on that single line
+    # (later platform registration migrations may follow it without breaking this).
+    assert len(heads.stdout.split()) == 2 and heads.stdout.split()[1] == "(head)", heads.stdout
+    lineage = _alembic(url, "history", "-r", "e1f3a5b7c9d0:head")
+    assert lineage.returncode == 0 and "e1f3a5b7c9d0" in lineage.stdout, lineage.stderr
     up = _alembic(url, "upgrade", "c9d2e4f6a8b1")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)

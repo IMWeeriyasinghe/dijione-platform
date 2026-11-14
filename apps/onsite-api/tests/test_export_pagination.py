@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 
 from app.attendance_source import mock_client
 from app.services import attendance_export, mirror_sync_service, workforce_directory
-from tests.conftest import enable_site, headers_for, run_sync
+from tests.conftest import enable_site, headers_for, map_directory, run_sync
 
 DAY, OTHER_DAY = "2026-10-13", "2026-10-20"
 N, FINANCE = 400, 137  # employees with activity on DAY; Finance subset
@@ -60,6 +60,7 @@ def big(api_client, db, audit_calls, monkeypatch):
     monkeypatch.setattr(mirror_sync_service, "get_onsite_source", lambda: mock_client.MockOnsiteSource(events))
     snapshot = workforce_directory.DirectorySnapshot(available=True, entries=_directory())
     monkeypatch.setattr(workforce_directory, "load", lambda force=False: snapshot)
+    map_directory(snapshot.entries)
     run_sync(api_client)
     enable_site(api_client, "dev-site")  # syd-site stays disabled
     return api_client
@@ -70,7 +71,7 @@ def _xlsx_rows(client, url, sheet):
     assert resp.status_code == 200, resp.text
     ws = load_workbook(io.BytesIO(resp.content))[sheet]
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
-    start = next(i for i, r in enumerate(rows) if len(r) > 1 and r[1] in ("Employee Number", "Local Time", "Employee Name"))
+    start = next(i for i, r in enumerate(rows) if len(r) > 1 and r[1] in ("Employee Name", "Local Time", "BHR Employee ID"))
     header = rows[start]
     data = [dict(zip(header, r, strict=False)) for r in rows[start + 1:] if r[1] is not None]
     return data, {r[0]: r[1] for r in rows[4:start] if r[0]}
@@ -88,7 +89,9 @@ def _pages(client, url, page_size=50):
         page += 1
 
 
-def _codes(rows, key="Employee Number"):
+def _codes(rows, key=None):
+    """ZKBioTime IDs of the export rows (attendance/employees: "ZKBioTime ID(s)"; events: "ZKBioTime ID")."""
+    key = key or ("ZKBioTime ID(s)" if rows and "ZKBioTime ID(s)" in rows[0] else "ZKBioTime ID")
     return sorted(r[key] for r in rows)
 
 

@@ -46,7 +46,9 @@ def _attendance_workbook(db, scope: OnsiteScope, *, report: str, title: str, sit
                                   with_reasons=exceptions_only)]
     if with_events:
         sheets.append(ex.event_sheet(ex.event_rows(db, scope.allowed_site_ids, site, start, end, days, f.terminal)))
-    sheets.append(ex.summary_sheet(days, start, end))
+    sheets.append(ex.summary_sheet(days, start, end,
+                                   ex.unmapped_punches(db, scope.allowed_site_ids, site, start, end,
+                                                       workforce_directory.load())))
     label = start.isoformat() if start == end else f"{start.isoformat()} to {end.isoformat()}"
     meta = ReportMeta(title=title, generated_by=scope.user.full_name,
                       filters=ex.filter_summary(ex.site_name(db, scope.allowed_site_ids, site), label, f))
@@ -88,13 +90,12 @@ def export_activity(site_id: str | None = None, date_from: date | None = None, d
     if total > ex.MAX_EXPORT_EVENTS:
         raise ex.too_large(total, ex.MAX_EXPORT_EVENTS)
     pairs = {(e.site_local_date.isoformat(), e.emp_code) for e in events}
-    # Day rows for exactly those employee-days (identity/flags are per day already).
-    days = [r for r in ex.day_rows(db, scope.allowed_site_ids, site, tz, start, end, directory,
-                                   ex.ExportFilters(q=q, emp_code=emp_code, department=department))
-            if (r["local_date"], r["emp_code"]) in pairs]
-    sheets = [ex.attendance_sheet(days), ex.event_sheet(ex.pair_events(events, {(r["local_date"], r["emp_code"]): r
-                                                                                for r in days})),
-              ex.summary_sheet(days, start, end)]
+    # Verified employee-day rows for exactly those (date, ZKBioTime ID) pairs.
+    days = [r for r in ex.day_rows(db, scope.allowed_site_ids, site, tz, start, end, directory, ex.ExportFilters())
+            if any((r["local_date"], c) in pairs for c in r["zk_emp_codes"])]
+    sheets = [ex.attendance_sheet(days), ex.event_sheet(ex.pair_events(events, ex._by_code_day(days))),
+              ex.summary_sheet(days, start, end,
+                               ex.unmapped_punches(db, scope.allowed_site_ids, site, start, end, directory))]
     label = start.isoformat() if start == end else f"{start.isoformat()} to {end.isoformat()}"
     meta = ReportMeta(title="Attendance Activity Report", generated_by=scope.user.full_name,
                       filters=ex.filter_summary(ex.site_name(db, scope.allowed_site_ids, site), label, f))
@@ -130,13 +131,15 @@ def export_employees(site_id: str | None = None, date_from: date | None = None, 
                          page=1, page_size=ex.MAX_EXPORT_DAY_ROWS + 1, emp_code=emp_code, identity_class=identity_class)
     if data["total"] > ex.MAX_EXPORT_DAY_ROWS:
         raise ex.too_large(data["total"], ex.MAX_EXPORT_DAY_ROWS)
-    rows = [[r["emp_code"], r.get("employee_name"), r.get("department"), r.get("employment_status"),
-             ex.IDENTITY_LABEL.get(r.get("identity_class") or "", "Directory unavailable"),
+    rows = [[r.get("employee_name"), r.get("bamboohr_id"), r.get("employee_number"),
+             ", ".join(r.get("zk_emp_codes") or []), r.get("department"), r.get("employment_status"),
+             ex.MAPPING_LABEL.get(r.get("mapping_status") or "", ""),
              r["activity_days"], r["events"], r["review_flags"],
              ex._local(r["last_activity_local"]).replace(tzinfo=None) if r["last_activity_local"] else None]
             for r in data["items"]]
-    cols = [Column("Employee Number", 16), Column("Employee Name", 26), Column("Department", 20),
-            Column("Employment Status", 14), Column("Identity Classification", 24), Column("Activity Days", 12, "int"),
+    cols = [Column("Employee Name", 26), Column("BHR Employee ID", 14), Column("BambooHR Employee Number", 16),
+            Column("ZKBioTime ID(s)", 16), Column("Department", 20), Column("Employment Status", 14),
+            Column("Mapping Status", 22), Column("Activity Days", 12, "int"),
             Column("Attendance Events", 12, "int"), Column("Review Flags", 12, "int"),
             Column("Last Activity (site local)", 18, "datetime")]
     summary = Sheet("Summary", [Column("Measure", 36), Column("Value", 24)], [
@@ -145,6 +148,8 @@ def export_employees(site_id: str | None = None, date_from: date | None = None, 
         ["Employees with activity", sum(1 for r in data["items"] if r["events"])],
         ["Attendance events", sum(r["events"] for r in data["items"])],
         ["Employees with review flags", sum(1 for r in data["items"] if r["review_flags"])],
+        ["Unmapped punches excluded (see Identity Management)",
+         ex.unmapped_punches(db, scope.allowed_site_ids, site, start, end, workforce_directory.load())],
     ])
     f = ex.ExportFilters(q=q, emp_code=emp_code, department=department, identity_class=identity_class,
                          employment_status=employment_status)
@@ -172,11 +177,10 @@ def export_overview(site_id: str | None = None, date_: date | None = Query(None,
         ["Attendance events", k["total_events"]],
         ["Employees needing review", k["employees_needing_review"]],
         ["Single-activity employees", k["single_punch_employees"]],
-        ["Unmatched codes", k["unmatched_codes"]],
         ["Feed state", (k["feed_state"] or "Unknown").replace("_", " ").title()],
         *[[f"Review flag: {ex.FLAG_LABEL[f]}", n] for f, n in ov["review_breakdown"].items()],
     ])
-    hours = svc.hourly(db, allowed, site, day)["hours"]
+    hours = svc.hourly(db, allowed, site, day, directory=workforce_directory.load())["hours"]
     hourly = Sheet("Hourly Activity", [Column("Hour", 10), Column("Attendance Events", 14, "int"),
                                        Column("Employees", 12, "int")],
                    [[f"{h['hour']:02d}:00", h["events"], h["employees"]] for h in hours])
@@ -184,7 +188,7 @@ def export_overview(site_id: str | None = None, date_: date | None = Query(None,
     trend = Sheet("30-Day Trend", [Column("Date", 12, "date"), Column("Attendance Events", 14, "int"),
                                     Column("Employees", 12, "int")],
                   [[date.fromisoformat(d["date"]), d["events"], d["employees"]]
-                   for d in svc.trend(db, allowed, site, start, end)["days"]])
+                   for d in svc.trend(db, allowed, site, start, end, workforce_directory.load())["days"]])
     meta = ReportMeta(title="Attendance Overview Report", generated_by=scope.user.full_name,
                       filters=[("Site", ex.site_name(db, allowed, site)), ("Date", day.isoformat())])
     return _xlsx(build_workbook(meta, [summary, hourly, trend]), ex.filename("Overview", day, day))

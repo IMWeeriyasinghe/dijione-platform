@@ -74,6 +74,17 @@ export type OnsiteSite = {
   last_seen_at: string | null;
 };
 
+/** Identity of a ZKBioTime ID on a day, resolved ONLY from administrator-
+ *  verified mappings (never from Employee Number equality). */
+export type MappingStatus =
+  | "MAPPED"
+  | "MAPPED_DIRECTORY_MISSING"
+  | "UNMAPPED"
+  | "MAPPING_CONFLICT"
+  | "DIRECTORY_UNAVAILABLE";
+
+/** Legacy vocabulary kept by the API contract; now derived from the verified
+ *  employee's employment record. UNMATCHED/AMBIGUOUS no longer reach viewers. */
 export type IdentityClass =
   | "MATCHED_ACTIVE"
   | "MATCHED_INACTIVE"

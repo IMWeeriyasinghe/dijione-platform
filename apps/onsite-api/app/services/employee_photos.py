@@ -128,18 +128,13 @@ def _fetch_upstream(bamboohr_id: str) -> tuple[Photo | None, float]:
 cache = PhotoCache()
 
 
-def bamboohr_id_for(code: str) -> str | None:
-    """The single directory entry for this exact Employee Number that has a
-    photo — or None (unmatched, ambiguous, no photo, directory unavailable)."""
+def photo_for_employee(bamboohr_id: str) -> Photo | None:
+    """Photo of a VERIFIED employee (callers must have established that the
+    employee has a verified mapping at a site in the caller's scope)."""
     directory = workforce_directory.load()
     if not directory.available:
         return None
-    matches = directory.by_employee_number().get(code, [])
-    if len(matches) != 1 or not matches[0].get("has_photo") or not matches[0].get("bamboohr_id"):
+    entry = directory.by_bamboohr_id().get(str(bamboohr_id))
+    if entry is None or not entry.get("has_photo"):
         return None
-    return str(matches[0]["bamboohr_id"])
-
-
-def photo_for(code: str) -> Photo | None:
-    bid = bamboohr_id_for(code)
-    return cache.get(bid) if bid else None
+    return cache.get(str(bamboohr_id))

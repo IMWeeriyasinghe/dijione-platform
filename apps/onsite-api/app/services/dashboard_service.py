@@ -3,9 +3,10 @@
 Neutral facts only (first/latest activity, punch count, span, terminals,
 needs-review flags). No Present/Absent/Late/Early/worked-hours judgements —
 those need an approved attendance policy. ``PunchState`` is passed through
-raw and never interpreted. Employee identity always comes from the people-api
-Workforce Directory by exact EmpCode == Employee Number; when the directory is
-unavailable every view still works with raw EmpCodes.
+raw and never interpreted. Employee identity comes ONLY from administrator-
+verified ZKBioTime ID -> BambooHR mappings (``identity_resolution``); unmapped
+attendance is excluded from these viewer records (it stays visible in Identity
+Management). Headcounts count distinct BambooHR employees, never codes.
 """
 
 from __future__ import annotations
@@ -18,13 +19,13 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.constants import IdentityClass, ReviewFlag
+from app.core.constants import IdentityClass, MappingStatus, ReviewFlag
 from app.models.mirror import AttendanceEvent
 from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.site_repository import SiteRepository
-from app.services.attendance_summary import daily_activity
+from app.services.attendance_summary import daily_activity, identity_fields
 from app.services.freshness_service import freshness
-from app.services.identity_match_service import classify
+from app.services.identity_resolution import MappingIndex, legacy_identity_class
 from app.services.time_derivation import site_today, to_site_local
 from app.services.workforce_directory import DirectorySnapshot
 
@@ -60,57 +61,61 @@ def resolve_range(date_from: date | None, date_to: date | None, *, default_days:
     return start, end
 
 
-# --- identity enrichment ---------------------------------------------------
+# --- identity -----------------------------------------------------------------
 
 
 class Identity:
-    def __init__(self, directory: DirectorySnapshot):
+    """Verified identity for one request: mapping index + Workforce Directory.
+
+    ``describe`` keeps the pre-redesign shape (legacy contract) and adds the
+    new-contract keys. An unverified ZKBioTime ID describes as nobody — no
+    name, department, status or photo — regardless of any Employee Number."""
+
+    def __init__(self, db: Session, allowed, directory: DirectorySnapshot, site_id: str | None = None,
+                 index: MappingIndex | None = None):
         self.available = directory.available
-        self.entries = directory.entries if directory.available else []
-        self.index = directory.by_employee_number() if directory.available else {}
+        self.site_id = site_id
+        self.index = index or MappingIndex.load(db, allowed_site_ids=allowed, directory=directory)
 
-    def describe(self, code: str, first: date | None = None, last: date | None = None) -> dict:
-        matches = self.index.get(code, [])
-        single = matches[0] if len(matches) == 1 else None
-        cls = None
-        if self.available:
-            ref = last or first or date.today()
-            cls = classify(matches, first or ref, ref).value
-        return {
-            "emp_code": code,
-            "employee_name": single.get("display_name") if single else None,
-            "department": single.get("department") if single else None,
-            "employment_status": single.get("employment_status") if single else None,
-            # A photo is only offered for an unambiguous directory match.
-            "has_photo": bool(single and single.get("has_photo")),
-            "identity_class": cls,
-        }
+    def resolve(self, code: str, day: date, site_id: str | None = None):
+        return self.index.resolve(site_id or self.site_id, code, day)
 
-    def codes_matching(self, codes: Collection[str], *, department: str | None, identity_class: str | None) -> set[str]:
-        out = set()
-        for code in codes:
-            d = self.describe(code)
-            if department and (d["department"] or "") != department:
-                continue
-            if identity_class and d["identity_class"] != identity_class:
-                continue
-            out.add(code)
+    def describe(self, code: str, first: date | None = None, last: date | None = None,
+                 site_id: str | None = None) -> dict:
+        ref = last or first or date.today()
+        r = self.resolve(code, ref, site_id)
+        out = {"emp_code": code, "employee_name": None, "department": None, "employment_status": None,
+               "has_photo": False, "identity_class": None, "zk_emp_code": code, "bamboohr_id": None,
+               "employee_number": None, "mapping_status": r.mapping_status.value}
+        if r.identified:
+            out.update(identity_fields(r))
+            out["zk_emp_code"] = code
+            out["identity_class"] = legacy_identity_class(r, first or ref, ref)
+        out.pop("zk_emp_codes", None)
         return out
 
 
 def _search_hit(row: dict, q: str | None) -> bool:
+    """Viewer search: employee name, BHR Employee ID or BambooHR Employee
+    Number. ZKBioTime ID search is administrative (Identity Management)."""
     if not q:
         return True
     q = q.strip().lower()
-    return q in row["emp_code"].lower() or q in (row.get("employee_name") or "").lower()
+    return any(q in (row.get(k) or "").lower() for k in ("employee_name", "bamboohr_id", "employee_number"))
+
+
+def _has_code(row: dict, emp_code: str) -> bool:
+    return emp_code in (row.get("zk_emp_codes") or [row["emp_code"]])
 
 
 def _match(row: dict, *, q: str | None = None, emp_code: str | None = None, department: str | None = None,
-           identity_class: str | None = None, employment_status: str | None = None) -> bool:
-    """Shared row filter. ``emp_code`` is exact, case-sensitive equality (the
-    identity rule); ``q`` is a display-only search over name and code."""
+           identity_class: str | None = None, employment_status: str | None = None,
+           bamboohr_id: str | None = None) -> bool:
+    """Shared row filter. ``emp_code`` selects the verified employee row that
+    owns that ZKBioTime ID (exact string); ``q`` is a display-only search."""
     return (_search_hit(row, q)
-            and (not emp_code or row["emp_code"] == emp_code)
+            and (not emp_code or _has_code(row, emp_code))
+            and (not bamboohr_id or row.get("bamboohr_id") == bamboohr_id)
             and (not department or (row.get("department") or "") == department)
             and (not identity_class or row.get("identity_class") == identity_class)
             and (not employment_status or (row.get("employment_status") or "") == employment_status))
@@ -156,6 +161,24 @@ def list_sites(db: Session, allowed_site_ids: Collection[str]) -> list[dict]:
     return sites
 
 
+
+def operational(db: Session, allowed, site_id: str, start: date, end: date, index: MappingIndex) -> dict:
+    """Ingestion & identity coverage — operational monitoring, kept separate from
+    identified attendance. Counts only (no names); shown to HEALTH/IDENTITY readers."""
+    codes: set[str] = set()
+    unmapped: set[str] = set()
+    total = unmapped_punches = 0
+    for code, d, n, _last in AttendanceRepository(db).code_day_stats(allowed_site_ids=allowed, site_id=site_id,
+                                                                     date_from=start, date_to=end):
+        codes.add(code)
+        total += n
+        if not index.resolve(site_id, code, d).identified:
+            unmapped.add(code)
+            unmapped_punches += n
+    return {"active_codes": len(codes), "total_punches": total, "unmapped_codes": len(unmapped),
+            "unmapped_punches": unmapped_punches}
+
+
 # --- views -----------------------------------------------------------------
 
 EMPLOYEE_SORTS = {
@@ -180,68 +203,95 @@ def _sort_rows(rows: list[dict], sort: str, keys: dict) -> None:
         rows.sort(key=keys[field], reverse=sort.startswith("-"))
 
 
+
 def overview(db: Session, allowed, site_id: str, tz: str | None, day: date, directory: DirectorySnapshot,
-             date_to: date | None = None) -> dict:
+             date_to: date | None = None, *, include_operational: bool = False) -> dict:
     """KPIs for one site-local day, or an inclusive range (``day``..``date_to``).
-    Employee KPIs count distinct employees; ``review_breakdown`` counts
-    employee-days per flag (for a single day the two are the same)."""
-    ident = Identity(directory)
+    Employee KPIs count distinct VERIFIED BambooHR employees (never codes);
+    ``review_breakdown`` counts employee-days per flag. Unmapped attendance is
+    excluded here and reported only in the operational block."""
+    ident = Identity(db, allowed, directory, site_id)
     end = date_to or day
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
-                          date_from=day, date_to=end, directory=directory)
+                          date_from=day, date_to=end, directory=directory, index=ident.index)
     breakdown = Counter(f for r in rows for f in r["flags"])
 
     def flagged(flag: str) -> int:
-        return len({r["emp_code"] for r in rows if flag in r["flags"]})
+        return len({r["bamboohr_id"] for r in rows if flag in r["flags"]})
 
     fresh = freshness(db, allowed_site_ids=(site_id,))
     site_fresh = fresh["sites"][0] if fresh["sites"] else {}
-    return {
+    identified = len({r["bamboohr_id"] for r in rows})
+    out = {
         "site_id": site_id, "date": day.isoformat(), "date_from": day.isoformat(), "date_to": end.isoformat(),
         "time_zone": tz,
         "directory_available": ident.available,
         "kpis": {
-            "employees_with_activity": len({r["emp_code"] for r in rows}),
+            "employees_with_activity": identified,
             "total_events": sum(r["punch_count"] for r in rows),
             "activity_days": len({r["local_date"] for r in rows}),
-            "employees_needing_review": len({r["emp_code"] for r in rows if r["flags"]}),
+            "employees_needing_review": len({r["bamboohr_id"] for r in rows if r["flags"]}),
             "single_punch_employees": flagged(ReviewFlag.SINGLE_PUNCH.value),
-            "unmatched_codes": flagged(ReviewFlag.UNMATCHED_CODE.value),
+            # Legacy key: identified rows are never unmatched (unmapped codes live in Identity Management).
+            "unmatched_codes": 0,
             "feed_state": site_fresh.get("feed_state"),
+            "identified_employees": identified,
+            "identified_punches": sum(r["punch_count"] for r in rows),
         },
         "review_breakdown": {f: breakdown.get(f, 0) for f in REVIEW_FLAGS},
         "last_successful_sync_at": fresh["last_successful_sync_at"],
         "latest_received_utc": site_fresh.get("latest_received_utc"),
         "agent_heartbeat_utc": site_fresh.get("agent_heartbeat_utc"),
     }
+    if include_operational:
+        out["operational"] = operational(db, allowed, site_id, day, end, ident.index)
+    return out
 
 
-def hourly(db: Session, allowed, site_id: str, day: date, date_to: date | None = None) -> dict:
-    counts = {h: (e, p) for h, e, p in AttendanceRepository(db).hourly_counts(
-        allowed_site_ids=allowed, site_id=site_id, local_date=day, date_to=date_to)}
+def hourly(db: Session, allowed, site_id: str, day: date, date_to: date | None = None,
+           directory: DirectorySnapshot | None = None) -> dict:
+    """Identified events and distinct verified employees per site-local hour."""
+    end = date_to or day
+    index = MappingIndex.load(db, allowed_site_ids=allowed, directory=directory or DirectorySnapshot(False))
+    events: Counter = Counter()
+    people: dict[str, set[str]] = defaultdict(set)
+    for hh, code, d, n in AttendanceRepository(db).code_day_hours(
+            allowed_site_ids=allowed, site_id=site_id, date_from=day, date_to=end,
+            code_windows=index.windows(site_id, day, end)):
+        r = index.resolve(site_id, code, d)
+        if r.identified:
+            events[hh] += n
+            people[hh].add(r.bamboohr_id)
     return {
-        "site_id": site_id, "date": day.isoformat(), "date_from": day.isoformat(),
-        "date_to": (date_to or day).isoformat(),
-        "hours": [{"hour": h, "events": counts.get(f"{h:02d}", (0, 0))[0], "employees": counts.get(f"{h:02d}", (0, 0))[1]}
+        "site_id": site_id, "date": day.isoformat(), "date_from": day.isoformat(), "date_to": end.isoformat(),
+        "hours": [{"hour": h, "events": events.get(f"{h:02d}", 0), "employees": len(people.get(f"{h:02d}", ()))}
                   for h in range(24)],
     }
 
 
-def trend(db: Session, allowed, site_id: str, start: date, end: date) -> dict:
-    data = {d: (e, p) for d, e, p in AttendanceRepository(db).daily_trend(
-        allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end)}
+def trend(db: Session, allowed, site_id: str, start: date, end: date,
+          directory: DirectorySnapshot | None = None) -> dict:
+    index = MappingIndex.load(db, allowed_site_ids=allowed, directory=directory or DirectorySnapshot(False))
+    events: Counter = Counter()
+    people: dict[date, set[str]] = defaultdict(set)
+    for code, d, n, _last in AttendanceRepository(db).code_day_stats(
+            allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
+            code_windows=index.windows(site_id, start, end)):
+        r = index.resolve(site_id, code, d)
+        if r.identified:
+            events[d] += n
+            people[d].add(r.bamboohr_id)
     days = []
     d = start
     while d <= end:
-        e, p = data.get(d, (0, 0))
-        days.append({"date": d.isoformat(), "events": e, "employees": p})
+        days.append({"date": d.isoformat(), "events": events.get(d, 0), "employees": len(people.get(d, ()))})
         d += timedelta(days=1)
     return {"site_id": site_id, "date_from": start.isoformat(), "date_to": end.isoformat(), "days": days}
 
 
 def _event_out(e: AttendanceEvent, ident: Identity, *, technical: bool) -> dict:
     out = {
-        **ident.describe(e.emp_code, e.site_local_date, e.site_local_date),
+        **ident.describe(e.emp_code, e.site_local_date, e.site_local_date, site_id=e.site_id),
         "local_time": e.punch_time_local,
         "local_date": e.site_local_date.isoformat(),
         "terminal": e.terminal_alias,
@@ -279,92 +329,109 @@ def hour_windows(start: date, end: date, hour: int, tz: str | None) -> list[tupl
     return out
 
 
+
+def _employee_filter(index: MappingIndex, site_id: str, start: date, end: date, *, q: str | None,
+                     department: str | None, emp_code: str | None, bamboohr_id: str | None) -> set[str] | None:
+    """Verified employees selected by the viewer filters (None = no restriction).
+    ``emp_code`` selects the employee(s) that verifiably owned that ID in the period."""
+    if not (q or department or emp_code or bamboohr_id):
+        return None
+    chosen = set(index.employees_in_period(site_id, start, end))
+    if emp_code:
+        chosen &= {p.bamboohr_id for p in index.periods_for_code(site_id, emp_code) if p.clip(start, end)}
+    if bamboohr_id:
+        chosen &= {bamboohr_id}
+    if q or department:
+        keep = set()
+        for bid in chosen:
+            e = index.employee(bid) or {}
+            row = {"employee_name": e.get("display_name"), "bamboohr_id": bid,
+                   "employee_number": e.get("employee_number"), "department": e.get("department")}
+            if _search_hit(row, q) and (not department or (row["department"] or "") == department):
+                keep.add(bid)
+        chosen = keep
+    return chosen
+
+
 def select_activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
                     q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
                     flag: str | None, tz: str | None, emp_code: str | None = None, offset: int = 0,
-                    limit: int = 50, hour: int | None = None,
-                    oldest_first: bool = False) -> tuple[int, list[AttendanceEvent]]:
+                    limit: int = 50, hour: int | None = None, oldest_first: bool = False,
+                    bamboohr_id: str | None = None, index: MappingIndex | None = None,
+                    ) -> tuple[int, list[AttendanceEvent]]:
     """The single Activity selection shared by the paged UI and the Excel
-    export (newest first). Identity class and review flags are evaluated per
-    employee-day — the same values each row displays — never per code."""
+    export (newest first). Only events inside verified mapping periods are
+    selectable; identity class and review flags are evaluated per verified
+    employee-day — the same values each row displays."""
     repo = AttendanceRepository(db)
-    ident = Identity(directory)
-    codes = {emp_code} if emp_code else None
-    if q or department:
-        candidates = repo.distinct_codes(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end)
-        if q:
-            candidates = [c for c in candidates if _search_hit(ident.describe(c), q)]
-        matched = ident.codes_matching(candidates, department=department, identity_class=None)
-        codes = matched if codes is None else codes & matched
+    index = index or MappingIndex.load(db, allowed_site_ids=allowed, directory=directory)
+    employees = _employee_filter(index, site_id, start, end, q=q, department=department, emp_code=emp_code,
+                                 bamboohr_id=bamboohr_id)
+    windows = index.windows(site_id, start, end, bamboohr_ids=employees)
     tz_only = flag == ReviewFlag.TZ_INCONSISTENT.value
     day_flag = flag if flag and not tz_only else None
-    windows = hour_windows(start, end, hour, tz) if hour is not None else None
-    if not identity_class and not day_flag:
-        return repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
-                                emp_codes=codes, terminal=terminal, tz_inconsistent_only=tz_only,
-                                offset=offset, limit=limit, utc_windows=windows, oldest_first=oldest_first)
-    pairs = {(r["local_date"], r["emp_code"]) for r in daily_activity(
-        db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start, date_to=end,
-        directory=directory, emp_codes=codes)
-        if (not identity_class or r["identity_class"] == identity_class) and (not day_flag or day_flag in r["flags"])}
-    if not pairs:
-        return 0, []
-    scanned, events = repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
-                                       emp_codes={c for _, c in pairs}, terminal=terminal,
-                                       tz_inconsistent_only=tz_only, offset=0, limit=_SCAN_LIMIT,
-                                       utc_windows=windows, oldest_first=oldest_first)
-    if scanned > _SCAN_LIMIT:  # never silently drop rows
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Too much activity for these filters — "
-                            "narrow the date range or add filters.")
-    selected = [e for e in events if (e.site_local_date.isoformat(), e.emp_code) in pairs]
-    return len(selected), selected[offset:offset + limit]
+    utc = hour_windows(start, end, hour, tz) if hour is not None else None
+    if identity_class or day_flag:
+        rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start,
+                              date_to=end, directory=directory, bamboohr_ids=employees, index=index)
+        selected = [r for r in rows if (not identity_class or r["identity_class"] == identity_class)
+                    and (not day_flag or day_flag in r["flags"])]
+        windows = [(c, date.fromisoformat(r["local_date"]), date.fromisoformat(r["local_date"]))
+                   for r in selected for c in r["zk_emp_codes"]]
+    return repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
+                            terminal=terminal, tz_inconsistent_only=tz_only, offset=offset, limit=limit,
+                            utc_windows=utc, oldest_first=oldest_first, code_windows=windows)
 
 
 def activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
              q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
              flag: str | None, page: int, page_size: int, technical: bool, tz: str | None = None,
-             emp_code: str | None = None, hour: int | None = None, oldest_first: bool = False) -> dict:
-    ident = Identity(directory)
+             emp_code: str | None = None, hour: int | None = None, oldest_first: bool = False,
+             bamboohr_id: str | None = None) -> dict:
+    ident = Identity(db, allowed, directory, site_id)
     total, rows = select_activity(db, allowed, site_id, start, end, directory, q=q, department=department,
                                   terminal=terminal, identity_class=identity_class, flag=flag, tz=tz,
                                   emp_code=emp_code, offset=(page - 1) * page_size, limit=page_size,
-                                  hour=hour, oldest_first=oldest_first)
+                                  hour=hour, oldest_first=oldest_first, bamboohr_id=bamboohr_id, index=ident.index)
     items = [_event_out(e, ident, technical=technical) for e in rows]
-    # Review flags of each row's employee-day — computed for this page's rows only.
+    # Review flags of each row's verified employee-day — computed for this page's rows only.
     if rows:
-        days = {(r["local_date"], r["emp_code"]): r["flags"] for r in daily_activity(
+        days = {(r["local_date"], r["bamboohr_id"]): r["flags"] for r in daily_activity(
             db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
             date_from=min(e.site_local_date for e in rows), date_to=max(e.site_local_date for e in rows),
-            directory=directory, emp_codes={e.emp_code for e in rows})}
+            directory=directory, bamboohr_ids={i["bamboohr_id"] for i in items if i["bamboohr_id"]},
+            index=ident.index)}
         for item in items:
-            item["review_flags"] = days.get((item["local_date"], item["emp_code"]), [])
+            item["review_flags"] = days.get((item["local_date"], item["bamboohr_id"]), [])
     return {"total": total, "page": page, "page_size": page_size, "directory_available": ident.available,
             "items": items}
 
 
 def _with_terminals(db, allowed, site_id, start, end, rows: list[dict], emp_codes=None) -> list[dict]:
     terms: dict[tuple[str, str], set[str]] = defaultdict(set)
+    codes = {c for r in rows for c in (r.get("zk_emp_codes") or [r["emp_code"]])} if emp_codes is not None else None
     for d, code, t in AttendanceRepository(db).terminals_by_day(
-        allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end, emp_codes=emp_codes,
+        allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end, emp_codes=codes,
     ):
         if t:
             terms[(d.isoformat(), code)].add(t)
     for r in rows:
-        r["terminal_names"] = sorted(terms.get((r["local_date"], r["emp_code"]), set()))
+        names: set[str] = set()
+        for c in r.get("zk_emp_codes") or [r["emp_code"]]:
+            names |= terms.get((r["local_date"], c), set())
+        r["terminal_names"] = sorted(names)
     return rows
 
 
 def today_view(db: Session, allowed, site_id: str, tz: str | None, day: date, directory: DirectorySnapshot, *,
                q: str | None, department: str | None, review: str | None, sort: str, page: int, page_size: int,
-               emp_code: str | None = None, identity_class: str | None = None) -> dict:
-    ident = Identity(directory)
+               emp_code: str | None = None, identity_class: str | None = None, bamboohr_id: str | None = None) -> dict:
+    ident = Identity(db, allowed, directory, site_id)
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
-                          date_from=day, date_to=day, directory=directory)
-    rows = [{**r, **{k: v for k, v in ident.describe(r["emp_code"], day, day).items() if k != "identity_class"}}
-            for r in rows]
+                          date_from=day, date_to=day, directory=directory, index=ident.index)
     departments = sorted({r["department"] for r in rows if r.get("department")})
-    rows = [r for r in rows if _match(r, q=q, emp_code=emp_code, department=department, identity_class=identity_class)
-            and _review_hit(r, review)]
+    rows = [r for r in rows if _match(r, q=q, emp_code=emp_code, department=department, identity_class=identity_class,
+                                      bamboohr_id=bamboohr_id) and _review_hit(r, review)]
     key, reverse = (sort.lstrip("-"), sort.startswith("-"))
     sort_keys = {
         "first_activity": lambda r: r["first_activity_utc"], "latest_activity": lambda r: r["latest_activity_utc"],
@@ -373,7 +440,7 @@ def today_view(db: Session, allowed, site_id: str, tz: str | None, day: date, di
     }
     rows.sort(key=sort_keys.get(key, sort_keys["first_activity"]), reverse=reverse)
     paged = _page(rows, page, page_size)
-    _with_terminals(db, allowed, site_id, day, day, paged["items"], {r["emp_code"] for r in paged["items"]})
+    _with_terminals(db, allowed, site_id, day, day, paged["items"], True)
     return {**paged, "site_id": site_id, "date": day.isoformat(), "departments": departments,
             "directory_available": ident.available}
 
@@ -381,51 +448,60 @@ def today_view(db: Session, allowed, site_id: str, tz: str | None, day: date, di
 def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date, directory: DirectorySnapshot,
               *, q: str | None, department: str | None, status_filter: str | None, activity_filter: str | None,
               page: int, page_size: int, emp_code: str | None = None, identity_class: str | None = None,
-              sort: str = "-events") -> dict:
+              sort: str = "-events", bamboohr_id: str | None = None) -> dict:
+    """One row per VERIFIED BambooHR employee with a mapping in the period
+    (several ZKBioTime IDs -> one row). Events, days and last activity count
+    only punches inside that employee's verified periods. Directory entries
+    without a verified mapping and unmapped codes are not listed."""
+    ident = Identity(db, allowed, directory, site_id)
+    index = ident.index
     repo = AttendanceRepository(db)
-    ident = Identity(directory)
-    act = {c: (n, days, last) for c, n, days, last in repo.employee_activity(
-        allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end)}
-    last_ever = repo.last_activity(allowed_site_ids=allowed, site_id=site_id)
-    flags = Counter()
+    in_period = index.employees_in_period(site_id, start, end)
+    events: Counter = Counter()
+    act_days: dict[str, set[date]] = defaultdict(set)
+    for code, d, n, _last in repo.code_day_stats(allowed_site_ids=allowed, site_id=site_id, date_from=start,
+                                                 date_to=end, code_windows=index.windows(site_id, start, end)):
+        r = index.resolve(site_id, code, d)
+        if r.identified:
+            events[r.bamboohr_id] += n
+            act_days[r.bamboohr_id].add(d)
+    last_ever: dict[str, object] = {}
+    for code, d, _n, last in repo.code_day_stats(allowed_site_ids=allowed, site_id=site_id,
+                                                 code_windows=index.windows(site_id, date.min, date.max)):
+        r = index.resolve(site_id, code, d)
+        if r.identified and (r.bamboohr_id not in last_ever or last > last_ever[r.bamboohr_id]):
+            last_ever[r.bamboohr_id] = last
+    flags: Counter = Counter()
     for r in daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
-                            date_from=start, date_to=end, directory=directory):
-        flags[r["emp_code"]] += len(r["flags"])
+                            date_from=start, date_to=end, directory=directory, index=index):
+        flags[r["bamboohr_id"]] += len(r["flags"])
 
-    rows: dict[str, dict] = {}
-    for e in ident.entries:  # every workforce employee with an Employee Number
-        code = e.get("employee_number")
-        if code is None or not str(code).strip() or code in rows:
-            continue
-        rows[code] = {"emp_code": code, "employee_name": e.get("display_name"), "department": e.get("department"),
-                      "employment_status": e.get("employment_status"), "in_directory": True,
-                      "has_photo": bool(e.get("has_photo")) and len(ident.index.get(code, [])) == 1}
-    for code in act:  # attendance codes with no (or ambiguous) directory entry stay visible
-        if code not in rows:
-            d = ident.describe(code)
-            rows[code] = {"emp_code": code, "employee_name": d["employee_name"], "department": d["department"],
-                          "employment_status": d["employment_status"], "in_directory": False,
-                          "has_photo": d["has_photo"]}
     out = []
-    for code, r in rows.items():
-        n, days, last = act.get(code, (0, 0, None))
-        r.update({
-            "events": n, "activity_days": days, "review_flags": flags.get(code, 0),
-            "last_activity_local": to_site_local(last_ever.get(code), tz),
-            "identity_class": ident.describe(code, start, end)["identity_class"],
-        })
-        out.append(r)
+    for bid, periods in in_period.items():
+        latest = max(periods, key=lambda p: (p.valid_to or date.max, p.valid_from))
+        ref = min(end, latest.valid_to) if latest.valid_to else end
+        r = index.resolve(site_id, latest.zk_emp_code, ref)
+        if not r.identified:
+            continue
+        first_cov = max(start, min(p.valid_from for p in periods))
+        row = {"emp_code": latest.zk_emp_code, **identity_fields(r, {p.zk_emp_code for p in periods}),
+               "in_directory": True,
+               "events": events.get(bid, 0), "activity_days": len(act_days.get(bid, ())),
+               "review_flags": flags.get(bid, 0),
+               "last_activity_local": to_site_local(last_ever.get(bid), tz),
+               "identity_class": legacy_identity_class(r, first_cov, ref)}
+        out.append(row)
     departments = sorted({r["department"] for r in out if r.get("department")})
     out = [r for r in out if _match(r, q=q, emp_code=emp_code, department=department, identity_class=identity_class,
-                                    employment_status=status_filter)]
+                                    employment_status=status_filter, bamboohr_id=bamboohr_id)]
     summary = {  # the filtered population for the period, before the activity filter
         "employees": len(out),
         "with_activity": sum(1 for r in out if r["events"]),
         "active": sum(1 for r in out if (r.get("employment_status") or "").lower() == "active"),
         "inactive": sum(1 for r in out if (r.get("employment_status") or "").lower() == "inactive"),
-        "not_in_directory": sum(1 for r in out if not r["in_directory"]),
+        "not_in_directory": sum(1 for r in out if r["mapping_status"] == MappingStatus.MAPPED_DIRECTORY_MISSING),
         "needing_review": sum(1 for r in out if r["review_flags"]),
-        "matched": sum(1 for r in out if (r.get("identity_class") or "").startswith("MATCHED")),
+        "matched": len(out),
     }
     if activity_filter == "with_activity":
         out = [r for r in out if r["events"]]
@@ -438,25 +514,48 @@ def employees(db: Session, allowed, site_id: str, tz: str | None, start: date, e
             "summary": summary}
 
 
-def employee_detail(db: Session, allowed, site_id: str, tz: str | None, code: str, start: date, end: date,
+def employee_for_code(db: Session, allowed, site_id: str, code: str, start: date, end: date,
+                      directory: DirectorySnapshot) -> str | None:
+    """LEGACY addressing: the single verified employee who owned ``code`` during
+    the period. FAILS CLOSED (None -> 404) when the ID is unverified in the
+    period or was owned by more than one employee in it (reassigned/reused
+    ID): the legacy route must never show the wrong person. The new contract
+    addresses employees by BambooHR id instead."""
+    owners = {p.bamboohr_id for p in MappingIndex.load(db, allowed_site_ids=allowed, directory=directory)
+              .periods_for_code(site_id, code) if p.clip(start, end)}
+    return owners.pop() if len(owners) == 1 else None
+
+
+def employee_detail(db: Session, allowed, site_id: str, tz: str | None, bamboohr_id: str, start: date, end: date,
                     directory: DirectorySnapshot, *, technical: bool, include_events: bool = True) -> dict:
+    """Profile and attendance of one VERIFIED BambooHR employee: every ZKBioTime
+    ID mapped to them, each only inside its verified period."""
+    ident = Identity(db, allowed, directory, site_id)
+    index = ident.index
+    profile_r = index.describe_employee(bamboohr_id, site_id)
+    if profile_r is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found")
     repo = AttendanceRepository(db)
-    ident = Identity(directory)
     days = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
-                          date_from=start, date_to=end, directory=directory, emp_codes=[code])
-    _with_terminals(db, allowed, site_id, start, end, days, [code])
+                          date_from=start, date_to=end, directory=directory, bamboohr_ids={bamboohr_id}, index=index)
+    _with_terminals(db, allowed, site_id, start, end, days, True)
+    windows = index.windows(site_id, start, end, bamboohr_ids={bamboohr_id})
     # Raw events are optional: the profile loads them per selected day via
     # /activity (paged) instead of downloading the whole period up front.
     events = repo.events_page(allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
-                              emp_codes=[code], offset=0, limit=2000)[1] if include_events else []
-    profile = ident.describe(code, start, end)
-    matches = ident.index.get(code, [])
-    if not days and not matches:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found")
+                              code_windows=windows, offset=0, limit=2000)[1] if include_events else []
+    periods = index.periods_for_employee(bamboohr_id, site_id)
+    in_period = [p for p in periods if p.clip(start, end)]
+    first = max(start, min((p.valid_from for p in in_period), default=start))
+    profile = {"emp_code": profile_r.emp_code, **identity_fields(profile_r, {p.zk_emp_code for p in in_period}
+                                                                 or {profile_r.emp_code}),
+               "identity_class": legacy_identity_class(profile_r, first, end),
+               "job_title": profile_r.job_title, "match_count": 1}
     return {
         "site_id": site_id, "date_from": start.isoformat(), "date_to": end.isoformat(),
-        "profile": {**profile, "job_title": matches[0].get("job_title") if len(matches) == 1 else None,
-                    "match_count": len(matches)},
+        "profile": profile,
+        "mappings": [{"mapping_id": p.id, "zk_emp_code": p.zk_emp_code, "valid_from": p.valid_from.isoformat(),
+                      "valid_to": p.valid_to.isoformat() if p.valid_to else None} for p in periods],
         "summary": {"activity_days": len(days), "events": sum(d["punch_count"] for d in days),
                     "review_flags": sum(len(d["flags"]) for d in days)},
         "days": sorted(days, key=lambda d: d["local_date"], reverse=True),
@@ -469,8 +568,8 @@ _FLAG_REASON = {
     ReviewFlag.SINGLE_PUNCH.value: "Only one activity was recorded on this completed day.",
     ReviewFlag.HIGH_PUNCH_COUNT.value: "An unusually high number of activities was recorded on this day.",
     ReviewFlag.POSSIBLE_DUPLICATE_TAP.value: "Two activities were recorded within 60 seconds of each other.",
-    ReviewFlag.UNMATCHED_CODE.value: "The Employee Code has no matching Employee Number in the Workforce Directory.",
-    ReviewFlag.AMBIGUOUS_CODE.value: "More than one Workforce Directory employee has this Employee Number.",
+    ReviewFlag.UNMATCHED_CODE.value: "The ZKBioTime ID has no verified BambooHR mapping for this day.",
+    ReviewFlag.AMBIGUOUS_CODE.value: "More than one verified mapping covers this ZKBioTime ID on this day.",
     ReviewFlag.INACTIVE_EMPLOYEE_ACTIVITY.value: (
         "Activity is recorded for an employee who is inactive or past their termination date."
     ),
@@ -479,29 +578,30 @@ _FLAG_REASON = {
 }
 
 
+
 def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date, directory: DirectorySnapshot,
                *, flag: str | None, q: str | None, page: int, page_size: int, emp_code: str | None = None,
-               department: str | None = None, identity_class: str | None = None, sort: str = "-date") -> dict:
-    ident = Identity(directory)
+               department: str | None = None, identity_class: str | None = None, sort: str = "-date",
+               bamboohr_id: str | None = None) -> dict:
+    ident = Identity(db, allowed, directory, site_id)
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
-                          date_from=start, date_to=end, directory=directory)
+                          date_from=start, date_to=end, directory=directory, index=ident.index)
     counts = Counter(f for r in rows for f in r["flags"])
     items = []
     for r in rows:
         if not r["flags"] or (flag and flag not in r["flags"]):
             continue
-        d = ident.describe(r["emp_code"], date.fromisoformat(r["local_date"]), date.fromisoformat(r["local_date"]))
-        item = {**r, "employee_name": d["employee_name"], "department": d["department"],
-                "employment_status": d["employment_status"], "has_photo": d["has_photo"],
-                "reasons": [{"flag": f, "reason": _FLAG_REASON[f]} for f in r["flags"]]}
-        if _match(item, q=q, emp_code=emp_code, department=department, identity_class=identity_class):
+        item = {**r, "reasons": [{"flag": f, "reason": _FLAG_REASON[f]} for f in r["flags"]]}
+        if _match(item, q=q, emp_code=emp_code, department=department, identity_class=identity_class,
+                  bamboohr_id=bamboohr_id):
             items.append(item)
     items.sort(key=lambda r: (r["local_date"], r["first_activity_utc"]), reverse=True)
     _sort_rows(items, sort, EXCEPTION_SORTS)
     paged = _page(items, page, page_size)
-    _with_terminals(db, allowed, site_id, start, end, paged["items"], {r["emp_code"] for r in paged["items"]})
+    _with_terminals(db, allowed, site_id, start, end, paged["items"], True)
     return {**paged, "site_id": site_id, "date_from": start.isoformat(), "date_to": end.isoformat(),
             "counts": {f: counts.get(f, 0) for f in REVIEW_FLAGS}, "directory_available": ident.available}
 
 
 IDENTITY_CLASSES = [c.value for c in IdentityClass]
+MAPPING_STATUSES = [c.value for c in MappingStatus]

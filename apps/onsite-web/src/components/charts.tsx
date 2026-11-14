@@ -143,7 +143,8 @@ export function BarChart({ data, measure, summary, selected, onSelect, highlight
 export function BreakdownList({ counts, hrefFor, unit = "employee-days" }: {
   counts: Record<ReviewFlag, number>; hrefFor: (flag: ReviewFlag) => string; unit?: string;
 }) {
-  const entries = (Object.keys(FLAG_LABEL) as ReviewFlag[]).map((f) => [f, counts[f] ?? 0] as const)
+  const entries = (Object.keys(FLAG_LABEL) as ReviewFlag[]).filter((f) => f !== "UNMATCHED_CODE" && f !== "AMBIGUOUS_CODE")
+    .map((f) => [f, counts[f] ?? 0] as const)
     .sort((a, b) => b[1] - a[1]);
   const max = Math.max(1, ...entries.map(([, v]) => v));
   return (

@@ -15,13 +15,13 @@ no new credential and no new secret**.
 | Collect | people-api Workforce Directory sync | `GET /employees/directory` (BambooHR API key people-api already holds) → `photoUrl` per BambooHR id, kept only if `https://`. Best-effort: a failure never fails the sync. Stored in `workforce_directory.photo_url` (migration `0004`). |
 | Publish | people-api | Directory DTO gains `has_photo` (boolean). The URL itself is never returned. |
 | Serve | people-api `GET /api/people/workforce-directory/{bamboohr_id}/photo` | Internal token only. Fetches the image server-side: https-only including redirects (SSRF guard), image type sniffed, 2 MB cap, `private, max-age=86400`. 404 for none/failed; 503 + `Retry-After` when BambooHR throttles. |
-| Authorize | onsite-api `GET /api/onsite/employees/{emp_code}/photo` | Requires `onsite.attendance.read` (same as the employee lists). 404 unless the Employee Code matches **exactly one** directory entry (by Employee Number) that has a photo. |
+| Authorize | onsite-api `GET /api/onsite/employees/by-id/{bamboohr_id}/photo` (legacy `/employees/{emp_code}/photo` during the compatibility window) | Requires `onsite.attendance.read`. 404 unless the employee has a **verified mapping** at a site in the caller's scope and a photo; the legacy route resolves the ZKBioTime ID only through its single verified owner *today* (reused or ambiguous IDs → 404). |
 | Display | onsite-web avatar | Circular, `object-cover`, layered over the initials (initials are the loading state and the fallback; no broken-image icon). Profile header uses alt text "Profile photo of …"; list avatars are decorative because the name is beside them. |
 
-**Identity mapping.** Attendance EmpCode → Workforce Directory Employee Number
-(exact, case-sensitive — the same rule as identity matching) → that entry's
-`bamboohr_id`. Ambiguous, unmatched or blank numbers get no photo. Display
-names, e-mail addresses and Entra object ids are never used to guess.
+**Identity mapping.** Photos are keyed by the verified `bamboohr_id` only
+(see `docs/onsite/identity-management.md`). Employee Numbers, display names,
+e-mail addresses and Entra object ids are never used to guess; unverified IDs
+get no photo, and a reused ZKBioTime ID never shows a previous owner's photo.
 
 **Caching and load.**
 - Browser: a photo is requested only when its avatar is within 200 px of the

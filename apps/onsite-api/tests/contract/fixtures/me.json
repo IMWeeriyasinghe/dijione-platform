@@ -1,0 +1,10 @@
+{
+  "enums": {},
+  "shape": {
+    "permissions": [
+      "str"
+    ],
+    "role": "str"
+  },
+  "status": 200
+}

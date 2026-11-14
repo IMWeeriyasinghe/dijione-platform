@@ -1,0 +1,72 @@
+{
+  "enums": {
+    "employment_status": [
+      "Active"
+    ],
+    "flags": [
+      "SINGLE_PUNCH"
+    ],
+    "identity_class": [
+      "MATCHED_ACTIVE"
+    ]
+  },
+  "shape": {
+    "date_from": "str",
+    "date_to": "str",
+    "days": [
+      {
+        "emp_code": "str",
+        "first_activity_local": "str",
+        "first_activity_utc": "str",
+        "flags": [
+          "str"
+        ],
+        "identity_class": "str",
+        "latest_activity_local": "str",
+        "latest_activity_utc": "str",
+        "local_date": "str",
+        "punch_count": "int",
+        "site_id": "str",
+        "span_minutes": "int",
+        "terminal_names": [
+          "str"
+        ],
+        "terminals": "int"
+      }
+    ],
+    "directory_available": "bool",
+    "events": [
+      {
+        "area": "str",
+        "department": "str",
+        "emp_code": "str",
+        "employee_name": "str",
+        "employment_status": "str",
+        "has_photo": "bool",
+        "identity_class": "str",
+        "local_date": "str",
+        "local_time": "str",
+        "punch_state_raw": "str",
+        "terminal": "str",
+        "tz_consistent": "bool"
+      }
+    ],
+    "profile": {
+      "department": "str",
+      "emp_code": "str",
+      "employee_name": "str",
+      "employment_status": "str",
+      "has_photo": "bool",
+      "identity_class": "str",
+      "job_title": "null",
+      "match_count": "int"
+    },
+    "site_id": "str",
+    "summary": {
+      "activity_days": "int",
+      "events": "int",
+      "review_flags": "int"
+    }
+  },
+  "status": 200
+}

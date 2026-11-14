@@ -15,6 +15,8 @@ export const ONSITE_ADMIN_ROLE = "ONSITE_ADMIN";
 export const PERM = {
   HEALTH: "onsite.health.read",
   IDENTITY: "onsite.identity.read",
+  /** Create, close, correct, reassign and reject verified identity mappings. */
+  IDENTITY_MANAGE: "onsite.identity.manage",
   SYNC: "onsite.sync.request",
   SITES: "onsite.sites.manage",
 } as const;

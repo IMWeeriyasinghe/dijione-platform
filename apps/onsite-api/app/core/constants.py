@@ -11,6 +11,7 @@ class Perm(StrEnum):
     EXCEPTIONS_READ = "onsite.exceptions.read"
     HEALTH_READ = "onsite.health.read"
     IDENTITY_READ = "onsite.identity.read"
+    IDENTITY_MANAGE = "onsite.identity.manage"
     SYNC_REQUEST = "onsite.sync.request"
     SITES_MANAGE = "onsite.sites.manage"
 
@@ -40,11 +41,30 @@ class FeedState(StrEnum):
 
 
 class IdentityClass(StrEnum):
+    """LEGACY vocabulary, kept only for the backward-compatible API contract.
+    Values are now derived from the verified mapping's employee (never from
+    Employee Number equality); UNMATCHED/AMBIGUOUS are never emitted."""
+
     MATCHED_ACTIVE = "MATCHED_ACTIVE"
     MATCHED_INACTIVE = "MATCHED_INACTIVE"
     MATCHED_BEFORE_HIRE = "MATCHED_BEFORE_HIRE"
     AMBIGUOUS = "AMBIGUOUS"
     UNMATCHED = "UNMATCHED"
+
+
+class MappingStatus(StrEnum):
+    """Identity of one ZKBioTime ID on one site-local day, resolved ONLY from
+    administrator-verified mappings (never from Employee Number equality)."""
+
+    MAPPED = "MAPPED"  # one verified mapping covers the day; employee is in the directory
+    MAPPED_DIRECTORY_MISSING = "MAPPED_DIRECTORY_MISSING"  # verified, but bamboohr_id absent from the snapshot
+    UNMAPPED = "UNMAPPED"  # no verified mapping covers the day -> hidden from viewer records
+    MAPPING_CONFLICT = "MAPPING_CONFLICT"  # defensive: >1 verified mapping covers the day -> hidden
+    DIRECTORY_UNAVAILABLE = "DIRECTORY_UNAVAILABLE"  # verified, but the directory could not be loaded
+
+
+IDENTIFIED_STATUSES = frozenset({MappingStatus.MAPPED, MappingStatus.MAPPED_DIRECTORY_MISSING,
+                                 MappingStatus.DIRECTORY_UNAVAILABLE})
 
 
 class ReviewFlag(StrEnum):

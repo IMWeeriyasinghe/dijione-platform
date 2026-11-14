@@ -1,0 +1,244 @@
+{
+  "counts": {
+    "AMBIGUOUS_CODE": 1,
+    "BEFORE_HIRE_ACTIVITY": 0,
+    "HIGH_PUNCH_COUNT": 0,
+    "INACTIVE_EMPLOYEE_ACTIVITY": 1,
+    "POSSIBLE_DUPLICATE_TAP": 1,
+    "SINGLE_PUNCH": 6,
+    "TZ_INCONSISTENT": 0,
+    "UNMATCHED_CODE": 2
+  },
+  "date_from": "2026-10-13",
+  "date_to": "2026-10-14",
+  "directory_available": true,
+  "items": [
+    {
+      "department": null,
+      "emp_code": "TEST-AZURE-001",
+      "employee_name": null,
+      "employment_status": null,
+      "first_activity_local": "2026-10-14T09:45:00+05:30",
+      "first_activity_utc": "2026-10-14T04:15:00",
+      "flags": [
+        "SINGLE_PUNCH",
+        "UNMATCHED_CODE"
+      ],
+      "has_photo": false,
+      "identity_class": "UNMATCHED",
+      "latest_activity_local": "2026-10-14T09:45:00+05:30",
+      "latest_activity_utc": "2026-10-14T04:15:00",
+      "local_date": "2026-10-14",
+      "punch_count": 1,
+      "reasons": [
+        {
+          "flag": "SINGLE_PUNCH",
+          "reason": "Only one activity was recorded on this completed day."
+        },
+        {
+          "flag": "UNMATCHED_CODE",
+          "reason": "The Employee Code has no matching Employee Number in the Workforce Directory."
+        }
+      ],
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": "Bench",
+      "emp_code": "101",
+      "employee_name": "A",
+      "employment_status": "Active",
+      "first_activity_local": "2026-10-14T08:48:00+05:30",
+      "first_activity_utc": "2026-10-14T03:18:00",
+      "flags": [
+        "SINGLE_PUNCH"
+      ],
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-14T08:48:00+05:30",
+      "latest_activity_utc": "2026-10-14T03:18:00",
+      "local_date": "2026-10-14",
+      "punch_count": 1,
+      "reasons": [
+        {
+          "flag": "SINGLE_PUNCH",
+          "reason": "Only one activity was recorded on this completed day."
+        }
+      ],
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": null,
+      "emp_code": "105",
+      "employee_name": null,
+      "employment_status": null,
+      "first_activity_local": "2026-10-14T08:47:00+05:30",
+      "first_activity_utc": "2026-10-14T03:17:00",
+      "flags": [
+        "SINGLE_PUNCH",
+        "AMBIGUOUS_CODE"
+      ],
+      "has_photo": false,
+      "identity_class": "AMBIGUOUS",
+      "latest_activity_local": "2026-10-14T08:47:00+05:30",
+      "latest_activity_utc": "2026-10-14T03:17:00",
+      "local_date": "2026-10-14",
+      "punch_count": 1,
+      "reasons": [
+        {
+          "flag": "SINGLE_PUNCH",
+          "reason": "Only one activity was recorded on this completed day."
+        },
+        {
+          "flag": "AMBIGUOUS_CODE",
+          "reason": "More than one Workforce Directory employee has this Employee Number."
+        }
+      ],
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": "Bench",
+      "emp_code": "103",
+      "employee_name": "C",
+      "employment_status": "Inactive",
+      "first_activity_local": "2026-10-14T08:45:00+05:30",
+      "first_activity_utc": "2026-10-14T03:15:00",
+      "flags": [
+        "SINGLE_PUNCH",
+        "INACTIVE_EMPLOYEE_ACTIVITY"
+      ],
+      "has_photo": false,
+      "identity_class": "MATCHED_INACTIVE",
+      "latest_activity_local": "2026-10-14T08:45:00+05:30",
+      "latest_activity_utc": "2026-10-14T03:15:00",
+      "local_date": "2026-10-14",
+      "punch_count": 1,
+      "reasons": [
+        {
+          "flag": "SINGLE_PUNCH",
+          "reason": "Only one activity was recorded on this completed day."
+        },
+        {
+          "flag": "INACTIVE_EMPLOYEE_ACTIVITY",
+          "reason": "Activity is recorded for an employee who is inactive or past their termination date."
+        }
+      ],
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": null,
+      "emp_code": "999",
+      "employee_name": null,
+      "employment_status": null,
+      "first_activity_local": "2026-10-13T08:39:00+05:30",
+      "first_activity_utc": "2026-10-13T03:09:00",
+      "flags": [
+        "SINGLE_PUNCH",
+        "UNMATCHED_CODE"
+      ],
+      "has_photo": false,
+      "identity_class": "UNMATCHED",
+      "latest_activity_local": "2026-10-13T08:39:00+05:30",
+      "latest_activity_utc": "2026-10-13T03:09:00",
+      "local_date": "2026-10-13",
+      "punch_count": 1,
+      "reasons": [
+        {
+          "flag": "SINGLE_PUNCH",
+          "reason": "Only one activity was recorded on this completed day."
+        },
+        {
+          "flag": "UNMATCHED_CODE",
+          "reason": "The Employee Code has no matching Employee Number in the Workforce Directory."
+        }
+      ],
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": "Bench",
+      "emp_code": "0107",
+      "employee_name": "F",
+      "employment_status": "Active",
+      "first_activity_local": "2026-10-13T08:37:00+05:30",
+      "first_activity_utc": "2026-10-13T03:07:00",
+      "flags": [
+        "POSSIBLE_DUPLICATE_TAP"
+      ],
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-13T08:37:20+05:30",
+      "latest_activity_utc": "2026-10-13T03:07:20",
+      "local_date": "2026-10-13",
+      "punch_count": 2,
+      "reasons": [
+        {
+          "flag": "POSSIBLE_DUPLICATE_TAP",
+          "reason": "Two activities were recorded within 60 seconds of each other."
+        }
+      ],
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    },
+    {
+      "department": "Bench",
+      "emp_code": "102",
+      "employee_name": "B",
+      "employment_status": "Active",
+      "first_activity_local": "2026-10-13T08:35:00+05:30",
+      "first_activity_utc": "2026-10-13T03:05:00",
+      "flags": [
+        "SINGLE_PUNCH"
+      ],
+      "has_photo": false,
+      "identity_class": "MATCHED_ACTIVE",
+      "latest_activity_local": "2026-10-13T08:35:00+05:30",
+      "latest_activity_utc": "2026-10-13T03:05:00",
+      "local_date": "2026-10-13",
+      "punch_count": 1,
+      "reasons": [
+        {
+          "flag": "SINGLE_PUNCH",
+          "reason": "Only one activity was recorded on this completed day."
+        }
+      ],
+      "site_id": "dev-site",
+      "span_minutes": 0,
+      "terminal_names": [
+        "Main Door"
+      ],
+      "terminals": 1
+    }
+  ],
+  "page": 1,
+  "page_size": 10,
+  "site_id": "dev-site",
+  "total": 7
+}

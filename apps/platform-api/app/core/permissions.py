@@ -393,6 +393,11 @@ ONSITE_PERMISSIONS: list[PermissionDef] = [
         MODULE_ONSITE, "Administration",
     ),
     PermissionDef(
+        "onsite.identity.manage", "Manage Identity Mappings",
+        "Create, close, correct, reassign and reject verified ZKBioTime ID to BambooHR employee mappings.",
+        MODULE_ONSITE, "Administration",
+    ),
+    PermissionDef(
         "onsite.sync.request", "Request Sync", "Request an on-demand attendance sync.",
         MODULE_ONSITE, "Administration",
     ),
@@ -414,7 +419,8 @@ ONSITE_ROLES: list[RoleDef] = [
         "Viewer permissions plus site health, identity match report, sync requests and site management.",
         MODULE_ONSITE,
         _ONSITE_VIEWER_PERMISSIONS
-        + ("onsite.health.read", "onsite.identity.read", "onsite.sync.request", "onsite.sites.manage"),
+        + ("onsite.health.read", "onsite.identity.read", "onsite.identity.manage", "onsite.sync.request",
+           "onsite.sites.manage"),
     ),
 ]
 
