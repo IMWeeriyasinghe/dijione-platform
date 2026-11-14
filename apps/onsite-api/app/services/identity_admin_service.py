@@ -429,7 +429,8 @@ def reassign_code(db: Session, actor: Actor, directory: DirectorySnapshot, *, si
             prev_end, actor.user_id, _now(), reason)
         db.flush()
         repo.add_event(entity_type="MAPPING", entity_id=prev.id, action="REASSIGNED", actor_user_id=actor.user_id,
-                       previous=before, new=_snapshot(prev), note=f"{reason} [{handling}]")
+                       previous=before, new=_snapshot(prev),
+                       note=f"{reason} [same-day: {handling}]" if punches_on_d else reason)
         new = _insert_mapping(db, actor, directory, MappingInput(
             site_id=site, zk_emp_code=code, bamboohr_id=str(new_bamboohr_id), valid_from=new_start,
             valid_to=new_valid_to, evidence=new_evidence, acknowledged_warnings=tuple(acknowledged_warnings)),
