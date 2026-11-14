@@ -200,3 +200,44 @@ export type Coverage = {
 };
 export const getCoverage = (p: { site_id: string; date_from: string; date_to: string }) =>
   request<Coverage>(`${IDENTITY_API}/coverage${qs(p)}`);
+
+/* ---------------------------------------------------- backlog / review state */
+
+export type ReviewState = "AWAITING_REVIEW" | "REJECTED_ASSOCIATION" | "PARTLY_VERIFIED";
+
+export type UnmappedSummary = {
+  site_id: string; as_of: string; outstanding_ids: number; unmapped_punches: number;
+  review: Record<ReviewState, number>;
+  aging: { label: string; ids: number; unmapped_punches: number }[];
+  recency: { label: string; ids: number; unmapped_punches: number }[];
+};
+
+export const getUnmappedSummary = (p: { site_id: string }) =>
+  request<UnmappedSummary>(`${IDENTITY_API}/unmapped/summary${qs(p)}`);
+
+/** Presentation labels for the review state of an outstanding ZKBioTime ID.
+ *  A review state is not a mapping status, and none of them means resolved:
+ *  an ID stays outstanding until every punch day is covered by a verified
+ *  mapping. Backend values (`undispositioned`, `rejected`) are unchanged. */
+export const REVIEW_STATE: Record<ReviewState, { label: string; tone: "warning" | "neutral" | "danger"; help: string }> = {
+  AWAITING_REVIEW: {
+    label: "Awaiting Review", tone: "warning",
+    help: "No verified owner and no review outcome yet. Investigate the ID, then map it to the verified team member or record that it is not a given person.",
+  },
+  REJECTED_ASSOCIATION: {
+    label: "Rejected Association", tone: "neutral",
+    help: "A proposed team member was recorded as NOT this ID's owner. The ID itself still has no verified owner — continue the investigation.",
+  },
+  PARTLY_VERIFIED: {
+    label: "Partly Verified", tone: "warning",
+    help: "Some punch days are covered by a verified mapping and others are not. Check whether the uncovered days belong to the same team member.",
+  },
+};
+
+export function reviewStateOf(r: Pick<UnmappedRow, "mapped_today" | "mapping_count" | "rejections">): ReviewState {
+  if (r.mapped_today || r.mapping_count) return "PARTLY_VERIFIED";
+  return r.rejections.length ? "REJECTED_ASSOCIATION" : "AWAITING_REVIEW";
+}
+
+/** Readiness `disposition` (backend: `undispositioned` | `rejected`). */
+export const dispositionState = (d: string): ReviewState => (d === "rejected" ? "REJECTED_ASSOCIATION" : "AWAITING_REVIEW");

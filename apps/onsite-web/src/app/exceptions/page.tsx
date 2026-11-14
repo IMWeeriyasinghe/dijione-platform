@@ -116,7 +116,7 @@ function ExceptionsView() {
             <DataView caption="Team-member days flagged for review" rows={query.data.items} rowKey={(i) => `${i.local_date}-${i.emp_code}`}
               rowLabel={(i) => `${i.employee_name ?? i.emp_code} on ${i.local_date}`} sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
-                { key: "date", header: "Date", sort: "date", cell: (i) => <span className="whitespace-nowrap font-medium">{fmtDay(i.local_date, true)}</span> },
+                { key: "date", header: "Date", sort: "date", cell: (i) => <span className="font-medium">{fmtDay(i.local_date, true)}</span> },
                 { key: "emp", header: "Team Member", sort: "employee", cell: (i) => <EmployeeRefCell r={i} meta={i.department ?? undefined} size="sm" /> },
                 { key: "flags", header: "Review flags", sort: "flags", cell: (i) => <FlagChips flags={i.flags} /> },
                 { key: "times", header: "First · Latest", minWidth: "lg", cell: (i) => <span className="tabular-nums">{localTime(i.first_activity_local)} · {localTime(i.latest_activity_local)}</span> },

@@ -569,6 +569,54 @@ def unmapped_report(db: Session, actor: Actor, directory: DirectorySnapshot, *, 
     return rows
 
 
+AGING_BUCKETS = ((7, "0–7 days"), (30, "8–30 days"), (90, "31–90 days"), (None, "Over 90 days"))
+RECENCY_BUCKETS = ((7, "Active in last 7 days"), (30, "Active 8–30 days ago"), (None, "No activity for 30+ days"))
+
+
+def _bucket(age: int, buckets) -> str:
+    for limit, label in buckets:
+        if limit is None or age <= limit:
+            return label
+    return buckets[-1][1]
+
+
+def review_state(row: dict) -> str:
+    """Presentation-independent review state of one outstanding ID. Never
+    "resolved": an ID stays outstanding until every punch day is verified."""
+    if row["mapped_today"] or row["mapping_count"]:
+        return "PARTLY_VERIFIED"
+    if row["rejections"]:
+        return "REJECTED_ASSOCIATION"
+    return "AWAITING_REVIEW"
+
+
+def unmapped_summary(db: Session, actor: Actor, directory: DirectorySnapshot, *, site_id: str,
+                     today: date | None = None) -> dict:
+    """Backlog picture of every outstanding ZKBioTime ID at one site (all
+    mirrored history): review state, age of the oldest unmapped punch day and
+    recency of the latest one. Counts are biometric IDs, never people."""
+    site = _site(actor, site_id)
+    today = today or date.today()
+    rows = unmapped_report(db, actor, directory, site_id=site, today=today)
+    review = Counter(review_state(r) for r in rows)
+
+    def buckets(field: str, spec) -> list[dict]:
+        acc = {label: {"label": label, "ids": 0, "unmapped_punches": 0} for _, label in spec}
+        for r in rows:
+            b = acc[_bucket((today - date.fromisoformat(r[field])).days, spec)]
+            b["ids"] += 1
+            b["unmapped_punches"] += r["unmapped_events"]
+        return list(acc.values())
+
+    return {
+        "site_id": site, "as_of": today.isoformat(), "outstanding_ids": len(rows),
+        "unmapped_punches": sum(r["unmapped_events"] for r in rows),
+        "review": {k: review.get(k, 0) for k in ("AWAITING_REVIEW", "REJECTED_ASSOCIATION", "PARTLY_VERIFIED")},
+        "aging": buckets("first_unmapped", AGING_BUCKETS),
+        "recency": buckets("last_unmapped", RECENCY_BUCKETS),
+    }
+
+
 def code_investigation(db: Session, actor: Actor, directory: DirectorySnapshot, *, site_id: str, code: str,
                        date_from: date | None, date_to: date | None) -> dict:
     """Administrative per-day view of one ZKBioTime ID (Identity Management only)."""
