@@ -21,7 +21,7 @@ import { ToneBadge } from "./ToneBadge";
 type Tab = "overview" | "days" | "flags";
 const SPAN_HELP = "Time between the first and latest recorded activity on a day. It is not worked hours.";
 
-/** Employee activity profile of a VERIFIED employee, addressed by BHR
+/** Team Member activity profile of a VERIFIED team member, addressed by BHR
  *  Employee ID (``code``): attendance from every ZKBioTime ID mapped to them,
  *  each only inside its verified period. A wide side panel on large screens
  *  and a full-screen sheet on small ones. Keyboard: focus moves into the
@@ -53,7 +53,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-labelledby="employee-profile-title">
-      <button type="button" aria-label="Close employee profile" tabIndex={-1} onClick={onClose}
+      <button type="button" aria-label="Close team member profile" tabIndex={-1} onClick={onClose}
         className="absolute inset-0 hidden bg-black/30 motion-safe:transition-opacity lg:block" />
       <div className="relative flex h-full w-full flex-col bg-dt-background shadow-2xl lg:max-w-4xl">
         <header className="sticky top-0 z-10 border-b border-dt-border bg-dt-surface px-4 py-3 sm:px-6">
@@ -68,7 +68,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
               <h2 id="employee-profile-title" className="truncate text-lg font-semibold text-dt-text-primary">{name ?? "Name unavailable"}</h2>
               <p className="text-sm text-dt-text-secondary">
                 <span className="font-mono">BHR Employee ID {code}</span>
-                {data?.profile.employee_number && <> · <span className="font-mono">BambooHR Employee Number {data.profile.employee_number}</span></>}
+                {data?.profile.employee_number && <> · <span className="font-mono">EMP Number {data.profile.employee_number}</span></>}
                 {data?.profile.department && <> · {data.profile.department}</>}
                 {data?.profile.job_title && <span className="hidden sm:inline"> · {data.profile.job_title}</span>}
               </p>
@@ -115,7 +115,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
 
         <div className="dt-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {query.isLoading ? (
-            <div className="space-y-3" role="status" aria-label="Loading employee activity">
+            <div className="space-y-3" role="status" aria-label="Loading team member activity">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-16" />)}</div>
               <Skeleton className="h-48 w-full" />
             </div>
@@ -124,7 +124,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
           ) : (
             <>
               {!data.directory_available && (
-                <p className="mb-3 text-sm text-dt-burnt-orange">Employee details are unavailable right now — verified attendance is shown without the name.</p>
+                <p className="mb-3 text-sm text-dt-burnt-orange">Team member details are unavailable right now — verified attendance is shown without the name.</p>
               )}
               {tab === "overview" && (
                 <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" className="space-y-4">
@@ -135,7 +135,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
                       data={eachDay(period).map((d) => ({ key: d, value: byDay.get(d)?.punch_count ?? 0, label: fmtDay(d, true),
                         tick: days === "7" ? fmtDay(d).slice(0, 3) : fmtShortDay(d),
                         note: byDay.get(d)?.flags.length ? `${byDay.get(d)!.flags.length} review flag(s)` : undefined }))}
-                      empty="No activity recorded for this employee in the selected period." />
+                      empty="No activity recorded for this team member in the selected period." />
                   </Panel>
                   {selected && <DayDetail day={byDay.get(selected) ?? null} date={selected} code={code} />}
                 </div>
@@ -143,7 +143,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
               {tab === "days" && (
                 <div id="panel-days" role="tabpanel" aria-labelledby="tab-days">
                   {data.days.length === 0 ? (
-                    <EmptyPanel icon={CalendarDays} title="No activity recorded" description="No activity is recorded for this employee in the selected period. This is not an absence record." />
+                    <EmptyPanel icon={CalendarDays} title="No activity recorded" description="No activity is recorded for this team member in the selected period. This is not an absence record." />
                   ) : (
                     <DataView caption="Daily activity" rows={data.days.slice((daysPage - 1) * daysSize, daysPage * daysSize)} rowKey={(d) => d.local_date} rowLabel={(d) => fmtDay(d.local_date)}
                       columns={[

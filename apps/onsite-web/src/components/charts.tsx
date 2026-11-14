@@ -138,9 +138,9 @@ export function BarChart({ data, measure, summary, selected, onSelect, highlight
   );
 }
 
-/** Review categories as drill-down rows. Counts are employee-days with the
+/** Review categories as drill-down rows. Counts are team-member days with the
  *  flag — prompts for review, never confirmed violations. */
-export function BreakdownList({ counts, hrefFor, unit = "employee-days" }: {
+export function BreakdownList({ counts, hrefFor, unit = "team-member days" }: {
   counts: Record<ReviewFlag, number>; hrefFor: (flag: ReviewFlag) => string; unit?: string;
 }) {
   const entries = (Object.keys(FLAG_LABEL) as ReviewFlag[]).filter((f) => f !== "UNMATCHED_CODE" && f !== "AMBIGUOUS_CODE")
@@ -166,5 +166,88 @@ export function BreakdownList({ counts, hrefFor, unit = "employee-days" }: {
         </li>
       ))}
     </ul>
+  );
+}
+
+export type StackedBar = { key: string; label: string; tick: string; primary: number; secondary: number };
+
+/** Two-part stacked bars (e.g. verified vs unmapped punches per day) with a
+ *  legend, y-axis, hover/focus tooltips and an accessible summary. Optional
+ *  selection for drill-down. Dependency-free, on the same brand tokens. */
+export function StackedBarChart({ data, primaryLabel, secondaryLabel, measure, summary, onSelect, selected,
+  tickEvery = [1, 1], height = 176, empty }: {
+  data: StackedBar[]; primaryLabel: string; secondaryLabel: string; measure: string; summary: string;
+  onSelect?: (key: string) => void; selected?: string | null; tickEvery?: [number, number]; height?: number;
+  empty?: React.ReactNode;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const total = data.reduce((s, d) => s + d.primary + d.secondary, 0);
+  const max = niceMax(Math.max(0, ...data.map((d) => d.primary + d.secondary)));
+  const ticks = [max, max / 2, 0];
+  if (total === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-dt-surface-warm/50 px-4 text-center" style={{ height }}>
+        <BarChart3 className="size-6 text-dt-text-secondary/60" aria-hidden />
+        <div className="text-sm text-dt-text-secondary">{empty ?? `No ${measure} recorded in this period.`}</div>
+      </div>
+    );
+  }
+  const tip = hover !== null ? data[hover] : null;
+  return (
+    <figure className="min-w-0">
+      <div className="mb-2 flex flex-wrap gap-3 text-xs text-dt-text-secondary" aria-hidden>
+        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-dt-success" />{primaryLabel}</span>
+        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-dt-amber" />{secondaryLabel}</span>
+      </div>
+      <div className="flex gap-2">
+        <div className="flex shrink-0 flex-col justify-between text-right text-[11px] tabular-nums text-dt-text-secondary" style={{ height }} aria-hidden>
+          {ticks.map((t) => <span key={t}>{fmtNum(Math.round(t))}</span>)}
+        </div>
+        <div className="relative min-w-0 flex-1" style={{ height }} onMouseLeave={() => setHover(null)}>
+          {ticks.map((t) => (
+            <span key={t} aria-hidden className="absolute inset-x-0 border-t border-dashed border-dt-border/80" style={{ bottom: `${(t / max) * 100}%` }} />
+          ))}
+          <div role="list" aria-label={summary} className="absolute inset-0 flex items-end gap-[2px] sm:gap-1">
+            {data.map((d, i) => {
+              const sum = d.primary + d.secondary;
+              const text = `${d.label}: ${fmtNum(d.primary)} ${primaryLabel.toLowerCase()}, ${fmtNum(d.secondary)} ${secondaryLabel.toLowerCase()} (${fmtNum(sum)} ${measure})`;
+              const inner = (
+                <span className="flex w-full flex-col justify-end" style={{ height: `${Math.max((sum / max) * 100, sum ? 2 : 1)}%` }}>
+                  <span className={cx("block w-full rounded-t-sm", d.secondary ? "bg-dt-amber" : "")} style={{ flexGrow: d.secondary }} />
+                  <span className={cx("block w-full", d.primary ? "bg-dt-success" : "", !sum && "bg-dt-border/70")} style={{ flexGrow: d.primary || (sum ? 0 : 1) }} />
+                </span>
+              );
+              const common = {
+                onMouseEnter: () => setHover(i), onFocus: () => setHover(i), onBlur: () => setHover(null),
+                className: cx("relative flex h-full min-w-0 flex-1 items-end rounded-sm", focusRing, selected === d.key && "bg-dt-red/5"),
+              };
+              return (
+                <div role="listitem" key={d.key} className="flex h-full min-w-0 flex-1">
+                  {onSelect ? (
+                    <button type="button" aria-label={text} aria-pressed={selected === d.key} onClick={() => onSelect(d.key)} {...common}>{inner}</button>
+                  ) : <span tabIndex={0} aria-label={text} {...common}>{inner}</span>}
+                </div>
+              );
+            })}
+          </div>
+          {tip && (
+            <div role="tooltip" className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded-lg border border-dt-border bg-dt-surface px-2.5 py-1.5 text-xs shadow-lg"
+              style={{ left: `${Math.min(88, Math.max(12, ((hover! + 0.5) / data.length) * 100))}%`, top: 0 }}>
+              <div className="font-medium text-dt-text-primary">{tip.label}</div>
+              <div className="text-dt-text-secondary"><span className="font-semibold tabular-nums text-dt-success">{fmtNum(tip.primary)}</span> {primaryLabel.toLowerCase()}</div>
+              <div className="text-dt-text-secondary"><span className="font-semibold tabular-nums text-dt-warning">{fmtNum(tip.secondary)}</span> {secondaryLabel.toLowerCase()}</div>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="mt-1.5 flex gap-[2px] pl-8 text-[11px] text-dt-text-secondary sm:gap-1" aria-hidden>
+        {data.map((d, i) => (
+          <span key={d.key} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center">
+            <span className={cx(i % tickEvery[0] === 0 ? "inline" : "hidden", i % tickEvery[1] === 0 ? "sm:inline" : "sm:hidden")}>{d.tick}</span>
+          </span>
+        ))}
+      </div>
+      <figcaption className="sr-only">{summary}. Total {fmtNum(total)} {measure}.</figcaption>
+    </figure>
   );
 }

@@ -30,7 +30,7 @@ export function IdentityBadge({ cls }: { cls: IdentityClass | null }) {
 }
 
 /** Mapping Status: whether attendance is attributed through a verified
- *  ZKBioTime ID mapping, refined by the employee's record (legacy class). */
+ *  ZKBioTime ID mapping, refined by the team member's record (legacy class). */
 export function MappingBadge({ status, cls }: { status?: MappingStatus | null; cls?: IdentityClass | null }) {
   if (status === "MAPPED" || (!status && cls)) {
     if (cls && cls !== "MATCHED_ACTIVE") return <IdentityBadge cls={cls} />;

@@ -35,13 +35,43 @@ ownership period:
 
 | Surface | Verified punches | Unmapped / conflicting punches |
 |---|---|---|
-| Overview, Today, Activity, Employees, Exceptions, profiles, photos, search | Attributed to the verified employee. One row and one headcount per employee, even with several IDs. | **Not shown.** Not counted in identified KPIs. |
-| Excel exports | Included, with ZKBioTime ID(s), BHR Employee ID, BambooHR Employee Number and Mapping Status columns | Excluded; the Summary sheet states "Unmapped punches excluded: N" |
+| Overview, Today, Activity, Team Members, Exceptions, profiles, photos, search | Attributed to the verified employee. One row and one headcount per employee, even with several IDs. | **Not shown.** Not counted in identified KPIs. |
+| Excel exports | Included, with ZKBioTime ID(s), BHR Employee ID, EMP Number and Mapping Status columns | Excluded; the Summary sheet states "Unmapped punches excluded: N" |
 | Overview "Unmapped IDs" tile (Site Health / Identity readers) | — | Count of unmapped IDs and excluded punches |
 | **Identity Management** (`/onsite/admin/identity`, admin only) | Mappings, history, conflicts | Unmapped IDs, per-day investigation, readiness |
 
 Raw events are always kept and mirrored. Ingestion monitoring (Site Health,
 freshness) is separate from identified attendance.
+
+### 2.1 Identity Management overview (default tab)
+
+`GET /api/onsite/admin/identity/coverage?site_id&date_from&date_to`
+(`onsite.identity.read`; default: the last 30 site-local days; max 92) feeds
+the Overview tab. Every figure is computed from the mirror and the verified
+mappings for the selected site and period, and units are never mixed:
+
+| Figure | Unit |
+|---|---|
+| ZKBioTime IDs observed / verified (fully, partly) / unmapped | biometric IDs — **not** people |
+| Unmapped punches, verified coverage % | punches |
+| Verified team members | distinct BHR Employee IDs |
+| Unresolved conflicts | conflict days + ambiguous reassignment days + overlapping mappings |
+
+A code-day counts as verified only when a mapping covers that exact day, so
+historical and reassigned IDs are counted correctly. The tab also shows a
+daily verified-vs-unmapped punches chart, a coverage bar, the ten IDs with
+the most unmapped punches (select an ID to filter the Unmapped tab; *Map…*
+opens the mapping dialog for managers) and an ingestion banner that tells
+a mapping backlog (feed fresh, punches stored, verification pending) apart
+from a feed or sync problem (see Site Health).
+
+### 2.2 Terminology (Diji On-site UI and exports)
+
+"Team Member(s)" replaces "Employee(s)" for people; "EMP Number" replaces
+"Employee Number"; "ZKBioTime ID" replaces "ZKBioTime Employee Code";
+"BHR Employee ID" is unchanged. Routes (`/onsite/employees`), API fields,
+database columns, permissions and audit-event names keep their technical
+identifiers.
 
 ## 3. Permissions and audit
 

@@ -17,7 +17,7 @@ const id = vi.hoisted(() => ({
   getReadiness: vi.fn(), getUnmapped: vi.fn(), getCodeDetail: vi.fn(), getEvidence: vi.fn(), searchDirectory: vi.fn(),
   getMappings: vi.fn(), getMapping: vi.fn(), getConflicts: vi.fn(), createMapping: vi.fn(), closeMapping: vi.fn(),
   correctMapping: vi.fn(), reassignCode: vi.fn(), rejectAssociation: vi.fn(), withdrawRejection: vi.fn(),
-  importMappings: vi.fn(), downloadIdentityList: vi.fn(),
+  importMappings: vi.fn(), downloadIdentityList: vi.fn(), getCoverage: vi.fn(),
 }));
 vi.mock("@/lib/identity", async (orig) => ({ ...(await orig<typeof import("@/lib/identity")>()), ...id }));
 
@@ -61,7 +61,26 @@ beforeEach(() => {
   id.getMappings.mockResolvedValue({ total: 1, page: 1, page_size: 20, items: [MAPPING] });
   id.searchDirectory.mockResolvedValue({ total: 1, page: 1, page_size: 20, items: [TOM] });
   id.getEvidence.mockResolvedValue({ warnings: [] });
+  id.getCoverage.mockImplementation(async (p: { date_from: string; date_to: string }) => coverage(p));
 });
+
+function coverage(p: { date_from: string; date_to: string }) {
+  const narrow = p.date_from === p.date_to;
+  return {
+    site_id: "colombo", date_from: p.date_from, date_to: p.date_to,
+    ids: { observed: narrow ? 2 : 5, verified: 2, fully_verified: 1, partly_verified: 1, unmapped: narrow ? 0 : 3 },
+    punches: { total: 100, verified: 60, unmapped: 40, coverage_pct: 60 },
+    verified_team_members: 1,
+    unresolved_conflicts: { total: 1, conflict_days: 0, ambiguous_reassignment_days: 1, overlapping_mappings: 0 },
+    trend: [{ date: p.date_to, verified_punches: 60, unmapped_punches: 40 }],
+    top_unmapped: [
+      { zk_emp_code: "352", unmapped_punches: 30, unmapped_days: 5, first_unmapped: "2026-11-01", last_unmapped: "2026-11-13", mapped_now: false },
+      { zk_emp_code: "3", unmapped_punches: 10, unmapped_days: 2, first_unmapped: "2026-11-02", last_unmapped: "2026-11-10", mapped_now: true },
+    ],
+    ingestion: { feed_state: "FRESH", latest_received_utc: "2026-11-14T06:00:00Z", last_successful_sync_at: "2026-11-14T06:01:00Z" },
+    directory_available: true,
+  };
+}
 
 describe("Identity Management", () => {
   it("is admin-only and keeps the /admin/identity route", async () => {
@@ -72,7 +91,7 @@ describe("Identity Management", () => {
   });
 
   it("shows readiness figures without a pass/fail verdict", async () => {
-    await openPage();
+    await openPage("readiness");
     expect(await screen.findByText("Identified punches")).toBeInTheDocument();
     expect(screen.getByText("80%")).toBeInTheDocument();
     expect(screen.getByText(/approved separately by the owner/)).toBeInTheDocument();
@@ -104,7 +123,7 @@ describe("Identity Management", () => {
     fireEvent.change(screen.getByLabelText(/Verification evidence/), { target: { value: "IT enrolment sheet signed by HR" } });
     const box = await screen.findByRole("checkbox", { name: /Earlier punches stay unmapped/ });
     expect(screen.getByTestId("confirm-sentence")).toHaveTextContent(
-      "Map ZKBioTime ID 352 to Tom Example (BHR Employee ID 1234, BambooHR Employee Number 352) from 2026-11-01 (open-ended) — 4 earlier punch(es) stay unmapped.");
+      "Map ZKBioTime ID 352 to Tom Example (BHR Employee ID 1234, EMP Number 352) from 2026-11-01 (open-ended) — 4 earlier punch(es) stay unmapped.");
     const confirm = screen.getByRole("button", { name: "Confirm mapping" });
     expect(confirm).toBeDisabled();
     fireEvent.click(box);
@@ -205,5 +224,54 @@ describe("isIsoDate", () => {
     const { isIsoDate } = await import("@/components/identity/dialogs");
     expect(isIsoDate("2026-11-01")).toBe(true);
     for (const bad of ["", "2026-02-31", "101420-02-06", "2026-1-1", "01/11/2026"]) expect(isIsoDate(bad)).toBe(false);
+  });
+});
+
+describe("Identity Management overview", () => {
+  it("is the default tab and shows real coverage figures for the last 30 site days", async () => {
+    await openPage();
+    expect(await screen.findByText("Verified coverage")).toBeInTheDocument();
+    expect(id.getCoverage).toHaveBeenCalledWith({ site_id: "colombo", date_from: "2026-10-16", date_to: "2026-11-14" });
+    expect(screen.getByText("60%")).toBeInTheDocument();
+    // biometric IDs are never presented as people
+    expect(screen.getByText("ZKBioTime IDs observed")).toBeInTheDocument();
+    expect(screen.getByText("Biometric IDs, not people")).toBeInTheDocument();
+    expect(screen.getByText("Verified team members")).toBeInTheDocument();
+    expect(screen.getByText(/stored safely; the remaining step is identity verification and mapping by the administration team/)).toBeInTheDocument();
+  });
+
+  it("separates a feed problem from the mapping backlog", async () => {
+    id.getCoverage.mockImplementation(async (p: { date_from: string; date_to: string }) => ({ ...coverage(p), ingestion: { feed_state: "STALE", latest_received_utc: null, last_successful_sync_at: null } }));
+    await openPage();
+    expect(await screen.findByText(/feed\/synchronisation matter, separate from the mapping backlog/)).toBeInTheDocument();
+  });
+
+  it("refetches every figure when the period changes", async () => {
+    await openPage();
+    await screen.findByText("Verified coverage");
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    await waitFor(() => expect(id.getCoverage).toHaveBeenLastCalledWith({ site_id: "colombo", date_from: "2026-11-14", date_to: "2026-11-14" }));
+  });
+
+  it("ranks unmapped IDs; selecting one filters the mapping workflow and Map opens the dialog", async () => {
+    await openPage();
+    const list = await screen.findByRole("list", { name: /most unmapped punches/ });
+    const items = within(list).getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("352");
+    fireEvent.click(within(items[0]).getByRole("button", { name: "Map…" }));
+    expect(await screen.findByRole("heading", { name: /Map ZKBioTime ID/ })).toBeInTheDocument();
+  });
+
+  it("investigating an ID opens the Unmapped tab filtered to it", async () => {
+    await openPage();
+    fireEvent.click(await screen.findByRole("button", { name: "352" }));
+    await waitFor(() => expect(id.getUnmapped).toHaveBeenCalledWith(expect.objectContaining({ q: "352" })));
+  });
+
+  it("hides Map actions for read-only identity users", async () => {
+    scope.value = { loading: false, scope: { role: "ONSITE_ADMIN", permissions: READ } };
+    await openPage();
+    await screen.findByRole("list", { name: /most unmapped punches/ });
+    expect(screen.queryByRole("button", { name: "Map…" })).not.toBeInTheDocument();
   });
 });

@@ -203,6 +203,20 @@ def conflicts(site_id: str | None = None, scope: OnsiteScope = Depends(_READ), d
     return _run(ia.conflicts, db, _actor(scope), workforce_directory.load(), site_id=site_id)
 
 
+@router.get("/coverage")
+def coverage(site_id: str, date_from: date | None = None, date_to: date | None = None,
+             scope: OnsiteScope = Depends(_READ), db: Session = Depends(get_db)):
+    """Identity Management dashboard: ID/punch coverage, trend, top unmapped IDs."""
+    from app.repositories.site_repository import SiteRepository
+    from app.services.dashboard_service import resolve_range
+    from app.services.time_derivation import site_today
+
+    tz = SiteRepository(db).time_zones([site_id]).get(site_id)
+    start, end = resolve_range(date_from, date_to, default_days=30, today=site_today(tz))
+    return _run(ia.coverage, db, _actor(scope), workforce_directory.load(), site_id=site_id, date_from=start,
+                date_to=end)
+
+
 @router.get("/readiness")
 def readiness(site_id: str, days: int = Query(30, ge=1, le=92), scope: OnsiteScope = Depends(_READ),
               db: Session = Depends(get_db)):

@@ -30,7 +30,7 @@ MAX_EXPORT_EVENTS = 50_000
 FLAG_LABEL = {
     "SINGLE_PUNCH": "Single activity", "POSSIBLE_DUPLICATE_TAP": "Possible duplicate tap",
     "UNMATCHED_CODE": "Unmatched code", "AMBIGUOUS_CODE": "Ambiguous code",
-    "INACTIVE_EMPLOYEE_ACTIVITY": "Inactive employee activity", "BEFORE_HIRE_ACTIVITY": "Before-hire activity",
+    "INACTIVE_EMPLOYEE_ACTIVITY": "Inactive team member activity", "BEFORE_HIRE_ACTIVITY": "Before-hire activity",
     "TZ_INCONSISTENT": "Time zone inconsistent", "HIGH_PUNCH_COUNT": "High activity count",
 }
 IDENTITY_LABEL = {  # legacy filter vocabulary (derived from the verified employee)
@@ -38,7 +38,7 @@ IDENTITY_LABEL = {  # legacy filter vocabulary (derived from the verified employ
     "MATCHED_BEFORE_HIRE": "Verified (before hire date)", "AMBIGUOUS": "Ambiguous", "UNMATCHED": "Unmapped",
 }
 MAPPING_LABEL = {
-    "MAPPED": "Verified", "MAPPED_DIRECTORY_MISSING": "Verified (employee not in directory)",
+    "MAPPED": "Verified", "MAPPED_DIRECTORY_MISSING": "Verified (team member not in directory)",
     "DIRECTORY_UNAVAILABLE": "Verified (directory unavailable)",
 }
 _REVIEW_LABEL = {"needs_review": "Needs review", "no_flags": "No review flags", **FLAG_LABEL}
@@ -136,8 +136,8 @@ def pair_events(events, by_code_day: dict) -> list[dict]:
 # --- sheets ------------------------------------------------------------------
 
 _ATTENDANCE_COLUMNS = [
-    Column("Date", 12, "date"), Column("Employee Name", 26), Column("BHR Employee ID", 14),
-    Column("BambooHR Employee Number", 16), Column("ZKBioTime ID(s)", 16), Column("Department", 20),
+    Column("Date", 12, "date"), Column("Team Member Name", 26), Column("BHR Employee ID", 14),
+    Column("EMP Number", 16), Column("ZKBioTime ID(s)", 16), Column("Department", 20),
     Column("Employment Status", 14), Column("First Activity", 13, "time"), Column("Latest Activity", 13, "time"),
     Column("Punch Count", 12, "int"), Column("Activity Span (minutes)", 14, "int"),
     Column("Terminal(s)", 20, wrap=True), Column("Mapping Status", 22), Column("Review Flags", 32, wrap=True),
@@ -167,7 +167,7 @@ def attendance_sheet(days: list[dict], *, title: str = "Attendance Report", with
 
 def event_sheet(events: list[dict]) -> Sheet:
     cols = [Column("Local Date", 12, "date"), Column("Local Time", 11, "time"), Column("ZKBioTime ID", 14),
-            Column("Employee Name", 26), Column("BHR Employee ID", 14), Column("BambooHR Employee Number", 16),
+            Column("Team Member Name", 26), Column("BHR Employee ID", 14), Column("EMP Number", 16),
             Column("Department", 20), Column("Terminal", 18), Column("Verify Type", 11), Column("Mapping Status", 22),
             Column("Review Flags", 32, wrap=True)]
     rows = []
@@ -184,10 +184,10 @@ def summary_sheet(days: list[dict], start: date, end: date, unmapped: int | None
     flagged = {r["bamboohr_id"] for r in days if r["flags"]}
     rows: list[list] = [
         ["Date range", f"{start.isoformat()} to {end.isoformat()}"],
-        ["Employees with activity", len({r["bamboohr_id"] for r in days})],
-        ["Employee-days with activity", len(days)],
+        ["Team members with activity", len({r["bamboohr_id"] for r in days})],
+        ["Team-member days with activity", len(days)],
         ["Attendance events", sum(r["punch_count"] for r in days)],
-        ["Employees needing review", len(flagged)],
+        ["Team members needing review", len(flagged)],
         ["Single-activity days", counts.get(ReviewFlag.SINGLE_PUNCH.value, 0)],
     ]
     if unmapped is not None:
@@ -200,7 +200,7 @@ def summary_sheet(days: list[dict], start: date, end: date, unmapped: int | None
 
 
 def filter_summary(site_name: str, date_label: str, f: ExportFilters) -> list[tuple[str, str]]:
-    labels = {"q": "Employee search", "emp_code": "ZKBioTime ID", "department": "Department",
+    labels = {"q": "Team member search", "emp_code": "ZKBioTime ID", "department": "Department",
               "identity_class": "Identity classification", "employment_status": "Employment status",
               "review": "Review / exception type", "terminal": "Terminal"}
     out = [("Site", site_name), ("Date range" if " to " in date_label else "Date", date_label)]

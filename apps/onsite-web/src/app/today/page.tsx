@@ -27,7 +27,7 @@ const SORTS = [
   { value: "-latest_activity", label: "Latest activity (latest)" },
   { value: "-punch_count", label: "Events (most)" },
   { value: "-span", label: "Activity span (longest)" },
-  { value: "employee", label: "Employee (A–Z)" },
+  { value: "employee", label: "Team member (A–Z)" },
   { value: "-flags", label: "Review flags (most)" },
 ];
 
@@ -55,7 +55,7 @@ function TodayView() {
   return (
     <div className="space-y-4">
       <PageTop title="Today"
-        description={<>First and latest recorded activity and event count per employee, for one site-local day{site.time_zone ? ` (${site.time_zone})` : ""}.</>}
+        description={<>First and latest recorded activity and event count per team member, for one site-local day{site.time_zone ? ` (${site.time_zone})` : ""}.</>}
         actions={<ExportButton path="today" params={filters} />}>
         <div className="flex flex-wrap items-center gap-2">
           <SiteSelect />
@@ -67,7 +67,7 @@ function TodayView() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-dt-text-secondary">
           <span className="font-semibold text-dt-text-primary">{fmtDay(s.date, true)}</span>{isToday && " · today, in progress"}
-          {query.data && <> · <span className="font-semibold text-dt-text-primary">{fmtNum(query.data.total)}</span> employees with recorded activity</>}
+          {query.data && <> · <span className="font-semibold text-dt-text-primary">{fmtNum(query.data.total)}</span> team members with recorded activity</>}
         </p>
         <Segmented label="Review status" value={["needs_review", "no_flags"].includes(s.review) ? s.review : ""}
           onChange={(v) => set({ review: v })}
@@ -75,7 +75,7 @@ function TodayView() {
       </div>
 
       <FilterPanel chips={chips} onClearAll={clearAll}>
-        <SearchField label="Search name, BHR ID or Employee Number" value={s.q} onChange={(v) => set({ q: v })} />
+        <SearchField label="Search name, BHR ID or EMP Number" value={s.q} onChange={(v) => set({ q: v })} />
         <SearchField label="ZKBioTime ID" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact ID" />
         <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} departments={query.data?.departments} />
         <IdentitySelect value={s.id} onChange={(v) => set({ id: v })} />
@@ -87,7 +87,7 @@ function TodayView() {
       {query.isLoading ? <SkeletonRows label="Loading activity…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
         query.data.total === 0 ? (
           chips.length || s.review ? (
-            <EmptyPanel icon={SearchX} title="No employees match these filters" description={`Nothing recorded on ${fmtDay(s.date)} matches the current filters.`}
+            <EmptyPanel icon={SearchX} title="No team members match these filters" description={`Nothing recorded on ${fmtDay(s.date)} matches the current filters.`}
               actions={<button type="button" className={buttonClass("secondary")} onClick={() => set({ q: "", emp: "", dept: "", id: "", review: "" })}>Clear filters</button>} />
           ) : (
             <EmptyPanel icon={CalendarDays} title={isToday ? "No activity recorded yet today" : "No activity recorded on this day"}
@@ -100,12 +100,12 @@ function TodayView() {
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Employee details unavailable — verified attendance is shown without names.</p>}
-            <DataView caption={`Employee activity on ${s.date}`} rows={query.data.items} rowKey={(r) => r.emp_code}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable — verified attendance is shown without names.</p>}
+            <DataView caption={`Team member activity on ${s.date}`} rows={query.data.items} rowKey={(r) => r.emp_code}
               rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.bamboohr_id ?? "", page: s.page })}
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
-                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
+                { key: "emp", header: "Team Member", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
                 { key: "first", header: "First", sort: "first_activity", cell: (r) => <span className="tabular-nums">{localTime(r.first_activity_local)}</span> },
                 { key: "latest", header: "Latest", sort: "latest_activity", cell: (r) => <span className="tabular-nums">{localTime(r.latest_activity_local)}</span> },
                 { key: "count", header: "Events", sort: "punch_count", align: "right", cell: (r) => r.punch_count },
@@ -123,7 +123,7 @@ function TodayView() {
                   {r.flags.length > 0 && <FlagChips flags={r.flags} />}
                 </div>
               )} />
-            <Pager page={page} pageSize={pageSize} total={query.data.total} onPage={paging.onPage} onPageSize={paging.onPageSize} busy={query.isFetching} noun="employee" />
+            <Pager page={page} pageSize={pageSize} total={query.data.total} onPage={paging.onPage} onPageSize={paging.onPageSize} busy={query.isFetching} noun="team member" />
           </>
         )}
       {s.open && <EmployeeProfile code={s.open} to={s.date} onClose={() => set({ open: "", page: s.page })} />}

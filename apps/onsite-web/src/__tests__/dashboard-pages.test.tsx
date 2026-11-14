@@ -55,7 +55,7 @@ describe("Overview", () => {
   it("renders KPIs, charts, breakdown and recent activity from the API", async () => {
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    expect(await screen.findByText("Employees with activity")).toBeInTheDocument();
+    expect(await screen.findByText("Team members with activity")).toBeInTheDocument();
     expect(screen.getByText("Activity events")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: /Activity events by hour, Today · Sun 1 Nov, DEV Site/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /08:00–08:59 \(Asia\/Colombo\): 5 events/ })).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe("Overview", () => {
   it("shows Sync now only to admins", async () => {
     const { default: Page } = await import("@/app/page");
     const { unmount } = renderPage(<Page />);
-    await screen.findByText("Employees with activity");
+    await screen.findByText("Team members with activity");
     expect(screen.queryByRole("button", { name: /sync now/i })).not.toBeInTheDocument();
     unmount();
     scope.value = { loading: false, scope: { role: "ONSITE_ADMIN", permissions: ["onsite.attendance.read", "onsite.dashboard.read", "onsite.exceptions.read", "onsite.health.read", "onsite.identity.read", "onsite.sites.manage", "onsite.sync.request"] } };
@@ -101,7 +101,7 @@ describe("Overview", () => {
   it("uses a responsive KPI grid", async () => {
     const { default: Page } = await import("@/app/page");
     const { container } = renderPage(<Page />);
-    await screen.findByText("Employees with activity");
+    await screen.findByText("Team members with activity");
     expect(container.querySelector(".grid.grid-cols-2.sm\\:grid-cols-3")).not.toBeNull();
   });
 });
@@ -160,7 +160,7 @@ describe("Employees", () => {
     // The profile is addressed by the verified BHR Employee ID, never by the ZKBioTime ID.
     expect(api.getEmployee).toHaveBeenCalledWith("7", expect.anything());
     expect(screen.getByText(/BHR Employee ID 7/)).toBeInTheDocument();
-    expect(screen.getByText(/BambooHR Employee Number E-7/)).toBeInTheDocument();
+    expect(screen.getByText(/EMP Number E-7/)).toBeInTheDocument();
   });
 });
 

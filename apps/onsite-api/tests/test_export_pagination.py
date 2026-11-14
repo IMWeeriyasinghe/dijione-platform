@@ -71,7 +71,7 @@ def _xlsx_rows(client, url, sheet):
     assert resp.status_code == 200, resp.text
     ws = load_workbook(io.BytesIO(resp.content))[sheet]
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
-    start = next(i for i, r in enumerate(rows) if len(r) > 1 and r[1] in ("Employee Name", "Local Time", "BHR Employee ID"))
+    start = next(i for i, r in enumerate(rows) if len(r) > 1 and r[1] in ("Team Member Name", "Local Time", "BHR Employee ID"))
     header = rows[start]
     data = [dict(zip(header, r, strict=False)) for r in rows[start + 1:] if r[1] is not None]
     return data, {r[0]: r[1] for r in rows[4:start] if r[0]}
@@ -135,7 +135,7 @@ def test_employees_exports_all_pages(big):
     q = f"date_from={DAY}&date_to={DAY}&department=Finance&activity=with_activity"
     sizes, items, total = _pages(big, f"/api/onsite/employees?{q}")
     assert (total, sizes) == (FINANCE, [50, 50, 37])
-    rows, meta = _xlsx_rows(big, f"/api/onsite/employees/export?{q}", "Employees")
+    rows, meta = _xlsx_rows(big, f"/api/onsite/employees/export?{q}", "Team Members")
     assert len(rows) == FINANCE and _codes(rows) == sorted(i["emp_code"] for i in items)
     assert meta["Activity"] == "Activity recorded"
 
@@ -171,9 +171,9 @@ FILTER_CASES = [
     ("activity", f"date_from={DAY}&date_to={OTHER_DAY}", "Event Detail", "flag=SINGLE_PUNCH&emp_code=E000"),
     ("activity", f"date_from={DAY}&date_to={OTHER_DAY}", "Event Detail", "identity_class=MATCHED_BEFORE_HIRE"),
     ("activity", f"date_from={DAY}&date_to={OTHER_DAY}", "Event Detail", "identity_class=MATCHED_ACTIVE&emp_code=E001"),
-    ("employees", f"date_from={DAY}&date_to={DAY}", "Employees", "employment_status=Inactive"),
-    ("employees", f"date_from={DAY}&date_to={DAY}", "Employees", "identity_class=MATCHED_INACTIVE&department=Finance"),
-    ("employees", f"date_from={DAY}&date_to={DAY}", "Employees", "q=person%2012&activity=with_activity"),
+    ("employees", f"date_from={DAY}&date_to={DAY}", "Team Members", "employment_status=Inactive"),
+    ("employees", f"date_from={DAY}&date_to={DAY}", "Team Members", "identity_class=MATCHED_INACTIVE&department=Finance"),
+    ("employees", f"date_from={DAY}&date_to={DAY}", "Team Members", "q=person%2012&activity=with_activity"),
     ("exceptions", f"date_from={DAY}&date_to={OTHER_DAY}", "Exception Report", "flag=INACTIVE_EMPLOYEE_ACTIVITY"),
     ("exceptions", f"date_from={DAY}&date_to={OTHER_DAY}", "Exception Report", "emp_code=E019"),
     ("exceptions", f"date_from={DAY}&date_to={OTHER_DAY}", "Exception Report",

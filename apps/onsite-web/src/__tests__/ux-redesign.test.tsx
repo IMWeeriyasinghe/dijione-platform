@@ -70,14 +70,14 @@ describe("Overview", () => {
   it("defaults to the site-local today, not the browser date", async () => {
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    await screen.findByText("Employees with activity");
+    await screen.findByText("Team members with activity");
     expect(api.getOverview).toHaveBeenCalledWith({ site_id: "colombo", date: "2026-11-04" });
   });
 
   it("never compares a day in progress, but compares complete periods with the previous one", async () => {
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    await screen.findByText("Employees with activity");
+    await screen.findByText("Team members with activity");
     expect(screen.queryByText(/vs Mon 2 Nov/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
     await waitFor(() => expect(api.getOverview).toHaveBeenCalledWith({ site_id: "colombo", date: "2026-11-02" }));
@@ -97,8 +97,8 @@ describe("Overview", () => {
     setTestUrl("/?from=2026-11-03&to=2026-11-03");
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    await screen.findByText("Employees with activity");
-    expect(screen.getByRole("link", { name: /Employees with activity/ })).toHaveAttribute("href", "/today?date=2026-11-03");
+    await screen.findByText("Team members with activity");
+    expect(screen.getByRole("link", { name: /Team members with activity/ })).toHaveAttribute("href", "/today?date=2026-11-03");
     expect(screen.getByRole("link", { name: /Needing review/ })).toHaveAttribute("href", "/exceptions?from=2026-11-03&to=2026-11-03");
     expect(screen.getByRole("link", { name: /^Single activity.*View records/ })).toHaveAttribute("href", expect.stringContaining("flag=SINGLE_PUNCH"));
     // Unverified IDs are never part of viewer attendance: no unmapped/conflict category is offered.
@@ -110,7 +110,7 @@ describe("Overview", () => {
   it("highlights the busiest hour and exposes exact values to keyboard users", async () => {
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    await screen.findByText("Employees with activity");
+    await screen.findByText("Team members with activity");
     expect(screen.getByText("09:00")).toBeInTheDocument();
     const bar = screen.getByRole("button", { name: /09:00–09:59 \(Asia\/Colombo\): 7 events/ });
     fireEvent.focus(bar);
@@ -160,7 +160,7 @@ describe("Responsive records", () => {
     api.getEmployees.mockResolvedValue(EMPLOYEES);
     const { default: Page } = await import("@/app/employees/page");
     renderPage(<Page />);
-    const list = await screen.findByRole("list", { name: /Employees,/ });
+    const list = await screen.findByRole("list", { name: /Team Members,/ });
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(within(list).getByText("Ishara G")).toBeInTheDocument();
     expect(within(list).getByText("Review flags")).toBeInTheDocument();
@@ -170,9 +170,9 @@ describe("Responsive records", () => {
     api.getEmployees.mockResolvedValue(EMPLOYEES);
     const { default: Page } = await import("@/app/employees/page");
     renderPage(<Page />);
-    expect(await screen.findByText("Employees in view")).toBeInTheDocument();
+    expect(await screen.findByText("Team members in view")).toBeInTheDocument();
     expect(screen.getByText("2 · 1")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Employee$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Team Member$/ }));
     await waitFor(() => expect(api.getEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "-employee", page: 1 })));
   });
 });

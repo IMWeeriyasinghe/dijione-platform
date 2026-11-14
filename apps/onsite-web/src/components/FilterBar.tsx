@@ -143,7 +143,7 @@ export function SelectField({ label, value, onChange, options }: {
   );
 }
 
-/** Viewer records only ever contain verified employees, so the filter offers
+/** Viewer records only ever contain verified team members, so the filter offers
  *  the employment-derived refinements of a verified mapping. */
 export const IDENTITY_CLASSES: IdentityClass[] = ["MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE"];
 

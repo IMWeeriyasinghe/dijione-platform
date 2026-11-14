@@ -65,13 +65,13 @@ export type HourBucket = { hour: number; events: number; employees: number };
 export type TrendDay = { date: string; events: number; employees: number };
 
 export type EmployeeRef = {
-  /** A ZKBioTime ID of this verified employee (legacy row key). */
+  /** A ZKBioTime ID of this verified team member (legacy row key). */
   emp_code: string;
   /** BHR Employee ID — the verified identity key. */
   bamboohr_id?: string | null;
-  /** BambooHR Employee Number (HR reference only, never a matching key). */
+  /** EMP Number (HR reference only, never a matching key). */
   employee_number?: string | null;
-  /** Every ZKBioTime ID verified to this employee for the row. */
+  /** Every ZKBioTime ID verified to this team member for the row. */
   zk_emp_codes?: string[];
   mapping_status?: MappingStatus | null;
   employee_name: string | null;
@@ -92,7 +92,7 @@ export type ActivityEvent = EmployeeRef & {
   event_id?: string;
   source_epoch?: number;
   verify_type?: number | null;
-  /** Review flags of this event's employee-day. */
+  /** Review flags of this event's team-member day. */
   review_flags?: ReviewFlag[];
 };
 
@@ -150,7 +150,7 @@ export type MappingPeriodRef = { mapping_id: number; zk_emp_code: string; valid_
 
 export type EmployeeDetail = {
   profile: EmployeeRef & { job_title: string | null; match_count: number };
-  /** Verified ZKBioTime ID ownership periods of this employee at the site. */
+  /** Verified ZKBioTime ID ownership periods of this team member at the site. */
   mappings?: MappingPeriodRef[];
   summary: { activity_days: number; events: number; review_flags: number };
   days: DayActivity[];
@@ -185,7 +185,7 @@ export async function getEmployeePhoto(bamboohrId: string): Promise<string | nul
   return blob.size ? URL.createObjectURL(blob) : null;
 }
 
-/** Profile of a VERIFIED employee, addressed by BHR Employee ID. */
+/** Profile of a VERIFIED team member, addressed by BHR Employee ID. */
 export const getEmployee = (bamboohrId: string, p: Params) =>
   request<EmployeeDetail>(`${ONSITE_API}/employees/by-id/${encodeURIComponent(bamboohrId)}${qs(p)}`);
 export const getExceptions = (p: Params) => request<ExceptionsResponse>(`${ONSITE_API}/exceptions${qs(p)}`);

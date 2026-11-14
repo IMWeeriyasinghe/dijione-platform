@@ -38,8 +38,8 @@ function StatusBadge({ r }: { r: EmployeeRow }) {
 function SummaryTiles({ s, period }: { s: EmployeesSummary; period: string }) {
   const coverage = s.employees ? Math.round((s.matched / s.employees) * 100) : 0;
   const tiles: [string, string, string][] = [
-    ["Employees in view", fmtNum(s.employees), "Verified employees (by BHR Employee ID) with a ZKBioTime ID mapping in the period, after your filters. Unmapped IDs are listed only in Identity Management."],
-    ["With recorded activity", fmtNum(s.with_activity), `Employees in view with at least one recorded activity in ${period}.`],
+    ["Team members in view", fmtNum(s.employees), "Verified team members (by BHR Employee ID) with a ZKBioTime ID mapping in the period, after your filters. Unmapped IDs are listed only in Identity Management."],
+    ["With recorded activity", fmtNum(s.with_activity), `Team members in view with at least one recorded activity in ${period}.`],
     ["Active · Inactive", `${fmtNum(s.active)} · ${fmtNum(s.inactive)}`, "Employment status from the Workforce Directory (BambooHR)."],
     ["Needing review", fmtNum(s.needing_review), "Employees in view with at least one review flag in the period. Flags are prompts, not confirmed issues."],
     ["Verified mappings", `${coverage}%`, `${fmtNum(s.matched)} of ${fmtNum(s.employees)} attributed through an administrator-verified mapping; ${fmtNum(s.not_in_directory)} verified employee(s) are no longer in the Workforce Directory.`],
@@ -82,8 +82,8 @@ function EmployeesView() {
 
   return (
     <div className="space-y-4">
-      <PageTop title="Employees"
-        description="Recorded attendance per verified employee. A ZKBioTime ID counts only inside its administrator-verified mapping period; several IDs of one person are one row."
+      <PageTop title="Team Members"
+        description="Recorded attendance per verified team member. A ZKBioTime ID counts only inside its administrator-verified mapping period; several IDs of one person are one row."
         actions={<ExportButton path="employees" params={filters} />}>
         <div className="flex flex-wrap items-center gap-2">
           <SiteSelect />
@@ -95,7 +95,7 @@ function EmployeesView() {
       {query.data?.summary && <SummaryTiles s={query.data.summary} period={periodLabel} />}
 
       <FilterPanel chips={chips} onClearAll={clearAll}>
-        <SearchField label="Search name, BHR ID or Employee Number" value={s.q} onChange={(v) => set({ q: v })} />
+        <SearchField label="Search name, BHR ID or EMP Number" value={s.q} onChange={(v) => set({ q: v })} />
         <SearchField label="ZKBioTime ID" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact ID" />
         <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} departments={query.data?.departments} />
         <SelectField label="Employment status" value={s.status} onChange={(v) => set({ status: v })}
@@ -108,22 +108,22 @@ function EmployeesView() {
       {query.isLoading ? <SkeletonRows label="Loading employees…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
         query.data.total === 0 ? (
           chips.length ? (
-            <EmptyPanel icon={SearchX} title="No employees match these filters" description={`Nothing matches in ${periodLabel}.`}
+            <EmptyPanel icon={SearchX} title="No team members match these filters" description={`Nothing matches in ${periodLabel}.`}
               actions={<button type="button" className={buttonClass("secondary")} onClick={clearAll}>Clear filters</button>} />
           ) : (
-            <EmptyPanel icon={Users} title="No recorded activity in this period" description="No employee has recorded activity at this site in the selected period."
+            <EmptyPanel icon={Users} title="No recorded activity in this period" description="No team member has recorded activity at this site in the selected period."
               actions={<button type="button" className={buttonClass("secondary")} onClick={() => set({ act: "all" })}>Show everyone</button>} />
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Employee details unavailable — verified attendance is shown without names.</p>}
-            <DataView caption={`Employees, ${periodLabel}`} rows={query.data.items} rowKey={(r) => r.bamboohr_id ?? r.emp_code}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable — verified attendance is shown without names.</p>}
+            <DataView caption={`Team Members, ${periodLabel}`} rows={query.data.items} rowKey={(r) => r.bamboohr_id ?? r.emp_code}
               rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.bamboohr_id ?? "", page: s.page })}
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
-                { key: "emp", header: "Employee", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
+                { key: "emp", header: "Team Member", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
                 { key: "bhr", header: "BHR Employee ID", minWidth: "lg", cell: (r) => <span className="font-mono">{r.bamboohr_id ?? "—"}</span> },
-                { key: "num", header: "BambooHR Employee Number", minWidth: "xl", cell: (r) => <span className="font-mono">{r.employee_number ?? "—"}</span> },
+                { key: "num", header: "EMP Number", minWidth: "xl", cell: (r) => <span className="font-mono">{r.employee_number ?? "—"}</span> },
                 { key: "status", header: "Status", cell: (r) => <StatusBadge r={r} /> },
                 { key: "id", header: "Mapping Status", minWidth: "xl", cell: (r) => <MappingBadge status={r.mapping_status} cls={r.identity_class} /> },
                 { key: "last", header: "Last activity", sort: "last_activity", minWidth: "lg", cell: (r) => <span className="whitespace-nowrap tabular-nums">{lastActivity(r)}</span> },
@@ -143,7 +143,7 @@ function EmployeesView() {
                   <p className="text-xs text-dt-text-secondary">Last activity: {lastActivity(r)}</p>
                 </div>
               )} />
-            <Pager page={page} pageSize={pageSize} total={query.data.total} onPage={paging.onPage} onPageSize={paging.onPageSize} busy={query.isFetching} noun="employee" />
+            <Pager page={page} pageSize={pageSize} total={query.data.total} onPage={paging.onPage} onPageSize={paging.onPageSize} busy={query.isFetching} noun="team member" />
           </>
         )}
       {s.open && <EmployeeProfile code={s.open} to={s.to} onClose={() => set({ open: "", page: s.page })} />}

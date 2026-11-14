@@ -22,7 +22,7 @@ export function buildSections(scope: OnsiteScope | null): NavSection[] {
         { label: "Overview", href: "/", icon: LayoutDashboard, exact: true },
         { label: "Today", href: "/today", icon: CalendarDays },
         { label: "Activity", href: "/activity", icon: Activity },
-        { label: "Employees", href: "/employees", icon: Users },
+        { label: "Team Members", href: "/employees", icon: Users },
         { label: "Exceptions", href: "/exceptions", icon: AlertTriangle },
       ],
     },

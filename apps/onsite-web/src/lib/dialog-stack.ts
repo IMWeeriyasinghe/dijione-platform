@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 // Open dialogs, top-most last: Escape closes only the top one, so an
-// employee profile opened above an hour list closes on its own.
+// team member profile opened above an hour list closes on its own.
 const stack: symbol[] = [];
 
 export function useDialogLayer(onClose: () => void, initialFocus: React.RefObject<HTMLElement | null>) {

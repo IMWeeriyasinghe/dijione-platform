@@ -88,7 +88,7 @@ describe("Server-side pagination", () => {
     api.getEmployees.mockResolvedValue(EMP(506, [row("101", false)]));
     const { default: Page } = await import("@/app/employees/page");
     renderPage(<Page />);
-    expect(await screen.findByText("1–10 of 506 employees")).toBeInTheDocument();
+    expect(await screen.findByText("1–10 of 506 team members")).toBeInTheDocument();
     expect(api.getEmployees).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 10 }));
     expect(screen.getByLabelText("Rows per page")).toHaveValue("10");
     expect([...screen.getByLabelText("Rows per page").querySelectorAll("option")].map((o) => o.textContent)).toEqual(["10", "20", "50", "100"]);
@@ -138,7 +138,7 @@ describe("Server-side pagination", () => {
     renderPage(<Page />);
     await screen.findByText("Person 101");
     const calls = api.getEmployees.mock.calls.length;
-    const box = screen.getByLabelText("Search name, BHR ID or Employee Number");
+    const box = screen.getByLabelText("Search name, BHR ID or EMP Number");
     for (const v of ["P", "Pe", "Per"]) fireEvent.change(box, { target: { value: v } });
     expect(api.getEmployees.mock.calls.length).toBe(calls); // nothing sent per keystroke
     await waitFor(() => expect(api.getEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ q: "Per", page: 1 })));
@@ -195,7 +195,7 @@ describe("Chart drill-down", () => {
     const sheet = await screen.findByRole("dialog", { name: /11:00–11:59:59/ });
     await waitFor(() => expect(api.getActivity).toHaveBeenCalledWith(expect.objectContaining({
       date_from: "2026-11-03", date_to: "2026-11-03", hour: 11, page: 1, page_size: 10 })));
-    expect(within(sheet).getByText("Employees with activity")).toBeInTheDocument();
+    expect(within(sheet).getByText("Team members with activity")).toBeInTheDocument();
     expect(within(sheet).getByText("2")).toBeInTheDocument();
     expect(within(sheet).getAllByText("Possible duplicate tap").length).toBeGreaterThan(0);
     expect(within(sheet).getByRole("link", { name: /View in Activity/ })).toHaveAttribute("href", "/activity?from=2026-11-03&to=2026-11-03&hour=11&sort=time");

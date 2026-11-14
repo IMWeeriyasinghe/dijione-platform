@@ -58,9 +58,9 @@ function ActivityView() {
         ...(e.verify_type !== undefined ? [["Verify type", e.verify_type ?? "—"] as [string, React.ReactNode]] : []),
       ]} />
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={buttonClass("secondary")} onClick={() => set({ open: e.bamboohr_id ?? "", page: s.page })}>Open employee profile</button>
+        <button type="button" className={buttonClass("secondary")} onClick={() => set({ open: e.bamboohr_id ?? "", page: s.page })}>Open team member profile</button>
         <button type="button" className={buttonClass("ghost")} onClick={() => set({ emp: e.emp_code, from: e.local_date, to: e.local_date })}>
-          Only this employee on {fmtShortDay(e.local_date)}
+          Only this team member on {fmtShortDay(e.local_date)}
         </button>
       </div>
     </div>
@@ -80,7 +80,7 @@ function ActivityView() {
 
       <FilterPanel chips={chips} onClearAll={clearAll}
         summary={query.data ? <span className="text-xs text-dt-text-secondary">{fmtNum(query.data.total)} events</span> : undefined}>
-        <SearchField label="Search name, BHR ID or Employee Number" value={s.q} onChange={(v) => set({ q: v })} />
+        <SearchField label="Search name, BHR ID or EMP Number" value={s.q} onChange={(v) => set({ q: v })} />
         <SearchField label="ZKBioTime ID" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact ID" />
         <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} />
         <SelectField label="Terminal" value={s.term} onChange={(v) => set({ term: v })}
@@ -114,7 +114,7 @@ function ActivityView() {
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Employee details unavailable — verified attendance is shown without names.</p>}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable — verified attendance is shown without names.</p>}
             <DataView caption="Recorded activity events" rows={query.data.items}
               rowKey={(e) => e.event_id ?? `${e.emp_code}-${e.local_time}`} rowLabel={(e) => `${e.employee_name ?? e.emp_code} at ${localTime(e.local_time)}`}
               columns={[
@@ -122,7 +122,7 @@ function ActivityView() {
                   <span className="whitespace-nowrap"><span className="font-medium tabular-nums text-dt-text-primary">{localTime(e.local_time)}</span>
                     <span className="ml-1.5 text-xs text-dt-text-secondary">{e.local_date === site.today ? "Today" : fmtDay(e.local_date)}</span></span>
                 ) },
-                { key: "emp", header: "Employee", cell: (e) => <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" /> },
+                { key: "emp", header: "Team Member", cell: (e) => <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" /> },
                 { key: "term", header: "Terminal", cell: (e) => <span className="text-dt-text-primary">{e.terminal ?? "—"}{e.area && <span className="block text-xs text-dt-text-secondary">{e.area}</span>}</span> },
                 { key: "id", header: "Mapping Status", cell: (e) => <MappingBadge status={e.mapping_status} cls={e.identity_class} /> },
                 { key: "flags", header: "Review", minWidth: "lg", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
