@@ -10,7 +10,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { DayControl, DepartmentSelect, IdentitySelect, SearchField, SelectField, SiteSelect } from "@/components/FilterBar";
 import { FlagChips } from "@/components/FlagChips";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
-import { buttonClass, EmployeeRefCell, EmptyPanel, FilterPanel, InfoTip, Pager, PageTop, Segmented, SkeletonRows, type Chip } from "@/components/kit";
+import { buttonClass, EmployeeRefCell, EmptyPanel, FilterPanel, Pager, PageTop, Segmented, SkeletonRows, type Chip } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { getToday, VIEWER_REVIEW_FLAGS, type ReviewFlag } from "@/lib/dashboard";
 import { FLAG_LABEL, formatSpan, localTime } from "@/lib/flags";
@@ -109,7 +109,7 @@ function TodayView() {
                 { key: "first", header: "First", sort: "first_activity", cell: (r) => <span className="tabular-nums">{localTime(r.first_activity_local)}</span> },
                 { key: "latest", header: "Latest", sort: "latest_activity", cell: (r) => <span className="tabular-nums">{localTime(r.latest_activity_local)}</span> },
                 { key: "count", header: "Events", sort: "punch_count", align: "right", cell: (r) => r.punch_count },
-                { key: "span", header: <span className="inline-flex items-center gap-1">Activity span <InfoTip text="First to latest recorded activity. Not worked hours." /></span>, sort: "span", minWidth: "lg", cell: (r) => formatSpan(r.span_minutes) },
+                { key: "span", header: "Activity span", help: "First to latest recorded activity. Not worked hours.", sort: "span", minWidth: "lg", cell: (r) => formatSpan(r.span_minutes) },
                 { key: "terms", header: "Terminals", minWidth: "xl", cell: (r) => r.terminal_names.join(", ") || "—" },
                 { key: "flags", header: "Review", sort: "flags", cell: (r) => <FlagChips flags={r.flags} /> },
               ]}

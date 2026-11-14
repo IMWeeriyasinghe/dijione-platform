@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown } from "lucide-react";
 import { useMinWidth } from "@/lib/use-media";
-import { cx, focusRing } from "./kit";
+import { cx, focusRing, InfoTip } from "./kit";
 
 export type Column<T> = {
   key: string;
@@ -13,13 +13,19 @@ export type Column<T> = {
   sort?: string;
   align?: "left" | "right";
   className?: string;
-  /** Hidden below this breakpoint in the table (cards always show everything they render). */
+  /** Explanation shown as an info tip next to the header (never inside the sort button). */
+  help?: string;
+  /** Table column only from this breakpoint up. Below it the value is not
+   *  lost: it moves into the row's expandable details (cards always show
+   *  everything they render). */
   minWidth?: "lg" | "xl";
 };
 
-/** Records as a sticky-header table from md up, and as cards on phones —
- *  never a cramped wide table on a small screen. Optional expandable detail
- *  per row (`detail`) and clickable rows (`onRowClick`). */
+/** Records as a sticky-header table from 1024 px up, and as cards below —
+ *  never a cramped wide table on a small screen. Columns wrap instead of
+ *  forcing a sideways scroll; a column hidden at the current width moves
+ *  into the row's expandable details, so every field stays reachable.
+ *  Optional expandable detail per row (`detail`) and clickable rows. */
 export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, sort, onSort, caption, rowLabel }: {
   rows: T[];
   rowKey: (row: T) => string;
@@ -33,9 +39,19 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
   rowLabel?: (row: T) => string;
 }) {
   const [open, setOpen] = useState<string | null>(null);
-  const desktop = useMinWidth(768);
+  const desktop = useMinWidth(1024);
+  const wide = useMinWidth(1280);
   const toggle = (k: string) => setOpen(open === k ? null : k);
-  const hide = (c: Column<T>) => (c.minWidth === "lg" ? "hidden lg:table-cell" : c.minWidth === "xl" ? "hidden xl:table-cell" : "");
+  const shown = columns.filter((c) => c.minWidth !== "xl" || wide);
+  const hidden = columns.filter((c) => !shown.includes(c));
+  const rowDetail = hidden.length
+    ? (r: T) => (
+        <div className="space-y-3">
+          {detail?.(r)}
+          <Facts cols={4} items={hidden.map((c) => [c.header, c.cell(r)] as [React.ReactNode, React.ReactNode])} />
+        </div>
+      )
+    : detail;
 
   if (desktop) return (
       <div className="overflow-hidden rounded-xl border border-dt-border bg-dt-surface">
@@ -44,15 +60,18 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
             <caption className="sr-only">{caption}</caption>
             <thead className="sticky top-0 z-10 bg-dt-surface-warm">
               <tr className="border-b border-dt-border">
-                {detail && <th scope="col" className="w-10"><span className="sr-only">Details</span></th>}
-                {columns.map((c) => (
+                {rowDetail && <th scope="col" className="w-10"><span className="sr-only">Details</span></th>}
+                {shown.map((c) => (
                   <th key={c.key} scope="col"
                     aria-sort={c.sort && sort ? (sort === c.sort ? "ascending" : sort === `-${c.sort}` ? "descending" : "none") : undefined}
-                    className={cx("whitespace-nowrap px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-dt-text-secondary",
-                      c.align === "right" && "text-right", hide(c))}>
-                    {c.sort && onSort ? (
-                      <SortButton label={c.header} field={c.sort} sort={sort} onSort={onSort} align={c.align} />
-                    ) : c.header}
+                    className={cx("px-2 py-2.5 text-left align-bottom xl:px-3 text-xs font-semibold uppercase leading-tight tracking-wide text-dt-text-secondary",
+                      c.align === "right" && "text-right")}>
+                    <span className={cx("inline-flex items-center gap-1", c.align === "right" && "flex-row-reverse")}>
+                      {c.sort && onSort ? (
+                        <SortButton label={c.header} field={c.sort} sort={sort} onSort={onSort} align={c.align} />
+                      ) : c.header}
+                      {c.help && <InfoTip text={c.help} label={`About ${typeof c.header === "string" ? c.header : "this column"}`} />}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -64,11 +83,15 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
                 return (
                   <Fragment key={k}>
                     <tr
-                      className={cx("border-b border-dt-border/70 last:border-0", (onRowClick || detail) && "cursor-pointer hover:bg-dt-surface-warm/60",
+                      className={cx("border-b border-dt-border/70 last:border-0", (onRowClick || rowDetail) && "cursor-pointer hover:bg-dt-surface-warm/60",
                         isOpen && "bg-dt-surface-warm/60")}
-                      onClick={onRowClick ? () => onRowClick(r) : detail ? () => toggle(k) : undefined}
+                      onClick={onRowClick || rowDetail ? (e) => {
+                        // Controls inside the row (actions, links) keep their own meaning.
+                        if ((e.target as HTMLElement).closest("button, a, input, select, [role='menu']")) return;
+                        if (onRowClick) onRowClick(r); else toggle(k);
+                      } : undefined}
                     >
-                      {detail && (
+                      {rowDetail && (
                         <td className="px-2 py-2 align-middle">
                           <button type="button" aria-expanded={isOpen} aria-label={`${isOpen ? "Hide" : "Show"} details${rowLabel ? ` for ${rowLabel(r)}` : ""}`}
                             onClick={(e) => { e.stopPropagation(); toggle(k); }}
@@ -77,8 +100,8 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
                           </button>
                         </td>
                       )}
-                      {columns.map((c, i) => (
-                        <td key={c.key} className={cx("px-3 py-2.5 align-middle", c.align === "right" && "text-right tabular-nums", hide(c), c.className)}>
+                      {shown.map((c, i) => (
+                        <td key={c.key} className={cx("px-2 py-2.5 align-middle break-words xl:px-3", c.align === "right" && "text-right tabular-nums", c.className)}>
                           {i === 0 && onRowClick ? (
                             <button type="button" onClick={(e) => { e.stopPropagation(); onRowClick(r); }}
                               aria-label={rowLabel ? `Open ${rowLabel(r)}` : undefined}
@@ -89,9 +112,9 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
                         </td>
                       ))}
                     </tr>
-                    {detail && isOpen && (
+                    {rowDetail && isOpen && (
                       <tr className="border-b border-dt-border/70 bg-dt-surface-warm/40">
-                        <td colSpan={columns.length + 1} className="px-4 py-3">{detail(r)}</td>
+                        <td colSpan={shown.length + 1} className="px-4 py-3">{rowDetail(r)}</td>
                       </tr>
                     )}
                   </Fragment>
@@ -157,7 +180,7 @@ export function Facts({ items, cols = 2 }: { items: [React.ReactNode, React.Reac
       {items.map(([k, v], i) => (
         <div key={i} className="min-w-0">
           <dt className="text-xs text-dt-text-secondary">{k}</dt>
-          <dd className="truncate text-dt-text-primary">{v}</dd>
+          <dd className="break-words text-dt-text-primary">{v}</dd>
         </div>
       ))}
     </dl>

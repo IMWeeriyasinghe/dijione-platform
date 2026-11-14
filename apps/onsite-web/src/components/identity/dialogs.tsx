@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "@dijione/design-system";
 import { ToneBadge } from "@/components/ToneBadge";
 import { cx, Field, fieldClass, InlineAlert, SkeletonRows } from "@/components/kit";
-import { ID_LABELS } from "@/lib/format";
+import { ID_LABELS, MAPPING_LABEL } from "@/lib/format";
+import type { MappingStatus } from "@/lib/types";
 import {
   closeMapping, correctMapping, createMapping, errorDetail, getCodeDetail, getEvidence, getMapping,
   reassignCode, rejectAssociation, searchDirectory, withdrawRejection, WARNING_LABEL,
@@ -403,20 +404,40 @@ export function HistoryDialog({ mappingId, onClose }: { mappingId: number; onClo
   );
 }
 
-export function CodeDialog({ siteId, code, onClose }: { siteId: string; code: string; onClose: () => void }) {
+export function CodeDialog({ siteId, code, onClose, canManage = false, onMap, onReject }: {
+  siteId: string; code: string; onClose: () => void; canManage?: boolean;
+  onMap?: (code: string) => void; onReject?: (code: string) => void;
+}) {
   const q = useQuery({ queryKey: ["onsite-identity-code", siteId, code], queryFn: () => getCodeDetail(code, { site_id: siteId }) });
+  const days = q.data?.days ?? [];
+  const unmapped = days.filter((d) => d.mapping_status !== "MAPPED" && d.mapping_status !== "MAPPED_DIRECTORY_MISSING");
+  const punches = (list: typeof days) => list.reduce((n, d) => n + d.events, 0);
   return (
     <Modal open onClose={onClose} title={`${ID_LABELS.zk} ${code}`}>
-      {!q.data ? <SkeletonRows rows={4} /> : (
-        <div className="space-y-3 text-sm">
+      {q.isLoading ? <SkeletonRows rows={4} /> : !q.data ? (
+        <InlineAlert tone="danger">This ID could not be loaded. Close the dialog and try again.</InlineAlert>
+      ) : (
+        <div className="space-y-4 text-sm">
+          <p className="text-dt-text-secondary">
+            {days.length} day(s) with punches · {punches(unmapped)} unmapped punch(es) on {unmapped.length} day(s).
+            A biometric ID is not a team member until an administrator verifies who owned it on each day.
+          </p>
           <section>
             <h3 className="font-medium">Ownership periods</h3>
             {q.data.mappings.length ? (
               <ul className="list-disc pl-5">{q.data.mappings.map((m) => (
-                <li key={m.id}>{m.employee_name ?? m.bamboohr_id} ({ID_LABELS.bhr} {m.bamboohr_id}) · {m.valid_from} – {m.valid_to ?? "open"} · {m.status}</li>
+                <li key={m.id}>{m.employee_name ?? m.bamboohr_id} ({ID_LABELS.bhr} {m.bamboohr_id}) · {m.valid_from} – {m.valid_to ?? "open"} · {m.status === "VERIFIED" ? "Verified" : "Superseded"}</li>
               ))}</ul>
             ) : <p className="text-dt-text-secondary">Never verified.</p>}
           </section>
+          {q.data.rejections.length > 0 && (
+            <section>
+              <h3 className="font-medium">Rejected associations</h3>
+              <ul className="list-disc pl-5">{q.data.rejections.map((r) => (
+                <li key={r.id}>Not {ID_LABELS.bhr} {r.bamboohr_id} ({r.applies_from ?? "all history"} – {r.applies_to ?? "open"}) · {r.status === "ACTIVE" ? r.reason : "withdrawn"}</li>
+              ))}</ul>
+            </section>
+          )}
           {q.data.hint_employee_number_matches.length > 0 && (
             <p className="text-dt-text-secondary">Unverified hint (EMP Number equals this ID — not evidence): {q.data.hint_employee_number_matches.map((h) => h.display_name ?? h.bamboohr_id).join(", ")}</p>
           )}
@@ -424,14 +445,23 @@ export function CodeDialog({ siteId, code, onClose }: { siteId: string; code: st
             <h3 className="font-medium">Activity by day</h3>
             <div className="max-h-64 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead><tr className="text-left text-dt-text-secondary"><th>Date</th><th>Punches</th><th>{ID_LABELS.mapping}</th><th>Attributed to</th></tr></thead>
-                <tbody>{q.data.days.slice().reverse().map((d) => (
-                  <tr key={d.local_date} className="border-t border-dt-border"><td>{d.local_date}</td><td>{d.events}</td>
-                    <td>{d.mapping_status}</td><td>{d.employee_name ?? d.bamboohr_id ?? "—"}</td></tr>
+                <caption className="sr-only">Punches per site-local day for ZKBioTime ID {code}</caption>
+                <thead><tr className="text-left text-dt-text-secondary"><th scope="col">Date</th><th scope="col" className="text-right">Punches</th><th scope="col">{ID_LABELS.mapping}</th><th scope="col">Attributed to</th></tr></thead>
+                <tbody>{days.slice().reverse().map((d) => (
+                  <tr key={d.local_date} className="border-t border-dt-border"><td className="py-1 tabular-nums">{d.local_date}</td><td className="text-right tabular-nums">{d.events}</td>
+                    <td>{MAPPING_LABEL[d.mapping_status as MappingStatus] ?? d.mapping_status}</td><td className="break-words">{d.employee_name ?? d.bamboohr_id ?? "—"}</td></tr>
                 ))}</tbody>
               </table>
             </div>
           </section>
+          {canManage ? (
+            <div className="flex flex-wrap justify-end gap-2 border-t border-dt-border pt-3">
+              {onReject && <Button variant="secondary" onClick={() => onReject(code)}>Not this person…</Button>}
+              {onMap && <Button onClick={() => onMap(code)}>Map this ID…</Button>}
+            </div>
+          ) : (
+            <p className="border-t border-dt-border pt-3 text-xs text-dt-text-secondary">Mapping requires the Manage Identity Mappings permission.</p>
+          )}
         </div>
       )}
     </Modal>

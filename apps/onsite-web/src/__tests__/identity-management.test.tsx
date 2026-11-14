@@ -17,7 +17,7 @@ const id = vi.hoisted(() => ({
   getReadiness: vi.fn(), getUnmapped: vi.fn(), getCodeDetail: vi.fn(), getEvidence: vi.fn(), searchDirectory: vi.fn(),
   getMappings: vi.fn(), getMapping: vi.fn(), getConflicts: vi.fn(), createMapping: vi.fn(), closeMapping: vi.fn(),
   correctMapping: vi.fn(), reassignCode: vi.fn(), rejectAssociation: vi.fn(), withdrawRejection: vi.fn(),
-  importMappings: vi.fn(), downloadIdentityList: vi.fn(), getCoverage: vi.fn(),
+  importMappings: vi.fn(), downloadIdentityList: vi.fn(), getCoverage: vi.fn(), getUnmappedSummary: vi.fn(),
 }));
 vi.mock("@/lib/identity", async (orig) => ({ ...(await orig<typeof import("@/lib/identity")>()), ...id }));
 
@@ -62,7 +62,16 @@ beforeEach(() => {
   id.searchDirectory.mockResolvedValue({ total: 1, page: 1, page_size: 20, items: [TOM] });
   id.getEvidence.mockResolvedValue({ warnings: [] });
   id.getCoverage.mockImplementation(async (p: { date_from: string; date_to: string }) => coverage(p));
+  id.getUnmappedSummary.mockResolvedValue(SUMMARY);
+  id.getCodeDetail.mockResolvedValue(CODE_DETAIL);
 });
+
+const SUMMARY = { site_id: "colombo", as_of: "2026-11-14", outstanding_ids: 3, unmapped_punches: 20,
+  review: { AWAITING_REVIEW: 1, REJECTED_ASSOCIATION: 1, PARTLY_VERIFIED: 1 },
+  aging: [{ label: "0–7 days", ids: 1, unmapped_punches: 5 }, { label: "8–30 days", ids: 2, unmapped_punches: 15 }],
+  recency: [{ label: "Active in last 7 days", ids: 3, unmapped_punches: 20 }] };
+const CODE_DETAIL = { site_id: "colombo", zk_emp_code: "352", directory_available: true, mappings: [], rejections: [],
+  hint_employee_number_matches: [], days: [{ local_date: "2026-11-13", events: 2, mapping_status: "UNMAPPED", bamboohr_id: null, employee_name: null, mapping_id: null }] };
 
 function coverage(p: { date_from: string; date_to: string }) {
   const narrow = p.date_from === p.date_to;
@@ -95,14 +104,16 @@ describe("Identity Management", () => {
     expect(await screen.findByText("Identified punches")).toBeInTheDocument();
     expect(screen.getByText("80%")).toBeInTheDocument();
     expect(screen.getByText(/approved separately by the owner/)).toBeInTheDocument();
-    expect(screen.getByText("undispositioned")).toBeInTheDocument();
+    // backend "undispositioned" is shown as a review status, never as a resolved identity
+    expect(screen.getByText("Awaiting Review")).toBeInTheDocument();
+    expect(screen.queryByText("undispositioned")).not.toBeInTheDocument();
   });
 
   it("lists unmapped IDs with a labelled hint that is never pre-selected", async () => {
     await openPage("unmapped");
     expect(await screen.findByText("352")).toBeInTheDocument();
     expect(screen.getByText("Unverified: Number Twin")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Map…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Map ZKBioTime ID 352" }));
     const dialog = await screen.findByRole("heading", { name: /Map ZKBioTime ID/ });
     const modal = dialog.closest("div")!.parentElement!;
     // Nothing selected and no start date assumed: confirm is disabled.
@@ -115,7 +126,7 @@ describe("Identity Management", () => {
     id.getEvidence.mockResolvedValue({ warnings: [{ code: "PRIOR_UNMAPPED_ACTIVITY", message: "4 earlier punches stay unmapped.", events: 4 }] });
     id.createMapping.mockResolvedValue({ ...MAPPING, zk_emp_code: "352", bamboohr_id: "1234" });
     await openPage("unmapped");
-    fireEvent.click(await screen.findByRole("button", { name: "Map…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Map ZKBioTime ID 352" }));
     fireEvent.change(screen.getByLabelText("Search the BambooHR Workforce Directory"), { target: { value: "tom" } });
     await waitFor(() => expect(id.searchDirectory).toHaveBeenCalledWith("tom"), { timeout: 2000 });
     fireEvent.click(await screen.findByRole("radio"));
@@ -137,7 +148,7 @@ describe("Identity Management", () => {
     id.createMapping.mockRejectedValue(new ApiError(409, JSON.stringify({ error: "OVERLAPPING_MAPPING",
       message: "This ZKBioTime ID already has a verified owner in that period.", conflicts: [MAPPING] })));
     await openPage("unmapped");
-    fireEvent.click(await screen.findByRole("button", { name: "Map…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Map ZKBioTime ID 352" }));
     fireEvent.change(screen.getByLabelText("Search the BambooHR Workforce Directory"), { target: { value: "tom" } });
     fireEvent.click(await screen.findByRole("radio", {}, { timeout: 2000 }));
     fireEvent.change(screen.getByLabelText(/Owned from/), { target: { value: "2026-11-01" } });
@@ -149,17 +160,19 @@ describe("Identity Management", () => {
 
   it("offers lifecycle actions only to managers", async () => {
     await openPage("mappings");
-    expect(await screen.findByRole("button", { name: "Reassign…" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "End…" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Correct…" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for mapping 131" }));
+    const menu = screen.getByRole("menu", { name: "Actions for mapping 131" });
+    expect(within(menu).getByRole("menuitem", { name: "Reassign ID…" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "End ownership…" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Correct…" })).toBeInTheDocument();
   });
 
   it("is read-only without onsite.identity.manage", async () => {
     scope.value = { loading: false, scope: { role: "ONSITE_ADMIN", permissions: READ } };
     await openPage("mappings");
     expect((await screen.findAllByText("131")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "History" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Reassign…" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "History of mapping 131" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /More actions/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Map ZKBioTime ID" })).not.toBeInTheDocument();
     expect(screen.getByText(/Read-only/)).toBeInTheDocument();
   });
@@ -170,7 +183,8 @@ describe("Identity Management", () => {
         options: ["leave_unmapped", "attribute_to_new", "attribute_to_previous"], message: "2 punch(es) cannot be split" })))
       .mockResolvedValueOnce({ previous: MAPPING, new: MAPPING, same_day_handling: "leave_unmapped", unmapped_day: "2026-06-01" });
     await openPage("mappings");
-    fireEvent.click(await screen.findByRole("button", { name: "Reassign…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for mapping 131" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reassign ID…" }));
     fireEvent.change(screen.getByLabelText(/New owner from/), { target: { value: "2026-06-01" } });
     fireEvent.change(screen.getByLabelText("Search the BambooHR Workforce Directory"), { target: { value: "tom" } });
     fireEvent.click(await screen.findByRole("radio", {}, { timeout: 2000 }));
@@ -203,7 +217,7 @@ describe("Identity Management", () => {
 describe("Identity Management — fail-closed confirmation", () => {
   it("keeps Confirm disabled for an incomplete date and when the evidence check fails", async () => {
     await openPage("unmapped");
-    fireEvent.click(await screen.findByRole("button", { name: "Map…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Map ZKBioTime ID 352" }));
     fireEvent.change(screen.getByLabelText("Search the BambooHR Workforce Directory"), { target: { value: "tom" } });
     fireEvent.click(await screen.findByRole("radio", {}, { timeout: 2000 }));
     fireEvent.change(screen.getByLabelText(/Verification evidence/), { target: { value: "IT enrolment sheet signed by HR" } });
@@ -262,10 +276,11 @@ describe("Identity Management overview", () => {
     expect(await screen.findByRole("heading", { name: /Map ZKBioTime ID/ })).toBeInTheDocument();
   });
 
-  it("investigating an ID opens the Unmapped tab filtered to it", async () => {
+  it("investigating an ID opens its investigation view", async () => {
     await openPage();
     fireEvent.click(await screen.findByRole("button", { name: "352" }));
-    await waitFor(() => expect(id.getUnmapped).toHaveBeenCalledWith(expect.objectContaining({ q: "352" })));
+    expect(await screen.findByRole("heading", { name: "ZKBioTime ID 352" })).toBeInTheDocument();
+    expect(id.getCodeDetail).toHaveBeenCalledWith("352", { site_id: "colombo" });
   });
 
   it("hides Map actions for read-only identity users", async () => {
@@ -273,5 +288,61 @@ describe("Identity Management overview", () => {
     await openPage();
     await screen.findByRole("list", { name: /most unmapped punches/ });
     expect(screen.queryByRole("button", { name: "Map…" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Identity Management — drill-down and review status", () => {
+  it("readiness IDs open the investigation view, and managers can map from it", async () => {
+    await openPage("readiness");
+    fireEvent.click(await screen.findByRole("button", { name: "Investigate ZKBioTime ID 3" }));
+    expect(await screen.findByRole("heading", { name: "ZKBioTime ID 3" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Map this ID…" }));
+    expect(await screen.findByRole("heading", { name: /Map ZKBioTime ID/ })).toBeInTheDocument();
+  });
+
+  it("read-only identity users can investigate but not map", async () => {
+    scope.value = { loading: false, scope: { role: "ONSITE_ADMIN", permissions: READ } };
+    await openPage("readiness");
+    fireEvent.click(await screen.findByRole("button", { name: "Investigate ZKBioTime ID 3" }));
+    expect(await screen.findByText(/requires the Manage Identity Mappings permission/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Map this ID…" })).not.toBeInTheDocument();
+  });
+
+  it("supports a deep link to one ID's investigation view", async () => {
+    setTestUrl("/admin/identity?tab=unmapped&code=352");
+    const { default: Page } = await import("@/app/admin/identity/page");
+    renderPage(<Page />);
+    expect(await screen.findByRole("heading", { name: "ZKBioTime ID 352" })).toBeInTheDocument();
+  });
+
+  it("labels each unmapped row with its review status and shows the backlog", async () => {
+    id.getUnmapped.mockResolvedValue({ total: 3, page: 1, page_size: 20, items: [
+      UNMAPPED,
+      { ...UNMAPPED, zk_emp_code: "77", rejections: [{ id: 1, site_id: "colombo", zk_emp_code: "77", bamboohr_id: "9", applies_from: null, applies_to: null, reason: "Different person", status: "ACTIVE" }] },
+      { ...UNMAPPED, zk_emp_code: "88", mapped_today: true, mapping_count: 1 },
+    ] });
+    await openPage("unmapped");
+    const table = await screen.findByRole("table", { name: "Unmapped ZKBioTime IDs" });
+    expect(within(table).getByText("Awaiting Review")).toBeInTheDocument();
+    expect(within(table).getByText("Rejected Association")).toBeInTheDocument();
+    expect(within(table).getByText("Partly Verified")).toBeInTheDocument();
+    expect(await screen.findByRole("list", { name: "Outstanding IDs by age of their oldest unmapped punch day" })).toHaveTextContent("8–30 days");
+    expect(screen.getAllByRole("list", { name: /ZKBioTime IDs by verification/ })[0]).toHaveTextContent("Entirely unmapped");
+  });
+
+  it("sorts unmapped IDs on the server", async () => {
+    await openPage("unmapped");
+    await screen.findByRole("table", { name: "Unmapped ZKBioTime IDs" });
+    fireEvent.click(screen.getByRole("button", { name: /^Days/ }));
+    await waitFor(() => expect(id.getUnmapped).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "-unmapped_days" })));
+  });
+
+  it("the row action menu closes with Escape", async () => {
+    await openPage("unmapped");
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for ZKBioTime ID 352" }));
+    const menu = screen.getByRole("menu");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });

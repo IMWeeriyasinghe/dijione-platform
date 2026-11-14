@@ -212,8 +212,8 @@ export function Person({ name, code, meta, size = "md", photo = false, bhrId }: 
     <span className="flex min-w-0 items-center gap-2.5">
       <Initials name={name} code={code} size={size} photo={photo} bhrId={bhrId} />
       <span className="min-w-0">
-        <span className="block truncate font-medium text-dt-text-primary">{name ?? (bhrId ? "Name unavailable" : "Unverified ZKBioTime ID")}</span>
-        <span className="block truncate text-xs text-dt-text-secondary">
+        <span className="block break-words font-medium leading-snug text-dt-text-primary">{name ?? (bhrId ? "Name unavailable" : "Unverified ZKBioTime ID")}</span>
+        <span className="block break-words text-xs leading-snug text-dt-text-secondary">
           <span title="ZKBioTime ID">ZK <span className="font-mono">{code}</span></span>
           {bhrId && <> · <span title="BHR Employee ID">BHR <span className="font-mono">{bhrId}</span></span></>}
           {meta ? <> · {meta}</> : null}
@@ -416,5 +416,62 @@ export function Pager({ page, pageSize, total, onPage, onPageSize, noun = "resul
         </span>
       </span>
     </nav>
+  );
+}
+
+/* -------------------------------------------------------------- row actions */
+
+export type RowAction = { label: string; onSelect: () => void; ariaLabel?: string };
+
+/** One visible primary action plus a keyboard-accessible "More" menu for the
+ *  rest — instead of a wide column of buttons that forces a sideways scroll.
+ *  The menu is position:fixed so a scrolling table never clips it. */
+export function RowActions({ primary, more = [], label }: { primary?: RowAction; more?: RowAction[]; label: string }) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const menuId = useId();
+  const close = () => setRect(null);
+  const focusItem = (menu: HTMLElement | null, i: number) => {
+    const items = menu ? [...menu.querySelectorAll<HTMLButtonElement>("[role='menuitem']")] : [];
+    items[(i + items.length) % items.length]?.focus();
+  };
+  return (
+    <span className="flex flex-wrap items-center justify-end gap-1">
+      {primary && (
+        <button type="button" className={buttonClass("secondary")} aria-label={primary.ariaLabel} onClick={primary.onSelect}>{primary.label}</button>
+      )}
+      {more.length > 0 && (
+        <>
+          <button type="button" aria-haspopup="menu" aria-expanded={Boolean(rect)} aria-controls={rect ? menuId : undefined}
+            aria-label={`More actions for ${label}`} className={buttonClass("ghost")}
+            onClick={(e) => setRect(rect ? null : e.currentTarget.getBoundingClientRect())}>
+            More <ChevronDown className="ml-0.5 size-3.5" aria-hidden />
+          </button>
+          {rect && (
+            <>
+              <span className="fixed inset-0 z-40" aria-hidden onClick={close} />
+              <span id={menuId} role="menu" aria-label={`Actions for ${label}`}
+                ref={(m) => { if (m && !m.contains(document.activeElement)) focusItem(m, 0); }}
+                onKeyDown={(e) => {
+                  const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("[role='menuitem']")];
+                  const i = items.indexOf(document.activeElement as HTMLButtonElement);
+                  if (e.key === "Escape" || e.key === "Tab") { e.stopPropagation(); close(); }
+                  else if (e.key === "ArrowDown") { e.preventDefault(); focusItem(e.currentTarget, i + 1); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); focusItem(e.currentTarget, i - 1); }
+                }}
+                style={{ top: Math.min(rect.bottom + 4, window.innerHeight - 8 - 40 * more.length), right: Math.max(8, window.innerWidth - rect.right) }}
+                className="fixed z-50 flex min-w-44 flex-col rounded-lg border border-dt-border bg-dt-surface p-1 shadow-lg">
+                {more.map((a) => (
+                  <button key={a.label} type="button" role="menuitem" aria-label={a.ariaLabel}
+                    className={cx("rounded-md px-3 py-2 text-left text-sm hover:bg-dt-surface-warm", focusRing)}
+                    onClick={() => { close(); a.onSelect(); }}>
+                    {a.label}
+                  </button>
+                ))}
+              </span>
+            </>
+          )}
+        </>
+      )}
+    </span>
   );
 }
