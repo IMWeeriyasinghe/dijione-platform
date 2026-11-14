@@ -8,11 +8,11 @@ import { DataView, Facts } from "@/components/DataView";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
 import { ExportButton } from "@/components/ExportButton";
 import { DepartmentSelect, IdentitySelect, PeriodControl, SearchField, SelectField, SiteSelect } from "@/components/FilterBar";
-import { FlagChips, IdentityBadge } from "@/components/FlagChips";
+import { FlagChips, MappingBadge } from "@/components/FlagChips";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
-import { buttonClass, type Chip, EmptyPanel, FilterPanel, PageTop, Pager, Person, SkeletonRows } from "@/components/kit";
+import { buttonClass, EmployeeRefCell, EmptyPanel, FilterPanel, Pager, PageTop, SkeletonRows, type Chip } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
-import { getActivity, REVIEW_FLAGS, type ActivityEvent, type ReviewFlag } from "@/lib/dashboard";
+import { getActivity, VIEWER_REVIEW_FLAGS, type ActivityEvent, type ReviewFlag } from "@/lib/dashboard";
 import { addDays, FLAG_LABEL, localTime } from "@/lib/flags";
 import { IDENTITY_LABEL } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
@@ -36,7 +36,7 @@ function ActivityView() {
   const paging = usePaging("activity", s, set, query.data?.total);
   const chips: Chip[] = [
     s.q && { key: "q", label: `Search: ${s.q}`, onClear: () => set({ q: "" }) },
-    s.emp && { key: "emp", label: `Employee Number: ${s.emp}`, onClear: () => set({ emp: "" }) },
+    s.emp && { key: "emp", label: `ZKBioTime ID: ${s.emp}`, onClear: () => set({ emp: "" }) },
     s.dept && { key: "dept", label: s.dept, onClear: () => set({ dept: "" }) },
     s.term && { key: "term", label: `Terminal: ${s.term}`, onClear: () => set({ term: "" }) },
     s.id && { key: "id", label: IDENTITY_LABEL[s.id as IdentityClass] ?? s.id, onClear: () => set({ id: "" }) },
@@ -58,7 +58,7 @@ function ActivityView() {
         ...(e.verify_type !== undefined ? [["Verify type", e.verify_type ?? "—"] as [string, React.ReactNode]] : []),
       ]} />
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={buttonClass("secondary")} onClick={() => set({ open: e.emp_code, page: s.page })}>Open employee profile</button>
+        <button type="button" className={buttonClass("secondary")} onClick={() => set({ open: e.bamboohr_id ?? "", page: s.page })}>Open employee profile</button>
         <button type="button" className={buttonClass("ghost")} onClick={() => set({ emp: e.emp_code, from: e.local_date, to: e.local_date })}>
           Only this employee on {fmtShortDay(e.local_date)}
         </button>
@@ -80,8 +80,8 @@ function ActivityView() {
 
       <FilterPanel chips={chips} onClearAll={clearAll}
         summary={query.data ? <span className="text-xs text-dt-text-secondary">{fmtNum(query.data.total)} events</span> : undefined}>
-        <SearchField label="Search name or code" value={s.q} onChange={(v) => set({ q: v })} />
-        <SearchField label="Employee Number" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact number" />
+        <SearchField label="Search name, BHR ID or Employee Number" value={s.q} onChange={(v) => set({ q: v })} />
+        <SearchField label="ZKBioTime ID" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact ID" />
         <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} />
         <SelectField label="Terminal" value={s.term} onChange={(v) => set({ term: v })}
           options={[{ value: "", label: "All terminals" }, ...site.terminals.map((t) => ({ value: t, label: t }))]} />
@@ -91,7 +91,7 @@ function ActivityView() {
         <SelectField label="Order" value={s.sort} onChange={(v) => set({ sort: v })}
           options={[{ value: "-time", label: "Newest first" }, { value: "time", label: "Oldest first" }]} />
         <SelectField label="Day review flag" value={s.flag} onChange={(v) => set({ flag: v })}
-          options={[{ value: "", label: "Any" }, ...REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
+          options={[{ value: "", label: "Any" }, ...VIEWER_REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
       </FilterPanel>
 
       <p className="text-sm text-dt-text-secondary">
@@ -114,7 +114,7 @@ function ActivityView() {
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Employee details unavailable — showing Employee Codes only.</p>}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Employee details unavailable — verified attendance is shown without names.</p>}
             <DataView caption="Recorded activity events" rows={query.data.items}
               rowKey={(e) => e.event_id ?? `${e.emp_code}-${e.local_time}`} rowLabel={(e) => `${e.employee_name ?? e.emp_code} at ${localTime(e.local_time)}`}
               columns={[
@@ -122,16 +122,16 @@ function ActivityView() {
                   <span className="whitespace-nowrap"><span className="font-medium tabular-nums text-dt-text-primary">{localTime(e.local_time)}</span>
                     <span className="ml-1.5 text-xs text-dt-text-secondary">{e.local_date === site.today ? "Today" : fmtDay(e.local_date)}</span></span>
                 ) },
-                { key: "emp", header: "Employee", cell: (e) => <Person photo={e.has_photo} name={e.employee_name} code={e.emp_code} meta={e.department ?? undefined} size="sm" /> },
+                { key: "emp", header: "Employee", cell: (e) => <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" /> },
                 { key: "term", header: "Terminal", cell: (e) => <span className="text-dt-text-primary">{e.terminal ?? "—"}{e.area && <span className="block text-xs text-dt-text-secondary">{e.area}</span>}</span> },
-                { key: "id", header: "Identity", cell: (e) => <IdentityBadge cls={e.identity_class} /> },
+                { key: "id", header: "Mapping Status", cell: (e) => <MappingBadge status={e.mapping_status} cls={e.identity_class} /> },
                 { key: "flags", header: "Review", minWidth: "lg", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
                 { key: "raw", header: "Raw state", minWidth: "xl", cell: (e) => <span className="font-mono text-xs">{e.punch_state_raw ?? "—"}</span> },
               ]}
               card={(e) => (
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
-                    <Person photo={e.has_photo} name={e.employee_name} code={e.emp_code} meta={e.department ?? undefined} size="sm" />
+                    <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" />
                     <span className="shrink-0 text-right">
                       <span className="block font-semibold tabular-nums text-dt-text-primary">{localTime(e.local_time)}</span>
                       <span className="block text-xs text-dt-text-secondary">{e.local_date === site.today ? "Today" : fmtDay(e.local_date)}</span>
@@ -139,7 +139,7 @@ function ActivityView() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-dt-text-secondary">
                     <span>{e.terminal ?? "Unknown terminal"}</span>
-                    <IdentityBadge cls={e.identity_class} />
+                    <MappingBadge status={e.mapping_status} cls={e.identity_class} />
                   </div>
                   {(e.review_flags ?? []).length > 0 && <FlagChips flags={e.review_flags ?? []} />}
                 </div>

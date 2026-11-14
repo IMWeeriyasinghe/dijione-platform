@@ -1,6 +1,6 @@
 import { getToken, qs, request } from "@dijione/auth-client";
 import { ONSITE_API } from "./api";
-import type { FeedState, IdentityClass } from "./types";
+import type { FeedState, IdentityClass, MappingStatus } from "./types";
 
 // Dashboard V1 DTOs — mirror onsite-api's /api/onsite dashboard routes.
 // Neutral attendance facts only; PunchState is carried raw, never interpreted.
@@ -16,6 +16,11 @@ export const REVIEW_FLAGS = [
   "HIGH_PUNCH_COUNT",
 ] as const;
 export type ReviewFlag = (typeof REVIEW_FLAGS)[number];
+
+/** Flags that can appear on viewer records. Unverified IDs are excluded from
+ *  attendance entirely, so UNMATCHED_CODE / AMBIGUOUS_CODE never occur there
+ *  (they remain in the API vocabulary for compatibility only). */
+export const VIEWER_REVIEW_FLAGS = REVIEW_FLAGS.filter((f) => f !== "UNMATCHED_CODE" && f !== "AMBIGUOUS_CODE");
 
 export type OnsiteSiteInfo = {
   site_id: string;
@@ -42,9 +47,14 @@ export type Overview = {
     activity_days?: number;
     employees_needing_review: number;
     single_punch_employees: number;
+    /** Legacy key; always 0 now (unmapped IDs are excluded from attendance). */
     unmatched_codes: number;
     feed_state: FeedState | null;
+    identified_employees?: number;
+    identified_punches?: number;
   };
+  /** Ingestion & identity coverage — only for Site Health / Identity readers. */
+  operational?: { active_codes: number; total_punches: number; unmapped_codes: number; unmapped_punches: number };
   review_breakdown: Record<ReviewFlag, number>;
   last_successful_sync_at: string | null;
   latest_received_utc: string | null;
@@ -55,7 +65,15 @@ export type HourBucket = { hour: number; events: number; employees: number };
 export type TrendDay = { date: string; events: number; employees: number };
 
 export type EmployeeRef = {
+  /** A ZKBioTime ID of this verified employee (legacy row key). */
   emp_code: string;
+  /** BHR Employee ID — the verified identity key. */
+  bamboohr_id?: string | null;
+  /** BambooHR Employee Number (HR reference only, never a matching key). */
+  employee_number?: string | null;
+  /** Every ZKBioTime ID verified to this employee for the row. */
+  zk_emp_codes?: string[];
+  mapping_status?: MappingStatus | null;
   employee_name: string | null;
   department: string | null;
   employment_status?: string | null;
@@ -81,6 +99,11 @@ export type ActivityEvent = EmployeeRef & {
 export type DayActivity = {
   local_date: string;
   emp_code: string;
+  bamboohr_id?: string | null;
+  employee_number?: string | null;
+  zk_emp_codes?: string[];
+  mapping_status?: MappingStatus | null;
+  employment_status?: string | null;
   employee_name?: string | null;
   department?: string | null;
   has_photo?: boolean;
@@ -123,8 +146,12 @@ export type EmployeesResponse = Paged<EmployeeRow> & {
   directory_available: boolean;
 };
 
+export type MappingPeriodRef = { mapping_id: number; zk_emp_code: string; valid_from: string; valid_to: string | null };
+
 export type EmployeeDetail = {
   profile: EmployeeRef & { job_title: string | null; match_count: number };
+  /** Verified ZKBioTime ID ownership periods of this employee at the site. */
+  mappings?: MappingPeriodRef[];
   summary: { activity_days: number; events: number; review_flags: number };
   days: DayActivity[];
   events: ActivityEvent[];
@@ -148,9 +175,9 @@ export const getEmployees = (p: Params) => request<EmployeesResponse>(`${ONSITE_
 /** Profile photo as an object URL, or null when there is none (404 is a
  *  normal answer, never an error). Fetched with the bearer token, because a
  *  plain <img src> cannot send it. */
-export async function getEmployeePhoto(code: string): Promise<string | null> {
+export async function getEmployeePhoto(bamboohrId: string): Promise<string | null> {
   const token = getToken();
-  const resp = await fetch(`${ONSITE_API}/employees/${encodeURIComponent(code)}/photo`, {
+  const resp = await fetch(`${ONSITE_API}/employees/by-id/${encodeURIComponent(bamboohrId)}/photo`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!resp.ok) return null;
@@ -158,8 +185,9 @@ export async function getEmployeePhoto(code: string): Promise<string | null> {
   return blob.size ? URL.createObjectURL(blob) : null;
 }
 
-export const getEmployee = (code: string, p: Params) =>
-  request<EmployeeDetail>(`${ONSITE_API}/employees/${encodeURIComponent(code)}${qs(p)}`);
+/** Profile of a VERIFIED employee, addressed by BHR Employee ID. */
+export const getEmployee = (bamboohrId: string, p: Params) =>
+  request<EmployeeDetail>(`${ONSITE_API}/employees/by-id/${encodeURIComponent(bamboohrId)}${qs(p)}`);
 export const getExceptions = (p: Params) => request<ExceptionsResponse>(`${ONSITE_API}/exceptions${qs(p)}`);
 
 export type ExportPath = "today" | "activity" | "employees" | "exceptions" | "dashboard/overview";

@@ -7,10 +7,10 @@ import { ErrorState } from "@dijione/design-system";
 import { Activity, AlertTriangle, ChevronRight, Clock, Fingerprint, Radio, Users, UserX } from "lucide-react";
 import { BarChart, BreakdownList } from "@/components/charts";
 import { PeriodControl, SiteSelect } from "@/components/FilterBar";
-import { IdentityBadge } from "@/components/FlagChips";
+import { MappingBadge } from "@/components/FlagChips";
 import { ExportButton } from "@/components/ExportButton";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
-import { buttonClass, InlineAlert, KpiCard, Panel, PageTop, Person, Segmented, Skeleton } from "@/components/kit";
+import { buttonClass, EmployeeRefCell, InlineAlert, KpiCard, PageTop, Panel, Segmented, Skeleton } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { SyncNowButton } from "@/components/SyncNowButton";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
@@ -24,11 +24,11 @@ import { dayCount, fmtDay, fmtNum, fmtPeriod, fmtShortDay, isSingleDay, type Per
 import { hrefWith, useUrlState } from "@/lib/url-state";
 
 const HELP = {
-  employees: "Distinct employees (by Employee Code) with at least one recorded activity in the period. Not a measure of presence or absence.",
-  events: "Every activity event recorded by the site's terminals in the period.",
+  employees: "Distinct verified employees (by BHR Employee ID — several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
+  events: "Activity events attributed to verified employees in the period. Punches of unmapped ZKBioTime IDs are excluded (see Identity Management).",
   review: "Distinct employees with at least one review flag in the period. A flag is a prompt to look, not a confirmed issue.",
   single: "Distinct employees with a completed day on which only one activity was recorded.",
-  unmatched: "Distinct Employee Codes with activity but no matching Employee Number in the Workforce Directory.",
+  unmapped: "ZKBioTime IDs with activity in the period but no verified BambooHR mapping, and their punches. Excluded from attendance figures until an administrator verifies them. Visible to administrators only.",
   feed: "Whether DijiOne's mirror of Diji On-site Attendance is current. Open Site Health for the details.",
 };
 
@@ -140,15 +140,22 @@ function OverviewView() {
           help={HELP.review} delta={delta((x) => x.kpis.employees_needing_review)} href={ex()} hrefLabel="Open Exceptions" />
         <KpiCard label="Single activity" value={fmtNum(k.single_punch_employees)} icon={UserX} help={HELP.single}
           delta={delta((x) => x.kpis.single_punch_employees)} href={ex("SINGLE_PUNCH")} />
-        <KpiCard label="Unmatched codes" value={fmtNum(k.unmatched_codes)} icon={Fingerprint} tone={k.unmatched_codes ? "danger" : "default"}
-          help={HELP.unmatched} href={ex("UNMATCHED_CODE")} />
+        {o.operational ? (
+          <KpiCard label="Unmapped IDs" value={fmtNum(o.operational.unmapped_codes)} icon={Fingerprint}
+            tone={o.operational.unmapped_codes ? "attention" : "default"} help={HELP.unmapped}
+            sub={<span>{fmtNum(o.operational.unmapped_punches)} of {fmtNum(o.operational.total_punches)} punches excluded</span>}
+            href={hasPermission(scope, PERM.IDENTITY) ? "/admin/identity?tab=unmapped" : undefined} hrefLabel="Open Identity Management" />
+        ) : (
+          <KpiCard label="Identified employees" value={fmtNum(k.identified_employees ?? k.employees_with_activity)} icon={Fingerprint}
+            help={HELP.employees} />
+        )}
         <KpiCard label="Feed" value={<span className="text-lg">{FEED_LABEL[feed]}</span>} icon={Radio}
           tone={feed === "FRESH" ? "success" : feed === "DELAYED" ? "attention" : "danger"} help={HELP.feed}
           sub={o.latest_received_utc ? <span>Latest event {new Date(o.latest_received_utc).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span> : undefined}
           href={hasPermission(scope, PERM.HEALTH) ? "/admin/health" : undefined} hrefLabel="Open Site Health" />
       </div>
       {!o.directory_available && (
-        <InlineAlert>Employee details are unavailable right now — showing Employee Codes only. Identity-based figures may be incomplete.</InlineAlert>
+        <InlineAlert>Employee details are unavailable right now — verified attendance is shown without names.</InlineAlert>
       )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -194,16 +201,18 @@ function OverviewView() {
           bodyClassName="p-0">
           <div className="flex flex-wrap gap-2 border-b border-dt-border/70 px-4 py-2">
             <Link className="inline-flex min-h-9 items-center rounded-full border border-dt-border px-3 text-xs hover:bg-dt-surface-warm" href={hrefWith("/activity", { from: site.today, to: site.today })}>Today’s activity</Link>
-            <Link className="inline-flex min-h-9 items-center rounded-full border border-dt-border px-3 text-xs hover:bg-dt-surface-warm" href={hrefWith("/activity", { from: addDays(site.today, -6), to: site.today, id: "UNMATCHED" })}>Unmatched codes (7 days)</Link>
+            {hasPermission(scope, PERM.IDENTITY) && (
+              <Link className="inline-flex min-h-9 items-center rounded-full border border-dt-border px-3 text-xs hover:bg-dt-surface-warm" href="/admin/identity?tab=unmapped">Unmapped IDs</Link>
+            )}
             <Link className="inline-flex min-h-9 items-center rounded-full border border-dt-border px-3 text-xs hover:bg-dt-surface-warm" href={hrefWith("/exceptions", { from: addDays(site.today, -6), to: site.today })}>Review queue (7 days)</Link>
           </div>
           {recent.data && recent.data.items.length > 0 ? (
             <ul className="divide-y divide-dt-border/60">
               {recent.data.items.map((e, i) => (
                 <li key={e.event_id ?? `${e.emp_code}-${e.local_time}-${i}`}>
-                  <button type="button" onClick={() => set({ open: e.emp_code })}
+                  <button type="button" onClick={() => set({ open: e.bamboohr_id ?? "" })}
                     className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-left hover:bg-dt-surface-warm/60 focus-visible:bg-dt-surface-warm focus-visible:outline-none sm:grid-cols-[minmax(10rem,1fr)_minmax(0,auto)_auto]">
-                    <Person photo={e.has_photo} name={e.employee_name} code={e.emp_code} meta={e.department ?? undefined} size="sm" />
+                    <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" />
                     <span className="min-w-0 text-right text-sm sm:text-left">
                       <span className="flex items-center justify-end gap-1 tabular-nums text-dt-text-primary sm:justify-start">
                         <Clock className="size-3.5 text-dt-text-secondary" aria-hidden />
@@ -211,7 +220,7 @@ function OverviewView() {
                       </span>
                       <span className="block truncate text-xs text-dt-text-secondary">{e.terminal ?? "—"}</span>
                     </span>
-                    <span className="hidden sm:block"><IdentityBadge cls={e.identity_class} /></span>
+                    <span className="hidden sm:block"><MappingBadge status={e.mapping_status} cls={e.identity_class} /></span>
                   </button>
                 </li>
               ))}

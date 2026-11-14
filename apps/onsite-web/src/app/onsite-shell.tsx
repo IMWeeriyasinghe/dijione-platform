@@ -30,7 +30,7 @@ export function buildSections(scope: OnsiteScope | null): NavSection[] {
   // Each admin page appears only with the permission onsite-api checks for it.
   const admin = [
     hasPermission(scope, PERM.HEALTH) && { label: "Site Health", href: "/admin/health", icon: HeartPulse },
-    hasPermission(scope, PERM.IDENTITY) && { label: "Identity Match", href: "/admin/identity", icon: Fingerprint },
+    hasPermission(scope, PERM.IDENTITY) && { label: "Identity Management", href: "/admin/identity", icon: Fingerprint },
     hasPermission(scope, PERM.SITES) && { label: "Sites", href: "/admin/sites", icon: MapPin },
   ].filter((i) => i !== false);
   if (admin.length) sections.push({ label: "Admin", items: admin });

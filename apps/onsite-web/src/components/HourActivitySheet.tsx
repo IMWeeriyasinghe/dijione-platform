@@ -13,8 +13,8 @@ import { parsePageSize, rememberPageSize, storedPageSize } from "@/lib/page-size
 import { dayCount, fmtDay, fmtNum, isSingleDay, type Period } from "@/lib/period";
 import { hrefWith } from "@/lib/url-state";
 import { DataView, Facts } from "./DataView";
-import { FlagChips, IdentityBadge } from "./FlagChips";
-import { buttonClass, cx, EmptyPanel, focusRing, Pager, Person, SkeletonRows } from "./kit";
+import { FlagChips, MappingBadge } from "./FlagChips";
+import { buttonClass, cx, EmployeeRefCell, EmptyPanel, focusRing, Pager, SkeletonRows } from "./kit";
 import { useSite } from "./SiteContext";
 
 const hh = (h: number) => String(h).padStart(2, "0");
@@ -91,21 +91,21 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
               <>
                 <DataView<ActivityEvent> caption={`Recorded events, ${range}, ${when}`} rows={query.data.items}
                   rowKey={(e) => e.event_id ?? `${e.emp_code}-${e.local_time}`} rowLabel={(e) => e.employee_name ?? e.emp_code}
-                  onRowClick={(e) => onOpenEmployee(e.emp_code)}
+                  onRowClick={(e) => onOpenEmployee(e.bamboohr_id ?? "")}
                   columns={[
-                    { key: "emp", header: "Employee", cell: (e) => <Person photo={e.has_photo} name={e.employee_name} code={e.emp_code} meta={e.department ?? undefined} size="sm" /> },
+                    { key: "emp", header: "Employee", cell: (e) => <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" /> },
                     { key: "time", header: "Recorded", cell: (e) => (
                       <span className="whitespace-nowrap tabular-nums"><span className="font-medium">{localTime(e.local_time)}</span>
                         {!single && <span className="ml-1 text-xs text-dt-text-secondary">{fmtDay(e.local_date)}</span>}</span>
                     ) },
                     { key: "term", header: "Terminal", cell: (e) => e.terminal ?? "—" },
-                    { key: "id", header: "Identity", minWidth: "lg", cell: (e) => <IdentityBadge cls={e.identity_class} /> },
+                    { key: "id", header: "Mapping Status", minWidth: "lg", cell: (e) => <MappingBadge status={e.mapping_status} cls={e.identity_class} /> },
                     { key: "flags", header: "Review", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
                   ]}
                   card={(e) => (
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
-                        <Person photo={e.has_photo} name={e.employee_name} code={e.emp_code} meta={e.department ?? undefined} size="sm" />
+                        <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" />
                         <span className="shrink-0 text-right tabular-nums">
                           <span className="block font-semibold text-dt-text-primary">{localTime(e.local_time)}</span>
                           {!single && <span className="block text-xs text-dt-text-secondary">{fmtDay(e.local_date)}</span>}
@@ -113,7 +113,7 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-dt-text-secondary">
                         <span>{e.terminal ?? "Unknown terminal"}</span>
-                        <IdentityBadge cls={e.identity_class} />
+                        <MappingBadge status={e.mapping_status} cls={e.identity_class} />
                       </div>
                       {(e.review_flags ?? []).length > 0 && <FlagChips flags={e.review_flags ?? []} />}
                     </div>

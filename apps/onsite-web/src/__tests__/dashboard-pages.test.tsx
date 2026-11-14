@@ -27,7 +27,8 @@ const SITE = { site_id: "dev-site", name: "DEV Site (Colombo)", time_zone: "Asia
   first_activity_date: "2024-11-27", last_activity_date: "2026-10-21", terminals: ["Main Door"] };
 const FLAGS0 = { SINGLE_PUNCH: 2, POSSIBLE_DUPLICATE_TAP: 1, UNMATCHED_CODE: 1, AMBIGUOUS_CODE: 0, INACTIVE_EMPLOYEE_ACTIVITY: 0,
   BEFORE_HIRE_ACTIVITY: 0, TZ_INCONSISTENT: 0, HIGH_PUNCH_COUNT: 0 };
-const DAY = { local_date: "2026-10-13", emp_code: "0107", employee_name: "Ishara G", department: "Bench",
+const DAY = { local_date: "2026-10-13", emp_code: "0107", zk_emp_codes: ["0107"], bamboohr_id: "7", employee_number: "E-7",
+  mapping_status: "MAPPED", employee_name: "Ishara G", department: "Bench",
   first_activity_local: "2026-10-13T08:37:00+05:30", latest_activity_local: "2026-10-13T08:37:20+05:30",
   punch_count: 2, span_minutes: 0, terminal_names: ["Main Door"], identity_class: "MATCHED_ACTIVE", flags: ["POSSIBLE_DUPLICATE_TAP"] };
 
@@ -137,17 +138,18 @@ describe("Exceptions", () => {
     expect(await screen.findByText("Possible duplicate tap:")).toBeInTheDocument();
     expect(screen.getAllByText(/within 60 seconds/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /View supporting events/ })).toHaveAttribute("href", expect.stringContaining("emp=0107"));
-    fireEvent.click(screen.getByRole("button", { name: /^Unmatched code\s*1/ }));
-    await waitFor(() => expect(api.getExceptions).toHaveBeenLastCalledWith(expect.objectContaining({ flag: "UNMATCHED_CODE" })));
+    fireEvent.click(screen.getByRole("button", { name: /^Single activity\s*2/ }));
+    await waitFor(() => expect(api.getExceptions).toHaveBeenLastCalledWith(expect.objectContaining({ flag: "SINGLE_PUNCH" })));
   });
 });
 
 describe("Employees", () => {
   it("opens the employee detail drawer", async () => {
     api.getEmployees.mockResolvedValue({ total: 1, page: 1, page_size: 50, date_from: "x", date_to: "y", departments: [], directory_available: true,
-      items: [{ emp_code: "0107", employee_name: "Ishara G", department: "Bench", employment_status: "Active", identity_class: "MATCHED_ACTIVE",
-        in_directory: true, events: 2, activity_days: 1, review_flags: 1, last_activity_local: "2026-10-13T08:37:20+05:30" }] });
-    api.getEmployee.mockResolvedValue({ profile: { emp_code: "0107", employee_name: "Ishara G", department: "Bench", employment_status: "Active",
+      items: [{ emp_code: "0107", zk_emp_codes: ["0107"], bamboohr_id: "7", employee_number: "E-7", mapping_status: "MAPPED",
+        employee_name: "Ishara G", department: "Bench", employment_status: "Active", identity_class: "MATCHED_ACTIVE", in_directory: true, events: 2, activity_days: 1, review_flags: 1, last_activity_local: "2026-10-13T08:37:20+05:30" }] });
+    api.getEmployee.mockResolvedValue({ profile: { emp_code: "0107", zk_emp_codes: ["0107"], bamboohr_id: "7", employee_number: "E-7",
+      mapping_status: "MAPPED", employee_name: "Ishara G", department: "Bench", employment_status: "Active",
       identity_class: "MATCHED_ACTIVE", job_title: "Support Engineer", match_count: 1 }, summary: { activity_days: 1, events: 2, review_flags: 1 },
       days: [DAY], events: [], directory_available: true });
     const { default: Page } = await import("@/app/employees/page");
@@ -155,18 +157,24 @@ describe("Employees", () => {
     fireEvent.click(await screen.findByText("Ishara G"));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(await screen.findByText(/Support Engineer/)).toBeInTheDocument();
+    // The profile is addressed by the verified BHR Employee ID, never by the ZKBioTime ID.
+    expect(api.getEmployee).toHaveBeenCalledWith("7", expect.anything());
+    expect(screen.getByText(/BHR Employee ID 7/)).toBeInTheDocument();
+    expect(screen.getByText(/BambooHR Employee Number E-7/)).toBeInTheDocument();
   });
 });
 
 describe("Activity", () => {
   it("renders raw device state verbatim", async () => {
     api.getActivity.mockResolvedValue({ total: 1, page: 1, page_size: 50, directory_available: true,
-      items: [{ emp_code: "999", employee_name: null, department: null, identity_class: "UNMATCHED", local_time: "2026-10-13T08:39:00+05:30",
+      items: [{ emp_code: "101", bamboohr_id: "1", mapping_status: "MAPPED", employee_name: "Nimal P", department: null,
+        identity_class: "MATCHED_ACTIVE", local_time: "2026-10-13T08:39:00+05:30",
         local_date: "2026-10-13", terminal: "Main Door", area: null, punch_state_raw: "255", tz_consistent: true }] });
     const { default: Page } = await import("@/app/activity/page");
     renderPage(<Page />);
     expect(await screen.findByText("255")).toBeInTheDocument();
-    expect(screen.getAllByText("Unmatched code").length).toBeGreaterThanOrEqual(2); // badge + filter option
+    expect(screen.getByText("Verified")).toBeInTheDocument(); // Mapping Status badge
+    expect(screen.queryByText(/Unmatched|Unmapped/)).not.toBeInTheDocument(); // viewers never see unmapped IDs
     expect(screen.queryByText("IN")).not.toBeInTheDocument();
     expect(screen.queryByText("OUT")).not.toBeInTheDocument();
   });
@@ -183,7 +191,7 @@ describe("Excel export", () => {
     renderPage(<Page />);
     await screen.findByText("Ishara G");
     fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Finance" } });
-    fireEvent.change(screen.getByLabelText("Employee Number"), { target: { value: "0107" } });
+    fireEvent.change(screen.getByLabelText("ZKBioTime ID"), { target: { value: "0107" } });
     // search input is debounced: wait until the filter reaches the query
     await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ emp_code: "0107" })));
     fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));

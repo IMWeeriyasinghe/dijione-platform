@@ -143,12 +143,14 @@ export function SelectField({ label, value, onChange, options }: {
   );
 }
 
-export const IDENTITY_CLASSES: IdentityClass[] = ["MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE", "AMBIGUOUS", "UNMATCHED"];
+/** Viewer records only ever contain verified employees, so the filter offers
+ *  the employment-derived refinements of a verified mapping. */
+export const IDENTITY_CLASSES: IdentityClass[] = ["MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE"];
 
 export function IdentitySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <SelectField label="Identity match" value={value} onChange={onChange}
-      options={[{ value: "", label: "All identities" }, ...IDENTITY_CLASSES.map((c) => ({ value: c, label: IDENTITY_LABEL[c] }))]} />
+    <SelectField label="Mapping status" value={value} onChange={onChange}
+      options={[{ value: "", label: "All verified" }, ...IDENTITY_CLASSES.map((c) => ({ value: c, label: IDENTITY_LABEL[c] }))]} />
   );
 }
 

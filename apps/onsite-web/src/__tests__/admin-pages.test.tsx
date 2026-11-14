@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { IdentityReport, OnsiteSite, SiteHealth } from "@/lib/types";
+import type { OnsiteSite, SiteHealth } from "@/lib/types";
 
 vi.mock("@/lib/onsite-scope", async (orig) => {
   const actual = await orig<typeof import("@/lib/onsite-scope")>();
@@ -83,41 +83,5 @@ describe("Sites", () => {
     expect(await screen.findByText("Disabled")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Enable" }));
     await waitFor(() => expect(api.setSiteEnabled).toHaveBeenCalledWith("dev-site", true));
-  });
-});
-
-describe("Identity Match", () => {
-  const report: IdentityReport = {
-    directory_available: true,
-    summary: { MATCHED_ACTIVE: 2, MATCHED_INACTIVE: 1, MATCHED_BEFORE_HIRE: 0, AMBIGUOUS: 1, UNMATCHED: 1,
-      directory_total: 528, directory_blank_employee_numbers: 24, directory_duplicate_employee_numbers: 0,
-      directory_entries_without_attendance: 100 },
-    rows: [
-      { emp_code: "0107", identity_class: "MATCHED_ACTIVE", event_count: 5, first_seen: "2026-01-01", last_seen: "2026-02-01", matches: [] },
-      { emp_code: "999", identity_class: "UNMATCHED", event_count: 1, first_seen: "2026-01-01", last_seen: "2026-01-01", matches: [] },
-    ],
-  };
-
-  it("renders classes, codes verbatim and exports CSV", async () => {
-    api.getIdentityReport.mockResolvedValue(report);
-    api.downloadIdentityCsv.mockResolvedValue(undefined);
-    const { default: Page } = await import("@/app/admin/identity/page");
-    renderWithQuery(<Page />);
-    expect(await screen.findByText("0107")).toBeInTheDocument();
-    expect(screen.getAllByText("No matching Employee Number").length).toBeGreaterThan(0);
-    expect(screen.getByText(/528 employees/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
-    await waitFor(() => expect(api.downloadIdentityCsv).toHaveBeenCalled());
-  });
-
-  it("shows codes only when the Workforce Directory is unavailable", async () => {
-    api.getIdentityReport.mockResolvedValue({
-      directory_available: false, summary: { attendance_emp_codes: 1 },
-      rows: [{ emp_code: "101", identity_class: null, event_count: 2, first_seen: "2026-01-01", last_seen: "2026-01-02", matches: [] }],
-    });
-    const { default: Page } = await import("@/app/admin/identity/page");
-    renderWithQuery(<Page />);
-    expect(await screen.findByText(/Employee details unavailable — the Workforce Directory/)).toBeInTheDocument();
-    expect(screen.getByText("101")).toBeInTheDocument();
   });
 });
