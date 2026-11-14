@@ -222,14 +222,14 @@ def evidence_warnings(db: Session, actor: Actor, directory: DirectorySnapshot, s
               and m.valid_from <= (valid_to or date.max) and valid_from <= (m.valid_to or date.max)]
     if others:
         out.append({"code": "EMPLOYEE_HAS_OTHER_CODES",
-                    "message": "This employee already has other ZKBioTime ID(s) in that period: "
+                    "message": "This team member already has other ZKBioTime ID(s) in that period: "
                                + ", ".join(sorted({m.zk_emp_code for m in others})),
                     "codes": sorted({m.zk_emp_code for m in others})})
     history = [m for m in repo.mappings(allowed_site_ids=actor.allowed_site_ids, site_id=site_id, zk_emp_code=code)
                if m.id not in exclude_ids and m.bamboohr_id != str(bamboohr_id)]
     if history:
         out.append({"code": "CODE_REUSED",
-                    "message": "This ZKBioTime ID has been mapped to other employee(s) before.",
+                    "message": "This ZKBioTime ID has been mapped to other team member(s) before.",
                     "mappings": [mapping_out(m) for m in history]})
     adjacent = [m for m in existing if (m.valid_to and m.valid_to + timedelta(days=1) == valid_from)
                 or (valid_to and m.valid_from == valid_to + timedelta(days=1))]
@@ -739,4 +739,78 @@ def readiness(db: Session, actor: Actor, directory: DirectorySnapshot, *, site_i
         "import_batches": [_event_out(e) for e in imports],
         "directory_available": directory.available, "directory_synced_at": directory_synced_at,
         "decision": "NOT_AUTOMATIC — the production threshold is approved separately by the owner.",
+    }
+
+
+def coverage(db: Session, actor: Actor, directory: DirectorySnapshot, *, site_id: str, date_from: date,
+             date_to: date, top: int = 10) -> dict:
+    """Identity Management dashboard figures for one site and inclusive site-local
+    period, from the real mirror and the verified mappings.
+
+    Units are kept apart on purpose: *ZKBioTime IDs* (biometric codes) are never
+    presented as team members, and *punches* are never presented as IDs. A
+    code-day counts as verified only when one verified mapping covers that exact
+    day, so reassigned IDs and historical periods attribute correctly."""
+    from app.services.freshness_service import freshness
+
+    site = _site(actor, site_id)
+    index = MappingIndex.load(db, allowed_site_ids=actor.allowed_site_ids, directory=directory)
+    stats = AttendanceRepository(db).code_day_stats(allowed_site_ids=actor.allowed_site_ids, site_id=site,
+                                                    date_from=date_from, date_to=date_to)
+    by_day: dict[date, list[int]] = defaultdict(lambda: [0, 0])  # [verified, unmapped]
+    code_days: dict[str, list[int]] = defaultdict(lambda: [0, 0])  # verified days, unverified days
+    unmapped: dict[str, dict] = {}
+    people: set[str] = set()
+    conflict_days = 0
+    total = verified = 0
+    for code, d, n, _last in stats:
+        total += n
+        r = index.resolve(site, code, d)
+        if r.identified:
+            verified += n
+            by_day[d][0] += n
+            code_days[code][0] += 1
+            people.add(r.bamboohr_id)
+        else:
+            by_day[d][1] += n
+            code_days[code][1] += 1
+            conflict_days += r.mapping_status == MappingStatus.MAPPING_CONFLICT
+            u = unmapped.setdefault(code, {"zk_emp_code": code, "unmapped_punches": 0, "unmapped_days": 0,
+                                           "first_unmapped": d, "last_unmapped": d})
+            u["unmapped_punches"] += n
+            u["unmapped_days"] += 1
+            u["first_unmapped"] = min(u["first_unmapped"], d)
+            u["last_unmapped"] = max(u["last_unmapped"], d)
+    fully = sum(1 for v, u in code_days.values() if v and not u)
+    partly = sum(1 for v, u in code_days.values() if v and u)
+    none = sum(1 for v, u in code_days.values() if not v)
+    cf = conflicts(db, actor, directory, site_id=site)
+    ambiguous_in_range = [a for a in cf["ambiguous_reassignment_days"]
+                          if date_from.isoformat() <= a["local_date"] <= date_to.isoformat()]
+    trend, d = [], date_from
+    while d <= date_to:
+        v, u = by_day.get(d, (0, 0))
+        trend.append({"date": d.isoformat(), "verified_punches": v, "unmapped_punches": u})
+        d += timedelta(days=1)
+    ranked = sorted(unmapped.values(), key=lambda x: (-x["unmapped_punches"], x["zk_emp_code"]))[:top]
+    for x in ranked:
+        x["first_unmapped"], x["last_unmapped"] = x["first_unmapped"].isoformat(), x["last_unmapped"].isoformat()
+        x["mapped_now"] = bool(index.periods_for_code(site, x["zk_emp_code"]))
+    fresh = freshness(db, allowed_site_ids=(site,))
+    site_fresh = fresh["sites"][0] if fresh["sites"] else {}
+    return {
+        "site_id": site, "date_from": date_from.isoformat(), "date_to": date_to.isoformat(),
+        "ids": {"observed": len(code_days), "verified": fully + partly, "fully_verified": fully,
+                "partly_verified": partly, "unmapped": none},
+        "punches": {"total": total, "verified": verified, "unmapped": total - verified,
+                    "coverage_pct": round(100.0 * verified / total, 1) if total else None},
+        "verified_team_members": len(people),
+        "unresolved_conflicts": {"total": conflict_days + len(ambiguous_in_range) + len(cf["overlapping_mappings"]),
+                                 "conflict_days": conflict_days, "ambiguous_reassignment_days": len(ambiguous_in_range),
+                                 "overlapping_mappings": len(cf["overlapping_mappings"])},
+        "trend": trend,
+        "top_unmapped": ranked,
+        "ingestion": {"feed_state": site_fresh.get("feed_state"), "latest_received_utc": site_fresh.get("latest_received_utc"),
+                      "last_successful_sync_at": fresh.get("last_successful_sync_at")},
+        "directory_available": directory.available,
     }

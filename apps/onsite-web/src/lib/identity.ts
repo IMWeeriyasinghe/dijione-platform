@@ -180,8 +180,23 @@ export const WARNING_LABEL: Record<string, string> = {
   NO_ATTENDANCE_FOR_CODE: "No attendance recorded for this ID yet",
   STARTS_BEFORE_HIRE: "Starts before the hire date",
   EXTENDS_PAST_TERMINATION: "Extends past the termination date",
-  EMPLOYEE_NOT_ACTIVE: "Employee is not active",
-  EMPLOYEE_HAS_OTHER_CODES: "Employee already has other ZKBioTime ID(s)",
+  EMPLOYEE_NOT_ACTIVE: "Team member is not active",
+  EMPLOYEE_HAS_OTHER_CODES: "Team member already has other ZKBioTime ID(s)",
   CODE_REUSED: "This ZKBioTime ID was mapped to someone else before",
   ADJACENT_MAPPING: "Touches another ownership period of this ID",
 };
+
+export type Coverage = {
+  site_id: string; date_from: string; date_to: string;
+  ids: { observed: number; verified: number; fully_verified: number; partly_verified: number; unmapped: number };
+  punches: { total: number; verified: number; unmapped: number; coverage_pct: number | null };
+  verified_team_members: number;
+  unresolved_conflicts: { total: number; conflict_days: number; ambiguous_reassignment_days: number; overlapping_mappings: number };
+  trend: { date: string; verified_punches: number; unmapped_punches: number }[];
+  top_unmapped: { zk_emp_code: string; unmapped_punches: number; unmapped_days: number; first_unmapped: string;
+    last_unmapped: string; mapped_now: boolean }[];
+  ingestion: { feed_state: string | null; latest_received_utc: string | null; last_successful_sync_at: string | null };
+  directory_available: boolean;
+};
+export const getCoverage = (p: { site_id: string; date_from: string; date_to: string }) =>
+  request<Coverage>(`${IDENTITY_API}/coverage${qs(p)}`);

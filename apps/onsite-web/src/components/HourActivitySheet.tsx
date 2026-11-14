@@ -22,7 +22,7 @@ const hh = (h: number) => String(h).padStart(2, "0");
 /** The recorded events behind one bar of "Activity by hour of day": the
  *  site-local hour [hh:00:00, hh+1:00:00) on every date of the period,
  *  fetched from the Activity API (server-side, paged). Opening an employee
- *  hands over to the shared employee profile. */
+ *  hands over to the shared team member profile. */
 export function HourActivitySheet({ period, hour, employees, onHour, onClose, onOpenEmployee }: {
   period: Period; hour: number; employees: number | null; onHour: (h: number) => void;
   onClose: () => void; onOpenEmployee: (code: string) => void;
@@ -71,7 +71,7 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <Facts cols={2} items={[["Activity events", query.data ? fmtNum(query.data.total) : "…"],
-              ["Employees with activity", employees === null ? "—" : fmtNum(employees)]]} />
+              ["Team members with activity", employees === null ? "—" : fmtNum(employees)]]} />
             <div className="flex flex-wrap items-center gap-1">
               <button type="button" aria-label="Previous hour" disabled={hour <= 0} onClick={() => onHour(hour - 1)}
                 className={cx(buttonClass("secondary"), "px-2 disabled:opacity-40")}><ChevronLeft className="size-4" aria-hidden /></button>
@@ -93,7 +93,7 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
                   rowKey={(e) => e.event_id ?? `${e.emp_code}-${e.local_time}`} rowLabel={(e) => e.employee_name ?? e.emp_code}
                   onRowClick={(e) => onOpenEmployee(e.bamboohr_id ?? "")}
                   columns={[
-                    { key: "emp", header: "Employee", cell: (e) => <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" /> },
+                    { key: "emp", header: "Team Member", cell: (e) => <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" /> },
                     { key: "time", header: "Recorded", cell: (e) => (
                       <span className="whitespace-nowrap tabular-nums"><span className="font-medium">{localTime(e.local_time)}</span>
                         {!single && <span className="ml-1 text-xs text-dt-text-secondary">{fmtDay(e.local_date)}</span>}</span>

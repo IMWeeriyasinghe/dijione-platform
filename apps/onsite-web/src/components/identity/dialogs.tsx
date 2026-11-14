@@ -58,7 +58,7 @@ export function TextField({ label, value, onChange, type = "text", required, pla
 }
 
 /** Directory search: results appear only for a typed query and NOTHING is
- *  pre-selected — not even when an Employee Number equals the ZKBioTime ID. */
+ *  pre-selected — not even when an EMP Number equals the ZKBioTime ID. */
 export function EmployeePicker({ value, onChange }: { value: DirectoryHit | null; onChange: (h: DirectoryHit | null) => void }) {
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
@@ -70,13 +70,13 @@ export function EmployeePicker({ value, onChange }: { value: DirectoryHit | null
   return (
     <div className="space-y-2">
       <TextField label="Search the BambooHR Workforce Directory" value={text} onChange={setText}
-        placeholder="Name, BHR Employee ID or BambooHR Employee Number (2+ characters)" />
+        placeholder="Name, BHR Employee ID or EMP Number (2+ characters)" />
       {q.length >= 2 && results.isLoading && <SkeletonRows rows={2} label="Searching…" />}
       {results.isError && <ErrorBox error={results.error} />}
       {results.data && (
-        results.data.items.length === 0 ? <p className="text-sm text-dt-text-secondary">No directory employee matches “{q}”.</p> : (
+        results.data.items.length === 0 ? <p className="text-sm text-dt-text-secondary">No directory team member matches “{q}”.</p> : (
           <fieldset className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-dt-border p-2">
-            <legend className="sr-only">Select the employee</legend>
+            <legend className="sr-only">Select the team member</legend>
             {results.data.items.map((h) => (
               <label key={h.bamboohr_id} className={cx("flex cursor-pointer items-start gap-2 rounded-md p-2 text-sm hover:bg-dt-surface-warm",
                 value?.bamboohr_id === h.bamboohr_id && "bg-dt-cream")}>
@@ -174,7 +174,7 @@ export function MapDialog({ siteId, code: initialCode, onClose }: { siteId: stri
     onError: (e) => { const d = errorDetail(e); if (d.warnings) setServerWarnings(d.warnings); },
   });
   return (
-    <Modal open onClose={onClose} title="Map ZKBioTime ID to a BambooHR employee">
+    <Modal open onClose={onClose} title="Map ZKBioTime ID to a BambooHR team member">
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready) save.mutate(); }}>
         <TextField label={ID_LABELS.zk} value={code} onChange={setCode} required placeholder="Exact ZKBioTime ID" />
         <EmployeePicker value={emp} onChange={(h) => { setEmp(h); setAcked(new Set()); setServerWarnings(null); }} />
@@ -418,7 +418,7 @@ export function CodeDialog({ siteId, code, onClose }: { siteId: string; code: st
             ) : <p className="text-dt-text-secondary">Never verified.</p>}
           </section>
           {q.data.hint_employee_number_matches.length > 0 && (
-            <p className="text-dt-text-secondary">Unverified hint (Employee Number equals this ID — not evidence): {q.data.hint_employee_number_matches.map((h) => h.display_name ?? h.bamboohr_id).join(", ")}</p>
+            <p className="text-dt-text-secondary">Unverified hint (EMP Number equals this ID — not evidence): {q.data.hint_employee_number_matches.map((h) => h.display_name ?? h.bamboohr_id).join(", ")}</p>
           )}
           <section>
             <h3 className="font-medium">Activity by day</h3>

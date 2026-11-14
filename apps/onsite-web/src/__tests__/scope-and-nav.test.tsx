@@ -27,11 +27,11 @@ describe("navigation follows permissions, not role names", () => {
   const labels = (scope: OnsiteScope | null) => buildSections(scope).flatMap((s) => s.items.map((i) => i.label));
 
   it("viewer sees the dashboard navigation only", () => {
-    expect(labels({ role: "ONSITE_VIEWER", permissions: VIEWER })).toEqual(["Overview", "Today", "Activity", "Employees", "Exceptions"]);
+    expect(labels({ role: "ONSITE_VIEWER", permissions: VIEWER })).toEqual(["Overview", "Today", "Activity", "Team Members", "Exceptions"]);
   });
   it("admin also sees the admin section", () => {
     expect(labels({ role: "ONSITE_ADMIN", permissions: ADMIN })).toEqual([
-      "Overview", "Today", "Activity", "Employees", "Exceptions", "Site Health", "Identity Management", "Sites",
+      "Overview", "Today", "Activity", "Team Members", "Exceptions", "Site Health", "Identity Management", "Sites",
     ]);
   });
   it("each admin page needs its own permission", () => {

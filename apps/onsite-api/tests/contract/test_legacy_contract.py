@@ -249,8 +249,9 @@ def _check(name: str, observed: dict) -> None:
                                                                                     observed["enums"])
         assert not problems, f"legacy contract broken in {name}: {problems}"
     elif "sheets" in expected:
-        assert sorted(observed["sheets"]) == sorted(expected["sheets"]), name
-        for sheet, exp in expected["sheets"].items():
+        assert sorted(observed["sheets"]) == sorted(SHEET_RENAMES.get(x, x) for x in expected["sheets"]), name
+        for old_sheet, exp in expected["sheets"].items():
+            sheet = SHEET_RENAMES.get(old_sheet, old_sheet)
             obs = observed["sheets"][sheet]
             if sheet in NEW_EXPORT_HEADERS:  # tabular report sheets
                 renamed = [LABEL_RENAMES.get(x, x) for x in exp["preamble_labels"]]
@@ -273,18 +274,29 @@ def _labels(sheet: dict) -> set[str]:
 # Deliberate, reviewed export changes (identity redesign, Stage 3).
 REMOVED_MEASURES = {"Unmatched codes"}  # unmapped IDs are no longer part of attendance reports
 ADDED_MEASURES = {"Unmapped punches excluded (see Identity Management)"}
-LABEL_RENAMES = {"Employee Number": "ZKBioTime ID"}
+LABEL_RENAMES = {
+    "Employee Number": "ZKBioTime ID",
+    # Diji On-site terminology standard (2026-11-14): people are "team members".
+    "Employee search": "Team member search", "Employees with activity": "Team members with activity",
+    "Employee-days with activity": "Team-member days with activity", "Employees needing review": "Team members needing review",
+    "Employees listed": "Team members listed", "Employees with review flags": "Team members with review flags",
+    "Single-activity employees": "Single-activity team members", "Employees": "Team Members",
+    "Employee Activity Report": "Team Member Activity Report",
+    "Employee Activity Report — Summary": "Team Member Activity Report — Summary",
+    "Review flag: Inactive employee activity": "Review flag: Inactive team member activity",
+}
+SHEET_RENAMES = {"Employees": "Team Members"}
 NEW_EXPORT_HEADERS = {
-    "Attendance Report": ["Date", "Employee Name", "BHR Employee ID", "BambooHR Employee Number", "ZKBioTime ID(s)",
+    "Attendance Report": ["Date", "Team Member Name", "BHR Employee ID", "EMP Number", "ZKBioTime ID(s)",
                           "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
                           "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags"],
-    "Exception Report": ["Date", "Employee Name", "BHR Employee ID", "BambooHR Employee Number", "ZKBioTime ID(s)",
+    "Exception Report": ["Date", "Team Member Name", "BHR Employee ID", "EMP Number", "ZKBioTime ID(s)",
                          "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
                          "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags", "Review Reasons"],
-    "Event Detail": ["Local Date", "Local Time", "ZKBioTime ID", "Employee Name", "BHR Employee ID",
-                     "BambooHR Employee Number", "Department", "Terminal", "Verify Type", "Mapping Status",
+    "Event Detail": ["Local Date", "Local Time", "ZKBioTime ID", "Team Member Name", "BHR Employee ID",
+                     "EMP Number", "Department", "Terminal", "Verify Type", "Mapping Status",
                      "Review Flags"],
-    "Employees": ["Employee Name", "BHR Employee ID", "BambooHR Employee Number", "ZKBioTime ID(s)", "Department",
+    "Team Members": ["Team Member Name", "BHR Employee ID", "EMP Number", "ZKBioTime ID(s)", "Department",
                   "Employment Status", "Mapping Status", "Activity Days", "Attendance Events", "Review Flags",
                   "Last Activity (site local)"],
 }

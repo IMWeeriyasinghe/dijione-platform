@@ -165,7 +165,7 @@ def test_identity_resolution_at_volume(perf):
     emp_x = _timed(c, "export employees 92d", f"/api/onsite/employees/export?{rng}", V)
     _timed(c, "export exceptions 7d", f"/api/onsite/exceptions/export?{week}", V)
     wb = load_workbook(io.BytesIO(emp_x.content))
-    listed = {r[0]: r[1] for r in wb["Summary"].iter_rows(values_only=True) if r[0]}["Employees listed"]
+    listed = {r[0]: r[1] for r in wb["Summary"].iter_rows(values_only=True) if r[0]}["Team members listed"]
     assert listed == body["total"]
     text = " ".join(str(v) for ws in load_workbook(io.BytesIO(x.content)) for row in ws.iter_rows(values_only=True)
                     for v in row if v is not None)

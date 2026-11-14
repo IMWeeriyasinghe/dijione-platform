@@ -145,10 +145,10 @@ def test_two_codes_one_employee_is_one_person_everywhere(api_client, db, directo
     assert legacy["profile"]["bamboohr_id"] == "1" and legacy["summary"]["events"] == 5
     wb = load_workbook(io.BytesIO(_get(api_client, f"/api/onsite/employees/export?{RANGE}").content))
     summary = {r[0]: r[1] for r in wb["Summary"].iter_rows(values_only=True) if r[0]}
-    assert summary["Employees listed"] == 1 and summary["Attendance events"] == 5
+    assert summary["Team members listed"] == 1 and summary["Attendance events"] == 5
     wb = load_workbook(io.BytesIO(_get(api_client, f"/api/onsite/today/export?date={DAY1}").content))
     summary = {r[0]: r[1] for r in wb["Summary"].iter_rows(values_only=True) if r[0]}
-    assert summary["Employees with activity"] == 1 and summary["Attendance events"] == 4
+    assert summary["Team members with activity"] == 1 and summary["Attendance events"] == 4
 
 
 # --- effective dates ------------------------------------------------------------------------------

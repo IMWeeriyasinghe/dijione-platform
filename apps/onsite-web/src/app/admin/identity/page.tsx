@@ -19,12 +19,13 @@ import {
   WARNING_LABEL, type ImportResult, type Mapping, type Rejection, type UnmappedRow,
 } from "@/lib/identity";
 import { hasPermission, PERM, useOnsiteScope } from "@/lib/onsite-scope";
-import { fmtNum } from "@/lib/period";
+import { fmtNum, normalizePeriod, presetPeriod } from "@/lib/period";
+import { CoverageDashboard } from "@/components/identity/CoverageDashboard";
 import { useUrlState } from "@/lib/url-state";
 
-type Tab = "readiness" | "unmapped" | "mappings" | "conflicts" | "import";
+type Tab = "overview" | "readiness" | "unmapped" | "mappings" | "conflicts" | "import";
 const TABS: [Tab, string][] = [
-  ["readiness", "Readiness"], ["unmapped", "Unmapped IDs"], ["mappings", "Mappings"],
+  ["overview", "Overview"], ["readiness", "Readiness"], ["unmapped", "Unmapped IDs"], ["mappings", "Mappings"],
   ["conflicts", "Conflicts & history"], ["import", "Import"],
 ];
 
@@ -37,15 +38,16 @@ function IdentityManagement() {
   const { site } = useSite();
   const { scope } = useOnsiteScope();
   const canManage = hasPermission(scope, PERM.IDENTITY_MANAGE);
-  const [s, set] = useUrlState({ tab: "readiness", q: "", status: "VERIFIED", mq: "" });
-  const tab = (TABS.some(([t]) => t === s.tab) ? s.tab : "readiness") as Tab;
+  const [s, set] = useUrlState({ tab: "overview", q: "", status: "VERIFIED", mq: "", from: "", to: "" });
+  const tab = (TABS.some(([t]) => t === s.tab) ? s.tab : "overview") as Tab;
+  const period = s.from && s.to ? normalizePeriod({ from: s.from, to: s.to }) : presetPeriod("30d", site.today);
   const [dialog, setDialog] = useState<DialogState>(null);
   const close = () => setDialog(null);
 
   return (
     <div className="space-y-4">
       <PageTop title="Identity Management"
-        description="Verified links between ZKBioTime IDs and BambooHR employees. Attendance is attributed only inside an administrator-verified ownership period — never by matching numbers or names."
+        description="Verified links between ZKBioTime IDs and BambooHR team members. Attendance is attributed only inside an administrator-verified ownership period — never by matching numbers or names."
         actions={canManage ? <Button onClick={() => setDialog({ kind: "map" })}>Map ZKBioTime ID</Button> : undefined}>
         <SiteSelect />
       </PageTop>
@@ -61,6 +63,12 @@ function IdentityManagement() {
       </div>
 
       <div role="tabpanel">
+        {tab === "overview" && (
+          <CoverageDashboard siteId={site.site_id} siteName={site.name} today={site.today} period={period}
+            onPeriod={(p) => set({ from: p.from, to: p.to })} canManage={canManage}
+            onMap={(code) => setDialog({ kind: "map", code })}
+            onInvestigate={(code) => set({ tab: "unmapped", q: code })} />
+        )}
         {tab === "readiness" && <ReadinessTab siteId={site.site_id} />}
         {tab === "unmapped" && <UnmappedTab siteId={site.site_id} q={s.q} setQ={(q) => set({ q })} canManage={canManage} open={setDialog} />}
         {tab === "mappings" && <MappingsTab siteId={site.site_id} status={s.status} q={s.mq} set={set} canManage={canManage} open={setDialog} />}
@@ -92,7 +100,7 @@ function ReadinessTab({ siteId }: { siteId: string }) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard label="Identified punches" value={r.identified_punch_pct === null ? "—" : `${r.identified_punch_pct}%`} icon={CircleCheck} tone="brand" />
-        <MetricCard label="Identified employees" value={fmtNum(r.identified_employees)} icon={Users} tone="neutral" />
+        <MetricCard label="Identified team members" value={fmtNum(r.identified_employees)} icon={Users} tone="neutral" />
         <MetricCard label="Unmapped ZKBioTime IDs" value={fmtNum(r.unmapped_codes)} icon={Fingerprint} tone="neutral" />
         <MetricCard label="Unresolved conflicts" value={fmtNum(c.conflict_days + c.overlapping_mappings + c.ambiguous_reassignment_days)} icon={CircleAlert}
           tone="neutral" />
@@ -169,7 +177,7 @@ function UnmappedTab({ siteId, q, setQ, canManage, open }: {
 function Hints({ r }: { r: UnmappedRow }) {
   if (!r.hint_employee_number_matches.length) return <span className="text-xs text-dt-text-secondary">—</span>;
   return (
-    <span className="flex flex-wrap gap-1" title="A BambooHR Employee Number equals this ID. This is NOT evidence and is never applied automatically.">
+    <span className="flex flex-wrap gap-1" title="An EMP Number equals this ID. This is NOT evidence and is never applied automatically.">
       {r.hint_employee_number_matches.map((h) => (
         <span key={h.bamboohr_id} className="rounded border border-dashed border-dt-border px-1.5 py-0.5 text-xs text-dt-text-secondary">
           Unverified: {h.display_name ?? h.bamboohr_id}
@@ -272,12 +280,12 @@ function ConflictsTab({ siteId, canManage, open }: { siteId: string; canManage: 
           <li key={i}><span className="font-mono">{o.zk_emp_code}</span>: {o.mappings.map(period).join(" / ")}</li>
         ))}</ul> : <p className="text-sm text-dt-text-secondary">None.</p>}
       </Panel>
-      <Panel title="Reused ZKBioTime IDs" subtitle="IDs owned by different employees over time">
+      <Panel title="Reused ZKBioTime IDs" subtitle="IDs owned by different team members over time">
         {c.reused_codes.length ? <ul className="space-y-1 text-sm">{c.reused_codes.map((r) => (
           <li key={r.zk_emp_code}><span className="font-mono">{r.zk_emp_code}</span>: {r.mappings.map(period).join(" → ")}</li>
         ))}</ul> : <p className="text-sm text-dt-text-secondary">None.</p>}
       </Panel>
-      <Panel title="Employees with several IDs" subtitle="Counted once in every headcount">
+      <Panel title="Team members with several IDs" subtitle="Counted once in every headcount">
         {c.employees_with_multiple_codes.length ? <ul className="space-y-1 text-sm">{c.employees_with_multiple_codes.map((e) => (
           <li key={e.bamboohr_id}>{e.mappings[0]?.employee_name ?? e.bamboohr_id} ({ID_LABELS.bhr} {e.bamboohr_id}): {e.codes.join(", ")}</li>
         ))}</ul> : <p className="text-sm text-dt-text-secondary">None.</p>}

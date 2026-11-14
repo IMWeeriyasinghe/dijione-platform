@@ -38,8 +38,8 @@ export const MAPPING_LABEL: Record<MappingStatus, string> = {
 export const ID_LABELS = {
   zk: "ZKBioTime ID",
   bhr: "BHR Employee ID",
-  number: "BambooHR Employee Number",
-  name: "Employee Name",
+  number: "EMP Number",
+  name: "Team Member Name",
   mapping: "Mapping Status",
 } as const;
 

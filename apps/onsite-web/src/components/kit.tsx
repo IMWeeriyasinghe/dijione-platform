@@ -155,7 +155,7 @@ export function Initials({ name, code, size = "md", photo = false, alt, bhrId }:
   name: string | null | undefined; code: string; size?: "sm" | "md" | "lg";
   /** Request the profile photo (only when the API reports one may exist). */
   photo?: boolean;
-  /** BHR Employee ID of the VERIFIED employee — photos are only ever fetched by it. */
+  /** BHR Employee ID of the VERIFIED team member — photos are only ever fetched by it. */
   bhrId?: string | null;
   /** Alt text when the photo stands alone; omit when the name is shown beside it. */
   alt?: string;
@@ -175,7 +175,7 @@ export function Initials({ name, code, size = "md", photo = false, alt, bhrId }:
 }
 
 /** Lazy profile photo layered over the initials: requested only once the
- *  avatar is near the viewport, cached per employee for the session (never
+ *  avatar is near the viewport, cached per team member for the session (never
  *  refetched by the 30-second dashboard refresh), and silently absent on any
  *  failure — the initials underneath simply stay visible. */
 function EmployeePhoto({ bhrId, alt }: { bhrId: string; alt?: string }) {
@@ -205,7 +205,7 @@ function EmployeePhoto({ bhrId, alt }: { bhrId: string; alt?: string }) {
 
 export function Person({ name, code, meta, size = "md", photo = false, bhrId }: {
   name: string | null | undefined; code: string; meta?: React.ReactNode; size?: "sm" | "md" | "lg"; photo?: boolean;
-  /** BHR Employee ID of the verified employee (shown, and the only photo key). */
+  /** BHR Employee ID of the verified team member (shown, and the only photo key). */
   bhrId?: string | null;
 }) {
   return (
@@ -223,7 +223,7 @@ export function Person({ name, code, meta, size = "md", photo = false, bhrId }: 
   );
 }
 
-/** A verified employee row/profile reference (all ZKBioTime IDs, BHR id, photo). */
+/** A verified team member row/profile reference (all ZKBioTime IDs, BHR id, photo). */
 export function EmployeeRefCell({ r, meta, size = "md" }: {
   r: { emp_code: string; zk_emp_codes?: string[]; bamboohr_id?: string | null; employee_name?: string | null;
     has_photo?: boolean };

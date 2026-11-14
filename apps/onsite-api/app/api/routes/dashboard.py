@@ -217,7 +217,7 @@ def employee_detail(emp_code: str, site_id: str | None = None, date_from: date |
     directory = workforce_directory.load()
     bid = svc.employee_for_code(db, scope.allowed_site_ids, site, emp_code, start, end, directory)
     if bid is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Team member not found")
     return svc.employee_detail(db, scope.allowed_site_ids, site, tz, bid, start, end, directory,
                                technical=scope.has(Perm.HEALTH_READ), include_events=include_events)
 

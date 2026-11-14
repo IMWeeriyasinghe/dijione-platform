@@ -24,10 +24,10 @@ import { dayCount, fmtDay, fmtNum, fmtPeriod, fmtShortDay, isSingleDay, type Per
 import { hrefWith, useUrlState } from "@/lib/url-state";
 
 const HELP = {
-  employees: "Distinct verified employees (by BHR Employee ID — several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
-  events: "Activity events attributed to verified employees in the period. Punches of unmapped ZKBioTime IDs are excluded (see Identity Management).",
-  review: "Distinct employees with at least one review flag in the period. A flag is a prompt to look, not a confirmed issue.",
-  single: "Distinct employees with a completed day on which only one activity was recorded.",
+  employees: "Distinct verified team members (by BHR Employee ID — several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
+  events: "Activity events attributed to verified team members in the period. Punches of unmapped ZKBioTime IDs are excluded (see Identity Management).",
+  review: "Distinct team members with at least one review flag in the period. A flag is a prompt to look, not a confirmed issue.",
+  single: "Distinct team members with a completed day on which only one activity was recorded.",
   unmapped: "ZKBioTime IDs with activity in the period but no verified BambooHR mapping, and their punches. Excluded from attendance figures until an administrator verifies them. Visible to administrators only.",
   feed: "Whether DijiOne's mirror of Diji On-site Attendance is current. Open Site Health for the details.",
 };
@@ -128,10 +128,10 @@ function OverviewView() {
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
-        <KpiCard label="Employees with activity" value={fmtNum(k.employees_with_activity)} icon={Users} tone="brand" help={HELP.employees}
+        <KpiCard label="Team members with activity" value={fmtNum(k.employees_with_activity)} icon={Users} tone="brand" help={HELP.employees}
           delta={delta((x) => x.kpis.employees_with_activity)}
           href={single ? hrefWith("/today", { date: period.from }) : hrefWith("/employees", { from: period.from, to: period.to })}
-          hrefLabel={single ? "Open Today" : "Open Employees"} />
+          hrefLabel={single ? "Open Today" : "Open Team Members"} />
         <KpiCard label="Activity events" value={fmtNum(k.total_events)} icon={Activity} help={HELP.events}
           delta={delta((x) => x.kpis.total_events)}
           sub={!single && k.activity_days ? <span>{fmtNum(k.activity_days)} days with activity</span> : undefined}
@@ -146,7 +146,7 @@ function OverviewView() {
             sub={<span>{fmtNum(o.operational.unmapped_punches)} of {fmtNum(o.operational.total_punches)} punches excluded</span>}
             href={hasPermission(scope, PERM.IDENTITY) ? "/admin/identity?tab=unmapped" : undefined} hrefLabel="Open Identity Management" />
         ) : (
-          <KpiCard label="Identified employees" value={fmtNum(k.identified_employees ?? k.employees_with_activity)} icon={Fingerprint}
+          <KpiCard label="Identified team members" value={fmtNum(k.identified_employees ?? k.employees_with_activity)} icon={Fingerprint}
             help={HELP.employees} />
         )}
         <KpiCard label="Feed" value={<span className="text-lg">{FEED_LABEL[feed]}</span>} icon={Radio}
@@ -155,7 +155,7 @@ function OverviewView() {
           href={hasPermission(scope, PERM.HEALTH) ? "/admin/health" : undefined} hrefLabel="Open Site Health" />
       </div>
       {!o.directory_available && (
-        <InlineAlert>Employee details are unavailable right now — verified attendance is shown without names.</InlineAlert>
+        <InlineAlert>Team member details are unavailable right now — verified attendance is shown without names.</InlineAlert>
       )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -193,7 +193,7 @@ function OverviewView() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_3fr]">
-        <Panel title="Needs review" subtitle={`Employee-days per review category · ${periodLabel}. Flags are prompts, not confirmed issues.`}>
+        <Panel title="Needs review" subtitle={`Team-member days per review category · ${periodLabel}. Flags are prompts, not confirmed issues.`}>
           <BreakdownList counts={o.review_breakdown} hrefFor={(f) => ex(f)} />
         </Panel>
         <Panel title="Recent activity" subtitle={`Latest recorded events at ${site.name}`}

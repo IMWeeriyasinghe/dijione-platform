@@ -534,7 +534,7 @@ def employee_detail(db: Session, allowed, site_id: str, tz: str | None, bamboohr
     index = ident.index
     profile_r = index.describe_employee(bamboohr_id, site_id)
     if profile_r is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Team member not found")
     repo = AttendanceRepository(db)
     days = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
                           date_from=start, date_to=end, directory=directory, bamboohr_ids={bamboohr_id}, index=index)
@@ -571,9 +571,9 @@ _FLAG_REASON = {
     ReviewFlag.UNMATCHED_CODE.value: "The ZKBioTime ID has no verified BambooHR mapping for this day.",
     ReviewFlag.AMBIGUOUS_CODE.value: "More than one verified mapping covers this ZKBioTime ID on this day.",
     ReviewFlag.INACTIVE_EMPLOYEE_ACTIVITY.value: (
-        "Activity is recorded for an employee who is inactive or past their termination date."
+        "Activity is recorded for a team member who is inactive or past their termination date."
     ),
-    ReviewFlag.BEFORE_HIRE_ACTIVITY.value: "Activity is recorded before the employee's hire date.",
+    ReviewFlag.BEFORE_HIRE_ACTIVITY.value: "Activity is recorded before the team member's hire date.",
     ReviewFlag.TZ_INCONSISTENT.value: "The source local time does not match the site's configured time zone.",
 }
 
