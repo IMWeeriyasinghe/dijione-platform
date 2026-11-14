@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * npm run onsite:responsive-check
+ * npm run responsive-check   (from apps/onsite-web)
  *
  * Real-browser (Puppeteer, already in node_modules) responsive and
  * end-to-end smoke audit for Diji On-site (apps/onsite-web). For every route
@@ -28,17 +28,15 @@
  * (the persona needs an ONSITE_ADMIN module assignment; the viewer persona
  * an ONSITE_VIEWER one). Then:
  *
- *   ADMIN_TOKEN=<t> VIEWER_TOKEN=<t> npm run onsite:responsive-check -- [--screenshots] [--out <dir>]
+ *   ADMIN_TOKEN=<t> VIEWER_TOKEN=<t> npm run responsive-check -- [--screenshots] [--out <dir>]
  *
  * Not wired into CI (needs a live local stack). Output (JSON + optional
  * PNGs) goes to --out (default: the OS temp dir) — never committed.
  */
-"use strict";
-
-const puppeteer = require("puppeteer");
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import puppeteer from "puppeteer";
 
 const WIDTHS = [320, 375, 768, 1024, 1280, 1440];
 const HEIGHT = 900;
@@ -59,7 +57,6 @@ function args(argv) {
   return o;
 }
 
-/* eslint-disable no-undef */
 function measure() {
   const vw = window.innerWidth;
   const tables = [...document.querySelectorAll("[data-scroll-x]")]
@@ -82,7 +79,6 @@ function measure() {
     denied: /Administrator access required/.test(document.body.innerText),
   };
 }
-/* eslint-enable no-undef */
 
 async function settle(page) {
   await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => {});
