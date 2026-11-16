@@ -41,6 +41,7 @@ platform change and be switched on per environment.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import random
 import threading
@@ -112,6 +113,12 @@ class RevocationGuard:
         max_backoff_seconds: float = 60.0,
         clock: Callable[[], float] = time.monotonic,
     ):
+        for name, value in (("refresh_seconds", refresh_seconds), ("fresh_seconds", fresh_seconds),
+                            ("restricted_seconds", restricted_seconds), ("max_backoff_seconds", max_backoff_seconds)):
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be a finite number above zero, not {value!r}")
+        if fresh_seconds >= restricted_seconds:
+            raise ValueError("fresh_seconds must be shorter than restricted_seconds")
         self._fetch = fetch
         self.refresh_seconds = refresh_seconds
         self.fresh_seconds = fresh_seconds
@@ -155,14 +162,15 @@ class RevocationGuard:
         """Fold a new snapshot into what is known, never going backwards.
 
         A user's version only ever rises, and every change to an account's status raises it,
-        so an entry is accepted only if its version is higher, or the same with the same
-        status. An older or truncated snapshot (a database restored from backup, a lagging
-        replica) therefore cannot lower a version, reactivate an inactive account, or make
-        a known revocation disappear."""
+        so an entry is accepted only if its version is higher, or the same and it is no more
+        permissive (an unchanged version may newly mark an account inactive, for instance after
+        a direct database edit, but may never reactivate one). An older or truncated snapshot
+        (a database restored from backup, a lagging replica) therefore cannot lower a version,
+        reactivate an inactive account, or make a known revocation disappear."""
         merged = dict(known)
         for user_id, entry in incoming.items():
             old = merged.get(user_id)
-            if old is None or entry[0] > old[0] or (entry[0] == old[0] and entry[1] == old[1]):
+            if old is None or entry[0] > old[0] or (entry[0] == old[0] and (entry[1] == old[1] or not entry[1])):
                 merged[user_id] = entry
             else:
                 logger.warning("revocation snapshot entry for user %s ignored: it would move backwards", user_id)
@@ -223,8 +231,16 @@ class RevocationGuard:
         self._stop.set()
 
     def _next_delay(self) -> float:
-        base = self.refresh_seconds * (2 ** min(self._failures, 6)) if self._failures else self.refresh_seconds
-        return min(base, max(self.max_backoff_seconds, self.refresh_seconds)) * random.uniform(0.85, 1.15)
+        """Seconds to the next refresh. Until a first snapshot has loaded (a cold start, often
+        while platform-api itself is starting from zero) retry every few seconds; afterwards
+        back off from the normal interval. Never below one second."""
+        if self._snapshot is None:
+            base = 3.0
+        elif self._failures:
+            base = min(self.refresh_seconds * (2 ** min(self._failures, 6)), max(self.max_backoff_seconds, self.refresh_seconds))
+        else:
+            base = self.refresh_seconds
+        return max(1.0, base * random.uniform(0.85, 1.15))
 
     def _loop(self) -> None:
         while not self._stop.wait(self._next_delay()):
@@ -239,10 +255,21 @@ _lock = threading.Lock()
 
 
 def _truthy(value: str | None) -> bool:
-    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+    return (value or "").strip().lower() in {"1", "true", "t", "yes", "y", "on", "enabled"}
 
 
-def http_fetch(base_url: str, internal_secret: str, timeout: float = 3.0) -> Fetch:
+def _env_seconds(name: str, default: str) -> float:
+    raw = os.environ.get(name, default)
+    try:
+        value = float(raw)
+    except ValueError:
+        raise RuntimeError(f"{name} must be a number of seconds, not {raw!r}") from None
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError(f"{name} must be a finite number above zero, not {raw!r}")
+    return value
+
+
+def http_fetch(base_url: str, internal_secret: str, timeout: float = 10.0) -> Fetch:
     url = base_url.rstrip("/") + FEED_PATH
 
     def fetch(etag: str | None):
@@ -254,7 +281,11 @@ def http_fetch(base_url: str, internal_secret: str, timeout: float = 3.0) -> Fet
             return 304, etag, None
         if resp.status_code != 200:
             return resp.status_code, None, None
-        users = {int(uid): (int(v["av"]), bool(v["active"])) for uid, v in resp.json().get("users", {}).items()}
+        body = resp.json()
+        raw = body.get("users") if isinstance(body, dict) else None
+        if not isinstance(raw, dict):  # a gateway or error page is not an empty snapshot
+            return 200, None, None
+        users = {int(uid): (int(v["av"]), bool(v["active"])) for uid, v in raw.items()}
         return 200, resp.headers.get("etag"), users
 
     return fetch
@@ -280,12 +311,15 @@ def get_guard() -> RevocationGuard | None:
                 )
             guard = RevocationGuard(
                 http_fetch(url, secret),
-                refresh_seconds=float(os.environ.get("REVOCATION_REFRESH_SECONDS", "30")),
-                fresh_seconds=float(os.environ.get("REVOCATION_FRESH_SECONDS", "300")),
-                restricted_seconds=float(os.environ.get("REVOCATION_RESTRICTED_SECONDS", "3600")),
+                refresh_seconds=_env_seconds("REVOCATION_REFRESH_SECONDS", "30"),
+                fresh_seconds=_env_seconds("REVOCATION_FRESH_SECONDS", "300"),
+                restricted_seconds=_env_seconds("REVOCATION_RESTRICTED_SECONDS", "3600"),
             )
+            logger.warning("session revocation ENABLED (feed %s)", url.rstrip("/") + FEED_PATH)
             guard.start()
             _guard = guard
+        else:
+            logger.info("session revocation is off (REVOCATION_ENABLED is not set to a true value)")
         _configured = True
         return _guard
 

@@ -339,6 +339,7 @@ def test_a_restarted_replica_does_not_inherit_its_neighbours_snapshot(feed, cloc
 
 def test_refresh_delay_backs_off_and_is_capped(feed, clock):
     guard = make_guard(feed, clock, refresh_seconds=30, max_backoff_seconds=60)
+    guard.refresh_once()  # a snapshot is held, so failures now back off rather than retrying fast
     healthy = guard._next_delay()
     assert 25 <= healthy <= 35
     feed.down = True
@@ -385,7 +386,8 @@ def test_an_equal_version_with_a_different_status_is_not_trusted(feed, clock):
 
 
 def test_the_background_thread_keeps_refreshing_and_stops(feed):
-    guard = RevocationGuard(feed, refresh_seconds=0.02, max_backoff_seconds=0.02)
+    guard = RevocationGuard(feed)
+    guard._next_delay = lambda: 0.01  # the production floor is one second; speed the loop up for the test
     guard.start()
     import time
 
@@ -396,14 +398,94 @@ def test_the_background_thread_keeps_refreshing_and_stops(feed):
     assert feed.calls >= 4
 
 
-# --- rollout: enabling enforcement before platform-api has the feed ------------------------------
+# --- findings from the independent review ---------------------------------------------------------
 
 
-def test_enforcement_switched_on_before_the_platform_has_a_feed_is_restricted_not_open(clock):
-    old_platform = RevocationGuard(lambda etag: (404, None, None), clock=clock)  # the endpoint does not exist yet
-    set_guard(old_platform)
-    assert old_platform.refresh_once() is False
-    assert old_platform.state() == RESTRICTED
-    assert client.get("/read", headers=token()).status_code == 200
-    assert client.post("/write", headers=token()).status_code == 503  # an outage to fix, never a bypass
-    assert client.post("/sensitive", headers=token()).status_code == 503
+def test_an_unchanged_version_may_newly_mark_an_account_inactive_but_never_active(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.set({ALICE: (2, False)})  # same version as before, but now inactive (a direct database edit)
+    guard.refresh_once()
+    assert guard.is_revoked(ALICE, 2)
+    feed.set({ALICE: (2, True)})  # the same version can not turn it back on
+    guard.refresh_once()
+    assert guard.is_revoked(ALICE, 2)
+
+
+def test_until_a_first_snapshot_loads_the_refresh_retries_every_few_seconds(clock):
+    down = Feed()
+    down.down = True
+    guard = make_guard(down, clock, refresh_seconds=30)
+    for _ in range(6):
+        guard.refresh_once()
+    assert guard.state() == RESTRICTED
+    assert 2.5 <= guard._next_delay() <= 3.5  # not the 60 s backoff that would outlast a scale-from-zero start
+    down.down = False
+    guard.refresh_once()
+    assert 25 <= guard._next_delay() <= 35  # normal cadence once loaded
+
+
+@pytest.mark.parametrize("value", [0, -5, float("nan"), float("inf")])
+def test_timings_must_be_finite_and_above_zero(feed, clock, value):
+    with pytest.raises(ValueError):
+        RevocationGuard(feed, clock=clock, refresh_seconds=value)
+    with pytest.raises(ValueError):
+        RevocationGuard(feed, clock=clock, restricted_seconds=value)
+
+
+def test_fresh_must_be_shorter_than_restricted(feed, clock):
+    with pytest.raises(ValueError):
+        RevocationGuard(feed, clock=clock, fresh_seconds=600, restricted_seconds=300)
+
+
+def test_the_refresh_delay_never_drops_below_a_second(feed, clock):
+    guard = RevocationGuard(feed, clock=clock, refresh_seconds=0.001, fresh_seconds=0.002, restricted_seconds=0.003)
+    assert guard._next_delay() >= 1.0
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", "0", "-1", "soon"])
+def test_a_bad_timing_in_the_environment_stops_the_service_starting(monkeypatch, raw):
+    monkeypatch.setattr(revocation, "_configured", False)
+    monkeypatch.setattr(revocation, "_guard", None)
+    register_route_policy(POLICY)
+    monkeypatch.setenv("REVOCATION_ENABLED", "true")
+    monkeypatch.setenv("PLATFORM_API_URL", "http://platform-api")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    monkeypatch.setenv("REVOCATION_RESTRICTED_SECONDS", raw)
+    with pytest.raises(RuntimeError, match="REVOCATION_RESTRICTED_SECONDS"):
+        revocation.get_guard()
+    monkeypatch.setattr(revocation, "_configured", True)
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "t", "yes", "y", "on", "enabled"])
+def test_the_usual_ways_of_writing_true_are_understood(value):
+    assert revocation._truthy(value)
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "false", "no", "off", "nope"])
+def test_anything_else_is_off(value):
+    assert not revocation._truthy(value)
+
+
+class _Reply:
+    def __init__(self, status_code, body, headers=None):
+        self.status_code, self._body, self.headers = status_code, body, headers or {}
+
+    def json(self):
+        return self._body
+
+
+@pytest.mark.parametrize("body", [{}, {"error": "bad gateway"}, [], "oops", {"users": []}, {"users": None}])
+def test_a_200_without_a_users_object_is_a_failure_not_an_empty_snapshot(monkeypatch, clock, body):
+    monkeypatch.setattr(revocation.httpx, "get", lambda *a, **k: _Reply(200, body))
+    guard = RevocationGuard(revocation.http_fetch("http://p", "s"), clock=clock)
+    assert guard.refresh_once() is False
+    assert guard.state() == RESTRICTED
+
+
+def test_a_real_feed_response_is_read(monkeypatch, clock):
+    monkeypatch.setattr(
+        revocation.httpx, "get", lambda *a, **k: _Reply(200, {"users": {"11": {"av": 4, "active": True}}}, {"etag": '"x"'})
+    )
+    guard = RevocationGuard(revocation.http_fetch("http://p", "s"), clock=clock)
+    assert guard.refresh_once() and guard.is_revoked(11, 3) and not guard.is_revoked(11, 4)
