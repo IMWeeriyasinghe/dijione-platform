@@ -23,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest  # noqa: E402
 from auth_client_py import PlatformClient  # noqa: E402
-from fastapi import FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException, Request, Response  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
@@ -81,6 +82,47 @@ def _build_stub_platform_app() -> FastAPI:
         if user_id not in STUB_USERS:
             raise HTTPException(404, f"User {user_id} not found")
         return STUB_USERS[user_id]
+
+    @stub.get("/api/platform/admin/directory/users")
+    def search_directory(q: str, authorization: str | None = Header(default=None)) -> list[dict]:
+        _require_admin_token(authorization)
+        return [{"entra_object_id": "oid-1", "full_name": "Ana", "email": "ana@example.com", "query": q}]
+
+    @stub.get("/api/platform/admin/directory/users/{object_id}/photo")
+    def directory_photo(object_id: str, authorization: str | None = Header(default=None)) -> Response:
+        _require_admin_token(authorization)
+        if object_id == "none":
+            return Response(status_code=404, headers={"Cache-Control": "private, max-age=900"})
+        return Response(content=b"\xff\xd8jpeg", media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+    @stub.get("/api/platform/admin/users/{user_id}/photo")
+    def user_photo(user_id: int, authorization: str | None = Header(default=None)) -> Response:
+        _require_admin_token(authorization)
+        return Response(content=b"png", media_type="image/png")
+
+    @stub.post("/api/platform/admin/users/from-directory", status_code=201)
+    def add_from_directory(payload: dict, authorization: str | None = Header(default=None)):
+        _require_admin_token(authorization)
+        if payload["entra_object_id"] == "taken":
+            return JSONResponse(status_code=409, content={"detail": "Already in DijiOne", "existing_user_id": 5})
+        return {**STUB_USERS[1], "id": 88, "entra_object_id": payload["entra_object_id"]}
+
+    @stub.post("/api/platform/admin/users/{user_id}/verify-directory")
+    def verify_directory(user_id: int, authorization: str | None = Header(default=None)) -> dict:
+        _require_admin_token(authorization)
+        if user_id == 400:
+            raise HTTPException(400, "No directory account matches this profile.")
+        return {**STUB_USERS[1], "id": user_id, "directory_verified": True}
+
+    @stub.post("/api/platform/admin/employee-records/reconcile")
+    def reconcile(authorization: str | None = Header(default=None)) -> dict:
+        _require_admin_token(authorization)
+        return {"checked": 2, "matched": 1, "not_found": 1, "unknown": 0, "hr_exceptions": []}
+
+    @stub.get("/api/platform/admin/users/{user_id}/entra-groups")
+    def entra_groups(user_id: int, authorization: str | None = Header(default=None)) -> list[dict]:
+        _require_admin_token(authorization)
+        return [{"object_id": "g", "display_name": "All Staff", "group_type": "Security", "membership": "DIRECT"}]
 
     @stub.post("/api/platform/admin/view-as", status_code=201)
     def start_view_as(payload: dict, authorization: str | None = Header(default=None)) -> dict:

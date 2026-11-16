@@ -136,34 +136,23 @@ describe("Users -> Applications client scope", () => {
   });
 });
 
-// D7: default employee access has no assignment row, so it needs its own control.
+// Default employee access is always on: shown, never removable from here.
 describe("Users -> Applications default employee access", () => {
   const effective = (over: object) => ({ platform_permissions: [], modules: [], default_access_excluded: [], ...over });
 
-  it("offers to remove default access and calls the remove endpoint", async () => {
+  it("shows the always-on default access without any way to remove it", async () => {
     api.getAdminUser.mockResolvedValue(user());
     api.getEffectiveAccess.mockResolvedValue(effective({
       modules: [{ module_key: "field-ops", module_name: "Field Ops", enabled: true, role: "FIELD_VIEWER", role_name: "Field Viewer",
         client_scope: { all_clients: true, client_ids: [], client_names: [] }, permissions: [],
         sources: [{ type: "BASELINE", role: "FIELD_VIEWER", group_id: null, group_name: null }] }],
     }));
-    api.removeModuleAssignment.mockResolvedValue(user());
     await openApplications();
-    expect(await screen.findByText(/has default employee access to field ops \(field viewer\)/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("default-access-note")).toHaveTextContent(/field ops standard access \(field viewer\)/i);
+    expect(screen.getByTestId("default-access-note")).toHaveTextContent(/always on and cannot be removed/i);
+    expect(screen.queryByRole("button", { name: /remove default access/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore default access/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /remove default access/i }));
-    await waitFor(() => expect(api.removeModuleAssignment).toHaveBeenCalledWith(42, "field-ops"));
-  });
-
-  it("offers to restore default access once it has been removed", async () => {
-    api.getAdminUser.mockResolvedValue(user([{ module_key: "field-ops", role: "FIELD_VIEWER", enabled: false,
-      client_scope: { all_clients: true, client_ids: [], client_names: [] } }]));
-    api.getEffectiveAccess.mockResolvedValue(effective({ default_access_excluded: ["field-ops"] }));
-    api.restoreDefaultAccess.mockResolvedValue(user());
-    await openApplications();
-    expect(await screen.findByText(/default employee access to field ops has been removed/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /restore default access/i }));
-    await waitFor(() => expect(api.restoreDefaultAccess).toHaveBeenCalledWith(42, "field-ops"));
+    expect(api.removeModuleAssignment).not.toHaveBeenCalled();
   });
 
   it("shows no default-access control for an application without one", async () => {

@@ -2,6 +2,7 @@ export * from "./auth-api";
 export * from "./auth-context";
 export * from "./http";
 export * from "./notifications-api";
+export * from "./photo";
 export * from "./session-timing";
 export * from "./view-as";
 export * from "./view-as-banner";

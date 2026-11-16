@@ -16,18 +16,19 @@ import {
   listAdminGroups,
   listAdminModules,
   listAdminRoles,
+  getEntraGroups,
   removeGroupMember,
-  removeModuleAssignment,
-  restoreDefaultAccess,
   updatePlatformRole,
   updateUserStatus,
   upsertModuleAssignment,
+  userPhotoPath,
+  verifyUserWithDirectory,
 } from "@/lib/api";
 import { AccessDiagnostics } from "./access-diagnostics";
 import { ViewAsButton } from "./view-as-button";
-import { PLATFORM_ROLE_LABELS } from "@dijione/contracts";
+import { EmployeeAvatar, IdentityBadges } from "../identity";
+import { PLATFORM_ROLE_LABELS, type AdminUserOut } from "@dijione/contracts";
 import {
-  Avatar,
   Button,
   Card,
   cn,
@@ -45,7 +46,9 @@ import {
 
 const PLATFORM_ROLE_OPTIONS = ["PLATFORM_USER", "PLATFORM_ADMIN", "SUPER_ADMIN"];
 
-const TABS = ["Overview", "Applications", "Groups", "Client Access", "Effective Access", "Diagnostics", "Audit History"] as const;
+const TABS = [
+  "Overview", "Applications", "Groups", "Entra Groups", "Client Access", "Effective Access", "Diagnostics", "Audit History",
+] as const;
 type Tab = (typeof TABS)[number];
 
 function useUserQueries(userId: number) {
@@ -212,43 +215,107 @@ function ModuleAssignmentEditor({
   );
 }
 
-/** Default employee access has no assignment row, so it gets its own control:
- * removing it records an exclusion for this user, restoring lifts that exclusion. */
-function DefaultAccessControl({
-  userId,
-  moduleKey,
-  moduleName,
-  state,
-  onChanged,
-}: {
-  userId: number;
-  moduleKey: string;
-  moduleName: string;
-  state: { kind: "held"; roleName: string } | { kind: "removed" };
-  onChanged: () => void;
-}) {
+/** Default employee access has no assignment row and cannot be removed: it is included for every
+ * eligible employee. Higher roles are assigned above and add to it. */
+function DefaultAccessNote({ moduleName, roleName }: { moduleName: string; roleName: string }) {
+  return (
+    <div
+      className="mt-2 rounded-lg border border-dt-border bg-dt-surface-warm px-4 py-2.5 text-sm text-dt-text-secondary"
+      data-testid="default-access-note"
+    >
+      {moduleName} standard access ({roleName}) is included for every employee. It is always on and cannot be removed;
+      any higher role assigned here adds to it.
+    </div>
+  );
+}
+
+/** Identity: directory verification, the employee record (BambooHR) and sign-in state. */
+function IdentityCard({ user, onVerified }: { user: AdminUserOut; onVerified: () => void }) {
   const [error, setError] = useState<string | null>(null);
-  const mutation = useMutation({
-    mutationFn: () =>
-      state.kind === "held" ? removeModuleAssignment(userId, moduleKey) : restoreDefaultAccess(userId, moduleKey),
+  const verify = useMutation({
+    mutationFn: () => verifyUserWithDirectory(user.id),
     onSuccess: () => {
       setError(null);
-      onChanged();
+      onVerified();
     },
-    onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Could not change default access."),
+    onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Could not verify with the directory."),
+  });
+  const reverify = user.directory_verified && user.employee_record !== "MATCHED" && user.employee_record !== "LEGACY";
+  return (
+    <Card className="mt-4 p-5" data-testid="identity-card">
+      <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-dt-text-secondary">Identity</p>
+      <IdentityBadges user={user} />
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt className="text-dt-text-secondary">Employee number</dt>
+        <dd>{user.employee_number ?? "—"}</dd>
+        <dt className="text-dt-text-secondary">Default employee access</dt>
+        <dd>{user.eligible_employee ? "Eligible" : "Not eligible"}</dd>
+      </dl>
+      {user.employee_record === "LEGACY" && (
+        <p className="mt-2 text-xs text-dt-text-secondary">
+          Eligible from before employee-record checks; access is kept while HR reconciliation is confirmed.
+        </p>
+      )}
+      {(!user.directory_verified || reverify) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => verify.mutate()} loading={verify.isPending}>
+            {user.directory_verified ? "Check employee record again" : "Verify with directory"}
+          </Button>
+          <p className="text-xs text-dt-text-secondary">
+            Confirms this profile against Microsoft Entra and BambooHR. Assignments, groups and client scopes are not changed.
+          </p>
+        </div>
+      )}
+      {error && <p className="mt-2 text-sm text-dt-danger">{error}</p>}
+    </Card>
+  );
+}
+
+/** Microsoft Entra group memberships, read only. They are separate from DijiOne access groups and grant nothing. */
+function EntraGroupsPanel({ user }: { user: AdminUserOut }) {
+  const query = useQuery({
+    queryKey: ["admin", "users", user.id, "entra-groups"],
+    queryFn: () => getEntraGroups(user.id),
+    enabled: Boolean(user.entra_object_id),
   });
   return (
-    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dt-border bg-dt-surface-warm px-4 py-2.5">
-      <p className="min-w-0 text-sm text-dt-text-secondary">
-        {state.kind === "held"
-          ? `Has default employee access to ${moduleName} (${state.roleName}) without an assignment.`
-          : `Default employee access to ${moduleName} has been removed for this user.`}
-        {error && <span className="ml-2 text-dt-danger">{error}</span>}
+    <Card className="p-5">
+      <p className="mb-1 text-sm font-semibold uppercase tracking-wide text-dt-text-secondary">Entra Groups</p>
+      <p className="mb-4 text-xs text-dt-text-secondary">
+        Read only, from Microsoft Entra. Entra groups are not DijiOne access groups and do not grant any DijiOne access;
+        membership is changed in Microsoft Entra, not here.
       </p>
-      <Button size="sm" variant="secondary" onClick={() => mutation.mutate()} loading={mutation.isPending}>
-        {state.kind === "held" ? "Remove default access" : "Restore default access"}
-      </Button>
-    </div>
+      {!user.entra_object_id && <p className="text-sm text-dt-text-secondary">Not linked to a Microsoft identity yet.</p>}
+      {query.isLoading && user.entra_object_id && <LoadingState label="Loading Entra groups…" />}
+      {query.isError && <ErrorState message="The directory could not be read." onRetry={() => query.refetch()} />}
+      {query.data && query.data.length === 0 && <p className="text-sm text-dt-text-secondary">No group memberships.</p>}
+      {query.data && query.data.length > 0 && (
+        <Table>
+          <Thead>
+            <tr>
+              <Th>Group</Th>
+              <Th>Type</Th>
+              <Th>Membership</Th>
+              <Th>Object ID</Th>
+              <Th>DijiOne mapping</Th>
+            </tr>
+          </Thead>
+          <tbody>
+            {query.data.map((g) => (
+              <Tr key={g.object_id}>
+                <Td>{g.display_name}</Td>
+                <Td>{g.group_type}</Td>
+                <Td>{g.membership === "DIRECT" ? "Direct" : "Inherited"}</Td>
+                <Td>
+                  <span className="font-mono text-xs">{g.object_id}</span>
+                </Td>
+                <Td>{g.dijione_mapping ?? "None"}</Td>
+              </Tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
   );
 }
 
@@ -358,7 +425,7 @@ export default function AdminUserDetailPage() {
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar name={user.full_name} size={44} />
+          <EmployeeAvatar path={user.entra_object_id ? userPhotoPath(user.id) : null} name={user.full_name} size={44} />
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-semibold text-dt-text-primary">{user.full_name}</h1>
             <p className="truncate text-sm text-dt-text-secondary">{user.email}</p>
@@ -428,6 +495,17 @@ export default function AdminUserDetailPage() {
           </p>
         </Card>
       )}
+      {tab === "Overview" && (
+        <IdentityCard
+          user={user}
+          onVerified={() => {
+            invalidate();
+            queryClient.invalidateQueries({ queryKey: ["admin", "users", userId, "effective-access"] });
+          }}
+        />
+      )}
+
+      {tab === "Entra Groups" && <EntraGroupsPanel user={user} />}
 
       {tab === "Applications" && (
         <div className="grid gap-4">
@@ -436,11 +514,9 @@ export default function AdminUserDetailPage() {
             const moduleRoles = roles.filter((r) => r.module_key === m.key).map((r) => ({ key: r.key, name: r.name }));
             const effective = effectiveQuery.data?.modules?.find((e) => e.module_key === m.key);
             const defaultSource = (effective?.sources ?? []).find((src) => src.type === "BASELINE");
-            const defaultState: { kind: "held"; roleName: string } | { kind: "removed" } | null = defaultSource
-              ? { kind: "held", roleName: roles.find((r) => r.module_key === m.key && r.key === defaultSource.role)?.name ?? defaultSource.role ?? "" }
-              : (effectiveQuery.data?.default_access_excluded ?? []).includes(m.key)
-                ? { kind: "removed" }
-                : null;
+            const defaultRoleName = defaultSource
+              ? roles.find((r) => r.module_key === m.key && r.key === defaultSource.role)?.name ?? defaultSource.role ?? ""
+              : null;
             const refreshAccess = () => {
               invalidate();
               queryClient.invalidateQueries({ queryKey: ["admin", "users", userId] });
@@ -470,15 +546,7 @@ export default function AdminUserDetailPage() {
                 }
                 onSaved={refreshAccess}
               />
-              {defaultState && (
-                <DefaultAccessControl
-                  userId={userId}
-                  moduleKey={m.key}
-                  moduleName={m.name}
-                  state={defaultState}
-                  onChanged={refreshAccess}
-                />
-              )}
+              {defaultRoleName !== null && <DefaultAccessNote moduleName={m.name} roleName={defaultRoleName} />}
               </div>
             );
           })}

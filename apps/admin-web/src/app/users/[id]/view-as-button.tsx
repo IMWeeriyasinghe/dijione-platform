@@ -32,10 +32,15 @@ export function ViewAsButton({ user, effective }: { user: AdminUserOut; effectiv
   }
 
   const modules = effective?.modules ?? [];
+  // Older platform-api answers carry no eligibility field: then the server alone decides.
+  const eligible = user.eligible_employee !== false;
+  const reason = !user.directory_verified
+    ? "Verify this profile with the directory to enable View as. Their access can still be previewed here."
+    : "Not matched to a BambooHR employee record, so View as is not available until HR reconciliation. Their access can still be previewed here.";
   return (
     <>
       <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-        <Eye className="mr-1.5 size-4" /> View as
+        <Eye className="mr-1.5 size-4" /> {eligible ? "View as" : "Preview access"}
       </Button>
       <Modal open={open} onClose={() => (starting ? undefined : setOpen(false))} title={`View as ${user.full_name}`}>
         <div className="flex flex-col gap-4">
@@ -63,12 +68,17 @@ export function ViewAsButton({ user, effective }: { user: AdminUserOut; effectiv
               </ul>
             )}
           </div>
+          {!eligible && (
+            <p className="text-sm text-dt-text-secondary" data-testid="view-as-preview-only">
+              {reason}
+            </p>
+          )}
           {error && <p className="text-sm text-dt-danger">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={starting}>
               Cancel
             </Button>
-            <Button onClick={() => void start()} loading={starting}>
+            <Button onClick={() => void start()} loading={starting} disabled={!eligible}>
               Start read-only session
             </Button>
           </div>

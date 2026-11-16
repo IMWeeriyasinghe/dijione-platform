@@ -11,10 +11,15 @@ count, best-effort so a TalentFlow outage never breaks administration.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.deps import get_bearer_token
-from app.services.platform_gateway import PlatformClient, call_platform_admin, get_platform_client
+from app.services.platform_gateway import (
+    PlatformClient,
+    call_platform_admin,
+    forward_platform_admin,
+    get_platform_client,
+)
 from app.services.talent_gateway import get_talent_client, pending_talent_requests
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -46,6 +51,81 @@ def create_user(
     platform: PlatformClient = Depends(get_platform_client),
 ) -> dict:
     return call_platform_admin(platform, "POST", "/api/platform/admin/users", bearer_token=bearer_token, json=payload)
+
+
+@router.get("/directory/users")
+def search_directory(
+    q: str = Query(min_length=2, max_length=64),
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> list[dict]:
+    return call_platform_admin(
+        platform, "GET", "/api/platform/admin/directory/users", bearer_token=bearer_token, params={"q": q}
+    )
+
+
+@router.get("/directory/users/{object_id}/photo")
+def directory_photo(
+    object_id: str,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(
+        platform, "GET", f"/api/platform/admin/directory/users/{object_id}/photo", bearer_token=bearer_token
+    )
+
+
+@router.post("/users/from-directory", status_code=201)
+def add_from_directory(
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    """201 with the new profile, or 409 with ``existing_user_id`` (passed through unchanged)."""
+    return forward_platform_admin(
+        platform, "POST", "/api/platform/admin/users/from-directory", bearer_token=bearer_token, json=payload
+    )
+
+
+@router.post("/users/{user_id}/verify-directory")
+def verify_directory(
+    user_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "POST", f"/api/platform/admin/users/{user_id}/verify-directory", bearer_token=bearer_token
+    )
+
+
+@router.post("/employee-records/reconcile")
+def reconcile_employee_records(
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "POST", "/api/platform/admin/employee-records/reconcile", bearer_token=bearer_token
+    )
+
+
+@router.get("/users/{user_id}/photo")
+def user_photo(
+    user_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(platform, "GET", f"/api/platform/admin/users/{user_id}/photo", bearer_token=bearer_token)
+
+
+@router.get("/users/{user_id}/entra-groups")
+def user_entra_groups(
+    user_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> list[dict]:
+    return call_platform_admin(
+        platform, "GET", f"/api/platform/admin/users/{user_id}/entra-groups", bearer_token=bearer_token
+    )
 
 
 @router.post("/view-as", status_code=201)

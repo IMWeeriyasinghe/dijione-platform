@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import httpx
 from auth_client_py import PlatformClient
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Response, status
 
 from app.core.config import get_settings
 
@@ -52,3 +52,28 @@ def call_platform_admin(
         ) from exc
     raise_for_platform_error(resp)
     return resp.json()
+
+
+_PASSED_HEADERS = ("cache-control",)
+
+
+def forward_platform_admin(
+    client: PlatformClient,
+    method: str,
+    path: str,
+    *,
+    bearer_token: str,
+    json: dict | None = None,
+    params: dict | None = None,
+) -> Response:
+    """Pass Platform Core's answer through unchanged: status, body and content type (images, and
+    error bodies that carry more than ``detail``, such as a duplicate's ``existing_user_id``)."""
+    try:
+        resp = client.request_admin(method, path, bearer_token=bearer_token, json=json, params=params)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Platform Core is unavailable: {exc}") from exc
+    headers = {h: resp.headers[h] for h in _PASSED_HEADERS if h in resp.headers}
+    return Response(
+        content=resp.content, status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/json"), headers=headers,
+    )

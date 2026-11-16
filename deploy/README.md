@@ -262,6 +262,37 @@ is eventually built: a `mailTransport`/`mailPolicy`/`mailSharedMailbox`/
 `mailAllowlist` set of bicep parameters, plus a deployment-wrapper
 preserve-then-override mechanism — never the parameters alone.
 
+## Directory read for platform-api (Microsoft Graph, managed identity, read only)
+
+platform-api reads the Entra directory (employee search, profile, photo, group memberships) with
+its **own system-assigned managed identity**; there is no secret. It needs two read-only Graph
+**application** permissions, granted once per environment by an operator with Privileged Role
+Administrator (or Cloud Application Administrator). They are not in bicep: app-role assignments to
+a managed identity are tenant objects.
+
+| Permission | Why |
+|---|---|
+| `User.Read.All` | search, profile (`/users`), photos (`/users/{id}/photos/96x96/$value`) |
+| `GroupMember.Read.All` | the user's group memberships and basic group properties (`memberOf`, `transitiveMemberOf`) |
+
+No `ProfilePhoto.Read.All` (covered by `User.Read.All`) and no write permission of any kind.
+
+```bash
+MI=$(az containerapp show -g rg-dijione-<env> -n platform-api --query identity.principalId -o tsv)
+GRAPH=$(az ad sp show --id 00000003-0000-0000-c000-000000000000 --query id -o tsv)
+ROLE=$(az ad sp show --id 00000003-0000-0000-c000-000000000000 \
+  --query "appRoles[?value=='User.Read.All'].id | [0]" -o tsv)          # then GroupMember.Read.All
+az rest --method POST --url "https://graph.microsoft.com/v1.0/servicePrincipals/$MI/appRoleAssignments" \
+  --body "{\"principalId\":\"$MI\",\"resourceId\":\"$GRAPH\",\"appRoleId\":\"$ROLE\"}"
+# verify
+az rest --method GET --url "https://graph.microsoft.com/v1.0/servicePrincipals/$MI/appRoleAssignments"
+# revoke: az rest --method DELETE --url ".../servicePrincipals/$MI/appRoleAssignments/<assignment id>"
+```
+
+Settings: `DIRECTORY_MODE=graph` and `PEOPLE_API_URL=http://people-api` on platform-api (declared
+in `main.bicep`). With `DIRECTORY_MODE=mock` (the default) the directory features answer from an
+empty in-memory directory; with the permission missing they answer 503 and nothing else breaks.
+
 ## Wave 4b — in-app Entra SSO (after the first DEV works)
 
 Set on `platform-api`: `AUTH_MODE=entra`, `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`,
