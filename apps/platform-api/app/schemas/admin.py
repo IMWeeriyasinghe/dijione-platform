@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ClientScopeOut(BaseModel):
@@ -54,6 +54,12 @@ class AdminUserOut(BaseModel):
     last_login_at: datetime | None
     created_at: datetime
     module_assignments: list[ModuleAssignmentOut]
+
+
+class AdminUserCreateIn(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    full_name: str = Field(min_length=1, max_length=255)
+    title: str | None = Field(default=None, max_length=255)
 
 
 class UpdateUserStatusIn(BaseModel):

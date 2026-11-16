@@ -107,3 +107,35 @@ def test_new_guest_is_created_inactive_and_never_internal(db):
         resolve_entra_user(db, member(oid="oid-g", email="g@other.example", acct=1))
     user = db.query(User).filter_by(entra_object_id="oid-g").one()
     assert not user.is_active and not user.internal_employee
+
+
+# --- D3: the email match ignores case ---------------------------------------
+
+
+def test_pre_provisioned_account_links_when_the_stored_email_differs_in_case(db):
+    user = account(db, email="Person@Dijital.Example")
+    resolved = resolve_entra_user(db, member())
+    assert resolved.id == user.id
+    assert resolved.entra_object_id == "oid-1"
+    assert db.query(User).count() == 1
+
+
+def test_guest_cannot_claim_an_account_by_changing_the_case_of_the_email(db):
+    user = account(db, email="Person@Dijital.Example")
+    with pytest.raises(EntraIdentityConflictError) as exc:
+        resolve_entra_user(db, member(acct=1))
+    assert "could not be linked" in str(exc.value)
+    db.rollback()
+    assert db.get(User, user.id).entra_object_id is None
+    assert db.query(User).count() == 1
+
+
+def test_sign_in_is_refused_when_two_accounts_share_the_email_ignoring_case(db):
+    first = account(db, email="Person@Dijital.Example")
+    second = account(db, email=EMAIL)
+    with pytest.raises(EntraIdentityConflictError):
+        resolve_entra_user(db, member())
+    db.rollback()
+    assert db.get(User, first.id).entra_object_id is None
+    assert db.get(User, second.id).entra_object_id is None
+    assert db.query(User).count() == 2

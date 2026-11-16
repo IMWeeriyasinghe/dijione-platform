@@ -1,17 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-import { listAdminModules, listAdminUsers } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Plus } from "lucide-react";
+import { ApiError, createAdminUser, listAdminModules, listAdminUsers } from "@/lib/api";
 import { PLATFORM_ROLE_LABELS } from "@dijione/contracts";
 import {
   Avatar,
+  Button,
   EmptyState,
   ErrorState,
+  FormField,
   Input,
   LoadingState,
+  Modal,
   PageHeader,
   Select,
   StatusBadge,
@@ -25,7 +29,61 @@ import {
 
 const PLATFORM_ROLE_OPTIONS = ["PLATFORM_USER", "PLATFORM_ADMIN", "SUPER_ADMIN"];
 
+/** Adds an internal employee who has not signed in yet, so access can be
+ * assigned in advance. The server enforces the internal-domain rule. */
+function AddUserModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: number) => void }) {
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => createAdminUser({ email: email.trim(), full_name: fullName.trim(), title: title.trim() || undefined }),
+    onSuccess: (created) => {
+      setEmail("");
+      setFullName("");
+      setTitle("");
+      setError(null);
+      onClose();
+      onCreated(created.id);
+    },
+    onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Could not add this user."),
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add User">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-dt-text-secondary">
+          Add an employee before their first sign-in. They hold no access until you assign it, and the account links
+          to their Microsoft sign-in the first time they use DijiOne.
+        </p>
+        <FormField label="Work email" htmlFor="add-user-email" required>
+          <Input id="add-user-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </FormField>
+        <FormField label="Full name" htmlFor="add-user-name" required>
+          <Input id="add-user-name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        </FormField>
+        <FormField label="Job title" htmlFor="add-user-title">
+          <Input id="add-user-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </FormField>
+        {error && <p className="text-sm text-dt-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!email.trim() || !fullName.trim()}>
+            Add User
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function AdminUsersPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
   const query = useQuery({ queryKey: ["admin", "users"], queryFn: listAdminUsers });
   const modulesQuery = useQuery({ queryKey: ["admin", "modules"], queryFn: listAdminModules });
   const [search, setSearch] = useState("");
@@ -53,6 +111,11 @@ export default function AdminUsersPage() {
       <PageHeader
         title="Users"
         description="Every DijiOne identity, platform role, and module access — activate/deactivate, assign platform roles, and manage module access from a user's detail page."
+        action={
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="size-4" /> Add User
+          </Button>
+        }
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -144,6 +207,14 @@ export default function AdminUsersPage() {
           </tbody>
         </Table>
       )}
+      <AddUserModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={(id) => {
+          queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+          router.push(`/users/${id}`);
+        }}
+      />
     </div>
   );
 }

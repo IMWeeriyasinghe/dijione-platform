@@ -32,6 +32,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole
 from app.models.access_group import (
     AccessGroup,
@@ -94,6 +95,10 @@ class ForbiddenError(AdminError):
     distinct from FastAPI dependency-level permission gates — used for
     business-rule checks that need the *target* record loaded first (e.g.
     SUPER_ADMIN lockout), which a plain Depends() can't express."""
+
+
+class ConflictError(AdminError):
+    """The request collides with an existing record (HTTP 409)."""
 
 
 class LastSuperAdminError(ForbiddenError):
@@ -259,6 +264,40 @@ class AdminService:
         user = self.db.get(User, user_id)
         if user is None:
             raise NotFoundError(f"User {user_id} not found")
+        return self.to_user_out(user)
+
+    def create_user(self, *, actor: User, email: str, full_name: str, title: str | None = None) -> AdminUserOut:
+        """Pre-provision an internal employee who has not signed in yet, so access
+        can be assigned in advance. The account holds no credentials: it is linked
+        to a Microsoft identity at the first verified Entra sign-in with this email
+        (see ``entra_service.resolve_entra_user``)."""
+        email = email.strip().lower()
+        full_name = full_name.strip()
+        title = (title or "").strip() or None
+        local, _, domain = email.rpartition("@")
+        if not local or "." not in domain or any(c.isspace() for c in email) or email.count("@") != 1:
+            raise AdminError("Enter a valid email address.")
+        if not full_name:
+            raise AdminError("Full name is required.")
+        allowed = {d.strip().lower() for d in get_settings().entra_internal_email_domains.split(",") if d.strip()}
+        if not allowed:
+            raise AdminError("Users cannot be added here: no internal email domain is configured for this environment.")
+        if domain not in allowed:
+            raise AdminError(f"Only internal email addresses can be added ({', '.join(sorted(allowed))}).")
+        if self.db.execute(select(User.id).where(func.lower(User.email) == email)).first() is not None:
+            raise ConflictError(f"A user with the email {email} already exists.")
+
+        user = User(
+            email=email, full_name=full_name, title=title,
+            platform_role=PlatformRole.PLATFORM_USER.value, identity_provider="ENTRA", is_active=True,
+        )
+        self.db.add(user)
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="user.created", entity_type="User", entity_id=user.id,
+            new_state={"email": email, "full_name": full_name, "platform_role": user.platform_role, "is_active": True},
+        )
+        self.db.commit()
         return self.to_user_out(user)
 
     def _active_super_admin_count(self, *, excluding_user_id: int | None = None) -> int:

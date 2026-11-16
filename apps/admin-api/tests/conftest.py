@@ -68,6 +68,13 @@ def _build_stub_platform_app() -> FastAPI:
         _require_admin_token(authorization)
         return [STUB_USERS[1]]
 
+    @stub.post("/api/platform/admin/users", status_code=201)
+    def create_user(payload: dict, authorization: str | None = Header(default=None)) -> dict:
+        _require_admin_token(authorization)
+        if payload["email"] == "taken@example.com":
+            raise HTTPException(409, "A user with the email taken@example.com already exists.")
+        return {**STUB_USERS[1], "id": 77, "email": payload["email"], "full_name": payload["full_name"]}
+
     @stub.get("/api/platform/admin/users/{user_id}")
     def get_user(user_id: int, authorization: str | None = Header(default=None)) -> dict:
         _require_admin_token(authorization)

@@ -39,6 +39,15 @@ def list_users(
     return call_platform_admin(platform, "GET", "/api/platform/admin/users", bearer_token=bearer_token)
 
 
+@router.post("/users", status_code=201)
+def create_user(
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(platform, "POST", "/api/platform/admin/users", bearer_token=bearer_token, json=payload)
+
+
 @router.get("/users/{user_id}")
 def get_user(
     user_id: int,

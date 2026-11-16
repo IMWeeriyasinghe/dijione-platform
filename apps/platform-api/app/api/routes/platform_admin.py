@@ -29,6 +29,7 @@ from app.schemas.admin import (
     AdminModuleOut,
     AdminPermissionOut,
     AdminRoleOut,
+    AdminUserCreateIn,
     AdminUserOut,
     ApplicationDetailOut,
     AuditLogOut,
@@ -40,7 +41,7 @@ from app.schemas.admin import (
     UpdatePlatformRoleIn,
     UpdateUserStatusIn,
 )
-from app.services.admin_service import AdminError, AdminService, ForbiddenError, NotFoundError
+from app.services.admin_service import AdminError, AdminService, ConflictError, ForbiddenError, NotFoundError
 
 router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
 
@@ -52,6 +53,8 @@ def _handle(action):
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except ForbiddenError as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except AdminError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
@@ -86,6 +89,19 @@ def create_client(
 @router.get("/users", response_model=list[AdminUserOut])
 def list_users(_admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)) -> list[AdminUserOut]:
     return AdminService(db).list_users()
+
+
+@router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: AdminUserCreateIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AdminUserOut:
+    return _handle(
+        lambda: AdminService(db).create_user(
+            actor=admin, email=payload.email, full_name=payload.full_name, title=payload.title
+        )
+    )
 
 
 @router.get("/users/{user_id}", response_model=AdminUserOut)

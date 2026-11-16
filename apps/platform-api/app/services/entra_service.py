@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -45,7 +45,10 @@ class EntraIdentityConflictError(EntraLoginRefusedError):
 
     def __init__(self) -> None:
         super().__init__(created=False)
-        self.args = ("This sign-in cannot be matched to a DijiOne account. Contact a platform administrator.",)
+        self.args = (
+            "A DijiOne account exists for this email address but could not be linked to this Microsoft sign-in. "
+            "Ask a platform administrator to check the account in DijiOne Admin.",
+        )
 
 
 def _email_from_claims(claims: dict) -> str | None:
@@ -90,12 +93,21 @@ def resolve_entra_user(db: Session, claims: dict) -> User:
 
     created = False
     if user is None and email is not None:
-        user = db.execute(select(User).where(User.email == email)).scalars().first()
+        # Stored addresses may differ in case from the Entra claim; a case-sensitive
+        # miss here would create a second, inactive account for the same person.
+        matches = db.execute(select(User).where(func.lower(User.email) == email)).scalars().all()
+        if len(matches) > 1:
+            logger.warning("Entra sign-in refused: %d accounts share this email ignoring case", len(matches))
+            raise EntraIdentityConflictError
+        user = matches[0] if matches else None
         if user is not None:
             # An email claim is not an identity. Only a proven member of our tenant may
             # claim an account that has never been linked to another Entra object.
-            if user.entra_object_id is not None or not is_internal_employee(claims):
-                logger.warning("Entra sign-in refused: email matches account %s it cannot claim", user.id)
+            if user.entra_object_id is not None:
+                logger.warning("Entra sign-in refused: account %s is linked to another Entra identity", user.id)
+                raise EntraIdentityConflictError
+            if not is_internal_employee(claims):
+                logger.warning("Entra sign-in refused: identity not proven internal, cannot claim account %s", user.id)
                 raise EntraIdentityConflictError
             user.entra_object_id = oid
             user.identity_provider = "ENTRA"

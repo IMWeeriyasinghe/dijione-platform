@@ -122,3 +122,16 @@ def test_talent_api_unavailable_degrades_admin_gracefully():
     finally:
         app.dependency_overrides.clear()
         platform_httpx.close()
+
+
+def test_create_user_is_forwarded_with_its_status_and_errors(api_client):
+    created = api_client.post("/api/admin/users", json={"email": "new@example.com", "full_name": "New"}, headers=VALID)
+    assert created.status_code == 201
+    assert (created.json()["id"], created.json()["email"]) == (77, "new@example.com")
+
+    taken = api_client.post("/api/admin/users", json={"email": "taken@example.com", "full_name": "T"}, headers=VALID)
+    assert taken.status_code == 409
+    assert "already exists" in taken.json()["detail"]
+
+    denied = api_client.post("/api/admin/users", json={"email": "new@example.com", "full_name": "New"}, headers=INVALID)
+    assert denied.status_code == 403

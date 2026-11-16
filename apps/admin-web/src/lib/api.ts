@@ -19,6 +19,8 @@ export { ApiError } from "@dijione/auth-client";
 // rewrites (and, when reached through shell-web, via its gateway rewrites).
 export const getAdminDashboard = () => request<AdminDashboardOut>("/api/admin/dashboard");
 export const listAdminUsers = () => request<AdminUserOut[]>("/api/admin/users");
+export const createAdminUser = (payload: { email: string; full_name: string; title?: string }) =>
+  request<AdminUserOut>("/api/admin/users", { method: "POST", body: JSON.stringify(payload) });
 export const getAdminUser = (id: number) => request<AdminUserOut>(`/api/admin/users/${id}`);
 export const getEffectiveAccess = (id: number) =>
   request<EffectiveAccessOut>(`/api/admin/users/${id}/effective-access`);
