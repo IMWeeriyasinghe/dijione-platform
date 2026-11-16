@@ -33,6 +33,8 @@ export type AdminUserOut = {
   last_login_at: string | null;
   created_at: string;
   module_assignments: ModuleAssignmentOut[];
+  /** A protected administrator: the platform role and active state cannot be changed. */
+  protected?: boolean;
 };
 
 export type AdminModuleOut = {

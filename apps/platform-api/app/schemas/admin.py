@@ -54,6 +54,8 @@ class AdminUserOut(BaseModel):
     last_login_at: datetime | None
     created_at: datetime
     module_assignments: list[ModuleAssignmentOut]
+    # True for a protected administrator: the platform role and active state cannot be changed.
+    protected: bool = False
 
 
 class AdminUserCreateIn(BaseModel):

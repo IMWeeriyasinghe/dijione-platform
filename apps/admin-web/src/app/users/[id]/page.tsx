@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Lock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import {
   ApiError,
@@ -372,6 +372,8 @@ export default function AdminUserDetailPage() {
             variant={user.is_active ? "danger" : "secondary"}
             onClick={() => statusMutation.mutate(!user.is_active)}
             loading={statusMutation.isPending}
+            disabled={user.protected === true && user.is_active}
+            title={user.protected ? "Protected Super Admin accounts cannot be deactivated." : undefined}
           >
             {user.is_active ? "Deactivate" : "Activate"}
           </Button>
@@ -393,7 +395,8 @@ export default function AdminUserDetailPage() {
             <Select
               value={user.platform_role}
               onChange={(e) => roleMutation.mutate(e.target.value)}
-              disabled={roleMutation.isPending}
+              disabled={roleMutation.isPending || user.protected === true}
+              aria-label="Platform role"
               className="max-w-xs"
             >
               {PLATFORM_ROLE_OPTIONS.map((r) => (
@@ -402,10 +405,24 @@ export default function AdminUserDetailPage() {
                 </option>
               ))}
             </Select>
-            <p className="text-xs text-dt-text-secondary">
-              Granting or revoking SUPER_ADMIN / PLATFORM_ADMIN requires SUPER_ADMIN privileges.
-            </p>
+            {user.protected ? (
+              <span
+                data-testid="protected-super-admin"
+                className="inline-flex items-center gap-1.5 rounded-full border border-dt-border bg-dt-cream px-3 py-1 text-sm font-semibold text-dt-text-primary"
+              >
+                <Lock className="size-4" aria-hidden="true" /> Protected Super Admin
+              </span>
+            ) : (
+              <p className="text-xs text-dt-text-secondary">
+                Granting or revoking SUPER_ADMIN / PLATFORM_ADMIN requires SUPER_ADMIN privileges.
+              </p>
+            )}
           </div>
+          {user.protected && (
+            <p className="mt-2 text-xs text-dt-text-secondary">
+              This account&apos;s Super Admin privilege is protected and cannot be removed by other administrators.
+            </p>
+          )}
           <p className="mt-2 text-xs text-dt-text-secondary">
             Identity provider: {user.identity_provider} · Last login: {user.last_login_at ? formatDateTime(user.last_login_at) : "Never"}
           </p>
