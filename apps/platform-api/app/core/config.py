@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     platform_jwt_secret: str = "dev-only-insecure-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 12
+    # Longest a sign-in may be extended by POST /api/auth/refresh before the user
+    # must authenticate again.
+    session_max_minutes: int = 60 * 12
 
     # Dev-only shared secret trusted service-to-service calls present on the
     # `X-Internal-Token` header (talent-api/birthday-api/spark-api writing

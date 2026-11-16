@@ -24,11 +24,25 @@ def get_current_user(
     except InvalidTokenError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
 
+    # Supplier-portal and external-link sessions are separate actor populations whose
+    # ``sub`` is not a DijiOne user id; they must never resolve to a platform user here.
+    if payload.get("supplier") is not None or payload.get("external") is not None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+
     user_id = int(payload["sub"])
     user = UserRepository(db).get_by_id(user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
     return user
+
+
+def get_session_payload(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    _user: User = Depends(get_current_user),
+) -> dict:
+    """The verified payload of the caller's session token (after ``get_current_user``
+    has accepted it)."""
+    return decode_session_token(credentials.credentials)
 
 
 def require_platform_admin(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
