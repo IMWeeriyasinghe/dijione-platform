@@ -27,7 +27,7 @@ from app.models.user import User, UserModuleRole
 from app.services.authorization_service import AuthorizationService
 from app.services.claims_service import build_claims
 from app.services.entra_service import resolve_entra_user
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, internal_headers
 from tests.test_atwork_registration import MANAGER_PERMS, USER_PERMS, _register_module
 
 TENANT = "tenant-1"
@@ -389,6 +389,37 @@ def test_entra_groups_are_shown_read_only_and_grant_nothing(api_client, db, admi
 def test_other_applications_stay_explicit_only(db, directory, people):
     for module_key in ("talent-flow", "birthday", "onsite"):
         assert db.get(ModuleBaselineRole, module_key) is None
+
+
+# --- service-to-service operations ---------------------------------------------------------------
+
+
+def test_the_internal_readiness_check_returns_flags_not_names(api_client, directory, people):
+    resp = api_client.get("/api/platform/internal/directory/check", params={"email": "ana@dijital.example"},
+                          headers=internal_headers())
+    assert resp.status_code == 200
+    assert resp.json() == {"directory_readable": True, "matches": 1, "internal_member": True, "employee_id_present": True,
+                           "group_count": 2, "groups_readable": True, "photo_present": True,
+                           "employee_record": "MATCHED", "employee_number_present": True}
+    assert api_client.get("/api/platform/internal/directory/check", params={"email": "ana@dijital.example"}).status_code == 401
+    directory.unavailable = True
+    down = api_client.get("/api/platform/internal/directory/check", params={"email": "ana@dijital.example"},
+                          headers=internal_headers()).json()
+    assert down["directory_readable"] is False
+
+
+def test_internal_reconciliation_is_audited_without_an_actor(api_client, db, directory, people):
+    user = User(email="ana@dijital.example", full_name="A", is_active=True, internal_employee=True,
+                identity_provider="ENTRA", entra_object_id=OID["ana"], employee_record_status="LEGACY")
+    db.add(user)
+    db.commit()
+    assert api_client.post("/api/platform/internal/employee-records/reconcile").status_code == 401
+    resp = api_client.post("/api/platform/internal/employee-records/reconcile", headers=internal_headers())
+    assert resp.status_code == 200 and resp.json()["matched"] == 1
+    db.expire_all()
+    assert db.get(User, user.id).employee_record_status == "MATCHED"
+    entry = db.query(AuditLog).filter_by(action="employee_records.reconciled").one()
+    assert entry.actor_id is None
 
 
 # --- the directory is read-only ----------------------------------------------------------------

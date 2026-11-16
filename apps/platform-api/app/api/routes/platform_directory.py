@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_platform_admin, require_platform_permission
+from app.api.deps import get_current_user, require_internal_service, require_platform_admin, require_platform_permission
 from app.db.session import get_db
 from app.integrations.directory import DirectoryUnavailable, Photo
 from app.models.user import User
@@ -110,6 +110,51 @@ def user_entra_groups(user_id: int, _admin: User = Depends(require_platform_admi
         ]
 
     return _run(action)
+
+
+INTERNAL = "/api/platform/internal"
+
+
+@router.get(f"{INTERNAL}/directory/check", dependencies=[Depends(require_internal_service)])
+def directory_check(email: str = Query(min_length=3, max_length=255)) -> dict:
+    """Operational readiness check for one address (service-to-service only): can this service read
+    the directory with its managed identity, and what would verification find? Read only; returns
+    flags and counts, no names."""
+    from app.integrations.directory import get_directory_provider, is_internal_member
+    from app.integrations.people import get_employee_record_checker
+
+    out: dict = {"directory_readable": False}
+    try:
+        provider = get_directory_provider()
+        matches = provider.find_by_email(email)
+        out.update(directory_readable=True, matches=len(matches))
+        if len(matches) == 1:
+            person = matches[0]
+            out["internal_member"] = is_internal_member(person)
+            out["employee_id_present"] = bool(person.employee_id)
+            try:
+                out["group_count"] = len(provider.groups(person.object_id))
+                out["groups_readable"] = True
+            except DirectoryUnavailable:
+                out["groups_readable"] = False
+            try:
+                out["photo_present"] = provider.photo(person.object_id) is not None
+            except DirectoryUnavailable:
+                out["photo_present"] = None
+            record = get_employee_record_checker().check(email=person.email, employee_id=person.employee_id)
+            out["employee_record"] = record.status
+            out["employee_number_present"] = bool(record.employee_number)
+    except DirectoryUnavailable as exc:
+        out["error"] = str(exc)
+    return out
+
+
+@router.post(f"{INTERNAL}/employee-records/reconcile", response_model=EmployeeRecordReconcileOut,
+             dependencies=[Depends(require_internal_service)])
+def reconcile_employee_records_internal(db: Session = Depends(get_db)):
+    """Scheduled-style reconciliation of employee records (no human actor). Records BambooHR status
+    only: never revokes, never touches assignments; LEGACY people who are not found are reported."""
+    return _run(lambda: DirectoryService(db).reconcile_employee_records(actor=None))
 
 
 @router.get("/api/auth/me/photo")

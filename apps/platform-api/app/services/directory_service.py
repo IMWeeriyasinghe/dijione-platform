@@ -259,9 +259,11 @@ class DirectoryService:
 
     # --- reconciliation --------------------------------------------------------------------
 
-    def reconcile_employee_records(self, *, actor: User) -> dict:
+    def reconcile_employee_records(self, *, actor: User | None) -> dict:
         """Check every identity-verified person against BambooHR. Never revokes (see
-        apply_employee_record); reports LEGACY people who were not matched for HR reconciliation."""
+        apply_employee_record); reports LEGACY people who were not matched for HR reconciliation.
+        ``actor`` is None for the service-to-service (scheduled-style) run."""
+        actor_id = actor.id if actor is not None else None
         self.records.invalidate()
         if self.records.check(email="", employee_id=None).status == UNKNOWN:
             raise DirectoryUnavailable("Employee records (BambooHR) could not be read; nothing was changed.")
@@ -279,12 +281,12 @@ class DirectoryService:
                 summary["hr_exceptions"].append({"user_id": user.id, "email": user.email, "full_name": user.full_name})
             if user.employee_record_status != previous:
                 self.audit.log(
-                    actor_id=actor.id, action="user.employee_record_checked", entity_type="User", entity_id=user.id,
+                    actor_id=actor_id, action="user.employee_record_checked", entity_type="User", entity_id=user.id,
                     subject_user_id=user.id, previous_state={"employee_record": previous},
                     new_state={"employee_record": user.employee_record_status, "employee_number": user.employee_number},
                 )
         self.audit.log(
-            actor_id=actor.id, action="employee_records.reconciled", entity_type="Platform", entity_id=0,
+            actor_id=actor_id, action="employee_records.reconciled", entity_type="Platform", entity_id=0,
             new_state={k: v for k, v in summary.items() if k != "hr_exceptions"},
             metadata={"hr_exceptions": [e["user_id"] for e in summary["hr_exceptions"]]},
         )
