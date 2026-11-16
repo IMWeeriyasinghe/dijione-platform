@@ -27,26 +27,45 @@ export type ViewAsSessionData = {
   returnTo: string;
 };
 
+// Once this page has been in a View-as session it is locked to it: when the session ends (expiry, a 401,
+// Exit) the page has no credentials at all until it navigates away, and never quietly falls back to the
+// administrator's staff token while a read-only banner may still be on screen. A new page load starts
+// unlocked, so the administrator's own pages work normally after leaving.
+let lockedToViewAs = false;
+
+/** For tests only: forget that this page was in a View-as session. */
+export function resetViewAsTabLock() {
+  lockedToViewAs = false;
+}
+
+/** The stored View-as session, **including one whose time has run out** (see ``viewAsExpired``). */
 export function getViewAsSession(): ViewAsSessionData | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(VIEW_AS_STORAGE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw) as ViewAsSessionData;
-    if (!data.token || Date.parse(data.expiresAt) <= Date.now()) {
-      window.sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
-      return null;
-    }
+    if (!data.token) return null;
+    lockedToViewAs = true;
     return data;
   } catch {
     return null;
   }
 }
 
+export function viewAsExpired(data: ViewAsSessionData): boolean {
+  const ends = Date.parse(data.expiresAt);
+  return Number.isNaN(ends) || ends <= Date.now();
+}
+
 export function setViewAsSession(data: ViewAsSessionData | null) {
   if (typeof window === "undefined") return;
-  if (data) window.sessionStorage.setItem(VIEW_AS_STORAGE_KEY, JSON.stringify(data));
-  else window.sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
+  if (data) {
+    lockedToViewAs = true;
+    window.sessionStorage.setItem(VIEW_AS_STORAGE_KEY, JSON.stringify(data));
+  } else {
+    window.sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
+  }
 }
 
 /** Fired in this tab when a View-as session ends without the person asking (expired, ended elsewhere, access changed). */
@@ -59,7 +78,9 @@ export function endViewAsLocally() {
 }
 
 export function getToken(): string | null {
-  return getViewAsSession()?.token ?? getStaffToken();
+  const viewAs = getViewAsSession();
+  if (viewAs) return viewAsExpired(viewAs) ? null : viewAs.token; // an expired session sends nothing
+  return lockedToViewAs ? null : getStaffToken(); // a View-as page never falls back to the staff token
 }
 
 export function setToken(token: string | null) {

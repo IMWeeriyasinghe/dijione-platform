@@ -79,8 +79,8 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
         if not claims.is_active:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+        _enforce_revocation(request, claims)  # first: a revoked session is refused without being reported
         _enforce_view_as(request, claims)
-        _enforce_revocation(request, claims)
         return claims
 
     return _get_claims

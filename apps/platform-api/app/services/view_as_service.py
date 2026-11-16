@@ -81,6 +81,11 @@ class ViewAsService:
             select(ViewAsSession).where(ViewAsSession.admin_user_id == actor.id, ViewAsSession.ended_at.is_(None))
         ).scalars():
             previous.ended_at, previous.end_reason = now, "replaced"
+            self.audit.log(
+                actor_id=actor.id, action="view_as.ended", entity_type="ViewAsSession", entity_id=previous.id,
+                subject_user_id=previous.target_user_id,
+                new_state={"session_id": previous.public_id, "reason": "replaced"},
+            )
 
         # Version first, then claims (see app/api/routes/auth.py::issue_user_session).
         target_version = self.db.execute(

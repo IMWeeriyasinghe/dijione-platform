@@ -33,7 +33,24 @@ BLOCKED_HEADER = {"X-Auth-Error": "view_as_read_only"}
 
 _active: ContextVar[bool] = ContextVar("dijione_view_as_active", default=False)
 _guard_installed = False
-_WRITE_SQL = re.compile(r"^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke)\b", re.IGNORECASE)
+_LEADING_NOISE = re.compile(r"\A(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|\Z))*", re.DOTALL)
+_WRITE_VERB = (
+    r"(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke"
+    r"|call|exec|execute|do|copy|vacuum|analyze|reindex)"
+)
+_STARTS_WITH_WRITE = re.compile(rf"\A{_WRITE_VERB}\b", re.IGNORECASE)
+_WRITE_INSIDE_WITH = re.compile(r"\b(?:insert|update|delete|merge)\b", re.IGNORECASE)
+# Reports of refusals are sent from short-lived threads; never more than this many at once.
+_audit_slots = threading.BoundedSemaphore(8)
+
+
+def is_write_sql(statement: str) -> bool:
+    """True for SQL that changes data or schema: a statement that starts with a write verb (after any
+    leading whitespace or comments), or a ``WITH`` statement containing INSERT/UPDATE/DELETE/MERGE."""
+    body = statement[_LEADING_NOISE.match(statement).end():]
+    if _STARTS_WITH_WRITE.match(body):
+        return True
+    return body[:4].lower() == "with" and bool(_WRITE_INSIDE_WITH.search(body))
 
 
 class ViewAsWriteBlocked(HTTPException):
@@ -58,6 +75,7 @@ def install_read_only_guard() -> None:
         return
     try:
         from sqlalchemy import event
+        from sqlalchemy.engine import Engine
         from sqlalchemy.orm import Session
         from sqlalchemy.sql import Delete, Insert, Update
         from sqlalchemy.sql.elements import TextClause
@@ -76,9 +94,18 @@ def install_read_only_guard() -> None:
             return
         statement = state.statement
         if isinstance(statement, (Insert, Update, Delete)) or (
-            isinstance(statement, TextClause) and _WRITE_SQL.match(statement.text)
+            isinstance(statement, TextClause) and is_write_sql(statement.text)
         ):
             logger.warning("refused a database statement during a read-only View-as session")
+            raise ViewAsWriteBlocked()
+
+    # The last line of defence sits at the cursor, so it also stops writes that bypass the Session:
+    # ``Session.connection().execute``, an Engine or Connection used directly, comment-prefixed SQL,
+    # and ``WITH ... INSERT``.
+    @event.listens_for(Engine, "before_cursor_execute")
+    def _refuse_cursor_write(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+        if _active.get() and is_write_sql(statement):
+            logger.warning("refused a database statement at the cursor during a read-only View-as session")
             raise ViewAsWriteBlocked()
 
     _guard_installed = True
@@ -96,18 +123,24 @@ def record_blocked_attempt(claims, method: str, path: str) -> None:
     )
     if not base or not secret:
         return
+    if not _audit_slots.acquire(blocking=False):  # a burst of refusals must not become a thread flood
+        logger.warning("View-as refusal not sent to the audit log: too many reports in flight")
+        return
 
     def send() -> None:
-        from auth_client_py.platform_client import PlatformClient
+        try:
+            from auth_client_py.platform_client import PlatformClient
 
-        PlatformClient(base, secret, timeout=3.0, caller="view-as-guard").record_audit_event(
-            actor_id=view_as.actor_id or None,
-            action="view_as.blocked",
-            entity_type="User",
-            entity_id=claims.user_id,
-            subject_user_id=claims.user_id,
-            new_state={"session_id": view_as.session_id, "method": method, "path": path},
-            metadata={"event": str(uuid.uuid4())},
-        )
+            PlatformClient(base, secret, timeout=3.0, caller="view-as-guard").record_audit_event(
+                actor_id=view_as.actor_id or None,
+                action="view_as.blocked",
+                entity_type="User",
+                entity_id=claims.user_id,
+                subject_user_id=claims.user_id,
+                new_state={"session_id": view_as.session_id, "method": method, "path": path},
+                metadata={"event": str(uuid.uuid4())},
+            )
+        finally:
+            _audit_slots.release()
 
     threading.Thread(target=send, name="view-as-audit", daemon=True).start()

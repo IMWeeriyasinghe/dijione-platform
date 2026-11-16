@@ -2,6 +2,7 @@
 never writes the database, and every refusal is audited."""
 
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -67,6 +68,35 @@ def read_that_runs_sql(claims: AuthClaims = Depends(get_claims)) -> dict:
     return {"ok": True}
 
 
+@app.get("/read-that-uses-the-connection")
+def read_that_uses_the_connection(claims: AuthClaims = Depends(get_claims)) -> dict:
+    with Session(engine) as s:
+        s.connection().execute(insert(Note).values(body="via connection"))
+        s.commit()
+    return {"ok": True}
+
+
+@app.get("/read-that-comments-first")
+def read_that_comments_first(claims: AuthClaims = Depends(get_claims)) -> dict:
+    with engine.begin() as c:
+        c.exec_driver_sql("/* looks harmless */ -- really\nINSERT INTO notes (body) VALUES ('sneaky')")
+    return {"ok": True}
+
+
+@app.get("/read-that-uses-a-cte")
+def read_that_uses_a_cte(claims: AuthClaims = Depends(get_claims)) -> dict:
+    with engine.begin() as c:
+        c.exec_driver_sql("WITH x AS (SELECT 1 AS v) INSERT INTO notes (body) SELECT 'cte' FROM x")
+    return {"ok": True}
+
+
+@app.get("/read-that-selects-for-update")
+def read_that_selects_for_update(claims: AuthClaims = Depends(get_claims)) -> dict:
+    with engine.begin() as c:
+        rows = c.exec_driver_sql("SELECT body FROM notes WHERE body = 'update' OR body LIKE '%delete%'").all()
+    return {"rows": len(rows)}
+
+
 @app.get("/read-that-selects")
 def read_that_selects(claims: AuthClaims = Depends(get_claims)) -> dict:
     with Session(engine) as s:
@@ -101,6 +131,8 @@ def unlisted(claims: AuthClaims = Depends(get_claims)) -> dict:
 POLICY = {
     "GET /read": "READ", "GET /read-that-writes": "READ", "GET /read-that-executes": "READ",
     "GET /read-that-runs-sql": "READ", "GET /read-that-selects": "READ", "GET /read-that-notifies": "READ",
+    "GET /read-that-uses-the-connection": "READ", "GET /read-that-comments-first": "READ",
+    "GET /read-that-uses-a-cte": "READ", "GET /read-that-selects-for-update": "READ",
     "POST /write": "WRITE", "POST /own": "OWN", "GET /export": "SENSITIVE",
 }
 client = TestClient(app)
@@ -188,7 +220,11 @@ def test_the_view_as_flag_does_not_leak_into_the_next_request():
 # --- the database backstop --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("path", ["/read-that-writes", "/read-that-executes", "/read-that-runs-sql"])
+@pytest.mark.parametrize(
+    "path",
+    ["/read-that-writes", "/read-that-executes", "/read-that-runs-sql", "/read-that-uses-the-connection",
+     "/read-that-comments-first", "/read-that-uses-a-cte"],
+)
 def test_a_read_route_that_tries_to_write_is_stopped_and_nothing_is_saved(path):
     with engine.begin() as c:
         c.execute(text("INSERT INTO notes (body) VALUES ('keep')"))
@@ -196,6 +232,72 @@ def test_a_read_route_that_tries_to_write_is_stopped_and_nothing_is_saved(path):
     assert resp.status_code == 403 and resp.headers["x-auth-error"] == "view_as_read_only"
     with engine.connect() as c:
         assert [r[0] for r in c.execute(text("SELECT body FROM notes"))] == ["keep"]
+
+
+@pytest.mark.parametrize(
+    ("sql", "is_write"),
+    [
+        ("SELECT * FROM notes", False),
+        ("  select body from notes where body = 'update'", False),
+        ("SELECT * FROM notes FOR UPDATE", False),
+        ("WITH x AS (SELECT 1) SELECT * FROM x", False),
+        ("PRAGMA table_info(notes)", False),
+        ("SAVEPOINT sa_1", False),
+        ("INSERT INTO notes (body) VALUES ('x')", True),
+        ("  update notes set body = 'x'", True),
+        ("DELETE FROM notes", True),
+        ("/* c */ INSERT INTO notes VALUES (1)", True),
+        ("-- c\nUPDATE notes SET body = 'x'", True),
+        ("WITH x AS (SELECT 1) INSERT INTO notes SELECT * FROM x", True),
+        ("WITH d AS (DELETE FROM notes RETURNING *) SELECT * FROM d", True),
+        ("DROP TABLE notes", True),
+        ("CREATE TABLE t (a int)", True),
+        ("TRUNCATE notes", True),
+        ("CALL do_something()", True),
+    ],
+)
+def test_what_counts_as_a_database_write(sql, is_write):
+    assert va.is_write_sql(sql) is is_write
+
+
+def test_reads_that_mention_write_words_in_their_data_are_not_blocked():
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO notes (body) VALUES ('update'), ('delete me')"))
+    resp = client.get("/read-that-selects-for-update", headers=token())
+    assert resp.status_code == 200 and resp.json() == {"rows": 2}
+
+
+def test_reports_of_refusals_are_bounded_not_a_thread_per_request(monkeypatch):
+    started = []
+    monkeypatch.setenv("PLATFORM_API_URL", "http://platform-api")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    release = threading.Event()
+
+    def slow(self, **kwargs):
+        started.append(1)
+        release.wait(5)
+        return True
+
+    monkeypatch.setattr(PlatformClient, "record_audit_event", slow)
+    for _ in range(40):
+        assert client.post("/write", headers=token()).status_code == 403
+    release.set()
+    deadline = time.time() + 3
+    while len(started) < 8 and time.time() < deadline:
+        time.sleep(0.01)
+    assert 1 <= len(started) <= 8  # excess reports are dropped (and logged), the requests are still refused
+
+
+def test_a_revoked_view_as_session_is_refused_without_being_reported(monkeypatch):
+    sent = []
+    monkeypatch.setenv("PLATFORM_API_URL", "http://platform-api")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    monkeypatch.setattr(PlatformClient, "record_audit_event", lambda self, **kw: sent.append(kw) or True)
+    guard = RevocationGuard(lambda etag: (200, "e", {EMPLOYEE: (9, True)}))
+    guard.refresh_once()
+    set_guard(guard)
+    assert client.post("/write", headers=token()).status_code == 401  # revoked first
+    assert sent == []
 
 
 def test_reads_are_not_affected_by_the_database_guard():

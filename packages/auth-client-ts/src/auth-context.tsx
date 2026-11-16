@@ -173,9 +173,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener(SESSION_ENDED_EVENT, onSessionEnded);
     window.addEventListener(VIEW_AS_ENDED_EVENT, onViewAsEnded);
     if (!viewAsAtMount) document.addEventListener("visibilitychange", onVisible);
+
+    // A View-as session has a fixed end. When it comes (or if it has already passed, for a page opened late)
+    // end it here and go back, so the banner never outlives the session it describes.
+    let viewAsTimer: ReturnType<typeof setTimeout> | undefined;
+    if (viewAsAtMount) {
+      const remaining = Date.parse(viewAsAtMount.expiresAt) - Date.now();
+      if (Number.isNaN(remaining) || remaining <= 0) endViewAsLocally();
+      else viewAsTimer = setTimeout(() => endViewAsLocally(), remaining);
+    }
     return () => {
       cancelled = true;
       scheduleRefresh.current = null;
+      if (viewAsTimer) clearTimeout(viewAsTimer);
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener(SESSION_ENDED_EVENT, onSessionEnded);

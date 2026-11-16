@@ -27,6 +27,16 @@ for someone.
 
 There is **no refresh**: when a session ends, the administrator starts a new one.
 
+**What "ended" means where.** Ending (Exit, replacement) is immediate on `platform-api` and in the browser tab,
+which discards the token. The application APIs hold no per-session state, so a token that was *copied out of the
+tab* would still be read-only-valid in them until it expires (at most 30 minutes after it was issued), or sooner if
+the employee's or administrator's access changes (with revocation enabled). Because it is read-only for every
+route, that residual window can read, never change.
+
+**A View-as page never falls back to the administrator's own session.** Once a page has been in a View-as session,
+and the session ends or expires, the page sends no credentials at all until it navigates away (to where the
+administrator started); a new page load is the administrator's own, normal session again.
+
 ## The token
 
 The token is signed for the **employee** (`sub` and every authorization claim are theirs), so each
@@ -54,9 +64,10 @@ Implemented once in `packages/auth-client-py` and used by every API that verifie
    refused with 403. This runs whatever the revocation setting, and a token that says `view_as` without
    its detail claim is still read-only. The HTTP method is never trusted alone: a `GET` that writes is not
    `READ` (a test per service enforces this).
-2. **Database backstop.** An admitted request sets a context flag. A SQLAlchemy listener then refuses any
-   flush, `INSERT`/`UPDATE`/`DELETE` or DDL in that request, even from a `READ` handler that writes by
-   mistake.
+2. **Database backstop.** An admitted request sets a context flag. SQLAlchemy listeners then refuse any
+   flush, `INSERT`/`UPDATE`/`DELETE`, DDL or procedure call in that request, at the Session and at the cursor
+   (so raw connections, comment-prefixed SQL and `WITH ... INSERT` are caught too), even from a `READ` handler
+   that writes by mistake.
 3. **No side effects.** `PlatformClient` sends no audit events or notifications while the flag is set, so a
    `READ` route cannot cause a notification, background job or approval.
 

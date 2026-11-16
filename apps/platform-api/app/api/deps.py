@@ -25,7 +25,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 # Claims that only tokens for other actor populations carry (supplier-portal
 # sessions, external client links).
-_FOREIGN_ACTOR_CLAIMS = ("supplier", "external")
+_FOREIGN_ACTOR_CLAIMS = ("supplier", "external", "view_as")
 
 
 def _is_staff_session(payload: dict, user: User) -> bool:

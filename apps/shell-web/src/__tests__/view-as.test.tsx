@@ -11,6 +11,7 @@ import {
   getToken,
   getViewAsSession,
   request,
+  resetViewAsTabLock,
   setToken,
   setViewAsSession,
   startViewAs,
@@ -47,6 +48,7 @@ beforeEach(() => {
   }));
   window.localStorage.clear();
   window.sessionStorage.clear();
+  resetViewAsTabLock();
   setToken("staff-token");
 });
 
@@ -54,6 +56,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   window.localStorage.clear();
   window.sessionStorage.clear();
+  resetViewAsTabLock();
 });
 
 describe("which token a tab uses", () => {
@@ -62,14 +65,48 @@ describe("which token a tab uses", () => {
     setViewAsSession(SESSION);
     expect(getToken()).toBe("view-as-token");
     expect(getStaffToken()).toBe("staff-token"); // untouched
+  });
+
+  it("never falls back to the staff token once the page has been in a View-as session", () => {
+    setViewAsSession(SESSION);
     endViewAsLocally();
+    expect(getViewAsSession()).toBeNull();
+    expect(getToken()).toBeNull(); // no credentials at all until the page navigates away
+    expect(getStaffToken()).toBe("staff-token"); // still stored, for the next page load
+    resetViewAsTabLock(); // a new page load
     expect(getToken()).toBe("staff-token");
   });
 
-  it("ignores an expired View-as session", () => {
+  it("sends nothing once the session has expired, rather than the staff token", () => {
     setViewAsSession({ ...SESSION, expiresAt: new Date(Date.now() - 1000).toISOString() });
-    expect(getViewAsSession()).toBeNull();
-    expect(getToken()).toBe("staff-token");
+    expect(getViewAsSession()).not.toBeNull(); // still known, so it can be ended properly
+    expect(getToken()).toBeNull();
+    expect(getStaffToken()).toBe("staff-token");
+  });
+
+  it("a request made after the session expired carries no credentials, ends the session, and never uses the staff token", async () => {
+    setViewAsSession({ ...SESSION, expiresAt: new Date(Date.now() - 1000).toISOString() });
+    const ended = vi.fn();
+    window.addEventListener(VIEW_AS_ENDED_EVENT, ended);
+    script["POST /api/talent/requests/1/messages"] = { status: 401 };
+    await expect(request("/api/talent/requests/1/messages", { method: "POST" })).rejects.toBeInstanceOf(ApiError);
+    expect(log).toEqual(["POST /api/talent/requests/1/messages "]); // empty bearer: nothing sent
+    expect(log.join()).not.toContain("staff-token");
+    expect(ended).toHaveBeenCalledTimes(1);
+    // ...and a request made afterwards, before the page has navigated away, still sends nothing.
+    script["GET /api/x"] = { status: 401 };
+    await expect(request("/api/x")).rejects.toBeInstanceOf(ApiError);
+    expect(log.join()).not.toContain("staff-token");
+    window.removeEventListener(VIEW_AS_ENDED_EVENT, ended);
+  });
+
+  it("a request after a 401 ended the session still never uses the staff token", async () => {
+    setViewAsSession(SESSION);
+    script["GET /api/a"] = { status: 401 };
+    await expect(request("/api/a")).rejects.toBeInstanceOf(ApiError);
+    script["POST /api/b"] = { status: 401 };
+    await expect(request("/api/b", { method: "POST" })).rejects.toBeInstanceOf(ApiError);
+    expect(log.some((l) => l.includes("staff-token"))).toBe(false);
   });
 
   it("keeps the View-as token in this tab's sessionStorage, never in localStorage", () => {
@@ -209,6 +246,31 @@ describe("the provider in a View-as tab", () => {
     script["GET /api/auth/me"] = { status: 200, body: EMPLOYEE };
     render(<AuthProvider><Probe /></AuthProvider>);
     expect(await screen.findByTestId("view-as-banner")).toHaveTextContent(/It ends at/);
+  });
+
+  it("a page opened after the session expired ends it, goes back, and never touches the staff session", async () => {
+    setViewAsSession({ ...SESSION, expiresAt: new Date(Date.now() - 1000).toISOString() });
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/admin/users/7"));
+    expect(getViewAsSession()).toBeNull();
+    expect(getStaffToken()).toBe("staff-token");
+    expect(log.some((l) => l.includes("staff-token"))).toBe(false);
+  });
+
+  it("ends the session when its time runs out, while the page is open, and then sends nothing", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    setViewAsSession({ ...SESSION, expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() });
+    script["GET /api/auth/me"] = { status: 200, body: EMPLOYEE };
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByTestId("view-as-banner")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000 + 1000); });
+    expect(getViewAsSession()).toBeNull();
+    expect(assign).toHaveBeenCalledWith("/admin/users/7");
+    script["POST /api/x"] = { status: 401 };
+    await expect(request("/api/x", { method: "POST" })).rejects.toBeInstanceOf(ApiError);
+    expect(log.some((l) => l.includes("staff-token"))).toBe(false); // the staff session is not used by this page
+    vi.useRealTimers();
   });
 
   it("does not schedule a refresh timer for a View-as token", async () => {
