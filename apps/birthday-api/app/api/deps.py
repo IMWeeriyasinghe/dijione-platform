@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
-from auth_client_py.fastapi_deps import fresh_if_sensitive, make_get_claims, make_verify_internal_request
+from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.revocation import register_route_policy
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import MODULE_BIRTHDAY
+from app.core.revocation_policy import ROUTE_POLICY
 from app.db.session import get_db
 from app.models.supplier_user import SupplierUser
 
@@ -17,6 +19,7 @@ _settings = get_settings()
 # Platform Core authorization integration seam (CR §9): birthday-api
 # authorizes exactly the way talent-api does — decoding Platform Core's
 # signed JWT claims locally, no database, no synchronous call back.
+register_route_policy(ROUTE_POLICY)  # what each route may do when revocation information is limited
 get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # Gate for service-to-service calls with no human actor behind them (the
@@ -65,10 +68,7 @@ def get_birthday_scope(claims: AuthClaims = Depends(get_claims)) -> BirthdayScop
 def require_birthday_permission(permission_key: str):
     """Reusable factory for DijiBirthday route-level permission gates."""
 
-    def _dependency(
-        scope: BirthdayScope = Depends(get_birthday_scope),
-        _fresh: None = Depends(fresh_if_sensitive(permission_key)),
-    ) -> BirthdayScope:
+    def _dependency(scope: BirthdayScope = Depends(get_birthday_scope)) -> BirthdayScope:
         if not scope.has(permission_key):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, f"Missing required permission: {permission_key}"

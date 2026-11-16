@@ -13,7 +13,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from auth_client_py.claims import AuthClaims, InvalidTokenError, decode_claims
-from auth_client_py.revocation import FRESH, RESTRICTED, SAFE_METHODS, SENSITIVE_SUFFIXES, get_guard
+from auth_client_py.revocation import EXEMPT, FRESH, OWN, READ, RESTRICTED, SENSITIVE, get_guard, route_class
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -90,31 +90,20 @@ def _enforce_revocation(request: Request, claims: AuthClaims) -> None:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Session revoked", headers={"X-Auth-Error": "session_revoked"}
         )
-    if guard.state() == RESTRICTED and request.method not in SAFE_METHODS:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Revocation information is unavailable; changes are temporarily disabled",
-            headers={"Retry-After": "30", "X-Auth-Error": "revocation_restricted"},
-        )
-
-
-def require_fresh_revocation() -> None:
-    """Dependency for sensitive routes: refuse unless revocation information is current.
-    Add it where an action must not rely on a snapshot that may have missed a revocation."""
-    guard = get_guard()
-    if guard is not None and guard.state() != FRESH:
+    route = request.scope.get("route")
+    klass = route_class(request.method, getattr(route, "path", None))
+    if klass in (READ, OWN, EXEMPT):
+        return
+    state = guard.state()
+    if klass == SENSITIVE and state != FRESH:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Revocation information is not current; this action is temporarily unavailable",
             headers={"Retry-After": "30", "X-Auth-Error": "revocation_stale"},
         )
-
-
-def _no_check() -> None:
-    return None
-
-
-def fresh_if_sensitive(permission_key: str) -> Callable[[], None]:
-    """``require_fresh_revocation`` for permissions ending in ``.manage``, ``.admin``,
-    ``.approve`` or ``.export``; a no-op dependency for every other permission."""
-    return require_fresh_revocation if permission_key.endswith(SENSITIVE_SUFFIXES) else _no_check
+    if state == RESTRICTED:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Revocation information is unavailable; changes are temporarily disabled",
+            headers={"Retry-After": "30", "X-Auth-Error": "revocation_restricted"},
+        )

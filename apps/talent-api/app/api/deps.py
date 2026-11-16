@@ -15,17 +15,20 @@ from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
 from auth_client_py.claims import ModuleRoleClaims
-from auth_client_py.fastapi_deps import fresh_if_sensitive, make_get_claims, make_verify_internal_request
+from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.revocation import register_route_policy
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import EXTERNAL_SESSION_PERMISSIONS, MODULE_TALENT_FLOW
+from app.core.revocation_policy import ROUTE_POLICY
 from app.db.session import get_db
 from app.models.magic_link_grant import MagicLinkGrant
 from app.repositories.client_repo import ClientRepository
 
 _settings = get_settings()
+register_route_policy(ROUTE_POLICY)  # what each route may do when revocation information is limited
 get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # The external magic-link session decoder — a DELIBERATELY separate trust
@@ -162,10 +165,7 @@ def require_customer_success_scope(scope: TalentScope = Depends(get_talent_scope
 def require_talent_permission(permission_key: str):
     """Reusable factory for DijiTalentFlow route-level permission gates."""
 
-    def _dependency(
-        scope: TalentScope = Depends(get_talent_scope),
-        _fresh: None = Depends(fresh_if_sensitive(permission_key)),
-    ) -> TalentScope:
+    def _dependency(scope: TalentScope = Depends(get_talent_scope)) -> TalentScope:
         if not scope.has(permission_key):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, f"Missing required permission: {permission_key}"

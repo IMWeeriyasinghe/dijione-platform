@@ -11,12 +11,23 @@ the process, whatever happens to the feed. What ageing affects is how far the sn
 can be trusted to be COMPLETE:
 
     FRESH       refreshed within ``fresh_seconds``                       -> normal
-    STALE       older than that, within ``restricted_seconds``           -> normal, except
-                                                                          sensitive routes
-    RESTRICTED  never loaded (cold start) or older than                  -> read-only for
-                ``restricted_seconds``                                    non-sensitive
-                                                                          routes; sensitive
-                                                                          routes refused
+    STALE       older than that, within ``restricted_seconds``           -> SENSITIVE routes refused
+    RESTRICTED  never loaded (cold start) or older than                  -> only READ and OWN routes
+                ``restricted_seconds``                                    served
+
+What a route may do is decided by an explicit per-service policy (``register_route_policy``),
+never by its HTTP method alone: a GET can change state, and a POST can be harmless.
+
+    READ       reads that expose nothing sensitive            served in every state
+    OWN        a person recording or withdrawing their own    served in every state
+               data (clocking in, withdrawing a request)
+    WRITE      ordinary changes                               refused when RESTRICTED
+    SENSITIVE  anything administrative, approving, sending    served only when FRESH
+               outside, exporting, or exposing personal data
+               in bulk
+    EXEMPT     does not authenticate a user (health, public)  not subject to revocation
+
+A route missing from a registered policy is treated as SENSITIVE.
 
 Revocations are created only by platform-api, so while it is down none can appear that a
 replica has not already seen (apart from the last refresh interval).
@@ -44,9 +55,34 @@ STALE = "STALE"
 RESTRICTED = "RESTRICTED"
 
 FEED_PATH = "/api/platform/internal/access-versions"
-# Permission keys ending in one of these mark an action as sensitive.
-SENSITIVE_SUFFIXES = (".manage", ".admin", ".approve", ".export")
+
+READ = "READ"
+OWN = "OWN"
+WRITE = "WRITE"
+SENSITIVE = "SENSITIVE"
+EXEMPT = "EXEMPT"
+ROUTE_CLASSES = frozenset({READ, OWN, WRITE, SENSITIVE, EXEMPT})
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+_route_policy: dict[str, str] | None = None
+
+
+def register_route_policy(policy: dict[str, str]) -> None:
+    """Install this service's route policy: ``"METHOD /path/{template}"`` -> class."""
+    unknown = set(policy.values()) - ROUTE_CLASSES
+    if unknown:
+        raise ValueError(f"unknown route classes: {sorted(unknown)}")
+    global _route_policy
+    _route_policy = dict(policy)
+
+
+def route_class(method: str, route_path: str | None) -> str:
+    """The class of a route. With no policy registered a service falls back to the HTTP
+    method (reads READ, everything else WRITE); with one, an unlisted route is SENSITIVE."""
+    method = "GET" if method == "HEAD" else method
+    if _route_policy is None:
+        return READ if method in SAFE_METHODS else WRITE
+    return _route_policy.get(f"{method} {route_path}", SENSITIVE)
 
 # fetch(etag) -> (status, etag, users). ``users`` maps user id -> (access_version, active)
 # on a 200 and is None on a 304.
@@ -99,7 +135,7 @@ class RevocationGuard:
         if status == 304 and current is not None:
             self._snapshot = _Snapshot(current.users, current.etag, now)
         elif status == 200 and users is not None:
-            self._snapshot = _Snapshot(users, etag, now)  # replaced as a whole
+            self._snapshot = _Snapshot(self._merge(current.users if current else {}, users), etag, now)
         else:
             self._failures += 1
             logger.warning("revocation feed returned an unusable response (status %s)", status)
@@ -108,6 +144,24 @@ class RevocationGuard:
         self._failures = 0
         self._note_state()
         return True
+
+    @staticmethod
+    def _merge(known: dict[int, tuple[int, bool]], incoming: dict[int, tuple[int, bool]]) -> dict[int, tuple[int, bool]]:
+        """Fold a new snapshot into what is known, never going backwards.
+
+        A user's version only ever rises, and every change to an account's status raises it,
+        so an entry is accepted only if its version is higher, or the same with the same
+        status. An older or truncated snapshot (a database restored from backup, a lagging
+        replica) therefore cannot lower a version, reactivate an inactive account, or make
+        a known revocation disappear."""
+        merged = dict(known)
+        for user_id, entry in incoming.items():
+            old = merged.get(user_id)
+            if old is None or entry[0] > old[0] or (entry[0] == old[0] and entry[1] == old[1]):
+                merged[user_id] = entry
+            else:
+                logger.warning("revocation snapshot entry for user %s ignored: it would move backwards", user_id)
+        return merged
 
     def age_seconds(self) -> float | None:
         snap = self._snapshot
