@@ -235,12 +235,46 @@ def test_stale_blocks_sensitive_routes_only_and_restricted_blocks_all_changes(fe
     assert client.post("/sensitive", headers=token(ALICE, av=2)).status_code == 503
 
 
-def test_without_a_registered_policy_the_method_decides(feed, clock):
+def test_with_no_policy_registered_every_route_is_sensitive_never_method_based(feed, clock):
     revocation._route_policy = None
-    assert route_class("GET", "/x") == "READ" and route_class("HEAD", "/x") == "READ"
-    assert route_class("POST", "/x") == "WRITE" and route_class("DELETE", "/x") == "WRITE"
-    register_route_policy({"GET /x": "SENSITIVE"})
-    assert route_class("GET", "/x") == "SENSITIVE" and route_class("GET", "/y") == "SENSITIVE"
+    for method in ("GET", "HEAD", "POST", "DELETE"):
+        assert route_class(method, "/x") == "SENSITIVE"
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.down = True
+    clock.advance(600)  # STALE
+    guard.refresh_once()
+    resp = client.get("/read", headers=token(ALICE, av=2))  # a plain GET, but nothing says it is harmless
+    assert resp.status_code == 503 and resp.headers["x-auth-error"] == "revocation_stale"
+
+
+def test_a_route_missing_from_a_registered_policy_is_sensitive():
+    register_route_policy({"GET /x": "READ"})
+    assert route_class("GET", "/x") == "READ"
+    assert route_class("GET", "/y") == "SENSITIVE" and route_class("POST", "/x") == "SENSITIVE"
+
+
+def test_enabling_revocation_without_a_route_policy_stops_the_service_starting(monkeypatch):
+    revocation._route_policy = None
+    monkeypatch.setattr(revocation, "_configured", False)
+    monkeypatch.setattr(revocation, "_guard", None)
+    monkeypatch.setenv("REVOCATION_ENABLED", "true")
+    monkeypatch.setenv("PLATFORM_API_URL", "http://platform-api")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    with pytest.raises(RuntimeError, match="route policy"):
+        revocation.get_guard()
+    monkeypatch.setattr(revocation, "_configured", True)  # leave no half-configured state behind
+
+
+def test_enabling_revocation_without_the_feed_address_stops_the_service_starting(monkeypatch):
+    monkeypatch.setattr(revocation, "_configured", False)
+    monkeypatch.setattr(revocation, "_guard", None)
+    monkeypatch.setenv("REVOCATION_ENABLED", "true")
+    monkeypatch.delenv("PLATFORM_API_URL", raising=False)
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    with pytest.raises(RuntimeError, match="PLATFORM_API_URL"):
+        revocation.get_guard()
+    monkeypatch.setattr(revocation, "_configured", True)
 
 
 def test_a_policy_with_an_unknown_class_is_rejected():

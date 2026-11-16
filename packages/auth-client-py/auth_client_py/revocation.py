@@ -27,7 +27,9 @@ never by its HTTP method alone: a GET can change state, and a POST can be harmle
                in bulk
     EXEMPT     does not authenticate a user (health, public)  not subject to revocation
 
-A route missing from a registered policy is treated as SENSITIVE.
+A route missing from a registered policy is treated as SENSITIVE, and so is every route when
+no policy has been registered at all. Enabling revocation without a registered policy stops
+the service from starting. There is no fallback to the HTTP method.
 
 Revocations are created only by platform-api, so while it is down none can appear that a
 replica has not already seen (apart from the last refresh interval).
@@ -62,7 +64,6 @@ WRITE = "WRITE"
 SENSITIVE = "SENSITIVE"
 EXEMPT = "EXEMPT"
 ROUTE_CLASSES = frozenset({READ, OWN, WRITE, SENSITIVE, EXEMPT})
-SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 _route_policy: dict[str, str] | None = None
 
@@ -77,12 +78,16 @@ def register_route_policy(policy: dict[str, str]) -> None:
 
 
 def route_class(method: str, route_path: str | None) -> str:
-    """The class of a route. With no policy registered a service falls back to the HTTP
-    method (reads READ, everything else WRITE); with one, an unlisted route is SENSITIVE."""
+    """The class of a route; SENSITIVE for any route the policy does not list, and for every
+    route when no policy is registered. The HTTP method never decides."""
     method = "GET" if method == "HEAD" else method
     if _route_policy is None:
-        return READ if method in SAFE_METHODS else WRITE
+        return SENSITIVE
     return _route_policy.get(f"{method} {route_path}", SENSITIVE)
+
+
+def has_route_policy() -> bool:
+    return _route_policy is not None
 
 # fetch(etag) -> (status, etag, users). ``users`` maps user id -> (access_version, active)
 # on a 200 and is None on a 304.
@@ -269,6 +274,10 @@ def get_guard() -> RevocationGuard | None:
             secret = os.environ.get("INTERNAL_SERVICE_SECRET", "")
             if not url or not secret:
                 raise RuntimeError("REVOCATION_ENABLED needs PLATFORM_API_URL and INTERNAL_SERVICE_SECRET")
+            if _route_policy is None:
+                raise RuntimeError(
+                    "REVOCATION_ENABLED needs a route policy: call register_route_policy() before make_get_claims()"
+                )
             guard = RevocationGuard(
                 http_fetch(url, secret),
                 refresh_seconds=float(os.environ.get("REVOCATION_REFRESH_SECONDS", "30")),
