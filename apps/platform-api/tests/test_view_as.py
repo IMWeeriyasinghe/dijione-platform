@@ -220,3 +220,25 @@ def test_a_token_naming_someone_elses_session_is_refused(db, world, api_client):
         view_as={"session_id": started["session_id"], "actor_id": world["super_admin"].id, "actor_name": "x", "actor_av": 0},
     )
     assert api_client.get("/api/auth/me", headers=_bearer(forged)).status_code == 401  # session is for another employee
+
+
+# --- refusals reported by the applications --------------------------------------------------------------
+
+
+def test_a_refused_view_as_attempt_reported_by_an_application_lands_in_the_employees_history(db, world, api_client):
+    from tests.conftest import internal_headers
+
+    resp = api_client.post(
+        "/api/platform/internal/audit-events",
+        headers=internal_headers(),
+        json={
+            "actor_id": world["super_admin"].id, "action": "view_as.blocked", "entity_type": "User",
+            "entity_id": world["ta_user"].id, "subject_user_id": world["ta_user"].id,
+            "new_state": {"session_id": "S-1", "method": "POST", "path": "/api/talent/requests"},
+        },
+    )
+    assert resp.status_code == 201
+    history = api_client.get(
+        f"/api/platform/admin/audit?user_id={world['ta_user'].id}", headers=auth_headers(api_client, "test-super-admin")
+    ).json()
+    assert any(e["action"] == "view_as.blocked" and e["actor_id"] == world["super_admin"].id for e in history)

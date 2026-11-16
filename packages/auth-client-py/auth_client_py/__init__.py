@@ -4,6 +4,7 @@ from auth_client_py.claims import (
     InvalidTokenError,
     ModuleRoleClaims,
     SupplierClaims,
+    ViewAsClaims,
     decode_claims,
 )
 from auth_client_py.correlation import (
@@ -30,6 +31,7 @@ __all__ = [
     "AuthClaims",
     "ModuleRoleClaims",
     "SupplierClaims",
+    "ViewAsClaims",
     "ExternalClaims",
     "InvalidTokenError",
     "RevocationGuard",

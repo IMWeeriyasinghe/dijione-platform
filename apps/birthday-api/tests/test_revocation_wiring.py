@@ -175,3 +175,44 @@ def test_bulk_personal_data_is_sensitive_not_read():
         "GET /api/birthday/suppliers/{supplier_id}/users", "GET /api/birthday/orders", "GET /api/birthday/orders/{order_id}",
     ):
         assert ROUTE_POLICY[key] == "SENSITIVE", key
+
+
+# --- View-as: a read-only simulation of another employee ---------------------------------------
+
+
+def _view_as_headers():
+    now = datetime.now(UTC)
+    body = {
+        "sub": str(USER_ID), "iat": now, "exp": now + timedelta(minutes=30), "iss": "dijione-dev-identity",
+        "is_active": True, "full_name": "Employee", "email": "employee@example.com", "av": 0,
+        "platform_role": "PLATFORM_USER", "platform_permissions": [], "module_roles": {}, "actor_type": "view_as",
+        "view_as": {"session_id": "S-1", "actor_id": 99, "actor_name": "Admin", "actor_av": 0},
+    }
+    return {"Authorization": "Bearer " + jwt.encode(body, SECRET, algorithm="HS256")}
+
+
+def test_a_view_as_session_can_reach_only_read_routes_of_this_service(api_client, db):
+    """Every route that authenticates a user: a View-as token is refused unless the route is a GET
+    classified READ. The employee in the token has no module access, so a READ route may answer
+    403/404 for that reason, but never with the read-only refusal."""
+    routes = _routes_requiring_a_token(api_client)
+    assert routes
+    refused = admitted = 0
+    for method, path in routes:
+        resp = api_client.request(method, path, headers=_view_as_headers())
+        key = next((k for k in ROUTE_POLICY if k.split(" ", 1)[0] == method and _matches(k.split(" ", 1)[1], path)), None)
+        flag = resp.headers.get("x-auth-error")
+        if key is not None and method == "GET" and ROUTE_POLICY[key] in ("READ", "EXEMPT"):
+            assert flag != "view_as_read_only", f"{key} is READ yet a View-as session was refused"
+            admitted += 1
+        elif key is not None and ROUTE_POLICY[key] != "EXEMPT":  # EXEMPT routes authenticate no user
+            assert resp.status_code == 403 and flag == "view_as_read_only", f"{key}: {resp.status_code} {flag}"
+            refused += 1
+    assert refused >= 1 and admitted >= 0
+
+
+def test_no_route_of_this_service_is_ever_open_to_a_view_as_session_for_changes(api_client, db):
+    for key, klass in ROUTE_POLICY.items():
+        method = key.split(" ", 1)[0]
+        if method != "GET":
+            assert klass != "READ", key  # a change is never READ, so a View-as session can never make one
