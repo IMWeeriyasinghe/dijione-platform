@@ -4,13 +4,41 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.security import InvalidTokenError, decode_session_token
+from app.core.security import (
+    SESSION_ACTOR_CLAIM,
+    SESSION_ACTOR_STAFF,
+    InvalidTokenError,
+    decode_session_token,
+)
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
 from app.services.authorization_service import AuthorizationService
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+
+# Claims that only tokens for other actor populations carry (supplier-portal
+# sessions, external client links).
+_FOREIGN_ACTOR_CLAIMS = ("supplier", "external")
+
+
+def _is_staff_session(payload: dict, user: User) -> bool:
+    """Positive proof that a verified token is this DijiOne user's own session.
+
+    The signature and issuer are shared with supplier-portal tokens, so they
+    prove only that a DijiOne service signed the token. A staff session must:
+    carry no claim of another actor population; be marked ``actor_type=staff``
+    (tokens issued before that marker existed carry none and are accepted on the
+    remaining checks until they expire); and name the same email address as the
+    user record its ``sub`` points at, which binds the token to that account
+    rather than to whichever account happens to share the number."""
+    if any(payload.get(claim) is not None for claim in _FOREIGN_ACTOR_CLAIMS):
+        return False
+    if payload.get(SESSION_ACTOR_CLAIM, SESSION_ACTOR_STAFF) != SESSION_ACTOR_STAFF:
+        return False
+    email = payload.get("email")
+    return isinstance(email, str) and email.strip().lower() == user.email.strip().lower()
 
 
 def get_current_user(
@@ -21,13 +49,15 @@ def get_current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
     try:
         payload = decode_session_token(credentials.credentials)
-    except InvalidTokenError as exc:
+        user_id = int(payload["sub"])
+    except (InvalidTokenError, KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
 
-    user_id = int(payload["sub"])
     user = UserRepository(db).get_by_id(user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+    if not _is_staff_session(payload, user):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     return user
 
 

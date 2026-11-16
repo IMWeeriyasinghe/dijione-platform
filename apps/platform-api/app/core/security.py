@@ -115,6 +115,14 @@ def get_auth_provider() -> AuthProvider:
 _session_provider = DevAuthProvider()
 
 
+# Marks a token as a DijiOne staff session. Other services sign tokens for other
+# actor populations (supplier-portal users) with the same secret and issuer, and
+# their numeric ``sub`` is not a DijiOne user id, so Platform Core accepts a
+# token as a user session only when it says so itself.
+SESSION_ACTOR_CLAIM = "actor_type"
+SESSION_ACTOR_STAFF = "staff"
+
+
 def issue_session_token(user_id: int, **claims: object) -> str:
     """Mint the *DijiOne* session token every service consumes (HS256, signed
     authorization claims, issuer ``dijione-dev-identity``). This is issued by
@@ -122,7 +130,7 @@ def issue_session_token(user_id: int, **claims: object) -> str:
     id_token is verified, then this DijiOne token is issued from it, so
     talent-api/birthday-api/spark-api and packages/auth-client-py need no
     change. (The name kept for the issuer string is historical.)"""
-    return _session_provider.issue_token(user_id, **claims)
+    return _session_provider.issue_token(user_id, **{**claims, SESSION_ACTOR_CLAIM: SESSION_ACTOR_STAFF})
 
 
 def decode_session_token(token: str) -> dict:
