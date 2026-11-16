@@ -72,9 +72,24 @@ class ViewAsService:
             raise ViewAsNotFound("View as is not enabled in this environment")
         self._require_authorised(actor)
         target = self.db.get(User, target_user_id)
-        if target is None or target.id == actor.id or not target.is_active or not target.internal_employee:
-            # One answer for every reason, so the endpoint does not reveal who exists or why not.
-            raise ViewAsNotFound("That user cannot be viewed: choose an active internal employee other than yourself")
+        # The caller is a Super Admin who can already see this user in the Admin Center, so naming the
+        # reason reveals nothing new. The conditions themselves are unchanged.
+        if target is None:
+            raise ViewAsNotFound("That user does not exist.")
+        if target.id == actor.id:
+            raise ViewAsNotFound("You cannot view as yourself.")
+        if not target.is_active:
+            raise ViewAsNotFound("That user is inactive. View as is available for active internal employees only.")
+        if not target.internal_employee and target.entra_object_id is not None:
+            raise ViewAsNotFound(
+                "That user's last Microsoft sign-in was not verified as an internal employee (for example a guest "
+                "account), so View as is not available for them."
+            )
+        if not target.internal_employee:
+            raise ViewAsNotFound(
+                "That user has not yet signed in to DijiOne with their Microsoft account, so DijiOne has not verified "
+                "them as an internal employee. View as becomes available after their first sign-in."
+            )
 
         now = datetime.now(UTC)
         for previous in self.db.execute(
