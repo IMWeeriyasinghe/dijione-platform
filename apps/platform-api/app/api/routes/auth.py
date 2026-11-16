@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session_payload
@@ -41,7 +42,14 @@ def issue_user_session(user: User, db: Session, *, session_started_at: datetime 
     started = session_started_at or now
     session_end = started + timedelta(minutes=settings.session_max_minutes)
     expires = min(now + timedelta(minutes=settings.jwt_expires_minutes), session_end)
-    return issue_session_token(user.id, **build_claims(user, db), sst=int(started.timestamp()), exp=expires)
+    # The version is read BEFORE the claims are built. A change that commits in between
+    # leaves the token one version behind, so it is revoked and refreshed; the other
+    # order could stamp an old claim set with a new version and miss the change.
+    access_version = db.execute(
+        select(User.access_version).where(User.id == user.id).execution_options(populate_existing=True)
+    ).scalar_one()
+    claims = build_claims(user, db)
+    return issue_session_token(user.id, **claims, av=access_version, sst=int(started.timestamp()), exp=expires)
 
 
 def _effective_module_roles_payload(user: User, db: Session) -> list[dict]:

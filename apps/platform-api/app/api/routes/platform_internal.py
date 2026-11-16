@@ -14,7 +14,10 @@ unavailable. See docs/platform/failure-isolation.md.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+import hashlib
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -223,3 +226,29 @@ def module_role_holders(
         UserModuleRole.module_key == module_key, UserModuleRole.role == role, UserModuleRole.enabled.is_(True)
     )
     return ModuleRoleHoldersOut(user_ids=[row[0] for row in db.execute(stmt).all()])
+
+
+@router.get("/access-versions")
+def access_versions(
+    request: Request,
+    db: Session = Depends(get_db),
+    _service: None = Depends(require_internal_service),
+) -> Response:
+    """Snapshot every application caches to reject revoked sessions: for each user whose
+    access has ever changed, or who is inactive, the current ``access_version`` and
+    whether the account is active. A token whose ``av`` is below the user's version, or
+    whose user is inactive, is revoked. The whole snapshot is returned (it is small) so
+    a replica replaces its copy atomically; there is no cursor and nothing to prune.
+    The ETag lets a caller poll cheaply."""
+    rows = db.execute(
+        select(User.id, User.access_version, User.is_active)
+        .where((User.access_version > 0) | (User.is_active.is_(False)))
+        .order_by(User.id)
+    ).all()
+    users = {str(uid): {"av": av, "active": bool(active)} for uid, av, active in rows}
+    etag = '"' + hashlib.sha256(json.dumps(users, sort_keys=True).encode()).hexdigest()[:32] + '"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+    return Response(
+        content=json.dumps({"users": users}), media_type="application/json", headers={"ETag": etag}
+    )

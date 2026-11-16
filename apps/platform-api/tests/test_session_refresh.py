@@ -27,7 +27,10 @@ def _forge(user, **claims):
     """A correctly signed session token with chosen timestamps. Like every real
     session it names the user's email, which the platform checks against the account."""
     now = datetime.now(UTC)
-    payload = {"sub": str(user.id), "email": user.email, "iat": now, "exp": now + timedelta(minutes=5), "iss": "dijione-dev-identity", **claims}
+    payload = {
+        "sub": str(user.id), "email": user.email, "iat": now, "exp": now + timedelta(minutes=5),
+        "iss": "dijione-dev-identity", **claims,
+    }
     return jwt.encode(payload, os.environ["PLATFORM_JWT_SECRET"], algorithm="HS256")
 
 

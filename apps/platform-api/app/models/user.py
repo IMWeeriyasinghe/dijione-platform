@@ -33,6 +33,11 @@ class User(TimestampMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set only from a verified Entra sign-in. See entra_service.is_internal_employee.
     internal_employee: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Bumped, inside the same transaction, by every change that can alter what this
+    # person may do (see ``app/services/access_version.py``). Session tokens carry the
+    # value they were issued under (``av``); a token older than the current value is
+    # revoked and must be refreshed. Never decremented, never time-based.
+    access_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     module_roles: Mapped[list[UserModuleRole]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

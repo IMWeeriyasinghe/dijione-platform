@@ -34,3 +34,7 @@ __all__ = [
     "GroupModuleRole",
     "GroupModuleClientScope",
 ]
+
+# Registers the listener that keeps ``users.access_version`` in step with every
+# access change. Imported last: it depends on the models above.
+from app.services import access_version as _access_version  # noqa: E402,F401
