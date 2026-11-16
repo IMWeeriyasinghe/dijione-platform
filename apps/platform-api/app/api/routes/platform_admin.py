@@ -44,6 +44,7 @@ from app.schemas.admin import (
 )
 from app.services.access_diagnostics import AccessDiagnosticsService
 from app.services.admin_service import AdminError, AdminService, ConflictError, ForbiddenError, NotFoundError
+from app.services.protected_admin import ProtectedAdminError
 
 router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
 
@@ -51,6 +52,8 @@ router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
 def _handle(action):
     try:
         return action()
+    except ProtectedAdminError as exc:  # backstop: the flush guard refused a change nothing pre-checked
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except ForbiddenError as exc:

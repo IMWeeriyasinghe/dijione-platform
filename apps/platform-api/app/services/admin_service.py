@@ -70,6 +70,7 @@ from app.schemas.admin import (
     GroupModuleAssignmentOut,
     ModuleAssignmentOut,
 )
+from app.services import protected_admin
 from app.services.audit_service import AuditService
 from app.services.authorization_service import AuthorizationService
 
@@ -105,6 +106,10 @@ class ConflictError(AdminError):
 
 class LastSuperAdminError(ForbiddenError):
     pass
+
+
+class ProtectedAdminForbiddenError(ForbiddenError):
+    """The target is a protected administrator (see app/services/protected_admin.py)."""
 
 
 class SystemGroupProtectedError(ForbiddenError):
@@ -256,6 +261,7 @@ class AdminService:
             last_login_at=user.last_login_at,
             created_at=user.created_at,
             module_assignments=[self._to_module_assignment_out(mr, module_names) for mr in module_roles],
+            protected=protected_admin.is_protected_user(self.db, user),
         )
 
     def list_users(self) -> list[AdminUserOut]:
@@ -311,10 +317,26 @@ class AdminService:
             stmt = stmt.where(User.id != excluding_user_id)
         return self.db.execute(stmt).scalar_one()
 
+    def _refuse_protected(self, *, actor: User, target: User, attempted: dict, **checks) -> None:
+        """Refuse an action aimed at a protected administrator. The refusal is recorded in the audit
+        log (committed on its own; nothing else was changed) and then raised as a 403."""
+        try:
+            protected_admin.assert_may_change(self.db, target, **checks)
+        except protected_admin.ProtectedAdminError as exc:
+            self.db.rollback()
+            self.audit.log(
+                actor_id=actor.id, action="protected_admin.change_blocked", entity_type="User", entity_id=target.id,
+                new_state=attempted, metadata={"reason": str(exc)}, subject_user_id=target.id,
+            )
+            self.db.commit()
+            raise ProtectedAdminForbiddenError(str(exc)) from exc
+
     def set_user_active(self, *, actor: User, target_user_id: int, is_active: bool) -> AdminUserOut:
         target = self.db.get(User, target_user_id)
         if target is None:
             raise NotFoundError(f"User {target_user_id} not found")
+        if not is_active:
+            self._refuse_protected(actor=actor, target=target, attempted={"is_active": False}, deactivate=True)
 
         if (
             not is_active
@@ -344,6 +366,7 @@ class AdminService:
             raise NotFoundError(f"User {target_user_id} not found")
         if new_role not in {r.value for r in PlatformRole}:
             raise AdminError(f"Unknown platform role: {new_role}")
+        self._refuse_protected(actor=actor, target=target, attempted={"platform_role": new_role}, new_role=new_role)
 
         touches_admin_roles = (
             target.platform_role in ADMIN_PLATFORM_ROLES or new_role in ADMIN_PLATFORM_ROLES
