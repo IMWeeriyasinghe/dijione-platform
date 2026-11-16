@@ -9,7 +9,17 @@ import {
 } from "@dijione/contracts";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { devLogin, getMe, refreshSession } from "./auth-api";
-import { ApiError, SESSION_ENDED_EVENT, getToken, setToken } from "./http";
+import {
+  ApiError,
+  SESSION_ENDED_EVENT,
+  VIEW_AS_ENDED_EVENT,
+  getToken,
+  endViewAsLocally,
+  getViewAsSession,
+  setToken,
+  type ViewAsSessionData,
+} from "./http";
+import { ViewAsBanner } from "./view-as-banner";
 import { MIN_REFRESH_GAP_MS, isExpired, msUntilRefresh, retryDelayMs, tokenExpiryMs } from "./session-timing";
 
 type AuthContextValue = {
@@ -33,6 +43,8 @@ const REFRESH_AFTER_MS = 5 * 60 * 1000;
  * the endpoint, a brief outage) keeps the existing token and reads the user.
  */
 export async function loadSessionUser(): Promise<CurrentUser> {
+  // A View-as session is read-only and cannot be refreshed: just read who is being viewed.
+  if (getViewAsSession()) return getMe();
   const tokenAtStart = getToken();
   try {
     const { access_token, user } = await refreshSession();
@@ -49,14 +61,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const scheduleRefresh = useRef<(() => void) | null>(null);
+  // Read after mount (sessionStorage does not exist on the server) so the first client render matches it.
+  const [viewAs, setViewAs] = useState<ViewAsSessionData | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let lastLoadedAt = 0;
+    // Fixed for this page load. Read from storage at the time of a failure it could already be gone
+    // (a failed request ends the View-as session), and the staff session would then be cleared by mistake.
+    const viewAsAtMount = getViewAsSession();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
 
     function endSession() {
+      // In a View-as tab the staff session is not this tab's to end: leave only the View-as session.
+      if (viewAsAtMount) return endViewAsLocally();
       setToken(null);
       if (!cancelled) setUser(null);
     }
@@ -138,17 +157,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     scheduleRefresh.current = () => schedule();
+    // A View-as session ended without the person asking (expired, ended elsewhere, access changed):
+    // go back to where the administrator started.
+    function onViewAsEnded() {
+      const back = viewAsAtMount?.returnTo || "/";
+      window.location.assign(back);
+    }
+
+    setViewAs(viewAsAtMount);
     void restoreSession(true).then((outcome) => {
-      if (outcome === "ok") schedule();
+      // A View-as token is never refreshed, so nothing is scheduled for it.
+      if (outcome === "ok" && !viewAsAtMount) schedule();
     });
-    document.addEventListener("visibilitychange", onVisible);
     window.addEventListener(SESSION_ENDED_EVENT, onSessionEnded);
+    window.addEventListener(VIEW_AS_ENDED_EVENT, onViewAsEnded);
+    if (!viewAsAtMount) document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       scheduleRefresh.current = null;
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener(SESSION_ENDED_EVENT, onSessionEnded);
+      window.removeEventListener(VIEW_AS_ENDED_EVENT, onViewAsEnded);
     };
   }, []);
 
@@ -166,7 +196,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {viewAs && <ViewAsBanner session={viewAs} administrator={user?.view_as?.actor_name} />}
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+/** Like ``useAuth`` but returns null outside an ``AuthProvider`` instead of throwing, for optional UI. */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
 }
 
 export function useAuth(): AuthContextValue {

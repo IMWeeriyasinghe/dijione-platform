@@ -82,6 +82,18 @@ def _build_stub_platform_app() -> FastAPI:
             raise HTTPException(404, f"User {user_id} not found")
         return STUB_USERS[user_id]
 
+    @stub.post("/api/platform/admin/view-as", status_code=201)
+    def start_view_as(payload: dict, authorization: str | None = Header(default=None)) -> dict:
+        _require_admin_token(authorization)
+        if payload["target_user_id"] == 404:
+            raise HTTPException(404, "That user cannot be viewed")
+        return {"access_token": "view-as-token", "session_id": "S-1", "target": {"id": payload["target_user_id"]}}
+
+    @stub.post("/api/platform/admin/view-as/{session_id}/end")
+    def end_view_as(session_id: str, authorization: str | None = Header(default=None)) -> dict:
+        _require_admin_token(authorization)
+        return {"session_id": session_id, "ended": True}
+
     @stub.get("/api/platform/admin/users/{user_id}/access-diagnostics")
     def access_diagnostics(user_id: int, authorization: str | None = Header(default=None)) -> dict:
         _require_admin_token(authorization)

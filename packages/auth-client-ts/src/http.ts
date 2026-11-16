@@ -7,9 +7,59 @@
 
 const TOKEN_STORAGE_KEY = "dijione.devToken";
 
-export function getToken(): string | null {
+/** The administrator's own (staff) session token, never the View-as token. */
+export function getStaffToken(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+// A read-only View-as session lives in sessionStorage, so it belongs to this tab alone and ends with it.
+// While it exists every request carries its token instead of the staff token; the staff token is left
+// untouched in localStorage and is back in use the moment the View-as session ends.
+const VIEW_AS_STORAGE_KEY = "dijione.viewAs";
+
+export type ViewAsSessionData = {
+  token: string;
+  sessionId: string;
+  targetName: string;
+  targetEmail: string;
+  expiresAt: string;
+  returnTo: string;
+};
+
+export function getViewAsSession(): ViewAsSessionData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(VIEW_AS_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as ViewAsSessionData;
+    if (!data.token || Date.parse(data.expiresAt) <= Date.now()) {
+      window.sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function setViewAsSession(data: ViewAsSessionData | null) {
+  if (typeof window === "undefined") return;
+  if (data) window.sessionStorage.setItem(VIEW_AS_STORAGE_KEY, JSON.stringify(data));
+  else window.sessionStorage.removeItem(VIEW_AS_STORAGE_KEY);
+}
+
+/** Fired in this tab when a View-as session ends without the person asking (expired, ended elsewhere, access changed). */
+export const VIEW_AS_ENDED_EVENT = "dijione:view-as-ended";
+
+/** Drops this tab's View-as session and tells listeners; the staff session is not touched. */
+export function endViewAsLocally() {
+  setViewAsSession(null);
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(VIEW_AS_ENDED_EVENT));
+}
+
+export function getToken(): string | null {
+  return getViewAsSession()?.token ?? getStaffToken();
 }
 
 export function setToken(token: string | null) {
@@ -38,6 +88,7 @@ let inflightRefresh: Promise<boolean> | null = null;
  * token is dropped and listeners are told. Any other failure leaves the token as is.
  */
 export function refreshTokenOnce(tokenAtStart: string): Promise<boolean> {
+  if (getViewAsSession()) return Promise.resolve(false);
   inflightRefresh ??= (async () => {
     try {
       const res = await fetch(REFRESH_PATH, {
@@ -65,9 +116,17 @@ export function refreshTokenOnce(tokenAtStart: string): Promise<boolean> {
   return inflightRefresh;
 }
 
-function revokedAndRefreshable(res: Response, token: string | null, path: string, retried: boolean): boolean {
+/** A 401 on a View-as request means the session is over (ended, expired, or access changed). */
+function noteViewAsEnded(res: Response) {
+  if (res.status === 401 && getViewAsSession()) endViewAsLocally();
+}
+
+function revokedAndRefreshable(
+  res: Response, token: string | null, path: string, retried: boolean, inViewAs: boolean,
+): boolean {
   return (
     res.status === 401 &&
+    !inViewAs && // a View-as token cannot be refreshed: it simply ends
     !!token &&
     !retried &&
     path !== REFRESH_PATH &&
@@ -82,10 +141,12 @@ function revokedAndRefreshable(res: Response, token: string | null, path: string
  */
 export async function authorizedFetch(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
   const token = getToken();
+  const inViewAs = getViewAsSession() !== null; // read before the response can end the session
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(path, { ...init, headers });
-  if (revokedAndRefreshable(res, token, path, retried) && (await refreshTokenOnce(token as string))) {
+  noteViewAsEnded(res);
+  if (revokedAndRefreshable(res, token, path, retried, inViewAs) && (await refreshTokenOnce(token as string))) {
     return authorizedFetch(path, init, true);
   }
   return res;
@@ -99,11 +160,13 @@ export async function request<T>(path: string, options: RequestInit = {}, retrie
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  const inViewAs = getViewAsSession() !== null; // read before the response can end the session
   const res = await fetch(path, { ...options, headers });
+  noteViewAsEnded(res);
 
   // The server revoked this session because the person's access changed. Re-issue
   // the token and repeat the request once; a second revocation is an error, not a loop.
-  if (revokedAndRefreshable(res, token, path, retriedAfterRevocation) && (await refreshTokenOnce(token as string))) {
+  if (revokedAndRefreshable(res, token, path, retriedAfterRevocation, inViewAs) && (await refreshTokenOnce(token as string))) {
     return request<T>(path, options, true);
   }
 
