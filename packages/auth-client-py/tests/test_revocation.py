@@ -272,7 +272,7 @@ def test_refresh_delay_backs_off_and_is_capped(feed, clock):
 # --- sensitivity ----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("key", ["x.manage", "x.admin", "x.approve", "x.export", "onsite.identity.manage"])
+@pytest.mark.parametrize("key", ["x.manage", "x.admin", "x.approve", "x.export", "things.manage"])
 def test_sensitive_permission_suffixes_require_fresh_revocation(key):
     assert fresh_if_sensitive(key).__name__ == "require_fresh_revocation"
 
