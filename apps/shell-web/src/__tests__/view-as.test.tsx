@@ -190,6 +190,27 @@ describe("the provider in a View-as tab", () => {
     expect(getStaffToken()).toBe("staff-token"); // never cleared by a View-as failure
   });
 
+  it("Sign out in a View-as tab leaves the View-as session and keeps the administrator signed in", async () => {
+    setViewAsSession(SESSION);
+    script["GET /api/auth/me"] = { status: 200, body: EMPLOYEE };
+    script["POST /api/admin/view-as/S-1/end"] = { status: 200, body: { ended: true } };
+    function SignOut() {
+      const { logout } = useAuth();
+      return <button onClick={logout}>sign out</button>;
+    }
+    render(<AuthProvider><SignOut /></AuthProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: "sign out" }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/admin/users/7"));
+    expect(getStaffToken()).toBe("staff-token");
+  });
+
+  it("states when the session ends", async () => {
+    setViewAsSession(SESSION);
+    script["GET /api/auth/me"] = { status: 200, body: EMPLOYEE };
+    render(<AuthProvider><Probe /></AuthProvider>);
+    expect(await screen.findByTestId("view-as-banner")).toHaveTextContent(/It ends at/);
+  });
+
   it("does not schedule a refresh timer for a View-as token", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     setViewAsSession({ ...SESSION, expiresAt: new Date(Date.now() + 25 * 60_000).toISOString() });

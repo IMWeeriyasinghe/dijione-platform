@@ -19,6 +19,7 @@ import {
   setToken,
   type ViewAsSessionData,
 } from "./http";
+import { exitViewAs } from "./view-as";
 import { ViewAsBanner } from "./view-as-banner";
 import { MIN_REFRESH_GAP_MS, isExpired, msUntilRefresh, retryDelayMs, tokenExpiryMs } from "./session-timing";
 
@@ -190,6 +191,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // In a View-as tab "sign out" means leave the View-as session; the administrator stays signed in.
+    if (getViewAsSession()) {
+      void exitViewAs();
+      return;
+    }
     setToken(null);
     setUser(null);
   }, []);

@@ -3,6 +3,11 @@
 import { exitViewAs } from "./view-as";
 import type { ViewAsSessionData } from "./http";
 
+function endsAt(iso: string): string {
+  const when = new Date(iso);
+  return Number.isNaN(when.getTime()) ? "its time limit" : when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 /**
  * Shown on every page of every application for as long as a View-as session is in use, so nobody
  * can mistake it for a normal session. Inline styles on purpose: this package is shared by all apps
@@ -34,7 +39,7 @@ export function ViewAsBanner({ session, administrator }: { session: ViewAsSessio
       <span>
         <strong>Read-only View as {session.targetName}</strong> ({session.targetEmail}).
         {administrator ? ` Signed in as ${administrator}.` : ""} You see exactly what they see. Nothing you do here can
-        change data, and this session is recorded.
+        change data, and this session is recorded. It ends at {endsAt(session.expiresAt)}.
       </span>
       <button
         type="button"
