@@ -1,4 +1,4 @@
-import { ApiError, getToken, qs, request } from "@dijione/auth-client";
+import { ApiError, authorizedFetch, qs, request } from "@dijione/auth-client";
 import { ONSITE_API } from "./api";
 import type { Paged } from "./dashboard";
 
@@ -151,10 +151,7 @@ export async function importMappings(file: File, opts: { dryRun: boolean; token?
   form.append("file", file);
   if (opts.token) form.append("dry_run_token", opts.token);
   form.append("acknowledge_warnings", opts.acknowledge ? "true" : "false");
-  const token = getToken();
-  const resp = await fetch(`${IDENTITY_API}/import${qs({ dry_run: opts.dryRun })}`, {
-    method: "POST", body: form, headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const resp = await authorizedFetch(`${IDENTITY_API}/import${qs({ dry_run: opts.dryRun })}`, { method: "POST", body: form });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new ApiError(resp.status, typeof body?.detail === "string" ? body.detail : JSON.stringify(body?.detail ?? {}));
   return body as ImportResult;
@@ -162,10 +159,7 @@ export async function importMappings(file: File, opts: { dryRun: boolean; token?
 
 /** Authenticated CSV download of an admin list. */
 export async function downloadIdentityList(kind: "unmapped" | "mappings", p: Params = {}): Promise<void> {
-  const token = getToken();
-  const resp = await fetch(`${IDENTITY_API}/${kind}${qs({ ...p, format: "csv" })}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const resp = await authorizedFetch(`${IDENTITY_API}/${kind}${qs({ ...p, format: "csv" })}`);
   if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
   const url = URL.createObjectURL(await resp.blob());
   const a = document.createElement("a");

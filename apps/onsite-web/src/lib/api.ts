@@ -1,4 +1,4 @@
-import { getToken, qs, request } from "@dijione/auth-client";
+import { authorizedFetch, qs, request } from "@dijione/auth-client";
 import type { Freshness, IdentityReport, OnsiteSite, SiteHealth, SyncAccepted, SyncRun } from "./types";
 
 export { ApiError } from "@dijione/auth-client";
@@ -29,8 +29,7 @@ export const IDENTITY_CSV_PATH = `${ONSITE_API}/admin/identity-match?format=csv`
 
 /** Download the CSV with the caller's bearer token (a plain link would not send it). */
 export async function downloadIdentityCsv(): Promise<void> {
-  const token = getToken();
-  const resp = await fetch(IDENTITY_CSV_PATH, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const resp = await authorizedFetch(IDENTITY_CSV_PATH);
   if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
   const url = URL.createObjectURL(await resp.blob());
   const a = document.createElement("a");

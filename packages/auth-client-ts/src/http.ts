@@ -45,8 +45,11 @@ export function refreshTokenOnce(tokenAtStart: string): Promise<boolean> {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenAtStart}` },
       });
       if (res.status === 401) {
-        if (getToken() === tokenAtStart) setToken(null);
-        if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
+        // Only end the session this refresh belonged to; a newer sign-in must not be cleared.
+        if (getToken() === tokenAtStart) {
+          setToken(null);
+          if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
+        }
         return false;
       }
       if (!res.ok) return false;
@@ -62,6 +65,32 @@ export function refreshTokenOnce(tokenAtStart: string): Promise<boolean> {
   return inflightRefresh;
 }
 
+function revokedAndRefreshable(res: Response, token: string | null, path: string, retried: boolean): boolean {
+  return (
+    res.status === 401 &&
+    !!token &&
+    !retried &&
+    path !== REFRESH_PATH &&
+    res.headers?.get("X-Auth-Error") === "session_revoked"
+  );
+}
+
+/**
+ * ``fetch`` with the session token attached, for the places that need the raw Response
+ * (downloads, uploads, images). Like ``request`` it re-issues the token once and repeats the
+ * call when the server says the session was revoked.
+ */
+export async function authorizedFetch(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
+  const token = getToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(path, { ...init, headers });
+  if (revokedAndRefreshable(res, token, path, retried) && (await refreshTokenOnce(token as string))) {
+    return authorizedFetch(path, init, true);
+  }
+  return res;
+}
+
 export async function request<T>(path: string, options: RequestInit = {}, retriedAfterRevocation = false): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -74,14 +103,7 @@ export async function request<T>(path: string, options: RequestInit = {}, retrie
 
   // The server revoked this session because the person's access changed. Re-issue
   // the token and repeat the request once; a second revocation is an error, not a loop.
-  if (
-    res.status === 401 &&
-    token &&
-    !retriedAfterRevocation &&
-    path !== REFRESH_PATH &&
-    res.headers?.get("X-Auth-Error") === "session_revoked" &&
-    (await refreshTokenOnce(token))
-  ) {
+  if (revokedAndRefreshable(res, token, path, retriedAfterRevocation) && (await refreshTokenOnce(token as string))) {
     return request<T>(path, options, true);
   }
 

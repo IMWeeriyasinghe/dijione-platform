@@ -1,6 +1,6 @@
 "use client";
 
-import { ApiError, getToken, qs } from "@dijione/auth-client";
+import { ApiError, authorizedFetch, qs } from "@dijione/auth-client";
 
 // Same token and relative-path conventions as the shared request helper, which
 // does not expose the backend's machine-readable error code.
@@ -13,10 +13,7 @@ export class AtworkError extends ApiError {
 }
 
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = getToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(path, { ...init, headers });
+  const res = await authorizedFetch(path, { ...init, headers: { "Content-Type": "application/json" } });
   if (res.ok) return res;
   let detail = res.statusText;
   let code: string | null = null;

@@ -1,4 +1,4 @@
-import { getToken, qs, request } from "@dijione/auth-client";
+import { authorizedFetch, qs, request } from "@dijione/auth-client";
 import { ONSITE_API } from "./api";
 import type { FeedState, IdentityClass, MappingStatus } from "./types";
 
@@ -176,10 +176,7 @@ export const getEmployees = (p: Params) => request<EmployeesResponse>(`${ONSITE_
  *  normal answer, never an error). Fetched with the bearer token, because a
  *  plain <img src> cannot send it. */
 export async function getEmployeePhoto(bamboohrId: string): Promise<string | null> {
-  const token = getToken();
-  const resp = await fetch(`${ONSITE_API}/employees/by-id/${encodeURIComponent(bamboohrId)}/photo`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const resp = await authorizedFetch(`${ONSITE_API}/employees/by-id/${encodeURIComponent(bamboohrId)}/photo`);
   if (!resp.ok) return null;
   const blob = await resp.blob();
   return blob.size ? URL.createObjectURL(blob) : null;
@@ -195,10 +192,7 @@ export type ExportPath = "today" | "activity" | "employees" | "exceptions" | "da
 /** Downloads a server-generated .xlsx with the caller's bearer token (a plain
  *  link would not send it). The server re-applies scope and every filter. */
 export async function downloadExport(path: ExportPath, p: Params): Promise<void> {
-  const token = getToken();
-  const resp = await fetch(`${ONSITE_API}/${path}/export${qs(p)}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const resp = await authorizedFetch(`${ONSITE_API}/${path}/export${qs(p)}`);
   if (!resp.ok) {
     let detail = `Export failed (${resp.status}). Please try again.`;
     try {

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   AuthProvider,
+  authorizedFetch,
   SESSION_ENDED_EVENT,
   getToken,
   msUntilRefresh,
@@ -31,7 +32,8 @@ let log: string[];
 function stubFetch() {
   vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${path}`;
-    const auth = (init?.headers as Record<string, string> | undefined)?.Authorization ?? "";
+    const h = init?.headers;
+    const auth = (h instanceof Headers ? h.get("Authorization") : (h as Record<string, string> | undefined)?.Authorization) ?? "";
     log.push(`${key} ${auth.slice(-6)}`);
     const queue = script[key];
     if (!queue || queue.length === 0) throw new TypeError("network down");
@@ -109,6 +111,52 @@ describe("revoked session on a request", () => {
     script["POST /api/auth/refresh"] = [{ status: -1 }];
     await expect(request("/api/x")).rejects.toMatchObject({ status: 401 });
     expect(getToken()).toBe("old-token");
+  });
+});
+
+describe("authorizedFetch (downloads, uploads, images)", () => {
+  it("sends the token, returns the raw response, and leaves other statuses alone", async () => {
+    setToken("old-token");
+    script["GET /api/file"] = [{ status: 404 }];
+    const res = await authorizedFetch("/api/file");
+    expect(res.status).toBe(404);
+    expect(log).toEqual(["GET /api/file -token"]);
+  });
+
+  it("re-issues the token once and repeats the call after a revoked session", async () => {
+    setToken("old-token");
+    script["GET /api/file"] = [REVOKED, { status: 200, body: { ok: true } }];
+    script["POST /api/auth/refresh"] = [{ status: 200, body: { access_token: "new-token", user: USER } }];
+    const res = await authorizedFetch("/api/file");
+    expect(res.status).toBe(200);
+    expect(getToken()).toBe("new-token");
+    expect(log.filter((l) => l.startsWith("GET /api/file"))).toHaveLength(2);
+  });
+
+  it("does not loop on a second revocation", async () => {
+    setToken("old-token");
+    script["GET /api/file"] = [REVOKED];
+    script["POST /api/auth/refresh"] = [{ status: 200, body: { access_token: "new-token", user: USER } }];
+    const res = await authorizedFetch("/api/file");
+    expect(res.status).toBe(401);
+    expect(log.filter((l) => l.startsWith("POST /api/auth/refresh"))).toHaveLength(1);
+  });
+
+  it("does not clear a newer sign-in when an older session's refresh is refused", async () => {
+    setToken("old-token");
+    const ended = vi.fn();
+    window.addEventListener(SESSION_ENDED_EVENT, ended);
+    script["GET /api/file"] = [REVOKED];
+    script["POST /api/auth/refresh"] = [
+      { status: 401 },
+    ];
+    // Another tab signs in again while the refresh is in flight.
+    const pending = authorizedFetch("/api/file");
+    setToken("newer-token");
+    await pending;
+    expect(getToken()).toBe("newer-token");
+    expect(ended).not.toHaveBeenCalled();
+    window.removeEventListener(SESSION_ENDED_EVENT, ended);
   });
 });
 
