@@ -56,6 +56,51 @@ class AdminUserOut(BaseModel):
     module_assignments: list[ModuleAssignmentOut]
     # True for a protected administrator: the platform role and active state cannot be changed.
     protected: bool = False
+    # Identity and employee-record state (see AuthorizationService.is_eligible_employee).
+    employee_number: str | None = None
+    directory_verified: bool = False  # identity verified (directory or a verified sign-in)
+    verification_source: str = "NONE"  # DIRECTORY / SIGN_IN / NONE
+    employee_record: str | None = None  # MATCHED / NOT_FOUND / UNKNOWN / LEGACY
+    eligible_employee: bool = False
+    signed_in: bool = False
+
+
+class DirectoryUserOut(BaseModel):
+    entra_object_id: str
+    full_name: str
+    email: str
+    user_principal_name: str
+    job_title: str | None = None
+    department: str | None = None
+    employee_number: str | None = None
+    employee_record: str  # MATCHED / NOT_FOUND / UNKNOWN
+    existing_user_id: int | None = None
+
+
+class AddFromDirectoryIn(BaseModel):
+    entra_object_id: str = Field(min_length=36, max_length=36)
+
+
+class EntraGroupOut(BaseModel):
+    object_id: str
+    display_name: str
+    group_type: str
+    membership: str  # DIRECT / INHERITED
+    dijione_mapping: str | None = None  # no Entra-to-DijiOne group mapping exists
+
+
+class HrExceptionOut(BaseModel):
+    user_id: int
+    email: str
+    full_name: str
+
+
+class EmployeeRecordReconcileOut(BaseModel):
+    checked: int
+    matched: int
+    not_found: int
+    unknown: int
+    hr_exceptions: list[HrExceptionOut]
 
 
 class AdminUserCreateIn(BaseModel):

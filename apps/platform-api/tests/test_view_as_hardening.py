@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.core.security import issue_session_token
 from app.models.audit_log import AuditLog
 from app.models.user import User
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, make_eligible
 
 START = "/api/platform/admin/view-as"
 
@@ -23,7 +23,7 @@ def _enabled(monkeypatch):
 
 @pytest.fixture()
 def world(db, two_tenant_world):
-    db.get(User, two_tenant_world["ta_user"].id).internal_employee = True
+    make_eligible(db.get(User, two_tenant_world["ta_user"].id))
     db.commit()
     return two_tenant_world
 

@@ -40,7 +40,7 @@ def employee(db, two_tenant_world):
     db.flush()
     db.add(RolePermission(role_id=manager_role.id, permission_id=perm.id))
     user = User(email="emp@example.com", full_name="Employee", persona_key="test-employee", internal_employee=True,
-                identity_provider="ENTRA", entra_object_id="oid-emp")
+                identity_provider="ENTRA", entra_object_id="oid-emp", employee_record_status="MATCHED")
     db.add(user)
     db.commit()
     return user
@@ -113,34 +113,28 @@ def _stale_first_lookup(db):
 # --- D7 ------------------------------------------------------------------------
 
 
-def test_default_access_can_be_removed_and_restored(api_client, db, admin, employee):
+def test_default_access_is_always_on_and_cannot_be_removed(api_client, db, admin, employee):
     url = f"{ADMIN}/users/{employee.id}/modules/field-ops"
     assert list(build_claims(employee, db)["module_roles"]) == ["field-ops"]
 
     removed = api_client.delete(url, headers=admin)
-    assert removed.status_code == 200, removed.text
-    assert removed.json()["module_assignments"] == [
-        {"module_key": "field-ops", "module_name": "Field Ops", "role": "FIELD_USER", "role_name": "Field User",
-         "enabled": False, "client_scope": {"all_clients": True, "client_ids": [], "client_names": []}}
-    ]
+    assert removed.status_code == 409, removed.text
+    assert "cannot be removed" in removed.json()["detail"]
     db.expire_all()
     employee = db.get(User, employee.id)
-    assert build_claims(employee, db)["module_roles"] == {}
+    assert build_claims(employee, db)["module_roles"]["field-ops"]["role"] == "FIELD_USER"
+    assert db.query(UserModuleRole).filter_by(user_id=employee.id).count() == 0
     effective = api_client.get(f"{ADMIN}/users/{employee.id}/effective-access", headers=admin).json()
-    assert effective["modules"] == [] and effective["default_access_excluded"] == ["field-ops"]
+    assert [m["module_key"] for m in effective["modules"]] == ["field-ops"] and effective["default_access_excluded"] == []
 
-    # Removing again changes nothing (a double click must not restore access).
-    assert api_client.delete(url, headers=admin).status_code == 200
-    db.expire_all()
-    assert build_claims(db.get(User, employee.id), db)["module_roles"] == {}
-    assert db.query(UserModuleRole).filter_by(user_id=employee.id).count() == 1
-
-    restored = api_client.post(f"{url}/restore-default", headers=admin)
-    assert restored.status_code == 200
-    assert restored.json()["module_assignments"] == []
-    db.expire_all()
+    # A disabled row of the default role (e.g. left over from before) no longer suppresses it.
+    db.add(UserModuleRole(user_id=employee.id, module_key="field-ops", role="FIELD_USER", enabled=False))
+    db.commit()
     assert build_claims(db.get(User, employee.id), db)["module_roles"]["field-ops"]["role"] == "FIELD_USER"
-    assert api_client.post(f"{url}/restore-default", headers=admin).status_code == 404
+    # restore-default stays for compatibility: it clears the leftover row and is otherwise a no-op.
+    assert api_client.post(f"{url}/restore-default", headers=admin).status_code == 200
+    assert db.query(UserModuleRole).filter_by(user_id=employee.id).count() == 0
+    assert api_client.post(f"{url}/restore-default", headers=admin).status_code == 200
 
 
 def test_removing_a_direct_role_leaves_default_access_in_place(api_client, db, admin, employee):
@@ -157,7 +151,6 @@ def test_remove_is_still_not_found_when_there_is_nothing_to_remove(api_client, d
     resp = api_client.delete(f"{ADMIN}/users/{two_tenant_world['ta_user'].id}/modules/field-ops", headers=admin)
     assert resp.status_code == 404
     assert db.query(UserModuleRole).filter_by(user_id=two_tenant_world["ta_user"].id, module_key="field-ops").count() == 0
-    assert api_client.post(f"{ADMIN}/users/{employee.id}/modules/talent-flow/restore-default", headers=admin).status_code == 404
 
 
 def test_default_access_changes_need_manage_users(api_client, db, employee):
@@ -180,8 +173,8 @@ def test_user_audit_history_lists_everything_about_that_user_and_nobody_else(api
     api_client.post(f"{ADMIN}/groups/{group_id}/members", json={"user_id": ta.id}, headers=admin)
     api_client.delete(f"{ADMIN}/groups/{group_id}/members/{ta.id}", headers=admin)
     api_client.delete(f"{ADMIN}/users/{ta.id}/modules/talent-flow", headers=admin)
-    api_client.delete(f"{ADMIN}/users/{employee.id}/modules/field-ops", headers=admin)
-    api_client.post(f"{ADMIN}/users/{employee.id}/modules/field-ops/restore-default", headers=admin)
+    api_client.put(f"{ADMIN}/users/{employee.id}/modules/field-ops", json={"role": "FIELD_MANAGER", "enabled": True},
+                   headers=admin)
     api_client.put(f"{ADMIN}/users/{cs.id}/modules/talent-flow", json={"role": "TA_MEMBER", "enabled": True}, headers=admin)
 
     def actions(user_id):
@@ -193,7 +186,7 @@ def test_user_audit_history_lists_everything_about_that_user_and_nobody_else(api
         "user.activated", "module_assignment.updated", "access_group.member_added", "access_group.member_removed",
         "module_assignment.removed",
     ]
-    assert actions(employee.id) == ["module_assignment.default_access_removed", "module_assignment.default_access_restored"]
+    assert actions(employee.id) == ["module_assignment.created"]
     assert actions(cs.id) == ["module_assignment.updated"]
 
     everything = api_client.get(f"{ADMIN}/audit", headers=auditor).json()

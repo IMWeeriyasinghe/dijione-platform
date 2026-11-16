@@ -31,6 +31,9 @@ from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
 
+# Employee-record states that qualify for default employee access (see is_eligible_employee).
+ELIGIBLE_RECORD_STATUSES = frozenset({"MATCHED", "LEGACY"})
+
 
 @dataclass(frozen=True)
 class ResolvedGrant:
@@ -156,36 +159,37 @@ class AuthorizationService:
 
         return grants
 
-    def baseline_exclusions(self, user: User) -> list[tuple[str, str]]:
-        """Baseline roles this user has been explicitly excluded from."""
-        stmt = (
-            select(ModuleBaselineRole.module_key, ModuleBaselineRole.role)
-            .join(
-                UserModuleRole,
-                (UserModuleRole.module_key == ModuleBaselineRole.module_key) & (UserModuleRole.role == ModuleBaselineRole.role),
-            )
-            .where(UserModuleRole.user_id == user.id, UserModuleRole.enabled.is_(False), ModuleBaselineRole.enabled.is_(True))
+    @staticmethod
+    def identity_verified(user: User) -> bool:
+        """The person is a verified internal member of our Entra tenant: proven by a verified
+        Microsoft sign-in or by directory verification (Microsoft Graph)."""
+        return bool(user.internal_employee and user.identity_provider == "ENTRA" and user.entra_object_id)
+
+    @classmethod
+    def is_eligible_employee(cls, user: User) -> bool:
+        """Active, identity verified, and matched to an employee record (BambooHR), or LEGACY:
+        eligible before employee-record checks existed, kept until reconciled. An Entra member
+        account with a company address alone (a service account, a shared mailbox) is not enough.
+        Gates default employee access and View-as; explicit assignments never depend on it."""
+        return bool(
+            user.is_active and cls.identity_verified(user) and user.employee_record_status in ELIGIBLE_RECORD_STATUSES
         )
-        return [(module_key, role) for module_key, role in self.db.execute(stmt).all()]
+
+    def baseline_exclusions(self, user: User) -> list[tuple[str, str]]:
+        """Default employee access is always on for an eligible employee: nothing excludes it."""
+        return []
 
     def baseline_roles(self, user: User) -> dict[str, str]:
-        """Module roles held by being an eligible internal employee. A disabled
-        direct assignment of the same role is an explicit revocation."""
-        if not (user.is_active and user.internal_employee and user.identity_provider == "ENTRA" and user.entra_object_id):
+        """Module roles every eligible employee holds. Always on: no assignment, disabled row or
+        group change removes them while the person stays eligible. Additive with any higher role."""
+        if not self.is_eligible_employee(user):
             return {}
         rows = self.db.execute(
             select(ModuleBaselineRole.module_key, ModuleBaselineRole.role)
             .join(ApplicationModule, ApplicationModule.key == ModuleBaselineRole.module_key)
             .where(ModuleBaselineRole.enabled.is_(True), ApplicationModule.enabled.is_(True))
         ).all()
-        revoked = set(
-            self.db.execute(
-                select(UserModuleRole.module_key, UserModuleRole.role).where(
-                    UserModuleRole.user_id == user.id, UserModuleRole.enabled.is_(False)
-                )
-            ).all()
-        )
-        return {module_key: role for module_key, role in rows if (module_key, role) not in revoked}
+        return {module_key: role for module_key, role in rows}
 
     def effective_client_scope(
         self, user: User, module_key: str

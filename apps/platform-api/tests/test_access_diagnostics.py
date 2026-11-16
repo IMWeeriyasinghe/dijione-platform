@@ -103,6 +103,7 @@ def test_default_access_states(api_client, db, two_tenant_world):
 
     u = db.get(User, user.id)
     u.identity_provider, u.entra_object_id, u.internal_employee = "ENTRA", "oid-1", True
+    u.employee_record_status = "MATCHED"
     db.commit()
     state = next(d for d in _diag(api_client, user.id)["default_access"] if d["module_key"] == "field-ops")
     assert state["state"] == "GRANTED"
@@ -203,14 +204,14 @@ def test_no_effective_access_still_shows_why(api_client, db, two_tenant_world):
     db.add(ApplicationModule(key="field-ops", name="Field Ops", description="", route="/field-ops",
                              required_roles="ANY", supports_client_scope=False))
     db.add(ModuleBaselineRole(module_key="field-ops", role="FIELD_USER", enabled=True))
+    # Identity verified, but not matched to an employee record: no default access (a service account).
     user = User(email="none@example.com", full_name="None", persona_key="test-none", internal_employee=True,
-                identity_provider="ENTRA", entra_object_id="oid-none")
+                identity_provider="ENTRA", entra_object_id="oid-none", employee_record_status="NOT_FOUND")
     group = AccessGroup(key="off", display_name="Off Group", status="INACTIVE")
     db.add_all([user, group])
     db.flush()
     db.add_all([
         UserModuleRole(user_id=user.id, module_key=MODULE, role="TA_MEMBER", enabled=False),  # disabled direct
-        UserModuleRole(user_id=user.id, module_key="field-ops", role="FIELD_USER", enabled=False),  # default removed
         UserGroupMembership(user_id=user.id, access_group_id=group.id),
         GroupModuleRole(access_group_id=group.id, module_key="spark", role="SPARK_USER"),
     ])
@@ -220,7 +221,8 @@ def test_no_effective_access_still_shows_why(api_client, db, two_tenant_world):
     by_key = {m["module_key"]: m for m in data["modules"]}
     assert {m["has_access"] for m in data["modules"]} == {False}
     assert by_key[MODULE]["inactive"][0]["type"] == "DIRECT"
-    assert "DEFAULT" in {i["type"] for i in by_key["field-ops"]["inactive"]}
+    default = next(d for d in data["default_access"] if d["module_key"] == "field-ops")
+    assert default["state"] == "NOT_ELIGIBLE" and any("employee record" in r for r in default["reasons"])
     assert by_key["spark"]["inactive"][0]["group_name"] == "Off Group"
     assert "No access" in by_key[MODULE]["scope_explanation"]
     assert any(c["key"] == "no_access" for c in data["checks"])

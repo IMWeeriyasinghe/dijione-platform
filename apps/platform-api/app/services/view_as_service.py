@@ -82,13 +82,18 @@ class ViewAsService:
             raise ViewAsNotFound("That user is inactive. View as is available for active internal employees only.")
         if not target.internal_employee and target.entra_object_id is not None:
             raise ViewAsNotFound(
-                "That user's last Microsoft sign-in was not verified as an internal employee (for example a guest "
+                "That user's Microsoft identity was not verified as an internal employee (for example a guest "
                 "account), so View as is not available for them."
             )
-        if not target.internal_employee:
+        if not self.authz.identity_verified(target):
             raise ViewAsNotFound(
-                "That user has not yet signed in to DijiOne with their Microsoft account, so DijiOne has not verified "
-                "them as an internal employee. View as becomes available after their first sign-in."
+                "That user's identity is not verified yet. Use Verify with directory on their profile (or it is "
+                "verified at their first Microsoft sign-in); View as becomes available then."
+            )
+        if not self.authz.is_eligible_employee(target):
+            raise ViewAsNotFound(
+                "That user is not matched to an employee record in BambooHR, so View as is not available. "
+                "Their access can still be previewed; HR reconciliation is needed."
             )
 
         now = datetime.now(UTC)

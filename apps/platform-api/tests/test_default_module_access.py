@@ -144,12 +144,12 @@ def test_disabled_policy_and_disabled_module_grant_nothing(db, baseline):
     assert atwork(db, user) == frozenset()
 
 
-def test_explicit_revocation_overrides_default(db, baseline):
+def test_default_access_is_always_on_a_disabled_row_does_not_remove_it(db, baseline):
     existing(db)
     user = sign_in(db)
     db.add(UserModuleRole(user_id=user.id, module_key="atwork", role="ATWORK_USER", enabled=False))
     db.commit()
-    assert atwork(db, user) == frozenset()
+    assert atwork(db, user) == USER_PERMS
 
 
 def test_default_grants_no_management_and_touches_no_other_module(db, baseline):
@@ -226,17 +226,18 @@ def test_missing_membership_claim_is_not_proof(db, baseline):
     assert atwork(db, resolve_entra_user(db, claims)) == frozenset()
 
 
-def test_precedence_exclusion_only_removes_the_default_and_is_reported(api_client, db, baseline, two_tenant_world):
+def test_a_higher_role_keeps_the_standard_role_alongside_it(api_client, db, baseline, two_tenant_world):
     existing(db)
     user = sign_in(db)
-    db.add(UserModuleRole(user_id=user.id, module_key="atwork", role="ATWORK_USER", enabled=False))
-    db.commit()
     _grant_group(db, user)
-    assert atwork(db, user) == MANAGER_PERMS  # an explicit group grant still applies
+    assert USER_PERMS <= atwork(db, user) and MANAGER_PERMS <= atwork(db, user)
     admin = auth_headers(api_client, "test-super-admin")
     body = api_client.get(f"{USERS_URL}/{user.id}/effective-access", headers=admin).json()
-    assert body["default_access_excluded"] == ["atwork"]
-    assert [s["type"] for m in body["modules"] for s in m["sources"] if m["module_key"] == "atwork"] == ["GROUP"]
+    assert body["default_access_excluded"] == []
+    assert [s["type"] for m in body["modules"] for s in m["sources"] if m["module_key"] == "atwork"] == ["GROUP", "BASELINE"]
+    # The standard role cannot be removed while a higher one is held, nor after it goes.
+    assert api_client.delete(f"{USERS_URL}/{user.id}/modules/atwork", headers=admin).status_code == 409
+    assert atwork(db, user) >= MANAGER_PERMS
 
 
 def test_live_permissions_follow_revocation_and_deactivation(api_client, db, baseline):

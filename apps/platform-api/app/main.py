@@ -9,6 +9,7 @@ from app.api.routes import (
     modules,
     notifications,
     platform_admin,
+    platform_directory,
     platform_internal,
     view_as,
 )
@@ -56,5 +57,6 @@ app.include_router(auth_entra.router)
 app.include_router(modules.router)
 app.include_router(notifications.router)
 app.include_router(platform_admin.router)
+app.include_router(platform_directory.router)
 app.include_router(platform_internal.router)
 app.include_router(view_as.router)
