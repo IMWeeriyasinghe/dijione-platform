@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, text
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 PREVIOUS, THIS = "j6l8n0p2q4r5", "k7m9n1p3r5t7"
+MODULE = "field-ops"  # any application with a default role; the migration is not module-specific
 
 
 def _alembic(url, *args):
@@ -38,14 +39,15 @@ def test_legacy_marking_and_exactly_the_opt_outs_are_removed(tmp_path):
     engine = create_engine(url)
     with engine.begin() as c:
         c.execute(text("DELETE FROM module_baseline_roles"))
-        c.execute(text("INSERT INTO module_baseline_roles (module_key, role, enabled) VALUES ('atwork', 'ATWORK_USER', 1)"))
+        c.execute(text("INSERT INTO module_baseline_roles (module_key, role, enabled) VALUES (:m, :r, 1)"),
+                  {"m": MODULE, "r": "FIELD_USER"})
         _user(c, 1)                          # eligible today -> LEGACY; opted out -> restored
         _user(c, 2, internal=False)          # not verified -> no LEGACY
         _user(c, 3, active=False)            # inactive -> no LEGACY
         _user(c, 4)                          # eligible, a talent assignment only
-        _role(c, 10, 1, "atwork", "ATWORK_USER", False)     # the opt-out
+        _role(c, 10, 1, MODULE, "FIELD_USER", False)        # the opt-out
         _role(c, 11, 4, "talent-flow", "TA_MEMBER", False)  # an unrelated disabled assignment: kept
-        _role(c, 12, 2, "atwork", "ATWORK_MANAGER", True)   # a higher role: kept
+        _role(c, 12, 2, MODULE, "FIELD_MANAGER", True)      # a higher role: kept
         c.execute(text(
             "INSERT INTO user_module_client_scopes (user_module_role_id, all_clients, created_at, updated_at)"
             " VALUES (10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"

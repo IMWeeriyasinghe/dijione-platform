@@ -22,16 +22,19 @@ from app.integrations.people import EmployeeRecordChecker, set_employee_record_c
 from app.main import app
 from app.models.access_group import AccessGroup, UserGroupMembership
 from app.models.audit_log import AuditLog
+from app.models.module import ApplicationModule
 from app.models.module_baseline import ModuleBaselineRole
+from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.services.authorization_service import AuthorizationService
 from app.services.claims_service import build_claims
 from app.services.entra_service import resolve_entra_user
 from tests.conftest import auth_headers, internal_headers
-from tests.test_atwork_registration import MANAGER_PERMS, USER_PERMS, _register_module
 
 TENANT = "tenant-1"
 ADMIN = "/api/platform/admin"
+MODULE, STANDARD, MANAGER = "field-ops", "FIELD_USER", "FIELD_MANAGER"
+USER_PERMS, MANAGER_PERMS = frozenset({"field.use"}), frozenset({"field.use", "field.manage"})
 NAMES = ["ana", "ben", "svc", "guest", "off", "ext", "twin1", "twin2"]
 OID = {name: f"{i:08d}-0000-4000-8000-000000000000" for i, name in enumerate(NAMES, 1)}
 
@@ -83,8 +86,25 @@ def _env(monkeypatch, db):
     monkeypatch.setenv("ENTRA_INTERNAL_EMAIL_DOMAINS", "dijital.example")
     monkeypatch.setenv("VIEW_AS_ENABLED", "true")
     get_settings.cache_clear()
-    _register_module(db)
-    db.add(ModuleBaselineRole(module_key="atwork", role="ATWORK_USER", enabled=True))
+    # A neutral application with an always-on standard role and a higher manager role (the same shape as
+    # the real default application's standard and manager roles; module code stays out of platform tests).
+    db.add_all([
+        ApplicationModule(key=MODULE, name="Field Ops", description="", route="/field-ops", required_roles="ANY",
+                          supports_client_scope=False),
+        ModuleBaselineRole(module_key=MODULE, role=STANDARD, enabled=True),
+        Permission(key="field.use", name="Use", description="", module_key=MODULE, category="x"),
+        Permission(key="field.manage", name="Manage", description="", module_key=MODULE, category="x"),
+        Role(module_key=MODULE, key=STANDARD, name="Field User", description="", is_system=False),
+        Role(module_key=MODULE, key=MANAGER, name="Field Manager", description="", is_system=False),
+    ])
+    db.flush()
+    perms = {p.key: p.id for p in db.query(Permission).filter(Permission.module_key == MODULE)}
+    roles = {r.key: r.id for r in db.query(Role).filter(Role.module_key == MODULE)}
+    db.add_all([
+        RolePermission(role_id=roles[STANDARD], permission_id=perms["field.use"]),
+        RolePermission(role_id=roles[MANAGER], permission_id=perms["field.use"]),
+        RolePermission(role_id=roles[MANAGER], permission_id=perms["field.manage"]),
+    ])
     db.commit()
     yield
     get_settings.cache_clear()
@@ -118,9 +138,9 @@ def admin(api_client, two_tenant_world):
     return auth_headers(api_client, "test-super-admin")
 
 
-def atwork(db, user):
+def standard(db, user):
     db.expire_all()
-    return AuthorizationService(db).effective_permissions(db.get(User, user.id), "atwork")
+    return AuthorizationService(db).effective_permissions(db.get(User, user.id), MODULE)
 
 
 def add(api_client, admin, name):
@@ -175,8 +195,8 @@ def test_adding_from_the_directory_populates_and_verifies_before_any_sign_in(api
     assert body["employee_record"] == "MATCHED" and body["eligible_employee"] and not body["signed_in"]
     user = db.get(User, body["id"])
     assert user.last_login_at is None and user.platform_role == "PLATFORM_USER"
-    assert atwork(db, user) == USER_PERMS  # default DijiAtWork before the first sign-in
-    assert list(build_claims(user, db)["module_roles"]) == ["atwork"]  # and nothing else by default
+    assert standard(db, user) == USER_PERMS  # default access before the first sign-in
+    assert list(build_claims(user, db)["module_roles"]) == [MODULE]  # and nothing else by default
     assert db.query(AuditLog).filter_by(action="user.directory_verified", entity_id=user.id).count() == 1
 
 
@@ -208,16 +228,16 @@ def test_verifying_a_manual_profile_keeps_every_assignment(api_client, db, admin
     group = AccessGroup(key="crew", display_name="Crew")
     db.add_all([user, group])
     db.flush()
-    db.add_all([UserModuleRole(user_id=user.id, module_key="atwork", role="ATWORK_MANAGER", enabled=True),
+    db.add_all([UserModuleRole(user_id=user.id, module_key=MODULE, role=MANAGER, enabled=True),
                 UserGroupMembership(user_id=user.id, access_group_id=group.id)])
     db.commit()
     resp = api_client.post(f"{ADMIN}/users/{user.id}/verify-directory", headers=admin)
     assert resp.status_code == 200, resp.text
     db.expire_all()
     roles = [(r.module_key, r.role, r.enabled) for r in db.query(UserModuleRole).filter_by(user_id=user.id)]
-    assert roles == [("atwork", "ATWORK_MANAGER", True)]
+    assert roles == [(MODULE, MANAGER, True)]
     assert db.query(UserGroupMembership).filter_by(user_id=user.id).count() == 1
-    assert atwork(db, user) >= MANAGER_PERMS | USER_PERMS  # the higher role stays; the standard one is added
+    assert standard(db, user) >= MANAGER_PERMS | USER_PERMS  # the higher role stays; the standard one is added
 
 
 @pytest.mark.parametrize(
@@ -255,7 +275,7 @@ def test_a_service_account_gets_an_identity_but_no_employee_access(api_client, d
     body = add(api_client, admin, "svc").json()
     assert body["directory_verified"] and body["employee_record"] == "NOT_FOUND" and not body["eligible_employee"]
     user = db.get(User, body["id"])
-    assert atwork(db, user) == frozenset()
+    assert standard(db, user) == frozenset()
     resp = api_client.post(f"{ADMIN}/view-as", json={"target_user_id": user.id}, headers=admin)
     assert resp.status_code == 404 and "employee record" in resp.json()["detail"]
     # ... but its access can still be previewed.
@@ -269,14 +289,14 @@ def test_a_service_account_signing_in_gets_no_employee_access(db, directory, peo
     signed = resolve_entra_user(db, {"oid": OID["svc"], "email": "svc-backup@dijital.example", "name": "S",
                                      "tid": TENANT, "acct": 0})
     assert signed.internal_employee and signed.employee_record_status == "NOT_FOUND"
-    assert atwork(db, signed) == frozenset()
+    assert standard(db, signed) == frozenset()
 
 
 def test_an_unavailable_hr_source_never_grants(api_client, db, admin, directory):
     set_employee_record_checker(EmployeeRecordChecker(People(down=True)))
     body = add(api_client, admin, "ana").json()
     assert body["employee_record"] == "UNKNOWN" and not body["eligible_employee"]
-    assert atwork(db, db.get(User, body["id"])) == frozenset()
+    assert standard(db, db.get(User, body["id"])) == frozenset()
 
 
 def test_employee_number_from_the_directory_matches_a_single_active_hr_entry(api_client, admin, directory):
@@ -300,10 +320,10 @@ def test_legacy_employees_keep_access_and_are_reported_not_revoked(api_client, d
     db.expire_all()
     ana, ben = (db.get(User, u.id) for u in legacy)
     assert ana.employee_record_status == "MATCHED" and ana.employee_number == "0107"
-    assert ben.employee_record_status == "LEGACY" and atwork(db, ben) == USER_PERMS  # still has access
+    assert ben.employee_record_status == "LEGACY" and standard(db, ben) == USER_PERMS  # still has access
     # A later sign-in that does not find Ben in BambooHR does not take it away either.
     signed = resolve_entra_user(db, {"oid": OID["ben"], "email": "ben@dijital.example", "name": "B", "tid": TENANT, "acct": 0})
-    assert signed.employee_record_status == "LEGACY" and atwork(db, signed) == USER_PERMS
+    assert signed.employee_record_status == "LEGACY" and standard(db, signed) == USER_PERMS
 
 
 def test_reconciliation_changes_nothing_when_hr_is_unavailable(api_client, db, admin, directory):
@@ -327,7 +347,7 @@ def test_pre_login_view_as_for_a_verified_employee(api_client, db, admin, direct
     token = started.json()["access_token"]
     view = {"Authorization": f"Bearer {token}"}
     assert api_client.get("/api/auth/me", headers=view).json()["email"] == "ana@dijital.example"
-    assert "atwork" in {m["key"] for m in api_client.get("/api/modules", headers=view).json()}
+    assert MODULE in {m["key"] for m in api_client.get("/api/modules", headers=view).json()}
     assert api_client.get(f"{ADMIN}/users", headers=view).status_code == 403  # read-only, never a staff session
     assert db.get(User, body["id"]).last_login_at is None
 
