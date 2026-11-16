@@ -10,6 +10,7 @@ from app.api.routes import (
     notifications,
     platform_admin,
     platform_internal,
+    view_as,
 )
 from app.core.config import get_settings
 
@@ -56,3 +57,4 @@ app.include_router(modules.router)
 app.include_router(notifications.router)
 app.include_router(platform_admin.router)
 app.include_router(platform_internal.router)
+app.include_router(view_as.router)

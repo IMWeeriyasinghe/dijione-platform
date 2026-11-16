@@ -74,6 +74,12 @@ PLATFORM_PERMISSIONS: list[PermissionDef] = [
         "platform.admin.view_audit", "View Audit Log",
         "Inspect platform administrative audit history.", None, "Administration",
     ),
+    PermissionDef(
+        "platform.admin.view_as", "View As User",
+        "Open a read-only session that shows an internal employee's applications exactly as that "
+        "employee sees them. Also requires the SUPER_ADMIN role; every session is audited.", None,
+        "Administration",
+    ),
 ]
 
 PLATFORM_ROLES: list[RoleDef] = [

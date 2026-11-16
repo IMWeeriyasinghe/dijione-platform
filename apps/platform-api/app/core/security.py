@@ -121,6 +121,10 @@ _session_provider = DevAuthProvider()
 # token as a user session only when it says so itself.
 SESSION_ACTOR_CLAIM = "actor_type"
 SESSION_ACTOR_STAFF = "staff"
+# A read-only View-as session: signed for the person being viewed, issued to a SUPER_ADMIN, never
+# accepted as a staff session (platform-api's ``get_current_user`` requires ``staff``), so it can
+# neither be refreshed nor used to change anything on the platform.
+SESSION_ACTOR_VIEW_AS = "view_as"
 
 
 def issue_session_token(user_id: int, **claims: object) -> str:
@@ -131,6 +135,12 @@ def issue_session_token(user_id: int, **claims: object) -> str:
     talent-api/birthday-api/spark-api and packages/auth-client-py need no
     change. (The name kept for the issuer string is historical.)"""
     return _session_provider.issue_token(user_id, **{**claims, SESSION_ACTOR_CLAIM: SESSION_ACTOR_STAFF})
+
+
+def issue_view_as_token(target_user_id: int, **claims: object) -> str:
+    """Mint a View-as token. ``claims`` carry the target's own resolved authorization claims, so
+    every application authorizes the request exactly as it would the target."""
+    return _session_provider.issue_token(target_user_id, **{**claims, SESSION_ACTOR_CLAIM: SESSION_ACTOR_VIEW_AS})
 
 
 def decode_session_token(token: str) -> dict:

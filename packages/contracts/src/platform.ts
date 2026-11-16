@@ -21,6 +21,23 @@ export type CurrentUser = {
   avatar_color: string | null;
   module_roles: ModuleRole[];
   platform_permissions: string[];
+  /** Present only while a read-only View-as token is in use. */
+  view_as?: ViewAsInfo | null;
+};
+
+export type ViewAsInfo = {
+  session_id: string;
+  expires_at: string;
+  actor_id: number;
+  actor_name: string;
+  read_only: boolean;
+};
+
+export type ViewAsStartOut = {
+  access_token: string;
+  session_id: string;
+  expires_at: string;
+  target: { id: number; full_name: string; email: string; title: string | null };
 };
 
 export type DevPersona = {

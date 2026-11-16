@@ -77,6 +77,18 @@ class ExternalClaims:
 
 
 @dataclass(frozen=True)
+class ViewAsClaims:
+    """Present on a read-only View-as token: a SUPER_ADMIN (``actor_id``) is looking at the
+    application exactly as the employee named by the token's ``sub`` does. ``actor_av`` is the
+    administrator's own access version when the session began."""
+
+    session_id: str
+    actor_id: int
+    actor_name: str = ""
+    actor_av: int = 0
+
+
+@dataclass(frozen=True)
 class AuthClaims:
     user_id: int
     is_active: bool
@@ -90,6 +102,9 @@ class AuthClaims:
     # The user's ``access_version`` when the session was issued; a token from before
     # the claim existed reads as 0.
     access_version: int = 0
+    # Set for a View-as token. A token that says ``actor_type = view_as`` always yields a value here, even
+    # if its detail claim is missing or malformed, so enforcement can never be skipped by omission.
+    view_as: ViewAsClaims | None = None
 
     def module(self, module_key: str) -> ModuleRoleClaims | None:
         return self.module_roles.get(module_key)
@@ -145,6 +160,18 @@ def decode_claims(
             else None
         )
 
+        view_as_raw = payload.get("view_as")
+        view_as_claim = None
+        if view_as_raw is not None or payload.get("actor_type") == "view_as":
+            raw = view_as_raw if isinstance(view_as_raw, dict) else {}
+            try:
+                view_as_claim = ViewAsClaims(
+                    session_id=str(raw.get("session_id", "")), actor_id=int(raw.get("actor_id", 0)),
+                    actor_name=str(raw.get("actor_name", "")), actor_av=int(raw.get("actor_av", 0)),
+                )
+            except (TypeError, ValueError):
+                view_as_claim = ViewAsClaims(session_id="", actor_id=0)
+
         return AuthClaims(
             user_id=user_id,
             is_active=bool(payload.get("is_active", True)),
@@ -156,6 +183,7 @@ def decode_claims(
             supplier=supplier_claim,
             external=external_claim,
             access_version=int(payload.get("av", 0)),
+            view_as=view_as_claim,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise InvalidTokenError(f"Token is missing expected Phase 2.5 claims: {exc}") from exc

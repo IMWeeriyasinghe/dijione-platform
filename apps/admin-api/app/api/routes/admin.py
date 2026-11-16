@@ -48,6 +48,28 @@ def create_user(
     return call_platform_admin(platform, "POST", "/api/platform/admin/users", bearer_token=bearer_token, json=payload)
 
 
+@router.post("/view-as", status_code=201)
+def start_view_as(
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    """Start a read-only View-as session. platform-api decides who may (SUPER_ADMIN with the permission)
+    and whom (an active internal employee); this is a pass-through like every other admin call."""
+    return call_platform_admin(platform, "POST", "/api/platform/admin/view-as", bearer_token=bearer_token, json=payload)
+
+
+@router.post("/view-as/{session_id}/end")
+def end_view_as(
+    session_id: str,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "POST", f"/api/platform/admin/view-as/{session_id}/end", bearer_token=bearer_token
+    )
+
+
 @router.get("/users/{user_id}")
 def get_user(
     user_id: int,

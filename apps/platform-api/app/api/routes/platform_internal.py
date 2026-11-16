@@ -64,6 +64,8 @@ class AuditEventIn(BaseModel):
     previous_state: dict | str | None = None
     new_state: dict | str | None = None
     metadata: dict | None = None
+    # The user the event is about, so it appears in that person's history.
+    subject_user_id: int | None = None
 
 
 @router.post("/audit-events", status_code=201)

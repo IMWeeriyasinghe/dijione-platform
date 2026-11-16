@@ -24,6 +24,7 @@ import {
   upsertModuleAssignment,
 } from "@/lib/api";
 import { AccessDiagnostics } from "./access-diagnostics";
+import { ViewAsButton } from "./view-as-button";
 import { PLATFORM_ROLE_LABELS } from "@dijione/contracts";
 import {
   Avatar,
@@ -365,6 +366,7 @@ export default function AdminUserDetailPage() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <StatusBadge status={user.is_active ? "ACTIVE_CLIENT" : "CANCELLED"} label={user.is_active ? "Active" : "Inactive"} />
+          <ViewAsButton user={user} effective={effectiveQuery.data} />
           <Button
             size="sm"
             variant={user.is_active ? "danger" : "secondary"}

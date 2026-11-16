@@ -158,3 +158,12 @@ def test_access_diagnostics_is_forwarded_with_its_status_and_errors(api_client):
     assert api_client.get("/api/admin/users/999/access-diagnostics", headers=VALID).status_code == 404
     assert api_client.get("/api/admin/users/1/access-diagnostics", headers=INVALID).status_code == 403
     assert api_client.get("/api/admin/users/1/access-diagnostics").status_code in (401, 403)
+
+
+def test_view_as_start_and_end_are_forwarded_with_their_errors(api_client):
+    started = api_client.post("/api/admin/view-as", json={"target_user_id": 5}, headers=VALID)
+    assert started.status_code == 201 and started.json()["session_id"] == "S-1"
+    assert api_client.post("/api/admin/view-as", json={"target_user_id": 404}, headers=VALID).status_code == 404
+    assert api_client.post("/api/admin/view-as", json={"target_user_id": 5}, headers=INVALID).status_code == 403
+    assert api_client.post("/api/admin/view-as/S-1/end", headers=VALID).json() == {"session_id": "S-1", "ended": True}
+    assert api_client.post("/api/admin/view-as", json={"target_user_id": 5}).status_code in (401, 403)

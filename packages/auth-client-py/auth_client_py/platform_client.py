@@ -60,15 +60,16 @@ class PlatformClient:
         previous_state: dict | str | None = None,
         new_state: dict | str | None = None,
         metadata: dict | None = None,
+        subject_user_id: int | None = None,
     ) -> bool:
-        return self._post_internal(
-            "/api/platform/internal/audit-events",
-            {
-                "actor_id": actor_id, "action": action, "entity_type": entity_type,
-                "entity_id": entity_id, "previous_state": previous_state,
-                "new_state": new_state, "metadata": metadata,
-            },
-        )
+        payload = {
+            "actor_id": actor_id, "action": action, "entity_type": entity_type,
+            "entity_id": entity_id, "previous_state": previous_state,
+            "new_state": new_state, "metadata": metadata,
+        }
+        if subject_user_id is not None:
+            payload["subject_user_id"] = subject_user_id
+        return self._post_internal("/api/platform/internal/audit-events", payload)
 
     def notify_user(
         self,
@@ -115,6 +116,11 @@ class PlatformClient:
         return self._post_internal("/api/platform/internal/notifications/deliver", payload)
 
     def _post_internal(self, path: str, payload: dict) -> bool:
+        from auth_client_py.view_as import view_as_active  # imported here: view_as needs FastAPI, this module does not
+
+        if view_as_active():  # a read-only View-as request must not cause audit rows, notifications or mail
+            logger.warning("skipped %s: this request belongs to a read-only View-as session", path)
+            return False
         try:
             resp = self._request(
                 "POST", path, headers={"X-Internal-Token": self._internal_secret}, json=payload

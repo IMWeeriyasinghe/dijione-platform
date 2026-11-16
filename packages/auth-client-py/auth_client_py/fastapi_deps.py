@@ -14,6 +14,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from auth_client_py.claims import AuthClaims, InvalidTokenError, decode_claims
 from auth_client_py.revocation import EXEMPT, FRESH, OWN, READ, RESTRICTED, SENSITIVE, get_guard, route_class
+from auth_client_py.view_as import (
+    BLOCKED_HEADER,
+    READ_ONLY_DETAIL,
+    install_read_only_guard,
+    mark_view_as_active,
+    record_blocked_attempt,
+)
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -58,8 +65,9 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
     """
 
     get_guard()  # starts the revocation snapshot at process start (no-op when disabled)
+    install_read_only_guard()  # database-level backstop for View-as requests
 
-    def _get_claims(
+    async def _get_claims(
         request: Request,
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     ) -> AuthClaims:
@@ -71,10 +79,27 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
         if not claims.is_active:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
-        _enforce_revocation(request, claims)
+        _enforce_revocation(request, claims)  # first: a revoked session is refused without being reported
+        _enforce_view_as(request, claims)
         return claims
 
     return _get_claims
+
+
+def _enforce_view_as(request: Request, claims: AuthClaims) -> None:
+    """A View-as session may only read: a GET to a route the service's policy marks READ.
+
+    This runs on every request whatever the revocation setting, and the method is never trusted on
+    its own. A service with no registered policy, or a route missing from it, is refused."""
+    if claims.view_as is None:
+        return
+    method = "GET" if request.method == "HEAD" else request.method
+    route = request.scope.get("route")
+    path = getattr(route, "path", None) or request.url.path
+    if method != "GET" or route_class(method, getattr(route, "path", None)) not in (READ, EXEMPT):
+        record_blocked_attempt(claims, request.method, path)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, READ_ONLY_DETAIL, headers=BLOCKED_HEADER)
+    mark_view_as_active()
 
 
 def _enforce_revocation(request: Request, claims: AuthClaims) -> None:
@@ -86,7 +111,9 @@ def _enforce_revocation(request: Request, claims: AuthClaims) -> None:
     guard = get_guard()
     if guard is None or claims.supplier is not None or claims.external is not None:
         return
-    if guard.is_revoked(claims.user_id, claims.access_version):
+    if guard.is_revoked(claims.user_id, claims.access_version) or (
+        claims.view_as is not None and guard.is_revoked(claims.view_as.actor_id, claims.view_as.actor_av)
+    ):  # a View-as session also ends when the administrator's own access changes
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Session revoked", headers={"X-Auth-Error": "session_revoked"}
         )

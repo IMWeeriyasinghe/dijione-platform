@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.api.deps import get_current_user
+from app.api.deps import Viewer, get_current_user, get_viewer
 from app.core.config import get_settings
 from app.main import app
 from app.models.access_group import AccessGroup, GroupModuleRole, UserGroupMembership
@@ -27,6 +27,7 @@ def _entra_settings(monkeypatch):
     yield
     get_settings.cache_clear()
     app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_viewer, None)
 
 
 @pytest.fixture()
@@ -206,11 +207,13 @@ def test_home_admin_and_me_agree_with_effective_access(api_client, db, baseline,
     assert set(module["permissions"]) == USER_PERMS and [s["type"] for s in module["sources"]] == ["BASELINE"]
 
     app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_viewer] = lambda: Viewer(user=user)
     assert "atwork" in {m["key"] for m in api_client.get("/api/modules").json()}
     assert {"module_key": "atwork", "role": "ATWORK_USER", "client_id": None, "enabled": True} in api_client.get(
         "/api/auth/me"
     ).json()["module_roles"]
     app.dependency_overrides[get_current_user] = lambda: outsider
+    app.dependency_overrides[get_viewer] = lambda: Viewer(user=outsider)
     assert "atwork" not in {m["key"] for m in api_client.get("/api/modules").json()}
 
 
