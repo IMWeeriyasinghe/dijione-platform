@@ -111,6 +111,67 @@ export type EffectiveAccessOut = {
   modules: EffectiveModuleAccessOut[];
 };
 
+export type DiagSource = {
+  type: "DIRECT" | "GROUP" | "DEFAULT";
+  role: string;
+  group_name: string | null;
+  permissions: string[];
+  client_scope: string;
+};
+
+export type DiagModule = {
+  module_key: string;
+  module_name: string;
+  has_access: boolean;
+  role: string;
+  role_name: string;
+  permissions: string[];
+  sources: DiagSource[];
+  client_scope: ClientScope;
+  uses_client_scope: boolean;
+  scope_explanation: string;
+  inactive: { type: string; role: string; group_name: string | null; reason: string }[];
+};
+
+export type AccessDiagnosticsOut = {
+  user_id: number;
+  full_name: string;
+  email: string;
+  account: {
+    is_active: boolean;
+    identity_provider: string;
+    entra_linked: boolean;
+    internal_employee: boolean;
+    platform_role: string;
+    platform_permissions: string[];
+    last_sign_in_at: string | null;
+    created_at: string | null;
+  };
+  default_access: {
+    module_key: string;
+    module_name: string;
+    role: string;
+    state: "GRANTED" | "EXCLUDED" | "NOT_ELIGIBLE" | "MODULE_DISABLED";
+    reasons: string[];
+  }[];
+  groups: {
+    group_id: number;
+    group_name: string;
+    status: string;
+    grants: { module_key: string; role: string; enabled: boolean }[];
+  }[];
+  modules: DiagModule[];
+  session: {
+    last_sign_in_at: string | null;
+    token_issue_time_available: boolean;
+    token_issue_time_note: string;
+    access_changes_since_last_sign_in: number | null;
+    latest_access_change_at: string | null;
+    token_lifetime_minutes: number;
+  };
+  checks: { key: string; level: "ok" | "info" | "warning"; message: string }[];
+};
+
 export type GroupMemberOut = {
   user_id: number;
   email: string;

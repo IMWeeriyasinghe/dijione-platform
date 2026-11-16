@@ -30,13 +30,12 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.routes.auth import _to_current_user_out
+from app.api.routes.auth import _to_current_user_out, issue_user_session
 from app.core.config import get_settings
-from app.core.security import InvalidTokenError, get_entra_verifier, issue_session_token
+from app.core.security import InvalidTokenError, get_entra_verifier
 from app.db.session import get_db
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import TokenResponse
-from app.services.claims_service import build_claims
 from app.services.entra_service import EntraLoginRefusedError, resolve_entra_user
 
 router = APIRouter(prefix="/api/auth/entra", tags=["auth-entra"])
@@ -185,7 +184,7 @@ def exchange_code(payload: EntraTokenExchangeIn, db: Session = Depends(get_db)) 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     # --- issue the DijiOne session token (unchanged downstream contract) ---
-    session_token = issue_session_token(user.id, **build_claims(user, db))
+    session_token = issue_user_session(user, db)
     return TokenResponse(
         access_token=session_token, user=_to_current_user_out(user, UserRepository(db), db)
     )

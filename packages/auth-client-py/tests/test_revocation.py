@@ -1,0 +1,491 @@
+"""Session revocation: snapshot states, outage and recovery, cold start, and the
+FastAPI enforcement every API shares."""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+from jose import jwt
+
+from auth_client_py import AuthClaims, revocation
+from auth_client_py.fastapi_deps import make_get_claims
+from auth_client_py.revocation import (
+    FRESH,
+    RESTRICTED,
+    STALE,
+    RevocationGuard,
+    register_route_policy,
+    revocation_status,
+    route_class,
+    set_guard,
+)
+
+SECRET = "unit-test-secret"
+ALICE, BOB = 11, 12
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class Feed:
+    """A scriptable stand-in for platform-api's snapshot endpoint."""
+
+    def __init__(self, users=None):
+        self.users = users or {}
+        self.etag = "v1"
+        self.down = False
+        self.calls = 0
+
+    def set(self, users):
+        self.users = users
+        self.etag = f"v{self.calls}-{len(users)}-{sum(v for v, _ in users.values())}"
+
+    def __call__(self, etag):
+        self.calls += 1
+        if self.down:
+            raise ConnectionError("feed unreachable")
+        if etag == self.etag:
+            return 304, etag, None
+        return 200, self.etag, dict(self.users)
+
+
+def make_guard(feed, clock, **kw):
+    return RevocationGuard(feed, clock=clock, **kw)
+
+
+def token(user_id=ALICE, av=0, **extra):
+    now = datetime.now(UTC)
+    payload = {
+        "sub": str(user_id), "iat": now, "exp": now + timedelta(hours=1), "iss": "dijione-dev-identity",
+        "is_active": True, "full_name": "T", "email": "t@example.com", "platform_role": "PLATFORM_USER",
+        "platform_permissions": [], "module_roles": {}, **extra,
+    }
+    if av is not None:
+        payload["av"] = av
+    return {"Authorization": "Bearer " + jwt.encode(payload, SECRET, algorithm="HS256")}
+
+
+get_claims = make_get_claims(secret=SECRET)
+app = FastAPI()
+
+
+@app.get("/read")
+def read(claims: AuthClaims = Depends(get_claims)) -> dict:
+    return {"user": claims.user_id}
+
+
+@app.post("/write")
+def write(claims: AuthClaims = Depends(get_claims)) -> dict:
+    return {"user": claims.user_id}
+
+
+@app.post("/sensitive")
+def sensitive(claims: AuthClaims = Depends(get_claims)) -> dict:
+    return {"user": claims.user_id}
+
+
+@app.get("/export")  # a GET that is nonetheless sensitive
+def export(claims: AuthClaims = Depends(get_claims)) -> dict:
+    return {"user": claims.user_id}
+
+
+@app.post("/own")
+def own(claims: AuthClaims = Depends(get_claims)) -> dict:
+    return {"user": claims.user_id}
+
+
+@app.get("/unlisted")
+def unlisted(claims: AuthClaims = Depends(get_claims)) -> dict:
+    return {"user": claims.user_id}
+
+
+POLICY = {
+    "GET /read": "READ", "POST /write": "WRITE", "POST /sensitive": "SENSITIVE", "GET /export": "SENSITIVE",
+    "POST /own": "OWN",
+}
+
+
+client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _policy_and_no_guard():
+    register_route_policy(POLICY)
+    yield
+    set_guard(None)
+    revocation._route_policy = None
+
+
+@pytest.fixture()
+def clock():
+    return Clock()
+
+
+@pytest.fixture()
+def feed():
+    return Feed({ALICE: (2, True), BOB: (1, False)})
+
+
+def installed(feed, clock, **kw):
+    guard = make_guard(feed, clock, **kw)
+    set_guard(guard)
+    return guard
+
+
+# --- disabled ------------------------------------------------------------------
+
+
+def test_nothing_changes_when_revocation_is_disabled():
+    set_guard(None)
+    assert client.get("/read", headers=token(av=0)).status_code == 200
+    assert client.post("/sensitive", headers=token()).status_code == 200
+    assert revocation_status() == {"enabled": False}
+
+
+# --- verdicts ------------------------------------------------------------------
+
+
+def test_stale_inactive_and_legacy_tokens_are_revoked_current_ones_are_not(feed, clock):
+    guard = installed(feed, clock)
+    assert guard.refresh_once() and guard.state() == FRESH
+    assert client.get("/read", headers=token(ALICE, av=2)).status_code == 200  # current
+    assert client.get("/read", headers=token(ALICE, av=3)).status_code == 200  # newer is fine
+    old = client.get("/read", headers=token(ALICE, av=1))
+    assert old.status_code == 401 and old.headers["x-auth-error"] == "session_revoked"
+    assert client.get("/read", headers=token(ALICE, av=None)).status_code == 401  # legacy token = version 0
+    assert client.get("/read", headers=token(BOB, av=99)).status_code == 401  # inactive, whatever its version
+    assert client.get("/read", headers=token(77, av=0)).status_code == 200  # never changed: not listed
+
+
+def test_supplier_and_external_sessions_are_not_user_sessions(feed, clock):
+    installed(feed, clock).refresh_once()
+    supplier = {"supplier": {"supplier_id": 5, "supplier_user_id": ALICE}}  # its id deliberately equals a user's
+    assert client.get("/read", headers=token(ALICE, av=0, **supplier)).status_code == 200
+    external = {"external": {"grant_id": 4}}
+    assert client.get("/read", headers=token(ALICE, av=0, **external)).status_code == 200
+
+
+# --- cold start ----------------------------------------------------------------
+
+
+def test_a_replica_with_no_snapshot_is_restricted_not_open(feed, clock):
+    feed.down = True
+    guard = installed(feed, clock)
+    guard.start()  # the bootstrap attempt fails
+    guard.stop()
+    assert guard.state() == RESTRICTED and guard.status()["snapshot_age_seconds"] is None
+    assert client.get("/read", headers=token()).status_code == 200  # reads of non-sensitive data continue
+    write = client.post("/write", headers=token())
+    assert write.status_code == 503 and write.headers["x-auth-error"] == "revocation_restricted"
+    assert client.post("/sensitive", headers=token()).status_code == 503
+    assert client.get("/export", headers=token()).status_code == 503  # a GET, but sensitive: no snapshot, no export
+    assert client.get("/unlisted", headers=token()).status_code == 503  # unclassified routes count as sensitive
+    assert client.post("/own", headers=token()).status_code == 200  # a person's own data stays available
+
+
+def test_a_normal_start_is_fresh_before_the_first_request(feed, clock):
+    guard = installed(feed, clock)
+    guard.start()
+    guard.stop()
+    assert guard.state() == FRESH
+    assert client.post("/write", headers=token(ALICE, av=2)).status_code == 200
+
+
+# --- outage: known revocations never lapse ---------------------------------------
+
+
+def test_known_revocations_stay_enforced_through_every_stage_of_an_outage(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.down = True
+    for elapsed, expected in ((60, FRESH), (400, STALE), (4000, RESTRICTED)):
+        clock.now = 1000.0 + elapsed
+        assert guard.refresh_once() is False
+        assert guard.state() == expected
+        assert client.get("/read", headers=token(ALICE, av=1)).status_code == 401  # still revoked
+        assert client.get("/read", headers=token(BOB, av=5)).status_code == 401  # still inactive
+
+
+def test_stale_blocks_sensitive_routes_only_and_restricted_blocks_all_changes(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.down = True
+    clock.advance(600)  # STALE
+    guard.refresh_once()
+    assert guard.state() == STALE
+    assert client.post("/write", headers=token(ALICE, av=2)).status_code == 200
+    assert client.get("/read", headers=token(ALICE, av=2)).status_code == 200
+    for method, path in (("post", "/sensitive"), ("get", "/export"), ("get", "/unlisted")):
+        stale = getattr(client, method)(path, headers=token(ALICE, av=2))
+        assert stale.status_code == 503 and stale.headers["x-auth-error"] == "revocation_stale", path
+    clock.advance(4000)  # RESTRICTED
+    assert guard.state() == RESTRICTED
+    assert client.get("/read", headers=token(ALICE, av=2)).status_code == 200
+    assert client.post("/own", headers=token(ALICE, av=2)).status_code == 200
+    assert client.post("/write", headers=token(ALICE, av=2)).status_code == 503
+    assert client.post("/sensitive", headers=token(ALICE, av=2)).status_code == 503
+
+
+def test_with_no_policy_registered_every_route_is_sensitive_never_method_based(feed, clock):
+    revocation._route_policy = None
+    for method in ("GET", "HEAD", "POST", "DELETE"):
+        assert route_class(method, "/x") == "SENSITIVE"
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.down = True
+    clock.advance(600)  # STALE
+    guard.refresh_once()
+    resp = client.get("/read", headers=token(ALICE, av=2))  # a plain GET, but nothing says it is harmless
+    assert resp.status_code == 503 and resp.headers["x-auth-error"] == "revocation_stale"
+
+
+def test_a_route_missing_from_a_registered_policy_is_sensitive():
+    register_route_policy({"GET /x": "READ"})
+    assert route_class("GET", "/x") == "READ"
+    assert route_class("GET", "/y") == "SENSITIVE" and route_class("POST", "/x") == "SENSITIVE"
+
+
+def test_enabling_revocation_without_a_route_policy_stops_the_service_starting(monkeypatch):
+    revocation._route_policy = None
+    monkeypatch.setattr(revocation, "_configured", False)
+    monkeypatch.setattr(revocation, "_guard", None)
+    monkeypatch.setenv("REVOCATION_ENABLED", "true")
+    monkeypatch.setenv("PLATFORM_API_URL", "http://platform-api")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    with pytest.raises(RuntimeError, match="route policy"):
+        revocation.get_guard()
+    monkeypatch.setattr(revocation, "_configured", True)  # leave no half-configured state behind
+
+
+def test_enabling_revocation_without_the_feed_address_stops_the_service_starting(monkeypatch):
+    monkeypatch.setattr(revocation, "_configured", False)
+    monkeypatch.setattr(revocation, "_guard", None)
+    monkeypatch.setenv("REVOCATION_ENABLED", "true")
+    monkeypatch.delenv("PLATFORM_API_URL", raising=False)
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    with pytest.raises(RuntimeError, match="PLATFORM_API_URL"):
+        revocation.get_guard()
+    monkeypatch.setattr(revocation, "_configured", True)
+
+
+def test_a_policy_with_an_unknown_class_is_rejected():
+    with pytest.raises(ValueError):
+        register_route_policy({"GET /x": "RELAXED"})
+
+
+def test_recovery_replaces_the_snapshot_and_restores_normal_service(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.down = True
+    clock.advance(5000)
+    guard.refresh_once()
+    assert guard.state() == RESTRICTED
+    feed.down = False
+    feed.set({ALICE: (7, True), BOB: (4, True)})  # ALICE moved on; BOB reactivated (which raised his version)
+    assert guard.refresh_once() and guard.state() == FRESH
+    assert client.post("/sensitive", headers=token(ALICE, av=7)).status_code == 200
+    assert client.get("/read", headers=token(ALICE, av=2)).status_code == 401  # picked up while recovering
+    assert client.get("/read", headers=token(BOB, av=4)).status_code == 200  # reactivation with a newer version
+
+
+def test_an_unchanged_snapshot_refreshes_age_without_being_replaced(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    before = guard._snapshot.users
+    clock.advance(250)
+    assert guard.refresh_once()  # 304
+    assert guard._snapshot.users is before and guard.age_seconds() == 0
+
+
+def test_unusable_responses_keep_the_previous_snapshot(clock):
+    responses = iter([(200, "a", {ALICE: (2, True)}), (500, None, None), (200, "b", None)])
+    guard = RevocationGuard(lambda etag: next(responses), clock=clock)
+    assert guard.refresh_once()
+    assert not guard.refresh_once() and not guard.refresh_once()
+    assert guard.is_revoked(ALICE, 1) and not guard.is_revoked(ALICE, 2)
+
+
+# --- several replicas -------------------------------------------------------------
+
+
+def test_replicas_are_independent_and_each_converges_on_its_own_refresh(feed, clock):
+    first, second = make_guard(feed, clock), make_guard(feed, clock)
+    first.refresh_once()
+    second.refresh_once()
+    feed.set({ALICE: (5, True)})
+    first.refresh_once()  # only one replica has refreshed so far
+    assert first.is_revoked(ALICE, 2) and not second.is_revoked(ALICE, 2)
+    second.refresh_once()
+    assert second.is_revoked(ALICE, 2)
+
+
+def test_a_restarted_replica_does_not_inherit_its_neighbours_snapshot(feed, clock):
+    running = make_guard(feed, clock)
+    running.refresh_once()
+    feed.down = True
+    restarted = make_guard(feed, clock)
+    restarted.refresh_once()
+    assert running.state() == FRESH and restarted.state() == RESTRICTED
+
+
+def test_refresh_delay_backs_off_and_is_capped(feed, clock):
+    guard = make_guard(feed, clock, refresh_seconds=30, max_backoff_seconds=60)
+    guard.refresh_once()  # a snapshot is held, so failures now back off rather than retrying fast
+    healthy = guard._next_delay()
+    assert 25 <= healthy <= 35
+    feed.down = True
+    for _ in range(8):
+        guard.refresh_once()
+    assert guard._next_delay() <= 60 * 1.15
+
+
+# --- a snapshot can never move the state backwards -------------------------------------------
+
+
+def test_an_older_snapshot_cannot_lower_a_version_or_reactivate_an_account(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()  # ALICE av 2 active, BOB inactive av 1
+    feed.set({ALICE: (1, True), BOB: (1, True)})  # as if from a database restored from an older backup
+    assert guard.refresh_once()
+    assert guard.is_revoked(ALICE, 1)  # still needs av >= 2
+    assert guard.is_revoked(BOB, 99)  # still inactive: reactivation must come with a higher version
+
+
+def test_a_snapshot_that_omits_a_known_user_does_not_forget_them(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.set({})
+    assert guard.refresh_once()
+    assert guard.is_revoked(ALICE, 1) and guard.is_revoked(BOB, 99)
+
+
+def test_newer_entries_are_accepted_including_a_real_reactivation(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.set({ALICE: (5, True), BOB: (2, True)})
+    guard.refresh_once()
+    assert guard.is_revoked(ALICE, 4) and not guard.is_revoked(ALICE, 5)
+    assert not guard.is_revoked(BOB, 2) and guard.is_revoked(BOB, 1)
+
+
+def test_an_equal_version_with_a_different_status_is_not_trusted(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.set({BOB: (1, True)})  # same version, but status flipped without a version bump: impossible
+    guard.refresh_once()
+    assert guard.is_revoked(BOB, 99)
+
+
+def test_the_background_thread_keeps_refreshing_and_stops(feed):
+    guard = RevocationGuard(feed)
+    guard._next_delay = lambda: 0.01  # the production floor is one second; speed the loop up for the test
+    guard.start()
+    import time
+
+    deadline = time.time() + 2
+    while feed.calls < 4 and time.time() < deadline:
+        time.sleep(0.01)
+    guard.stop()
+    assert feed.calls >= 4
+
+
+# --- findings from the independent review ---------------------------------------------------------
+
+
+def test_an_unchanged_version_may_newly_mark_an_account_inactive_but_never_active(feed, clock):
+    guard = installed(feed, clock)
+    guard.refresh_once()
+    feed.set({ALICE: (2, False)})  # same version as before, but now inactive (a direct database edit)
+    guard.refresh_once()
+    assert guard.is_revoked(ALICE, 2)
+    feed.set({ALICE: (2, True)})  # the same version can not turn it back on
+    guard.refresh_once()
+    assert guard.is_revoked(ALICE, 2)
+
+
+def test_until_a_first_snapshot_loads_the_refresh_retries_every_few_seconds(clock):
+    down = Feed()
+    down.down = True
+    guard = make_guard(down, clock, refresh_seconds=30)
+    for _ in range(6):
+        guard.refresh_once()
+    assert guard.state() == RESTRICTED
+    assert 2.5 <= guard._next_delay() <= 3.5  # not the 60 s backoff that would outlast a scale-from-zero start
+    down.down = False
+    guard.refresh_once()
+    assert 25 <= guard._next_delay() <= 35  # normal cadence once loaded
+
+
+@pytest.mark.parametrize("value", [0, -5, float("nan"), float("inf")])
+def test_timings_must_be_finite_and_above_zero(feed, clock, value):
+    with pytest.raises(ValueError):
+        RevocationGuard(feed, clock=clock, refresh_seconds=value)
+    with pytest.raises(ValueError):
+        RevocationGuard(feed, clock=clock, restricted_seconds=value)
+
+
+def test_fresh_must_be_shorter_than_restricted(feed, clock):
+    with pytest.raises(ValueError):
+        RevocationGuard(feed, clock=clock, fresh_seconds=600, restricted_seconds=300)
+
+
+def test_the_refresh_delay_never_drops_below_a_second(feed, clock):
+    guard = RevocationGuard(feed, clock=clock, refresh_seconds=0.001, fresh_seconds=0.002, restricted_seconds=0.003)
+    assert guard._next_delay() >= 1.0
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", "0", "-1", "soon"])
+def test_a_bad_timing_in_the_environment_stops_the_service_starting(monkeypatch, raw):
+    monkeypatch.setattr(revocation, "_configured", False)
+    monkeypatch.setattr(revocation, "_guard", None)
+    register_route_policy(POLICY)
+    monkeypatch.setenv("REVOCATION_ENABLED", "true")
+    monkeypatch.setenv("PLATFORM_API_URL", "http://platform-api")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s")
+    monkeypatch.setenv("REVOCATION_RESTRICTED_SECONDS", raw)
+    with pytest.raises(RuntimeError, match="REVOCATION_RESTRICTED_SECONDS"):
+        revocation.get_guard()
+    monkeypatch.setattr(revocation, "_configured", True)
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "t", "yes", "y", "on", "enabled"])
+def test_the_usual_ways_of_writing_true_are_understood(value):
+    assert revocation._truthy(value)
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "false", "no", "off", "nope"])
+def test_anything_else_is_off(value):
+    assert not revocation._truthy(value)
+
+
+class _Reply:
+    def __init__(self, status_code, body, headers=None):
+        self.status_code, self._body, self.headers = status_code, body, headers or {}
+
+    def json(self):
+        return self._body
+
+
+@pytest.mark.parametrize("body", [{}, {"error": "bad gateway"}, [], "oops", {"users": []}, {"users": None}])
+def test_a_200_without_a_users_object_is_a_failure_not_an_empty_snapshot(monkeypatch, clock, body):
+    monkeypatch.setattr(revocation.httpx, "get", lambda *a, **k: _Reply(200, body))
+    guard = RevocationGuard(revocation.http_fetch("http://p", "s"), clock=clock)
+    assert guard.refresh_once() is False
+    assert guard.state() == RESTRICTED
+
+
+def test_a_real_feed_response_is_read(monkeypatch, clock):
+    monkeypatch.setattr(
+        revocation.httpx, "get", lambda *a, **k: _Reply(200, {"users": {"11": {"av": 4, "active": True}}}, {"etag": '"x"'})
+    )
+    guard = RevocationGuard(revocation.http_fetch("http://p", "s"), clock=clock)
+    assert guard.refresh_once() and guard.is_revoked(11, 3) and not guard.is_revoked(11, 4)

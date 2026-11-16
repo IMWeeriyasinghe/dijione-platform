@@ -7,9 +7,10 @@ import {
   STAFF_ROLES,
   type CurrentUser,
 } from "@dijione/contracts";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { devLogin, getMe } from "./auth-api";
-import { getToken, setToken } from "./http";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { devLogin, getMe, refreshSession } from "./auth-api";
+import { ApiError, SESSION_ENDED_EVENT, getToken, setToken } from "./http";
+import { MIN_REFRESH_GAP_MS, isExpired, msUntilRefresh, retryDelayMs, tokenExpiryMs } from "./session-timing";
 
 type AuthContextValue = {
   user: CurrentUser | null;
@@ -20,32 +21,134 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** How long a tab may sit before returning to it picks up access changes. REFRESH_LEAD_MS
+ *  (imported) separately keeps the token itself from running out. */
+const REFRESH_AFTER_MS = 5 * 60 * 1000;
+
+/**
+ * Loads the signed-in user with their current access. The session token is
+ * re-issued first, so a grant or revocation made in the Admin Center applies
+ * on the next page load instead of at the next sign-in. A 401 means the
+ * session is over. Any other refresh failure (an older platform-api without
+ * the endpoint, a brief outage) keeps the existing token and reads the user.
+ */
+export async function loadSessionUser(): Promise<CurrentUser> {
+  const tokenAtStart = getToken();
+  try {
+    const { access_token, user } = await refreshSession();
+    // Do not resurrect a session that was signed out or replaced meanwhile.
+    if (getToken() === tokenAtStart) setToken(access_token);
+    return user;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) throw error;
+    return getMe();
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const scheduleRefresh = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let lastLoadedAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
 
-    async function restoreSession() {
+    function endSession() {
+      setToken(null);
+      if (!cancelled) setUser(null);
+    }
+
+    // "ok": a current token is stored. "failed": nothing authoritative was learned
+    // (network, outage); the token is kept. "ended": the server said the session is over.
+    async function restoreSession(initial: boolean): Promise<"ok" | "failed" | "ended"> {
       const token = getToken();
       if (!token) {
-        if (!cancelled) setLoading(false);
-        return;
+        if (!cancelled) {
+          if (!initial) setUser(null);
+          setLoading(false);
+        }
+        return "ended";
       }
+      lastLoadedAt = Date.now();
       try {
-        const restoredUser = await getMe();
+        const restoredUser = await loadSessionUser();
         if (!cancelled) setUser(restoredUser);
-      } catch {
-        setToken(null);
+        return "ok";
+      } catch (error) {
+        // Only an authoritative "not signed in" ends the session; a failed
+        // background check must not sign a working user out.
+        if (initial || (error instanceof ApiError && error.status === 401)) {
+          endSession();
+          return "ended";
+        }
+        return "failed";
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    restoreSession();
+    // Refresh shortly before the token expires, so a working session never runs out.
+    // After a failure (network, brief outage) retry with backoff while the token is
+    // still valid; once it has expired the session is over and the person signs in again.
+    function schedule(delayOverride?: number) {
+      if (timer) clearTimeout(timer);
+      const token = getToken();
+      if (!token || cancelled) return;
+      const delay = delayOverride ?? msUntilRefresh(token);
+      if (delay === null) return;
+      timer = setTimeout(() => void runScheduledRefresh(), Math.max(delay, MIN_REFRESH_GAP_MS));
+    }
+
+    async function runScheduledRefresh() {
+      const token = getToken();
+      if (!token) return;
+      if (isExpired(token)) return endSession();
+      const outcome = await restoreSession(false);
+      if (outcome === "ok") {
+        failures = 0;
+        // Near the 12-hour session limit a refresh no longer extends the token. Stop
+        // scheduling then; the session simply runs to its end.
+        const next = getToken();
+        const before = tokenExpiryMs(token);
+        const after = next ? tokenExpiryMs(next) : null;
+        if (before === null || after === null || after > before) schedule();
+      } else if (outcome === "failed") {
+        schedule(retryDelayMs(failures++));
+      }
+    }
+
+    async function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      const token = getToken();
+      if (!token) return;
+      if (isExpired(token)) return endSession(); // a long sleep: it cannot be refreshed
+      const due = (msUntilRefresh(token) ?? Infinity) === 0 || Date.now() - lastLoadedAt > REFRESH_AFTER_MS;
+      if (due) {
+        const outcome = await restoreSession(false);
+        if (outcome === "ok") failures = 0;
+      }
+      schedule(failures ? retryDelayMs(failures - 1) : undefined);
+    }
+
+    function onSessionEnded() {
+      if (!cancelled) setUser(null);
+    }
+
+    scheduleRefresh.current = () => schedule();
+    void restoreSession(true).then((outcome) => {
+      if (outcome === "ok") schedule();
+    });
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener(SESSION_ENDED_EVENT, onSessionEnded);
     return () => {
       cancelled = true;
+      scheduleRefresh.current = null;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(SESSION_ENDED_EVENT, onSessionEnded);
     };
   }, []);
 
@@ -53,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { access_token, user } = await devLogin(personaKey);
     setToken(access_token);
     setUser(user);
+    scheduleRefresh.current?.(); // a new sign-in starts its own refresh cycle
   }, []);
 
   const logout = useCallback(() => {

@@ -11,6 +11,11 @@ export const devLogin = (persona_key: string) =>
   });
 export const getMe = () => request<CurrentUser>("/api/auth/me");
 
+// Re-issue the session token with the user's current access (grants and
+// revocations made in the Admin Center). Never extends the sign-in.
+export const refreshSession = () =>
+  request<{ access_token: string; user: CurrentUser }>("/api/auth/refresh", { method: "POST" });
+
 // Tells the frontend which sign-in UI to show: the Dev Identity Mode
 // persona switcher ("dev") or a "Sign in with Microsoft" button ("entra").
 export const getAuthConfig = () =>

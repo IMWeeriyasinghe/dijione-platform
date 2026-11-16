@@ -39,6 +39,15 @@ def list_users(
     return call_platform_admin(platform, "GET", "/api/platform/admin/users", bearer_token=bearer_token)
 
 
+@router.post("/users", status_code=201)
+def create_user(
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(platform, "POST", "/api/platform/admin/users", bearer_token=bearer_token, json=payload)
+
+
 @router.get("/users/{user_id}")
 def get_user(
     user_id: int,
@@ -56,6 +65,17 @@ def get_effective_access(
 ) -> dict:
     return call_platform_admin(
         platform, "GET", f"/api/platform/admin/users/{user_id}/effective-access", bearer_token=bearer_token
+    )
+
+
+@router.get("/users/{user_id}/access-diagnostics")
+def get_access_diagnostics(
+    user_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "GET", f"/api/platform/admin/users/{user_id}/access-diagnostics", bearer_token=bearer_token
     )
 
 
@@ -110,6 +130,19 @@ def remove_module_assignment(
     )
 
 
+@router.post("/users/{user_id}/modules/{module_key}/restore-default")
+def restore_default_access(
+    user_id: int,
+    module_key: str,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "POST", f"/api/platform/admin/users/{user_id}/modules/{module_key}/restore-default",
+        bearer_token=bearer_token,
+    )
+
+
 @router.get("/clients")
 def list_clients(
     bearer_token: str = Depends(get_bearer_token),
@@ -146,13 +179,16 @@ def list_permissions(
 @router.get("/audit")
 def list_audit(
     entity_type: str | None = Query(default=None),
+    entity_id: int | None = Query(default=None),
+    user_id: int | None = Query(default=None),
     limit: int = Query(default=200, le=500),
     bearer_token: str = Depends(get_bearer_token),
     platform: PlatformClient = Depends(get_platform_client),
 ) -> list[dict]:
+    params = {"entity_type": entity_type, "entity_id": entity_id, "user_id": user_id, "limit": limit}
     return call_platform_admin(
         platform, "GET", "/api/platform/admin/audit",
-        bearer_token=bearer_token, params={"entity_type": entity_type, "limit": limit},
+        bearer_token=bearer_token, params={k: v for k, v in params.items() if v is not None},
     )
 
 

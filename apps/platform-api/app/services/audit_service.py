@@ -25,6 +25,7 @@ class AuditService:
         previous_state: dict | str | None = None,
         new_state: dict | str | None = None,
         metadata: dict | None = None,
+        subject_user_id: int | None = None,
     ) -> AuditLog:
         def _serialize(value: dict | str | None) -> str:
             if value is None:
@@ -41,6 +42,7 @@ class AuditService:
             previous_state=_serialize(previous_state),
             new_state=_serialize(new_state),
             event_metadata=_serialize(metadata),
+            subject_user_id=subject_user_id,
         )
         return self.repo.add(entry)
 

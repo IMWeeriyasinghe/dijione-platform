@@ -30,8 +30,10 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole
 from app.models.access_group import (
     AccessGroup,
@@ -42,6 +44,7 @@ from app.models.access_group import (
 )
 from app.models.client import Client, ClientExternalId
 from app.models.module import ApplicationModule
+from app.models.module_baseline import ModuleBaselineRole
 from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
@@ -94,6 +97,10 @@ class ForbiddenError(AdminError):
     distinct from FastAPI dependency-level permission gates — used for
     business-rule checks that need the *target* record loaded first (e.g.
     SUPER_ADMIN lockout), which a plain Depends() can't express."""
+
+
+class ConflictError(AdminError):
+    """The request collides with an existing record (HTTP 409)."""
 
 
 class LastSuperAdminError(ForbiddenError):
@@ -261,6 +268,41 @@ class AdminService:
             raise NotFoundError(f"User {user_id} not found")
         return self.to_user_out(user)
 
+    def create_user(self, *, actor: User, email: str, full_name: str, title: str | None = None) -> AdminUserOut:
+        """Pre-provision an internal employee who has not signed in yet, so access
+        can be assigned in advance. The account holds no credentials: it is linked
+        to a Microsoft identity at the first verified Entra sign-in with this email
+        (see ``entra_service.resolve_entra_user``)."""
+        email = email.strip().lower()
+        full_name = full_name.strip()
+        title = (title or "").strip() or None
+        local, _, domain = email.rpartition("@")
+        if not local or "." not in domain or any(c.isspace() for c in email) or email.count("@") != 1:
+            raise AdminError("Enter a valid email address.")
+        if not full_name:
+            raise AdminError("Full name is required.")
+        allowed = {d.strip().lower() for d in get_settings().entra_internal_email_domains.split(",") if d.strip()}
+        if not allowed:
+            raise AdminError("Users cannot be added here: no internal email domain is configured for this environment.")
+        if domain not in allowed:
+            raise AdminError(f"Only internal email addresses can be added ({', '.join(sorted(allowed))}).")
+        if self.db.execute(select(User.id).where(func.lower(User.email) == email)).first() is not None:
+            raise ConflictError(f"A user with the email {email} already exists.")
+
+        user = User(
+            email=email, full_name=full_name, title=title,
+            platform_role=PlatformRole.PLATFORM_USER.value, identity_provider="ENTRA", is_active=True,
+        )
+        self.db.add(user)
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="user.created", entity_type="User", entity_id=user.id,
+            new_state={"email": email, "full_name": full_name, "platform_role": user.platform_role, "is_active": True},
+            subject_user_id=user.id,
+        )
+        self.db.commit()
+        return self.to_user_out(user)
+
     def _active_super_admin_count(self, *, excluding_user_id: int | None = None) -> int:
         stmt = select(func.count(User.id)).where(
             User.platform_role == PlatformRole.SUPER_ADMIN.value, User.is_active.is_(True)
@@ -291,6 +333,7 @@ class AdminService:
             entity_id=target.id,
             previous_state={"is_active": previous},
             new_state={"is_active": is_active},
+            subject_user_id=target.id,
         )
         self.db.commit()
         return self.to_user_out(target)
@@ -329,6 +372,7 @@ class AdminService:
             entity_id=target.id,
             previous_state={"platform_role": previous},
             new_state={"platform_role": new_role},
+            subject_user_id=target.id,
         )
         self.db.commit()
         return self.to_user_out(target)
@@ -345,6 +389,26 @@ class AdminService:
         if module is not None and not module.supports_client_scope:
             return ClientScopeIn(all_clients=True, client_ids=[])
         return client_scope
+
+    def _flush_new_assignment(self) -> None:
+        """Insert a first assignment. The unique constraint decides when two
+        requests race to create it, so neither can leave a second row behind."""
+        try:
+            self.db.flush()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ConflictError("This access was just saved by another request. Reload and try again.") from exc
+
+    @staticmethod
+    def _require_explicit_client_scope(client_scope: ClientScopeIn | None, *, is_new: bool) -> None:
+        """An assignment with no scope rows resolves as unrestricted, so a scope
+        that names no client must never be stored as if it restricted anything."""
+        if client_scope is None:
+            if is_new:
+                raise AdminError("Client scope is required: choose All Clients or select at least one client.")
+            return
+        if not client_scope.all_clients and not client_scope.client_ids:
+            raise AdminError("Select at least one client, or choose All Clients.")
 
     def upsert_module_assignment(
         self,
@@ -370,11 +434,12 @@ class AdminService:
             UserModuleRole.user_id == target_user_id, UserModuleRole.module_key == module_key
         )
         module_role = self.db.execute(stmt).scalars().first()
+        self._require_explicit_client_scope(client_scope, is_new=module_role is None)
         previous_state = None
         if module_role is None:
             module_role = UserModuleRole(user_id=target_user_id, module_key=module_key, role=role, enabled=enabled)
             self.db.add(module_role)
-            self.db.flush()
+            self._flush_new_assignment()
             action = "module_assignment.created"
         else:
             previous_state = {"role": module_role.role, "enabled": module_role.enabled}
@@ -426,11 +491,19 @@ class AdminService:
                     else (client_scope.client_ids if client_scope else None)
                 ),
             },
+            subject_user_id=target_user_id,
         )
         self.db.commit()
         return self.to_user_out(target)
 
     def remove_module_assignment(self, *, actor: User, target_user_id: int, module_key: str) -> AdminUserOut:
+        """Remove a user's own access to an application.
+
+        A direct assignment is deleted. Default employee access has no row to
+        delete, so removing it records an explicit exclusion (a disabled
+        assignment of the default role, which ``baseline_roles`` honours).
+        Removing an exclusion that already exists changes nothing; it is lifted
+        with ``restore_default_access``."""
         target = self.db.get(User, target_user_id)
         if target is None:
             raise NotFoundError(f"User {target_user_id} not found")
@@ -438,17 +511,67 @@ class AdminService:
             UserModuleRole.user_id == target_user_id, UserModuleRole.module_key == module_key
         )
         module_role = self.db.execute(stmt).scalars().first()
+        default_role = self._default_role(module_key)
+
         if module_role is None:
-            raise NotFoundError(f"User {target_user_id} has no assignment for module '{module_key}'")
+            if self.authz.baseline_roles(target).get(module_key) is None:
+                raise NotFoundError(f"User {target_user_id} has no assignment for module '{module_key}'")
+            exclusion = UserModuleRole(user_id=target_user_id, module_key=module_key, role=default_role, enabled=False)
+            self.db.add(exclusion)
+            self._flush_new_assignment()
+            self.audit.log(
+                actor_id=actor.id, action="module_assignment.default_access_removed", entity_type="UserModuleRole",
+                entity_id=exclusion.id, previous_state={"module_key": module_key, "role": default_role, "source": "DEFAULT"},
+                new_state={"user_id": target_user_id, "module_key": module_key, "role": default_role, "enabled": False},
+                subject_user_id=target_user_id,
+            )
+            self.db.commit()
+            return self.to_user_out(target)
+
+        if not module_role.enabled and module_role.role == default_role:
+            return self.to_user_out(target)  # already excluded from default access
 
         self.audit.log(
             actor_id=actor.id,
             action="module_assignment.removed",
             entity_type="UserModuleRole",
             entity_id=module_role.id,
-            previous_state={"module_key": module_key, "role": module_role.role},
+            previous_state={"user_id": target_user_id, "module_key": module_key, "role": module_role.role},
+            subject_user_id=target_user_id,
         )
         self.db.delete(module_role)
+        self.db.commit()
+        return self.to_user_out(target)
+
+    def _default_role(self, module_key: str) -> str | None:
+        """The role every eligible internal employee holds in this application, if any."""
+        return self.db.execute(
+            select(ModuleBaselineRole.role).where(
+                ModuleBaselineRole.module_key == module_key, ModuleBaselineRole.enabled.is_(True)
+            )
+        ).scalar_one_or_none()
+
+    def restore_default_access(self, *, actor: User, target_user_id: int, module_key: str) -> AdminUserOut:
+        """Lift an explicit exclusion from default employee access."""
+        target = self.db.get(User, target_user_id)
+        if target is None:
+            raise NotFoundError(f"User {target_user_id} not found")
+        default_role = self._default_role(module_key)
+        exclusion = self.db.execute(
+            select(UserModuleRole).where(
+                UserModuleRole.user_id == target_user_id, UserModuleRole.module_key == module_key,
+                UserModuleRole.enabled.is_(False), UserModuleRole.role == default_role,
+            )
+        ).scalars().first()
+        if default_role is None or exclusion is None:
+            raise NotFoundError(f"User {target_user_id} is not excluded from default access to '{module_key}'")
+        self.audit.log(
+            actor_id=actor.id, action="module_assignment.default_access_restored", entity_type="UserModuleRole",
+            entity_id=exclusion.id, previous_state={"user_id": target_user_id, "module_key": module_key, "enabled": False},
+            new_state={"module_key": module_key, "role": default_role, "source": "DEFAULT"},
+            subject_user_id=target_user_id,
+        )
+        self.db.delete(exclusion)
         self.db.commit()
         return self.to_user_out(target)
 
@@ -516,12 +639,22 @@ class AdminService:
 
     # --- Audit ------------------------------------------------------------
 
-    def list_audit(self, *, limit: int = 200, entity_type: str | None = None) -> list[AuditLogOut]:
+    def list_audit(
+        self, *, limit: int = 200, entity_type: str | None = None, entity_id: int | None = None,
+        user_id: int | None = None,
+    ) -> list[AuditLogOut]:
+        """Newest first. ``user_id`` lists everything recorded about one person:
+        their account, application assignments and group memberships."""
         from app.models.audit_log import AuditLog
 
-        stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
+        stmt = select(AuditLog)
         if entity_type:
             stmt = stmt.where(AuditLog.entity_type == entity_type)
+        if entity_id is not None:
+            stmt = stmt.where(AuditLog.entity_id == entity_id)
+        if user_id is not None:
+            stmt = stmt.where(AuditLog.subject_user_id == user_id)
+        stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit)
         entries = list(self.db.execute(stmt).scalars().all())
         actor_ids = {e.actor_id for e in entries if e.actor_id is not None}
         actor_names = dict(
@@ -752,6 +885,7 @@ class AdminService:
             actor_id=actor.id, action="access_group.member_added", entity_type="UserGroupMembership",
             entity_id=membership.id,
             new_state={"user_id": target_user_id, "access_group_id": group_id},
+            subject_user_id=target_user_id,
         )
         self.db.commit()
         return self._to_group_detail_out(group)
@@ -770,6 +904,7 @@ class AdminService:
             actor_id=actor.id, action="access_group.member_removed", entity_type="UserGroupMembership",
             entity_id=membership_id,
             previous_state={"user_id": target_user_id, "access_group_id": group_id},
+            subject_user_id=target_user_id,
         )
         self.db.delete(membership)
         self.db.commit()
@@ -790,11 +925,12 @@ class AdminService:
             GroupModuleRole.access_group_id == group_id, GroupModuleRole.module_key == module_key
         )
         group_role = self.db.execute(stmt).scalars().first()
+        self._require_explicit_client_scope(client_scope, is_new=group_role is None)
         previous_state = None
         if group_role is None:
             group_role = GroupModuleRole(access_group_id=group_id, module_key=module_key, role=role, enabled=enabled)
             self.db.add(group_role)
-            self.db.flush()
+            self._flush_new_assignment()
         else:
             previous_state = {"role": group_role.role, "enabled": group_role.enabled}
             group_role.role = role

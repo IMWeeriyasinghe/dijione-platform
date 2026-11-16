@@ -16,16 +16,19 @@ from dataclasses import dataclass, field
 from auth_client_py import AuthClaims
 from auth_client_py.claims import ModuleRoleClaims
 from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.revocation import register_route_policy
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import EXTERNAL_SESSION_PERMISSIONS, MODULE_TALENT_FLOW
+from app.core.revocation_policy import ROUTE_POLICY
 from app.db.session import get_db
 from app.models.magic_link_grant import MagicLinkGrant
 from app.repositories.client_repo import ClientRepository
 
 _settings = get_settings()
+register_route_policy(ROUTE_POLICY)  # what each route may do when revocation information is limited
 get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # The external magic-link session decoder — a DELIBERATELY separate trust

@@ -17,10 +17,13 @@ import {
   listAdminModules,
   listAdminRoles,
   removeGroupMember,
+  removeModuleAssignment,
+  restoreDefaultAccess,
   updatePlatformRole,
   updateUserStatus,
   upsertModuleAssignment,
 } from "@/lib/api";
+import { AccessDiagnostics } from "./access-diagnostics";
 import { PLATFORM_ROLE_LABELS } from "@dijione/contracts";
 import {
   Avatar,
@@ -41,7 +44,7 @@ import {
 
 const PLATFORM_ROLE_OPTIONS = ["PLATFORM_USER", "PLATFORM_ADMIN", "SUPER_ADMIN"];
 
-const TABS = ["Overview", "Applications", "Groups", "Client Access", "Effective Access", "Audit History"] as const;
+const TABS = ["Overview", "Applications", "Groups", "Client Access", "Effective Access", "Diagnostics", "Audit History"] as const;
 type Tab = (typeof TABS)[number];
 
 function useUserQueries(userId: number) {
@@ -66,8 +69,9 @@ function useUserQueries(userId: number) {
     },
   });
   const auditQuery = useQuery({
-    queryKey: ["admin", "audit", "User", userId],
-    queryFn: () => listAdminAudit({ entity_type: "User", entity_id: userId }),
+    // Everything recorded about this person: account, application access, group membership.
+    queryKey: ["admin", "audit", "user", userId],
+    queryFn: () => listAdminAudit({ user_id: userId }),
   });
   return { userQuery, rolesQuery, modulesQuery, clientsQuery, effectiveQuery, groupsQuery, userGroupsQuery, auditQuery };
 }
@@ -103,6 +107,8 @@ function ModuleAssignmentEditor({
   const [allClients, setAllClients] = useState(current?.all_clients ?? true);
   const [clientIds, setClientIds] = useState<number[]>(current?.client_ids ?? []);
   const [error, setError] = useState<string | null>(null);
+  // An empty specific scope would be stored as unrestricted, so it cannot be saved.
+  const scopeMissing = supportsClientScope && !allClients && clientIds.length === 0;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -193,14 +199,55 @@ function ModuleAssignmentEditor({
         </div>
       )}
 
+      {scopeMissing && <p className="mt-3 text-sm text-dt-text-secondary">Select at least one client, or choose All Clients.</p>}
       {error && <p className="mt-3 text-sm text-dt-danger">{error}</p>}
 
       <div className="mt-4">
-        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!role}>
+        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!role || scopeMissing}>
           Save {moduleName} Access
         </Button>
       </div>
     </Card>
+  );
+}
+
+/** Default employee access has no assignment row, so it gets its own control:
+ * removing it records an exclusion for this user, restoring lifts that exclusion. */
+function DefaultAccessControl({
+  userId,
+  moduleKey,
+  moduleName,
+  state,
+  onChanged,
+}: {
+  userId: number;
+  moduleKey: string;
+  moduleName: string;
+  state: { kind: "held"; roleName: string } | { kind: "removed" };
+  onChanged: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () =>
+      state.kind === "held" ? removeModuleAssignment(userId, moduleKey) : restoreDefaultAccess(userId, moduleKey),
+    onSuccess: () => {
+      setError(null);
+      onChanged();
+    },
+    onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Could not change default access."),
+  });
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dt-border bg-dt-surface-warm px-4 py-2.5">
+      <p className="min-w-0 text-sm text-dt-text-secondary">
+        {state.kind === "held"
+          ? `Has default employee access to ${moduleName} (${state.roleName}) without an assignment.`
+          : `Default employee access to ${moduleName} has been removed for this user.`}
+        {error && <span className="ml-2 text-dt-danger">{error}</span>}
+      </p>
+      <Button size="sm" variant="secondary" onClick={() => mutation.mutate()} loading={mutation.isPending}>
+        {state.kind === "held" ? "Remove default access" : "Restore default access"}
+      </Button>
+    </div>
   );
 }
 
@@ -368,9 +415,23 @@ export default function AdminUserDetailPage() {
           {modules.map((m) => {
             const assignment = user.module_assignments.find((a) => a.module_key === m.key);
             const moduleRoles = roles.filter((r) => r.module_key === m.key).map((r) => ({ key: r.key, name: r.name }));
+            const effective = effectiveQuery.data?.modules?.find((e) => e.module_key === m.key);
+            const defaultSource = (effective?.sources ?? []).find((src) => src.type === "BASELINE");
+            const defaultState: { kind: "held"; roleName: string } | { kind: "removed" } | null = defaultSource
+              ? { kind: "held", roleName: roles.find((r) => r.module_key === m.key && r.key === defaultSource.role)?.name ?? defaultSource.role ?? "" }
+              : (effectiveQuery.data?.default_access_excluded ?? []).includes(m.key)
+                ? { kind: "removed" }
+                : null;
+            const refreshAccess = () => {
+              invalidate();
+              queryClient.invalidateQueries({ queryKey: ["admin", "users", userId] });
+              queryClient.invalidateQueries({ queryKey: ["admin", "users", userId, "effective-access"] });
+              queryClient.invalidateQueries({ queryKey: ["admin", "audit", "user", userId] });
+            };
             return (
+              <div key={m.key}>
               <ModuleAssignmentEditor
-                key={m.key}
+                key={`${m.key}:${assignment?.role ?? ""}:${assignment?.enabled ?? ""}`}
                 userId={userId}
                 moduleKey={m.key}
                 moduleName={m.name}
@@ -388,12 +449,18 @@ export default function AdminUserDetailPage() {
                       }
                     : undefined
                 }
-                onSaved={() => {
-                  invalidate();
-                  queryClient.invalidateQueries({ queryKey: ["admin", "users", userId] });
-                  queryClient.invalidateQueries({ queryKey: ["admin", "users", userId, "effective-access"] });
-                }}
+                onSaved={refreshAccess}
               />
+              {defaultState && (
+                <DefaultAccessControl
+                  userId={userId}
+                  moduleKey={m.key}
+                  moduleName={m.name}
+                  state={defaultState}
+                  onChanged={refreshAccess}
+                />
+              )}
+              </div>
             );
           })}
         </div>
@@ -543,6 +610,8 @@ export default function AdminUserDetailPage() {
           )}
         </Card>
       )}
+
+      {tab === "Diagnostics" && <AccessDiagnostics userId={userId} />}
 
       {tab === "Audit History" && (
         <>

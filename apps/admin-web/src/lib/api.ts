@@ -1,4 +1,5 @@
 import type {
+  AccessDiagnosticsOut,
   AccessGroupDetailOut,
   AccessGroupOut,
   AdminDashboardOut,
@@ -19,9 +20,13 @@ export { ApiError } from "@dijione/auth-client";
 // rewrites (and, when reached through shell-web, via its gateway rewrites).
 export const getAdminDashboard = () => request<AdminDashboardOut>("/api/admin/dashboard");
 export const listAdminUsers = () => request<AdminUserOut[]>("/api/admin/users");
+export const createAdminUser = (payload: { email: string; full_name: string; title?: string }) =>
+  request<AdminUserOut>("/api/admin/users", { method: "POST", body: JSON.stringify(payload) });
 export const getAdminUser = (id: number) => request<AdminUserOut>(`/api/admin/users/${id}`);
 export const getEffectiveAccess = (id: number) =>
   request<EffectiveAccessOut>(`/api/admin/users/${id}/effective-access`);
+export const getAccessDiagnostics = (id: number) =>
+  request<AccessDiagnosticsOut>(`/api/admin/users/${id}/access-diagnostics`);
 export const updateUserStatus = (id: number, is_active: boolean) =>
   request<AdminUserOut>(`/api/admin/users/${id}/status`, {
     method: "PATCH",
@@ -43,11 +48,16 @@ export const upsertModuleAssignment = (
   });
 export const removeModuleAssignment = (userId: number, moduleKey: string) =>
   request<AdminUserOut>(`/api/admin/users/${userId}/modules/${moduleKey}`, { method: "DELETE" });
+// Lifts an explicit exclusion from an application's default employee access.
+export const restoreDefaultAccess = (userId: number, moduleKey: string) =>
+  request<AdminUserOut>(`/api/admin/users/${userId}/modules/${moduleKey}/restore-default`, { method: "POST" });
 export const listAdminClients = () => request<{ id: number; name: string }[]>("/api/admin/clients");
 export const listAdminModules = () => request<AdminModuleOut[]>("/api/admin/modules");
 export const listAdminRoles = () => request<AdminRoleOut[]>("/api/admin/roles");
 export const listAdminPermissions = () => request<AdminPermissionOut[]>("/api/admin/permissions");
-export const listAdminAudit = (params: { entity_type?: string; entity_id?: number; limit?: number } = {}) =>
+export const listAdminAudit = (
+  params: { entity_type?: string; entity_id?: number; user_id?: number; limit?: number } = {}
+) =>
   request<AuditLogOut[]>(`/api/admin/audit${qs(params)}`);
 
 // --- Access Groups (Phase 2.6) ---------------------------------------------

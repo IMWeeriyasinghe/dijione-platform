@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, false
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import PlatformRole
@@ -33,6 +33,11 @@ class User(TimestampMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set only from a verified Entra sign-in. See entra_service.is_internal_employee.
     internal_employee: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Bumped, inside the same transaction, by every change that can alter what this
+    # person may do (see ``app/services/access_version.py``). Session tokens carry the
+    # value they were issued under (``av``); a token older than the current value is
+    # revoked and must be refreshed. Never decremented, never time-based.
+    access_version: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, server_default="0")
 
     module_roles: Mapped[list[UserModuleRole]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -57,6 +62,8 @@ class UserModuleRole(TimestampMixin, Base):
     """
 
     __tablename__ = "user_module_roles"
+    # One assignment per user and application: a second row would survive a revocation.
+    __table_args__ = (UniqueConstraint("user_id", "module_key", name="uq_user_module_roles_user_module"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))

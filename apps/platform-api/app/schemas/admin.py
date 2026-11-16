@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ClientScopeOut(BaseModel):
@@ -54,6 +54,12 @@ class AdminUserOut(BaseModel):
     last_login_at: datetime | None
     created_at: datetime
     module_assignments: list[ModuleAssignmentOut]
+
+
+class AdminUserCreateIn(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    full_name: str = Field(min_length=1, max_length=255)
+    title: str | None = Field(default=None, max_length=255)
 
 
 class UpdateUserStatusIn(BaseModel):
@@ -247,3 +253,97 @@ class AdminDashboardOut(BaseModel):
     super_admins: int
     active_modules: int
     pending_talent_requests: int
+
+
+# --- Effective Access Diagnostics (read-only) ---------------------------------
+
+
+class DiagAccountOut(BaseModel):
+    is_active: bool
+    identity_provider: str
+    entra_linked: bool
+    internal_employee: bool
+    platform_role: str
+    platform_permissions: list[str]
+    last_sign_in_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class DiagDefaultAccessOut(BaseModel):
+    module_key: str
+    module_name: str
+    role: str
+    # GRANTED | EXCLUDED | NOT_ELIGIBLE | MODULE_DISABLED
+    state: str
+    reasons: list[str] = []
+
+
+class DiagSourceOut(BaseModel):
+    type: str  # DIRECT | GROUP | DEFAULT
+    role: str
+    group_name: str | None = None
+    permissions: list[str] = []
+    client_scope: str  # plain-language scope contributed by this source
+
+
+class DiagInactiveOut(BaseModel):
+    type: str  # DIRECT | GROUP | DEFAULT
+    role: str
+    group_name: str | None = None
+    reason: str
+
+
+class DiagModuleOut(BaseModel):
+    module_key: str
+    module_name: str
+    has_access: bool = True  # False: grants/exclusions are recorded but nothing applies
+    role: str
+    role_name: str
+    permissions: list[str]
+    sources: list[DiagSourceOut]
+    client_scope: ClientScopeOut
+    uses_client_scope: bool
+    scope_explanation: str
+    inactive: list[DiagInactiveOut] = []
+
+
+class DiagGroupGrantOut(BaseModel):
+    module_key: str
+    role: str
+    enabled: bool
+
+
+class DiagGroupOut(BaseModel):
+    group_id: int
+    group_name: str
+    status: str
+    grants: list[DiagGroupGrantOut] = []
+
+
+class DiagSessionOut(BaseModel):
+    last_sign_in_at: datetime | None = None
+    # Not recorded anywhere today: tokens are verified locally and the platform
+    # keeps no issue/refresh log, so freshness is reported as unavailable.
+    token_issue_time_available: bool = False
+    token_issue_time_note: str
+    access_changes_since_last_sign_in: int | None = None
+    latest_access_change_at: datetime | None = None
+    token_lifetime_minutes: int
+
+
+class DiagCheckOut(BaseModel):
+    key: str
+    level: str  # ok | info | warning
+    message: str
+
+
+class AccessDiagnosticsOut(BaseModel):
+    user_id: int
+    full_name: str
+    email: str
+    account: DiagAccountOut
+    default_access: list[DiagDefaultAccessOut]
+    groups: list[DiagGroupOut]
+    modules: list[DiagModuleOut]
+    session: DiagSessionOut
+    checks: list[DiagCheckOut]

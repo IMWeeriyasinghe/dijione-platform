@@ -19,6 +19,7 @@ from app.api.deps import require_platform_admin, require_platform_permission
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.admin import (
+    AccessDiagnosticsOut,
     AccessGroupCreateIn,
     AccessGroupDetailOut,
     AccessGroupOut,
@@ -29,6 +30,7 @@ from app.schemas.admin import (
     AdminModuleOut,
     AdminPermissionOut,
     AdminRoleOut,
+    AdminUserCreateIn,
     AdminUserOut,
     ApplicationDetailOut,
     AuditLogOut,
@@ -40,7 +42,8 @@ from app.schemas.admin import (
     UpdatePlatformRoleIn,
     UpdateUserStatusIn,
 )
-from app.services.admin_service import AdminError, AdminService, ForbiddenError, NotFoundError
+from app.services.access_diagnostics import AccessDiagnosticsService
+from app.services.admin_service import AdminError, AdminService, ConflictError, ForbiddenError, NotFoundError
 
 router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
 
@@ -52,6 +55,8 @@ def _handle(action):
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except ForbiddenError as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except AdminError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
@@ -88,6 +93,19 @@ def list_users(_admin: User = Depends(require_platform_admin), db: Session = Dep
     return AdminService(db).list_users()
 
 
+@router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: AdminUserCreateIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AdminUserOut:
+    return _handle(
+        lambda: AdminService(db).create_user(
+            actor=admin, email=payload.email, full_name=payload.full_name, title=payload.title
+        )
+    )
+
+
 @router.get("/users/{user_id}", response_model=AdminUserOut)
 def get_user(
     user_id: int, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
@@ -100,6 +118,13 @@ def get_effective_access(
     user_id: int, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
 ) -> EffectiveAccessOut:
     return _handle(lambda: AdminService(db).effective_access(user_id))
+
+
+@router.get("/users/{user_id}/access-diagnostics", response_model=AccessDiagnosticsOut)
+def get_access_diagnostics(
+    user_id: int, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
+) -> AccessDiagnosticsOut:
+    return _handle(lambda: AccessDiagnosticsService(db).diagnose(user_id))
 
 
 @router.patch("/users/{user_id}/status", response_model=AdminUserOut)
@@ -160,6 +185,18 @@ def remove_module_assignment(
     )
 
 
+@router.post("/users/{user_id}/modules/{module_key}/restore-default", response_model=AdminUserOut)
+def restore_default_access(
+    user_id: int,
+    module_key: str,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AdminUserOut:
+    return _handle(
+        lambda: AdminService(db).restore_default_access(actor=admin, target_user_id=user_id, module_key=module_key)
+    )
+
+
 @router.get("/modules", response_model=list[AdminModuleOut])
 def list_modules(
     _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
@@ -182,11 +219,13 @@ def list_permissions(
 @router.get("/audit", response_model=list[AuditLogOut])
 def list_audit(
     entity_type: str | None = Query(default=None),
+    entity_id: int | None = Query(default=None),
+    user_id: int | None = Query(default=None),
     limit: int = Query(default=200, le=500),
     admin: User = Depends(require_platform_permission("platform.admin.view_audit")),
     db: Session = Depends(get_db),
 ) -> list[AuditLogOut]:
-    return AdminService(db).list_audit(limit=limit, entity_type=entity_type)
+    return AdminService(db).list_audit(limit=limit, entity_type=entity_type, entity_id=entity_id, user_id=user_id)
 
 
 # --- Access Groups (Phase 2.6, additive) ------------------------------------

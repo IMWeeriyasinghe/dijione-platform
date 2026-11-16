@@ -61,6 +61,15 @@ def get_current_user(
     return user
 
 
+def get_session_payload(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    _user: User = Depends(get_current_user),
+) -> dict:
+    """The verified payload of the caller's session token (after ``get_current_user``
+    has accepted it)."""
+    return decode_session_token(credentials.credentials)
+
+
 def require_platform_admin(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
     """Any DijiOne Admin Center access (SUPER_ADMIN or PLATFORM_ADMIN)."""
     permissions = AuthorizationService(db).platform_permissions(user)

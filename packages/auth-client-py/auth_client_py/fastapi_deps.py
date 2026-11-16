@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from auth_client_py.claims import AuthClaims, InvalidTokenError, decode_claims
+from auth_client_py.revocation import EXEMPT, FRESH, OWN, READ, RESTRICTED, SENSITIVE, get_guard, route_class
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -56,7 +57,10 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
         def list_requests(claims: AuthClaims = Depends(get_claims)): ...
     """
 
+    get_guard()  # starts the revocation snapshot at process start (no-op when disabled)
+
     def _get_claims(
+        request: Request,
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     ) -> AuthClaims:
         if credentials is None:
@@ -67,6 +71,39 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
         if not claims.is_active:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+        _enforce_revocation(request, claims)
         return claims
 
     return _get_claims
+
+
+def _enforce_revocation(request: Request, claims: AuthClaims) -> None:
+    """Reject a revoked session, and limit what an unverifiable one may do.
+
+    Supplier-portal and external-link sessions are another actor population whose ``sub``
+    is not a DijiOne user id; they have their own per-request checks and are not subject
+    to user revocation. Does nothing unless revocation is enabled."""
+    guard = get_guard()
+    if guard is None or claims.supplier is not None or claims.external is not None:
+        return
+    if guard.is_revoked(claims.user_id, claims.access_version):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Session revoked", headers={"X-Auth-Error": "session_revoked"}
+        )
+    route = request.scope.get("route")
+    klass = route_class(request.method, getattr(route, "path", None))
+    if klass in (READ, OWN, EXEMPT):
+        return
+    state = guard.state()
+    if klass == SENSITIVE and state != FRESH:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Revocation information is not current; this action is temporarily unavailable",
+            headers={"Retry-After": "30", "X-Auth-Error": "revocation_stale"},
+        )
+    if state == RESTRICTED:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Revocation information is unavailable; changes are temporarily disabled",
+            headers={"Retry-After": "30", "X-Auth-Error": "revocation_restricted"},
+        )

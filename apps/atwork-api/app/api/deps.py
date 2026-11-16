@@ -2,16 +2,19 @@ import time
 
 from auth_client_py import AuthClaims, PlatformClient
 from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.revocation import register_route_policy
 from fastapi import Depends, HTTPException, status
 
 from app.core.config import get_settings
 from app.core.constants import MODULE_ATWORK, PERM_MANAGEMENT_ACCESS, SERVICE_NAME
+from app.core.revocation_policy import ROUTE_POLICY
 
 _settings = get_settings()
 _LIVE_TTL_SECONDS = 30
 _live_cache: dict[int, tuple[float, frozenset[str]]] = {}
 
 # Claims are verified locally (no call to platform-api), like every module.
+register_route_policy(ROUTE_POLICY)  # what each route may do when revocation information is limited
 get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 require_internal_service = make_verify_internal_request(secret=_settings.internal_service_secret)
 

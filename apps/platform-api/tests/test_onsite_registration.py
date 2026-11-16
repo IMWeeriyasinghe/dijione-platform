@@ -118,7 +118,7 @@ def test_module_visible_only_to_onsite_role_holders(api_client, db, two_tenant_w
 
 
 def test_admin_generic_discovery_and_assignment(api_client, db, two_tenant_world):
-    _register_module(db)
+    _onsite_without_client_scope(db)  # as migrated: Diji On-site does not read client scope
     headers = auth_headers(api_client, "test-super-admin")
 
     modules = {m["key"]: m for m in api_client.get("/api/platform/admin/modules", headers=headers).json()}

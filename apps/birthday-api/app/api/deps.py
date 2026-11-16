@@ -4,11 +4,13 @@ from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
 from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.revocation import register_route_policy
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import MODULE_BIRTHDAY
+from app.core.revocation_policy import ROUTE_POLICY
 from app.db.session import get_db
 from app.models.supplier_user import SupplierUser
 
@@ -17,6 +19,7 @@ _settings = get_settings()
 # Platform Core authorization integration seam (CR §9): birthday-api
 # authorizes exactly the way talent-api does — decoding Platform Core's
 # signed JWT claims locally, no database, no synchronous call back.
+register_route_policy(ROUTE_POLICY)  # what each route may do when revocation information is limited
 get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
 
 # Gate for service-to-service calls with no human actor behind them (the

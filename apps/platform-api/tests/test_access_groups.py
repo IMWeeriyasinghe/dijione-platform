@@ -125,7 +125,7 @@ def test_group_mutations_are_audited(api_client, db, two_tenant_world):
     api_client.post(f"/api/platform/admin/groups/{group_id}/members", json={"user_id": ta_user.id}, headers=headers)
     api_client.put(
         f"/api/platform/admin/groups/{group_id}/modules/{MODULE_TALENT_FLOW}",
-        json={"role": "TA_MEMBER", "enabled": True, "client_scope": None},
+        json={"role": "TA_MEMBER", "enabled": True, "client_scope": {"all_clients": True, "client_ids": []}},
         headers=headers,
     )
 

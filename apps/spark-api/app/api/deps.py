@@ -1,6 +1,8 @@
 from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.revocation import register_route_policy
 
 from app.core.config import get_settings
+from app.core.revocation_policy import ROUTE_POLICY
 
 _settings = get_settings()
 
@@ -17,4 +19,5 @@ require_internal_service = make_verify_internal_request(
 # nothing uses this to gate a real capability today; it exists so the next
 # phase can add ``claims.module("spark")`` checks without touching the
 # authorization plumbing.
+register_route_policy(ROUTE_POLICY)  # what each route may do when revocation information is limited
 get_claims = make_get_claims(secret=_settings.platform_jwt_secret, algorithm=_settings.jwt_algorithm)
