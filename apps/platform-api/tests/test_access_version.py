@@ -499,3 +499,55 @@ def test_the_post_restore_command_revokes_every_older_session(db, two_tenant_wor
 
 def test_the_access_version_column_is_wide_enough_for_unix_time():
     assert User.__table__.c.access_version.type.__class__.__name__ == "BigInteger"
+
+
+# --- findings from the independent review ---------------------------------------------------------
+
+
+def test_moving_a_membership_between_users_bumps_both(db, two_tenant_world):
+    ta, cs, admin = _people(db, two_tenant_world)
+    _svc, gid = _group(db, admin, [ta])
+    before = (_av(db, ta.id), _av(db, cs.id))
+    row = db.execute(select(UserGroupMembership).where(UserGroupMembership.access_group_id == gid)).scalars().one()
+    row.user_id = cs.id
+    db.commit()
+    assert _av(db, ta.id) > before[0] and _av(db, cs.id) > before[1]
+
+
+def test_moving_a_grant_between_groups_bumps_the_members_of_both(db, two_tenant_world):
+    ta, cs, admin = _people(db, two_tenant_world)
+    svc, first = _group(db, admin, [ta], key="first")
+    _svc2, second = _group(db, admin, [cs], key="second")
+    svc.upsert_group_module_assignment(
+        actor=admin, group_id=first, module_key=MODULE, role="TA_MEMBER", enabled=True, client_scope=ALL
+    )
+    before = (_av(db, ta.id), _av(db, cs.id))
+    grant = db.execute(select(GroupModuleRole).where(GroupModuleRole.access_group_id == first)).scalars().one()
+    grant.access_group_id = second
+    db.commit()
+    assert _av(db, ta.id) > before[0] and _av(db, cs.id) > before[1]
+
+
+def test_deleting_or_rekeying_a_module_reaches_everyone(db, two_tenant_world):
+    from app.models.module import ApplicationModule
+
+    ta, cs, _admin = _people(db, two_tenant_world)
+    module = ApplicationModule(key="field-ops", name="Field Ops", description="", route="/f", required_roles="ANY")
+    db.add(module)
+    db.commit()
+    before = (_av(db, ta.id), _av(db, cs.id))
+    module.key = "field-ops-2"
+    db.commit()
+    mid = (_av(db, ta.id), _av(db, cs.id))
+    assert all(a > b for a, b in zip(mid, before, strict=True))
+    db.delete(module)
+    db.commit()
+    assert all(a > b for a, b in zip((_av(db, ta.id), _av(db, cs.id)), mid, strict=True))
+
+
+def test_changing_the_email_a_session_names_bumps_the_user(db, two_tenant_world):
+    ta, _cs, _admin = _people(db, two_tenant_world)
+    before = _av(db, ta.id)
+    db.get(User, ta.id).email = "renamed@example.com"
+    db.commit()
+    assert _av(db, ta.id) > before

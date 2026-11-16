@@ -43,7 +43,7 @@ from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
 
 # User columns whose change alters access (or how access is derived).
-_USER_ACCESS_COLUMNS = {"is_active", "platform_role", "internal_employee", "identity_provider", "entra_object_id"}
+_USER_ACCESS_COLUMNS = {"is_active", "platform_role", "internal_employee", "identity_provider", "entra_object_id", "email"}
 # A change to any of these affects every user.
 _GLOBAL_MODELS = (ModuleBaselineRole, Role, RolePermission, Permission)
 _SESSION_KEY = "access_version_pending"
@@ -61,6 +61,12 @@ def _group_member_ids(connection, group_ids: set[int]) -> set[int]:
         select(UserGroupMembership.user_id).where(UserGroupMembership.access_group_id.in_(group_ids))
     )
     return {r[0] for r in rows}
+
+
+def _was(obj, attribute: str) -> list:
+    """Values an attribute held before this flush (for a row moved from one owner to another)."""
+    state = inspect(obj)
+    return [v for v in state.attrs[attribute].history.deleted if v is not None]
 
 
 def _user_of_role(role) -> int | None:
@@ -94,14 +100,17 @@ def affected_users(session: Session) -> tuple[set[int], bool]:
         is_new = obj in session.new
         if isinstance(obj, UserModuleRole):
             users.add(_user_of_role(obj))
+            users.update(_was(obj, "user_id") if not is_new else [])
         elif isinstance(obj, UserGroupMembership):
             users.add(obj.user_id)
+            users.update(_was(obj, "user_id") if not is_new else [])
         elif isinstance(obj, UserModuleClientScope):
             role = obj.user_module_role
             users.add(_user_of_role(role) if role is not None else _owner(connection, UserModuleRole.user_id,
                                                                          UserModuleRole.id, obj.user_module_role_id))
         elif isinstance(obj, GroupModuleRole):
             groups.add(_group_of_role(obj))
+            groups.update(_was(obj, "access_group_id") if not is_new else [])
         elif isinstance(obj, GroupModuleClientScope):
             role = obj.group_module_role
             groups.add(_group_of_role(role) if role is not None else _owner(connection, GroupModuleRole.access_group_id,
@@ -113,7 +122,9 @@ def affected_users(session: Session) -> tuple[set[int], bool]:
             if not is_new and _changed(obj, _USER_ACCESS_COLUMNS):
                 users.add(obj.id)
         elif isinstance(obj, ApplicationModule):
-            if not is_new and _changed(obj, {"enabled"}):
+            # Enabling or disabling a module, renaming its key, or removing it changes every
+            # default grant and every module_roles claim built from it.
+            if obj in session.deleted or (not is_new and _changed(obj, {"enabled", "key"})):
                 everyone = True
         elif isinstance(obj, _GLOBAL_MODELS):
             everyone = True
