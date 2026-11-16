@@ -23,6 +23,7 @@ import {
   updateUserStatus,
   upsertModuleAssignment,
 } from "@/lib/api";
+import { AccessDiagnostics } from "./access-diagnostics";
 import { PLATFORM_ROLE_LABELS } from "@dijione/contracts";
 import {
   Avatar,
@@ -43,7 +44,7 @@ import {
 
 const PLATFORM_ROLE_OPTIONS = ["PLATFORM_USER", "PLATFORM_ADMIN", "SUPER_ADMIN"];
 
-const TABS = ["Overview", "Applications", "Groups", "Client Access", "Effective Access", "Audit History"] as const;
+const TABS = ["Overview", "Applications", "Groups", "Client Access", "Effective Access", "Diagnostics", "Audit History"] as const;
 type Tab = (typeof TABS)[number];
 
 function useUserQueries(userId: number) {
@@ -609,6 +610,8 @@ export default function AdminUserDetailPage() {
           )}
         </Card>
       )}
+
+      {tab === "Diagnostics" && <AccessDiagnostics userId={userId} />}
 
       {tab === "Audit History" && (
         <>

@@ -68,6 +68,17 @@ def get_effective_access(
     )
 
 
+@router.get("/users/{user_id}/access-diagnostics")
+def get_access_diagnostics(
+    user_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "GET", f"/api/platform/admin/users/{user_id}/access-diagnostics", bearer_token=bearer_token
+    )
+
+
 @router.patch("/users/{user_id}/status")
 def update_user_status(
     user_id: int,

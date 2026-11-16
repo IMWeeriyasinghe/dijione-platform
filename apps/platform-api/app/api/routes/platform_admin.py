@@ -19,6 +19,7 @@ from app.api.deps import require_platform_admin, require_platform_permission
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.admin import (
+    AccessDiagnosticsOut,
     AccessGroupCreateIn,
     AccessGroupDetailOut,
     AccessGroupOut,
@@ -41,6 +42,7 @@ from app.schemas.admin import (
     UpdatePlatformRoleIn,
     UpdateUserStatusIn,
 )
+from app.services.access_diagnostics import AccessDiagnosticsService
 from app.services.admin_service import AdminError, AdminService, ConflictError, ForbiddenError, NotFoundError
 
 router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
@@ -116,6 +118,13 @@ def get_effective_access(
     user_id: int, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
 ) -> EffectiveAccessOut:
     return _handle(lambda: AdminService(db).effective_access(user_id))
+
+
+@router.get("/users/{user_id}/access-diagnostics", response_model=AccessDiagnosticsOut)
+def get_access_diagnostics(
+    user_id: int, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
+) -> AccessDiagnosticsOut:
+    return _handle(lambda: AccessDiagnosticsService(db).diagnose(user_id))
 
 
 @router.patch("/users/{user_id}/status", response_model=AdminUserOut)

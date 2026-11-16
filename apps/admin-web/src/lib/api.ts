@@ -1,4 +1,5 @@
 import type {
+  AccessDiagnosticsOut,
   AccessGroupDetailOut,
   AccessGroupOut,
   AdminDashboardOut,
@@ -24,6 +25,8 @@ export const createAdminUser = (payload: { email: string; full_name: string; tit
 export const getAdminUser = (id: number) => request<AdminUserOut>(`/api/admin/users/${id}`);
 export const getEffectiveAccess = (id: number) =>
   request<EffectiveAccessOut>(`/api/admin/users/${id}/effective-access`);
+export const getAccessDiagnostics = (id: number) =>
+  request<AccessDiagnosticsOut>(`/api/admin/users/${id}/access-diagnostics`);
 export const updateUserStatus = (id: number, is_active: boolean) =>
   request<AdminUserOut>(`/api/admin/users/${id}/status`, {
     method: "PATCH",

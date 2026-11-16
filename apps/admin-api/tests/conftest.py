@@ -82,6 +82,13 @@ def _build_stub_platform_app() -> FastAPI:
             raise HTTPException(404, f"User {user_id} not found")
         return STUB_USERS[user_id]
 
+    @stub.get("/api/platform/admin/users/{user_id}/access-diagnostics")
+    def access_diagnostics(user_id: int, authorization: str | None = Header(default=None)) -> dict:
+        _require_admin_token(authorization)
+        if user_id not in STUB_USERS:
+            raise HTTPException(404, f"User {user_id} not found")
+        return {"user_id": user_id, "modules": [], "checks": []}
+
     @stub.get("/api/platform/admin/audit")
     def list_audit(request: Request, authorization: str | None = Header(default=None)) -> list[dict]:
         _require_admin_token(authorization)

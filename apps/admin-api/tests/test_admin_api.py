@@ -150,3 +150,11 @@ def test_restore_default_access_is_forwarded_with_its_errors(api_client):
     assert api_client.post("/api/admin/users/1/modules/field-ops/restore-default", headers=VALID).status_code == 200
     assert api_client.post("/api/admin/users/1/modules/talent-flow/restore-default", headers=VALID).status_code == 404
     assert api_client.post("/api/admin/users/1/modules/field-ops/restore-default", headers=INVALID).status_code == 403
+
+
+def test_access_diagnostics_is_forwarded_with_its_status_and_errors(api_client):
+    ok = api_client.get("/api/admin/users/1/access-diagnostics", headers=VALID)
+    assert ok.status_code == 200 and ok.json()["user_id"] == 1
+    assert api_client.get("/api/admin/users/999/access-diagnostics", headers=VALID).status_code == 404
+    assert api_client.get("/api/admin/users/1/access-diagnostics", headers=INVALID).status_code == 403
+    assert api_client.get("/api/admin/users/1/access-diagnostics").status_code in (401, 403)

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.access_group import GroupModuleRole
 from app.models.module import ApplicationModule
 from app.models.module_baseline import ModuleBaselineRole
+from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.schemas.admin import ClientScopeIn
 from app.services.admin_service import AdminService, ConflictError
@@ -26,12 +27,18 @@ def admin(api_client, two_tenant_world):
 
 @pytest.fixture()
 def employee(db, two_tenant_world):
-    """An eligible internal employee with default DijiAtWork access and no assignment."""
+    """An eligible internal employee with default Field Ops access and no assignment."""
     db.add_all([
-        ApplicationModule(key="atwork", name="DijiAtWork", description="", route="/atwork", required_roles="ANY",
+        ApplicationModule(key="field-ops", name="Field Ops", description="", route="/field-ops", required_roles="ANY",
                           supports_client_scope=False),
-        ModuleBaselineRole(module_key="atwork", role="ATWORK_USER", enabled=True),
+        ModuleBaselineRole(module_key="field-ops", role="FIELD_USER", enabled=True),
     ])
+    perm = Permission(key="field.manage", name="Manage", description="", module_key="field-ops", category="x")
+    user_role = Role(module_key="field-ops", key="FIELD_USER", name="Field User", description="", is_system=False)
+    manager_role = Role(module_key="field-ops", key="FIELD_MANAGER", name="Field Manager", description="", is_system=False)
+    db.add_all([perm, user_role, manager_role])
+    db.flush()
+    db.add(RolePermission(role_id=manager_role.id, permission_id=perm.id))
     user = User(email="emp@example.com", full_name="Employee", persona_key="test-employee", internal_employee=True,
                 identity_provider="ENTRA", entra_object_id="oid-emp")
     db.add(user)
@@ -107,20 +114,20 @@ def _stale_first_lookup(db):
 
 
 def test_default_access_can_be_removed_and_restored(api_client, db, admin, employee):
-    url = f"{ADMIN}/users/{employee.id}/modules/atwork"
-    assert list(build_claims(employee, db)["module_roles"]) == ["atwork"]
+    url = f"{ADMIN}/users/{employee.id}/modules/field-ops"
+    assert list(build_claims(employee, db)["module_roles"]) == ["field-ops"]
 
     removed = api_client.delete(url, headers=admin)
     assert removed.status_code == 200, removed.text
     assert removed.json()["module_assignments"] == [
-        {"module_key": "atwork", "module_name": "DijiAtWork", "role": "ATWORK_USER", "role_name": "DijiAtWork User",
+        {"module_key": "field-ops", "module_name": "Field Ops", "role": "FIELD_USER", "role_name": "Field User",
          "enabled": False, "client_scope": {"all_clients": True, "client_ids": [], "client_names": []}}
     ]
     db.expire_all()
     employee = db.get(User, employee.id)
     assert build_claims(employee, db)["module_roles"] == {}
     effective = api_client.get(f"{ADMIN}/users/{employee.id}/effective-access", headers=admin).json()
-    assert effective["modules"] == [] and effective["default_access_excluded"] == ["atwork"]
+    assert effective["modules"] == [] and effective["default_access_excluded"] == ["field-ops"]
 
     # Removing again changes nothing (a double click must not restore access).
     assert api_client.delete(url, headers=admin).status_code == 200
@@ -132,30 +139,30 @@ def test_default_access_can_be_removed_and_restored(api_client, db, admin, emplo
     assert restored.status_code == 200
     assert restored.json()["module_assignments"] == []
     db.expire_all()
-    assert build_claims(db.get(User, employee.id), db)["module_roles"]["atwork"]["role"] == "ATWORK_USER"
+    assert build_claims(db.get(User, employee.id), db)["module_roles"]["field-ops"]["role"] == "FIELD_USER"
     assert api_client.post(f"{url}/restore-default", headers=admin).status_code == 404
 
 
 def test_removing_a_direct_role_leaves_default_access_in_place(api_client, db, admin, employee):
-    url = f"{ADMIN}/users/{employee.id}/modules/atwork"
-    assert api_client.put(url, json={"role": "ATWORK_MANAGER", "enabled": True}, headers=admin).status_code == 200
+    url = f"{ADMIN}/users/{employee.id}/modules/field-ops"
+    assert api_client.put(url, json={"role": "FIELD_MANAGER", "enabled": True}, headers=admin).status_code == 200
     assert api_client.delete(url, headers=admin).status_code == 200
     db.expire_all()
-    claim = build_claims(db.get(User, employee.id), db)["module_roles"]["atwork"]
-    assert claim["role"] == "ATWORK_USER" and "atwork.management.access" not in claim["permissions"]
+    claim = build_claims(db.get(User, employee.id), db)["module_roles"]["field-ops"]
+    assert claim["role"] == "FIELD_USER" and "field.manage" not in claim["permissions"]
 
 
 def test_remove_is_still_not_found_when_there_is_nothing_to_remove(api_client, db, admin, employee, two_tenant_world):
     # A user who is not an eligible internal employee has no default access to remove.
-    resp = api_client.delete(f"{ADMIN}/users/{two_tenant_world['ta_user'].id}/modules/atwork", headers=admin)
+    resp = api_client.delete(f"{ADMIN}/users/{two_tenant_world['ta_user'].id}/modules/field-ops", headers=admin)
     assert resp.status_code == 404
-    assert db.query(UserModuleRole).filter_by(user_id=two_tenant_world["ta_user"].id, module_key="atwork").count() == 0
+    assert db.query(UserModuleRole).filter_by(user_id=two_tenant_world["ta_user"].id, module_key="field-ops").count() == 0
     assert api_client.post(f"{ADMIN}/users/{employee.id}/modules/talent-flow/restore-default", headers=admin).status_code == 404
 
 
 def test_default_access_changes_need_manage_users(api_client, db, employee):
     headers = auth_headers(api_client, "test-ta")
-    url = f"{ADMIN}/users/{employee.id}/modules/atwork"
+    url = f"{ADMIN}/users/{employee.id}/modules/field-ops"
     assert api_client.delete(url, headers=headers).status_code == 403
     assert api_client.post(f"{url}/restore-default", headers=headers).status_code == 403
 
@@ -173,8 +180,8 @@ def test_user_audit_history_lists_everything_about_that_user_and_nobody_else(api
     api_client.post(f"{ADMIN}/groups/{group_id}/members", json={"user_id": ta.id}, headers=admin)
     api_client.delete(f"{ADMIN}/groups/{group_id}/members/{ta.id}", headers=admin)
     api_client.delete(f"{ADMIN}/users/{ta.id}/modules/talent-flow", headers=admin)
-    api_client.delete(f"{ADMIN}/users/{employee.id}/modules/atwork", headers=admin)
-    api_client.post(f"{ADMIN}/users/{employee.id}/modules/atwork/restore-default", headers=admin)
+    api_client.delete(f"{ADMIN}/users/{employee.id}/modules/field-ops", headers=admin)
+    api_client.post(f"{ADMIN}/users/{employee.id}/modules/field-ops/restore-default", headers=admin)
     api_client.put(f"{ADMIN}/users/{cs.id}/modules/talent-flow", json={"role": "TA_MEMBER", "enabled": True}, headers=admin)
 
     def actions(user_id):
