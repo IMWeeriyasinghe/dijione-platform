@@ -135,3 +135,18 @@ def test_create_user_is_forwarded_with_its_status_and_errors(api_client):
 
     denied = api_client.post("/api/admin/users", json={"email": "new@example.com", "full_name": "New"}, headers=INVALID)
     assert denied.status_code == 403
+
+
+def test_audit_filters_are_forwarded_and_absent_ones_are_omitted(api_client):
+    scoped = api_client.get("/api/admin/audit", params={"user_id": 42, "limit": 50}, headers=VALID)
+    assert scoped.status_code == 200
+    assert scoped.json()[0]["new_state"] == "[('limit', '50'), ('user_id', '42')]"
+
+    by_entity = api_client.get("/api/admin/audit", params={"entity_type": "User", "entity_id": 7}, headers=VALID)
+    assert by_entity.json()[0]["new_state"] == "[('entity_id', '7'), ('entity_type', 'User'), ('limit', '200')]"
+
+
+def test_restore_default_access_is_forwarded_with_its_errors(api_client):
+    assert api_client.post("/api/admin/users/1/modules/field-ops/restore-default", headers=VALID).status_code == 200
+    assert api_client.post("/api/admin/users/1/modules/talent-flow/restore-default", headers=VALID).status_code == 404
+    assert api_client.post("/api/admin/users/1/modules/field-ops/restore-default", headers=INVALID).status_code == 403

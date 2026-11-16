@@ -45,11 +45,16 @@ export const upsertModuleAssignment = (
   });
 export const removeModuleAssignment = (userId: number, moduleKey: string) =>
   request<AdminUserOut>(`/api/admin/users/${userId}/modules/${moduleKey}`, { method: "DELETE" });
+// Lifts an explicit exclusion from an application's default employee access.
+export const restoreDefaultAccess = (userId: number, moduleKey: string) =>
+  request<AdminUserOut>(`/api/admin/users/${userId}/modules/${moduleKey}/restore-default`, { method: "POST" });
 export const listAdminClients = () => request<{ id: number; name: string }[]>("/api/admin/clients");
 export const listAdminModules = () => request<AdminModuleOut[]>("/api/admin/modules");
 export const listAdminRoles = () => request<AdminRoleOut[]>("/api/admin/roles");
 export const listAdminPermissions = () => request<AdminPermissionOut[]>("/api/admin/permissions");
-export const listAdminAudit = (params: { entity_type?: string; entity_id?: number; limit?: number } = {}) =>
+export const listAdminAudit = (
+  params: { entity_type?: string; entity_id?: number; user_id?: number; limit?: number } = {}
+) =>
   request<AuditLogOut[]>(`/api/admin/audit${qs(params)}`);
 
 // --- Access Groups (Phase 2.6) ---------------------------------------------

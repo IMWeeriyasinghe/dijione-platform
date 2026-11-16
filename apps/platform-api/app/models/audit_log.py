@@ -20,6 +20,10 @@ class AuditLog(Base):
     new_state: Mapped[str] = mapped_column(Text, default="")
     event_metadata: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # The DijiOne user an administrative event is about (their account, an
+    # application assignment, a group membership), so one person's access
+    # history can be listed whatever entity the event was recorded against.
+    subject_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     # Caller-chosen, so a retried delivery cannot record the event twice. NULL
     # for callers that do not send one; NULLs never collide.
     event_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)

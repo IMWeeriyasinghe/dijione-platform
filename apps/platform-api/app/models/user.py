@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, false
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import PlatformRole
@@ -57,6 +57,8 @@ class UserModuleRole(TimestampMixin, Base):
     """
 
     __tablename__ = "user_module_roles"
+    # One assignment per user and application: a second row would survive a revocation.
+    __table_args__ = (UniqueConstraint("user_id", "module_key", name="uq_user_module_roles_user_module"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))

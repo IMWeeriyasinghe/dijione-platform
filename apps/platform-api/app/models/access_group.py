@@ -56,6 +56,7 @@ class GroupModuleRole(TimestampMixin, Base):
     access group. Mirrors ``UserModuleRole`` (app/models/user.py) shape."""
 
     __tablename__ = "group_module_roles"
+    __table_args__ = (UniqueConstraint("access_group_id", "module_key", name="uq_group_module_roles_group_module"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     access_group_id: Mapped[int] = mapped_column(ForeignKey("access_groups.id", ondelete="CASCADE"))

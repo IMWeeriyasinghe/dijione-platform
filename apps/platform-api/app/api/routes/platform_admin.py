@@ -176,6 +176,18 @@ def remove_module_assignment(
     )
 
 
+@router.post("/users/{user_id}/modules/{module_key}/restore-default", response_model=AdminUserOut)
+def restore_default_access(
+    user_id: int,
+    module_key: str,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> AdminUserOut:
+    return _handle(
+        lambda: AdminService(db).restore_default_access(actor=admin, target_user_id=user_id, module_key=module_key)
+    )
+
+
 @router.get("/modules", response_model=list[AdminModuleOut])
 def list_modules(
     _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
@@ -198,11 +210,13 @@ def list_permissions(
 @router.get("/audit", response_model=list[AuditLogOut])
 def list_audit(
     entity_type: str | None = Query(default=None),
+    entity_id: int | None = Query(default=None),
+    user_id: int | None = Query(default=None),
     limit: int = Query(default=200, le=500),
     admin: User = Depends(require_platform_permission("platform.admin.view_audit")),
     db: Session = Depends(get_db),
 ) -> list[AuditLogOut]:
-    return AdminService(db).list_audit(limit=limit, entity_type=entity_type)
+    return AdminService(db).list_audit(limit=limit, entity_type=entity_type, entity_id=entity_id, user_id=user_id)
 
 
 # --- Access Groups (Phase 2.6, additive) ------------------------------------
