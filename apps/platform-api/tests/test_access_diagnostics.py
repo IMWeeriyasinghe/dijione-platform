@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.access_group import AccessGroup, GroupModuleRole, UserGroupMembership
 from app.models.audit_log import AuditLog
+from app.models.module import ApplicationModule
 from app.models.user import User, UserModuleRole
 from tests.conftest import ABC_CLIENT_ID, assign_client_scope, auth_headers
 
@@ -70,7 +71,8 @@ def test_group_inheritance_and_inactive_group_is_explained(api_client, db, two_t
     group.status = "INACTIVE"
     db.commit()
     data = _diag(api_client, user.id)
-    assert data["modules"] == []
+    assert [m["has_access"] for m in data["modules"]] == [False]
+    assert data["modules"][0]["inactive"][0]["reason"].startswith("The group is inactive")
     assert any(c["key"] == "no_access" for c in data["checks"])
     assert data["groups"][0]["status"] == "INACTIVE"
 
@@ -82,27 +84,27 @@ def test_disabled_direct_assignment_listed_as_inactive(api_client, db, two_tenan
         f"/api/platform/admin/users/{ta_id}/modules/{MODULE}", json={"role": "TA_MEMBER", "enabled": False}, headers=admin
     )
     data = _diag(api_client, ta_id)
-    assert data["modules"] == []
+    assert [m["has_access"] for m in data["modules"]] == [False]
+    assert data["modules"][0]["inactive"][0]["type"] == "DIRECT"
     assert any(c["key"] == "no_access" for c in data["checks"])
 
 
 def test_default_access_states(api_client, db, two_tenant_world):
     from app.models.module_baseline import ModuleBaselineRole
-    from tests.test_atwork_registration import _register_module
-
-    _register_module(db)
-    db.add(ModuleBaselineRole(module_key="atwork", role="ATWORK_USER", enabled=True))
+    db.add(ApplicationModule(key="field-ops", name="Field Ops", description="", route="/field-ops",
+                             required_roles="ANY", supports_client_scope=False))
+    db.add(ModuleBaselineRole(module_key="field-ops", role="FIELD_USER", enabled=True))
     db.commit()
     user = two_tenant_world["ta_user"]
     data = _diag(api_client, user.id)
-    state = next(d for d in data["default_access"] if d["module_key"] == "atwork")
+    state = next(d for d in data["default_access"] if d["module_key"] == "field-ops")
     assert state["state"] == "NOT_ELIGIBLE"
     assert any("Microsoft" in r for r in state["reasons"])
 
     u = db.get(User, user.id)
     u.identity_provider, u.entra_object_id, u.internal_employee = "ENTRA", "oid-1", True
     db.commit()
-    state = next(d for d in _diag(api_client, user.id)["default_access"] if d["module_key"] == "atwork")
+    state = next(d for d in _diag(api_client, user.id)["default_access"] if d["module_key"] == "field-ops")
     assert state["state"] == "GRANTED"
 
 
@@ -147,3 +149,78 @@ def test_diagnostics_never_writes(api_client, db, two_tenant_world):
     _diag(api_client, two_tenant_world["ta_user"].id)
     db.expire_all()
     assert len(db.execute(select(AuditLog)).scalars().all()) == len(before)
+
+
+# --- correction: parity with the resolver, and visibility without access ---------
+
+
+def _claim(db, user_id, module=MODULE):
+    from app.services.claims_service import build_claims
+
+    return build_claims(db.get(User, user_id), db)["module_roles"][module]
+
+
+def test_mixed_direct_and_group_grants_match_the_token_exactly(api_client, db, two_tenant_world):
+    user = User(email="mix@example.com", full_name="Mix", persona_key="test-mix")
+    group = AccessGroup(key="cs", display_name="CS Group")
+    db.add_all([user, group])
+    db.flush()
+    direct = UserModuleRole(user_id=user.id, module_key=MODULE, role="TA_MEMBER")
+    db.add(direct)
+    db.flush()
+    assign_client_scope(db, direct, client_id=ABC_CLIENT_ID)
+    grant = GroupModuleRole(access_group_id=group.id, module_key=MODULE, role="CUSTOMER_SUCCESS")
+    db.add_all([UserGroupMembership(user_id=user.id, access_group_id=group.id), grant])
+    db.commit()
+
+    claim = _claim(db, user.id)
+    module = next(m for m in _diag(api_client, user.id)["modules"] if m["module_key"] == MODULE)
+    assert module["role"] == claim["role"]
+    assert module["permissions"] == claim["permissions"]
+    assert module["client_scope"]["all_clients"] is (claim["client_ids"] is None)
+    assert sorted(s["type"] for s in module["sources"]) == ["DIRECT", "GROUP"]
+    union = set()
+    for s in module["sources"]:
+        union |= set(s["permissions"])
+    assert sorted(union) == claim["permissions"]
+    # Group has no scope rows, so the union is unrestricted, as in the token.
+    assert module["client_scope"]["all_clients"] is True
+
+
+def test_inactive_account_keeps_grants_visible_but_applies_nothing(api_client, db, two_tenant_world):
+    user = db.get(User, two_tenant_world["ta_user"].id)
+    user.is_active = False
+    db.commit()
+    data = _diag(api_client, user.id)
+    module = next(m for m in data["modules"] if m["module_key"] == MODULE)
+    assert module["has_access"] is False
+    assert module["sources"]  # still explained
+    assert any(c["key"] == "account_inactive" for c in data["checks"])
+
+
+def test_no_effective_access_still_shows_why(api_client, db, two_tenant_world):
+    from app.models.module_baseline import ModuleBaselineRole
+    db.add(ApplicationModule(key="field-ops", name="Field Ops", description="", route="/field-ops",
+                             required_roles="ANY", supports_client_scope=False))
+    db.add(ModuleBaselineRole(module_key="field-ops", role="FIELD_USER", enabled=True))
+    user = User(email="none@example.com", full_name="None", persona_key="test-none", internal_employee=True,
+                identity_provider="ENTRA", entra_object_id="oid-none")
+    group = AccessGroup(key="off", display_name="Off Group", status="INACTIVE")
+    db.add_all([user, group])
+    db.flush()
+    db.add_all([
+        UserModuleRole(user_id=user.id, module_key=MODULE, role="TA_MEMBER", enabled=False),  # disabled direct
+        UserModuleRole(user_id=user.id, module_key="field-ops", role="FIELD_USER", enabled=False),  # default removed
+        UserGroupMembership(user_id=user.id, access_group_id=group.id),
+        GroupModuleRole(access_group_id=group.id, module_key="spark", role="SPARK_USER"),
+    ])
+    db.commit()
+
+    data = _diag(api_client, user.id)
+    by_key = {m["module_key"]: m for m in data["modules"]}
+    assert {m["has_access"] for m in data["modules"]} == {False}
+    assert by_key[MODULE]["inactive"][0]["type"] == "DIRECT"
+    assert "DEFAULT" in {i["type"] for i in by_key["field-ops"]["inactive"]}
+    assert by_key["spark"]["inactive"][0]["group_name"] == "Off Group"
+    assert "No access" in by_key[MODULE]["scope_explanation"]
+    assert any(c["key"] == "no_access" for c in data["checks"])

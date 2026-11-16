@@ -122,6 +122,7 @@ export type DiagSource = {
 export type DiagModule = {
   module_key: string;
   module_name: string;
+  has_access: boolean;
   role: string;
   role_name: string;
   permissions: string[];

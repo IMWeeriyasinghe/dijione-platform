@@ -18,6 +18,7 @@ from app.models.module_baseline import ModuleBaselineRole
 from app.models.user import User, UserModuleRole
 from app.schemas.admin import (
     AccessDiagnosticsOut,
+    ClientScopeOut,
     DiagAccountOut,
     DiagCheckOut,
     DiagDefaultAccessOut,
@@ -156,8 +157,17 @@ class AccessDiagnosticsService:
         direct = self.db.execute(select(UserModuleRole).where(UserModuleRole.user_id == user.id)).scalars().all()
         baseline = self.authz.baseline_roles(user)
 
+        exclusions = {k for k, _role in self.authz.baseline_exclusions(user)}
+        keys = (
+            set(effective)
+            | {mr.module_key for mr in direct}
+            | {g.module_key for grp in groups for g in grp.grants}
+            | exclusions
+        )
+
         module_out: list[DiagModuleOut] = []
-        for module_key, eff in sorted(effective.items()):
+        for module_key in sorted(keys):
+            eff = effective.get(module_key)
             module = modules.get(module_key)
             uses_scope = bool(module.supports_client_scope) if module else True
             sources: list[DiagSourceOut] = []
@@ -229,7 +239,18 @@ class AccessDiagnosticsService:
                             )
                         )
 
-            if not uses_scope:
+            if module_key in exclusions:
+                inactive.append(
+                    DiagInactiveOut(
+                        type="DEFAULT",
+                        role=next(r for k, r in self.authz.baseline_exclusions(user) if k == module_key),
+                        reason="Default access was removed for this person; it can be restored.",
+                    )
+                )
+
+            if eff is None or not user.is_active:
+                explanation = "No access to this application: nothing recorded here currently applies."
+            elif not uses_scope:
                 explanation = "This application does not use client scope."
             elif eff.client_scope.all_clients:
                 explanation = (
@@ -240,12 +261,13 @@ class AccessDiagnosticsService:
             module_out.append(
                 DiagModuleOut(
                     module_key=module_key,
-                    module_name=eff.module_name,
-                    role=eff.role,
-                    role_name=eff.role_name,
-                    permissions=eff.permissions,
+                    module_name=modules[module_key].name if module_key in modules else module_key,
+                    has_access=eff is not None and user.is_active,
+                    role=eff.role if eff else "",
+                    role_name=eff.role_name if eff else "",
+                    permissions=eff.permissions if eff else [],
                     sources=sources,
-                    client_scope=eff.client_scope,
+                    client_scope=eff.client_scope if eff else ClientScopeOut(all_clients=False),
                     uses_client_scope=uses_scope,
                     scope_explanation=explanation,
                     inactive=inactive,
@@ -309,10 +331,11 @@ class AccessDiagnosticsService:
         for d in default_access:
             if d.state == "EXCLUDED":
                 add(f"default_excluded_{d.module_key}", "info", f"Default access to {d.module_name} was removed for this person.")
-        if account.is_active and not modules:
-            add("no_access", "warning", "The person has no application access from any source.")
+        if not any(m.has_access for m in modules):
+            if account.is_active:
+                add("no_access", "warning", "The person has no application access from any source.")
         for m in modules:
-            if m.uses_client_scope and m.client_scope.all_clients and m.sources:
+            if m.has_access and m.uses_client_scope and m.client_scope.all_clients and m.sources:
                 add(
                     f"unrestricted_{m.module_key}",
                     "info",

@@ -96,7 +96,9 @@ function Diagnostics({ d }: { d: AccessDiagnosticsOut }) {
         {d.modules.length === 0 && <p className="text-sm text-dt-text-secondary">No application access from any source.</p>}
         {d.modules.map((m) => (
           <div key={m.module_key} className="space-y-2" data-testid={`diag-module-${m.module_key}`}>
-            <p className="text-sm font-medium text-dt-text-primary">{m.module_name} — {m.role_name}</p>
+            <p className="text-sm font-medium text-dt-text-primary">
+              {m.module_name} — {m.has_access ? m.role_name : "No effective access"}
+            </p>
             <ul className="space-y-1 text-sm text-dt-text-secondary">
               {m.sources.map((s, i) => (
                 <li key={i}>
@@ -105,14 +107,16 @@ function Diagnostics({ d }: { d: AccessDiagnosticsOut }) {
                 </li>
               ))}
               {m.inactive.map((x, i) => (
-                <li key={`i${i}`}>Not applied: {x.group_name ? `${x.group_name} ` : ""}{x.role} — {x.reason}</li>
+                <li key={`i${i}`}>Not applied: {x.type === "DEFAULT" ? "default access " : ""}{x.group_name ? `${x.group_name} ` : ""}{x.role} — {x.reason}</li>
               ))}
             </ul>
             <p className="text-sm text-dt-text-secondary">
-              Client scope: {m.client_scope.all_clients ? "All clients" : m.client_scope.client_names.join(", ") || "None"}.{" "}
+              {m.has_access && (
+                <>Client scope: {m.client_scope.all_clients ? "All clients" : m.client_scope.client_names.join(", ") || "None"}. </>
+              )}
               {m.scope_explanation}
             </p>
-            <Chips items={m.permissions} />
+            {m.has_access && <Chips items={m.permissions} />}
           </div>
         ))}
       </section>

@@ -26,10 +26,10 @@ const DIAG = {
   user_id: 42, full_name: "Test Person", email: "t@example.com",
   account: { is_active: true, identity_provider: "ENTRA", entra_linked: true, internal_employee: false,
     platform_role: "PLATFORM_USER", platform_permissions: [], last_sign_in_at: "2026-11-15T08:00:00Z", created_at: null },
-  default_access: [{ module_key: "atwork", module_name: "DijiAtWork", role: "ATWORK_USER", state: "NOT_ELIGIBLE",
+  default_access: [{ module_key: "field-ops", module_name: "Field Ops", role: "FIELD_USER", state: "NOT_ELIGIBLE",
     reasons: ["Not verified as an internal employee (set only by a verified Microsoft sign-in)."] }],
   groups: [{ group_id: 1, group_name: "TA Team", status: "INACTIVE", grants: [{ module_key: "talent-flow", role: "TA_MEMBER", enabled: true }] }],
-  modules: [{ module_key: "talent-flow", module_name: "DijiTalentFlow", role: "TA_MEMBER", role_name: "TA Member",
+  modules: [{ module_key: "talent-flow", module_name: "DijiTalentFlow", has_access: true, role: "TA_MEMBER", role_name: "TA Member",
     permissions: ["talent.requests.read"],
     sources: [{ type: "GROUP", role: "TA_MEMBER", group_name: "Ops", permissions: ["talent.requests.read"], client_scope: "All clients" }],
     client_scope: { all_clients: true, client_ids: [], client_names: [] }, uses_client_scope: true,
@@ -68,11 +68,23 @@ describe("Diagnostics tab", () => {
     expect(within(mod).getByText(/Inherited from Ops gives TA_MEMBER/)).toBeTruthy();
     expect(within(mod).getByText(/Not applied: TA Team TA_MEMBER/)).toBeTruthy();
     expect(within(mod).getByText(/Unrestricted/)).toBeTruthy();
-    expect(screen.getByText(/DijiAtWork/)).toBeTruthy();
+    expect(screen.getByText(/Field Ops/)).toBeTruthy();
     expect(screen.getByText(/Not eligible/)).toBeTruthy();
     expect(screen.getByText(/inactive — grants do not apply/)).toBeTruthy();
     expect(screen.getAllByText(/Token freshness: unavailable/).length).toBe(1);
     expect(screen.getByText(/Changes recorded since last sign-in: 2/)).toBeTruthy();
+  });
+
+  it("keeps recorded grants and their reasons visible when nothing applies", async () => {
+    const none = { ...DIAG.modules[0], has_access: false, role: "", role_name: "", permissions: [], sources: [],
+      scope_explanation: "No access to this application: nothing recorded here currently applies.",
+      inactive: [{ type: "DEFAULT", role: "FIELD_USER", group_name: null, reason: "Default access was removed for this person; it can be restored." }] };
+    api.getAccessDiagnostics.mockResolvedValue({ ...DIAG, modules: [none] });
+    await open();
+    const mod = await screen.findByTestId("diag-module-talent-flow");
+    expect(within(mod).getByText(/No effective access/)).toBeTruthy();
+    expect(within(mod).getByText(/Not applied: default access FIELD_USER/)).toBeTruthy();
+    expect(within(mod).queryByText(/Client scope: All clients/)).toBeNull();
   });
 
   it("shows an error state when diagnostics cannot be loaded", async () => {

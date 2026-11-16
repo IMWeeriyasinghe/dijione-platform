@@ -287,7 +287,7 @@ class DiagSourceOut(BaseModel):
 
 
 class DiagInactiveOut(BaseModel):
-    type: str  # DIRECT | GROUP
+    type: str  # DIRECT | GROUP | DEFAULT
     role: str
     group_name: str | None = None
     reason: str
@@ -296,6 +296,7 @@ class DiagInactiveOut(BaseModel):
 class DiagModuleOut(BaseModel):
     module_key: str
     module_name: str
+    has_access: bool = True  # False: grants/exclusions are recorded but nothing applies
     role: str
     role_name: str
     permissions: list[str]
