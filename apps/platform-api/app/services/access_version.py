@@ -53,6 +53,24 @@ def _group_member_ids(connection, group_ids: set[int]) -> set[int]:
     return {r[0] for r in rows}
 
 
+def _user_of_role(role) -> int | None:
+    """The user a direct assignment belongs to, whether the foreign key or only the
+    relationship has been set so far."""
+    return role.user_id if role.user_id is not None else (role.user.id if role.user is not None else None)
+
+
+def _group_of_role(role) -> int | None:
+    return (
+        role.access_group_id
+        if role.access_group_id is not None
+        else (role.access_group.id if role.access_group is not None else None)
+    )
+
+
+def _owner(connection, wanted, key, value):
+    return connection.execute(select(wanted).where(key == value)).scalar() if value is not None else None
+
+
 def affected_users(session: Session) -> tuple[set[int], bool]:
     """(user ids whose access may change in this flush, whether everyone's may)."""
     connection = session.connection()
@@ -65,23 +83,19 @@ def affected_users(session: Session) -> tuple[set[int], bool]:
     for obj in [*session.new, *modified, *session.deleted]:
         is_new = obj in session.new
         if isinstance(obj, UserModuleRole):
-            users.add(obj.user_id)
+            users.add(_user_of_role(obj))
         elif isinstance(obj, UserGroupMembership):
             users.add(obj.user_id)
         elif isinstance(obj, UserModuleClientScope):
-            owner = obj.user_module_role_id and connection.execute(
-                select(UserModuleRole.user_id).where(UserModuleRole.id == obj.user_module_role_id)
-            ).scalar()
-            if owner:
-                users.add(owner)
+            role = obj.user_module_role
+            users.add(_user_of_role(role) if role is not None else _owner(connection, UserModuleRole.user_id,
+                                                                         UserModuleRole.id, obj.user_module_role_id))
         elif isinstance(obj, GroupModuleRole):
-            groups.add(obj.access_group_id)
+            groups.add(_group_of_role(obj))
         elif isinstance(obj, GroupModuleClientScope):
-            owner = obj.group_module_role_id and connection.execute(
-                select(GroupModuleRole.access_group_id).where(GroupModuleRole.id == obj.group_module_role_id)
-            ).scalar()
-            if owner:
-                groups.add(owner)
+            role = obj.group_module_role
+            groups.add(_group_of_role(role) if role is not None else _owner(connection, GroupModuleRole.access_group_id,
+                                                                           GroupModuleRole.id, obj.group_module_role_id))
         elif isinstance(obj, AccessGroup):
             if obj in session.deleted or (not is_new and _changed(obj, {"status"})):
                 groups.add(obj.id)
@@ -93,6 +107,8 @@ def affected_users(session: Session) -> tuple[set[int], bool]:
                 everyone = True
         elif isinstance(obj, _GLOBAL_MODELS):
             everyone = True
+    users.discard(None)  # a brand-new user or group has no sessions and no members yet
+    groups.discard(None)
 
     users |= _group_member_ids(connection, groups)
     return users, everyone

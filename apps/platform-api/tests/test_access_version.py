@@ -9,9 +9,15 @@ from sqlalchemy.orm import Session
 from app.api.routes import auth as auth_routes
 from app.core.security import decode_session_token
 from app.db.session import SessionLocal
-from app.models.access_group import GroupModuleClientScope, GroupModuleRole, UserGroupMembership
+from app.models.access_group import (
+    AccessGroup,
+    GroupModuleClientScope,
+    GroupModuleRole,
+    UserGroupMembership,
+)
 from app.models.module_baseline import ModuleBaselineRole
 from app.models.user import User, UserModuleRole
+from app.models.user_module_client_scope import UserModuleClientScope
 from app.schemas.admin import ClientScopeIn
 from app.services.admin_service import AdminService
 from tests.conftest import auth_headers, internal_headers
@@ -284,3 +290,170 @@ def test_snapshot_lists_changed_and_inactive_users_with_a_stable_etag(api_client
 def test_group_grant_rows_are_the_models_the_listener_watches(db):
     # Guard: if these models are renamed, the listener's imports fail loudly rather than silently.
     assert GroupModuleRole.__tablename__ and UserGroupMembership.__tablename__
+
+
+# --- rows built through relationships (foreign keys not yet set at flush) -----------------
+
+
+def test_assignments_built_through_relationships_are_covered(db, two_tenant_world):
+    ta, cs, _admin = _people(db, two_tenant_world)
+    before = _av(db, ta.id)
+    ta_row = db.get(User, ta.id)
+    ta_row.module_roles.append(UserModuleRole(module_key="spark", role="SPARK_USER"))  # no user_id set by hand
+    db.commit()
+    assert _av(db, ta.id) > before
+
+    db.expire_all()
+    role = db.execute(
+        select(UserModuleRole).where(UserModuleRole.user_id == ta.id, UserModuleRole.module_key == "spark")
+    ).scalars().one()
+    mid = _av(db, ta.id)
+    role.client_scopes.append(UserModuleClientScope(all_clients=True))  # scope via the parent, not its id
+    db.commit()
+    assert _av(db, ta.id) > mid
+
+
+def test_group_grants_built_through_relationships_reach_members(db, two_tenant_world):
+    ta, cs, admin = _people(db, two_tenant_world)
+    _svc, gid = _group(db, admin, [ta, cs])
+    before = (_av(db, ta.id), _av(db, cs.id))
+    group = db.get(AccessGroup, gid)
+    group.module_roles.append(GroupModuleRole(module_key=MODULE, role="TA_MEMBER"))
+    db.commit()
+    mid = (_av(db, ta.id), _av(db, cs.id))
+    assert all(a > b for a, b in zip(mid, before, strict=True))
+    grant = db.execute(select(GroupModuleRole).where(GroupModuleRole.access_group_id == gid)).scalars().one()
+    grant.client_scopes.append(GroupModuleClientScope(all_clients=True))
+    db.commit()
+    assert all(a > b for a, b in zip((_av(db, ta.id), _av(db, cs.id)), mid, strict=True))
+
+
+def test_deleting_a_group_invalidates_every_member_and_only_them(db, two_tenant_world):
+    ta, cs, admin = _people(db, two_tenant_world)
+    outsider = two_tenant_world["abc_user"]
+    _svc, gid = _group(db, admin, [ta, cs], key="doomed")
+    before = (_av(db, ta.id), _av(db, cs.id), _av(db, outsider.id))
+    db.delete(db.get(AccessGroup, gid))
+    db.commit()
+    assert _av(db, ta.id) > before[0] and _av(db, cs.id) > before[1] and _av(db, outsider.id) == before[2]
+
+
+def test_a_user_created_with_roles_in_one_step_does_not_break_the_flush(db, two_tenant_world):
+    user = User(email="born@example.com", full_name="Born", persona_key="test-born")
+    user.module_roles.append(UserModuleRole(module_key=MODULE, role="TA_MEMBER"))
+    db.add(user)
+    db.commit()  # no user id exists when the listener runs
+    assert _av(db, user.id) == 0
+
+
+# --- migrations bypass the session, so they must bump explicitly -------------------------------
+
+ACCESS_TABLES = (
+    "user_module_roles", "user_module_client_scopes", "group_module_roles", "group_module_client_scopes",
+    "user_group_memberships", "access_groups", "module_baseline_roles", "application_modules",
+    "roles", "role_permissions", "permissions",
+)
+
+
+def test_every_migration_after_access_version_that_changes_access_bumps_everyone():
+    """An Alembic migration writes through the connection, not the session, so the listener never
+    sees it. Any later migration that touches an access table must also bump every user's
+    access_version (``UPDATE users SET access_version = access_version + 1``) or sessions keep
+    their old permissions."""
+    from pathlib import Path
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    root = Path(__file__).resolve().parents[1]
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "alembic"))
+    scripts = ScriptDirectory.from_config(config)
+    offenders = []
+    for revision in scripts.walk_revisions():  # newest first
+        if revision.revision == "h4j6k8m0n2p3":
+            break
+        text = Path(revision.path).read_text()
+        if any(table in text for table in ACCESS_TABLES) and "access_version" not in text:
+            offenders.append(revision.revision)
+    assert offenders == [], f"migrations that change access without bumping access_version: {offenders}"
+
+
+# --- the bump and the change are one transaction ------------------------------------------------
+
+
+def test_a_rolled_back_change_leaves_the_version_alone(db, two_tenant_world):
+    ta, _cs, _admin = _people(db, two_tenant_world)
+    before = _av(db, ta.id)
+    db.add(UserModuleRole(user_id=ta.id, module_key="spark", role="SPARK_USER"))
+    db.flush()  # the bump and the new row are written, uncommitted
+    db.rollback()
+    assert _av(db, ta.id) == before
+    assert db.execute(
+        select(UserModuleRole).where(UserModuleRole.user_id == ta.id, UserModuleRole.module_key == "spark")
+    ).first() is None
+
+
+def test_a_failed_flush_does_not_leave_a_bump_behind(db, two_tenant_world):
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    ta, _cs, _admin = _people(db, two_tenant_world)
+    before = _av(db, ta.id)
+    db.add(UserModuleRole(user_id=ta.id, module_key=MODULE, role="TA_MEMBER"))  # one per user and application
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+    assert _av(db, ta.id) == before
+
+
+def test_a_change_and_its_bump_are_visible_together_after_commit(db, two_tenant_world):
+    ta, _cs, admin = _people(db, two_tenant_world)
+    before = _av(db, ta.id)
+    AdminService(db).upsert_module_assignment(
+        actor=admin, target_user_id=ta.id, module_key=MODULE, role="TA_MANAGER", enabled=True, client_scope=ALL
+    )
+    with SessionLocal() as other:  # a different connection, as another request would see it
+        version = other.execute(select(User.access_version).where(User.id == ta.id)).scalar_one()
+        role = other.execute(
+            select(UserModuleRole.role).where(UserModuleRole.user_id == ta.id, UserModuleRole.module_key == MODULE)
+        ).scalar_one()
+    assert version > before and role == "TA_MANAGER"
+
+
+# --- refresh never trusts what the old token says about itself -----------------------------------
+
+
+def test_refresh_takes_the_version_and_roles_from_the_database_not_the_token(api_client, db, two_tenant_world):
+    from tests.test_session_refresh import _forge
+
+    ta = two_tenant_world["ta_user"]
+    current = _av(db, ta.id)
+    forged = {"Authorization": "Bearer " + _forge(ta, av=10_000, module_roles={"talent-flow": {"role": "TA_MANAGER"}})}
+    resp = api_client.post("/api/auth/refresh", headers=forged)
+    assert resp.status_code == 200
+    claims = decode_session_token(resp.json()["access_token"])
+    assert claims["av"] == current  # not 10_000: a token cannot award itself a version
+    assert claims["module_roles"][MODULE]["role"] != "TA_MANAGER"  # nor roles it was not granted
+
+
+def test_a_session_revoked_by_a_group_change_refreshes_into_current_access(api_client, db, two_tenant_world):
+    ta, cs, admin = _people(db, two_tenant_world)
+    old = auth_headers(api_client, "test-ta")
+    svc, gid = _group(db, admin, [ta, cs])
+    svc.upsert_group_module_assignment(
+        actor=admin, group_id=gid, module_key="birthday", role="BIRTHDAY_USER", enabled=True, client_scope=ALL
+    )
+    old_av = decode_session_token(old["Authorization"].split()[1])["av"]
+    assert old_av < _av(db, ta.id)  # the old token is now revoked
+    resp = api_client.post("/api/auth/refresh", headers=old)
+    assert resp.status_code == 200
+    fresh = decode_session_token(resp.json()["access_token"])
+    assert fresh["av"] == _av(db, ta.id) and "birthday" in fresh["module_roles"]
+
+
+def test_a_deactivated_account_is_refused_even_with_a_current_version(api_client, db, two_tenant_world):
+    ta, _cs, admin = _people(db, two_tenant_world)
+    token = auth_headers(api_client, "test-ta")
+    AdminService(db).set_user_active(actor=admin, target_user_id=ta.id, is_active=False)
+    assert api_client.post("/api/auth/refresh", headers=token).status_code == 401
