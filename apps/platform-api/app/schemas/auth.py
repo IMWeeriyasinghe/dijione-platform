@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.view_as import ViewAsInfoOut
+
 
 class DevPersonaOut(BaseModel):
     persona_key: str
@@ -29,5 +31,7 @@ class CurrentUserOut(BaseModel):
     avatar_color: str | None
     module_roles: list[dict]
     platform_permissions: list[str] = []
+    # Set only while a read-only View-as token is in use.
+    view_as: ViewAsInfoOut | None = None
 
     model_config = ConfigDict(from_attributes=True)

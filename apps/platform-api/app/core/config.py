@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # Longest a sign-in may be extended by POST /api/auth/refresh before the user
     # must authenticate again.
     session_max_minutes: int = 60 * 12
+    # A View-as session (read-only simulation of another employee) is short and cannot be refreshed.
+    view_as_minutes: int = 30
 
     # Dev-only shared secret trusted service-to-service calls present on the
     # `X-Internal-Token` header (talent-api/birthday-api/spark-api writing

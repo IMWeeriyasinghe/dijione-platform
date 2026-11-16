@@ -13,6 +13,7 @@ from app.models.notification import Notification
 from app.models.role import Permission, Role, RolePermission
 from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
+from app.models.view_as_session import ViewAsSession
 
 __all__ = [
     "ModuleBaselineRole",
@@ -28,6 +29,7 @@ __all__ = [
     "RolePermission",
     "User",
     "UserModuleRole",
+    "ViewAsSession",
     "UserModuleClientScope",
     "AccessGroup",
     "UserGroupMembership",

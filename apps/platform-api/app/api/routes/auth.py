@@ -4,13 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_session_payload
+from app.api.deps import Viewer, get_current_user, get_session_payload, get_viewer
 from app.core.config import get_settings
 from app.core.security import issue_session_token
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import CurrentUserOut, DevLoginRequest, DevPersonaOut, TokenResponse
+from app.schemas.view_as import ViewAsInfoOut
 from app.services.authorization_service import AuthorizationService
 from app.services.claims_service import build_claims
 
@@ -130,10 +131,14 @@ def refresh_session(
 
 
 @router.get("/me", response_model=CurrentUserOut)
-def get_me(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> CurrentUserOut:
-    return _to_current_user_out(user, UserRepository(db), db)
+def get_me(viewer: Viewer = Depends(get_viewer), db: Session = Depends(get_db)) -> CurrentUserOut:
+    out = _to_current_user_out(viewer.user, UserRepository(db), db)
+    if viewer.view_as is not None:
+        out.view_as = ViewAsInfoOut(
+            session_id=viewer.view_as.public_id, expires_at=viewer.view_as.expires_at,
+            actor_id=viewer.view_as.admin_user_id, actor_name=viewer.actor_name or "",
+        )
+    return out
 
 
 @router.get("/config")

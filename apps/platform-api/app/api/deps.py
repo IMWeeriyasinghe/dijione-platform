@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from auth_client_py.fastapi_deps import make_verify_internal_request
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -7,13 +9,16 @@ from app.core.config import get_settings
 from app.core.security import (
     SESSION_ACTOR_CLAIM,
     SESSION_ACTOR_STAFF,
+    SESSION_ACTOR_VIEW_AS,
     InvalidTokenError,
     decode_session_token,
 )
 from app.db.session import get_db
 from app.models.user import User
+from app.models.view_as_session import ViewAsSession
 from app.repositories.user_repo import UserRepository
 from app.services.authorization_service import AuthorizationService
+from app.services.view_as_service import ViewAsInvalid, ViewAsService
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -53,12 +58,52 @@ def get_current_user(
     except (InvalidTokenError, KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
 
+    if payload.get(SESSION_ACTOR_CLAIM) == SESSION_ACTOR_VIEW_AS:
+        # A read-only View-as session is never a staff session. Refuse it plainly (403, not 401, so a
+        # client does not mistake it for the end of a sign-in).
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This is a read-only View-as session", headers={"X-Auth-Error": "view_as_read_only"}
+        )
     user = UserRepository(db).get_by_id(user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
     if not _is_staff_session(payload, user):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     return user
+
+
+@dataclass(frozen=True)
+class Viewer:
+    """Who a read-only endpoint answers for: the signed-in user, or, in a View-as session, the
+    employee being viewed (``view_as`` and ``actor_name`` are then set)."""
+
+    user: User
+    view_as: ViewAsSession | None = None
+    actor_name: str | None = None
+
+
+def get_viewer(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
+) -> Viewer:
+    """For the few GET endpoints a shell needs in order to draw itself (``/me``, the module list,
+    notifications): accepts a staff session or a valid View-as session. Everything else on
+    platform-api stays staff-only."""
+    if credentials is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
+    try:
+        payload = decode_session_token(credentials.credentials)
+    except InvalidTokenError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
+    if payload.get(SESSION_ACTOR_CLAIM) == SESSION_ACTOR_VIEW_AS:
+        try:
+            target, session = ViewAsService(db).resolve(payload)
+        except ViewAsInvalid as exc:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, str(exc), headers={"X-Auth-Error": "view_as_ended"}
+            ) from exc
+        return Viewer(user=target, view_as=session, actor_name=str(payload["view_as"].get("actor_name", "")))
+    return Viewer(user=get_current_user(credentials, db))
 
 
 def get_session_payload(
