@@ -23,10 +23,11 @@ def _refresh(api_client, headers):
     return api_client.post("/api/auth/refresh", headers=headers)
 
 
-def _forge(user_id, **claims):
-    """A correctly signed session token with chosen timestamps."""
+def _forge(user, **claims):
+    """A correctly signed session token with chosen timestamps. Like every real
+    session it names the user's email, which the platform checks against the account."""
     now = datetime.now(UTC)
-    payload = {"sub": str(user_id), "iat": now, "exp": now + timedelta(minutes=5), "iss": "dijione-dev-identity", **claims}
+    payload = {"sub": str(user.id), "email": user.email, "iat": now, "exp": now + timedelta(minutes=5), "iss": "dijione-dev-identity", **claims}
     return jwt.encode(payload, os.environ["PLATFORM_JWT_SECRET"], algorithm="HS256")
 
 
@@ -84,7 +85,7 @@ def test_deactivated_user_cannot_refresh(api_client, db, two_tenant_world):
 def test_refresh_keeps_the_original_sign_in_time_and_never_outlives_the_session(api_client, db, two_tenant_world, monkeypatch):
     user = two_tenant_world["ta_user"]
     started = datetime.now(UTC) - timedelta(minutes=700)  # 20 minutes of a 12 hour session left
-    resp = _refresh(api_client, _bearer(_forge(user.id, sst=int(started.timestamp()))))
+    resp = _refresh(api_client, _bearer(_forge(user, sst=int(started.timestamp()))))
     assert resp.status_code == 200
     claims = decode_session_token(resp.json()["access_token"])
     assert claims["sst"] == int(started.timestamp())
@@ -104,7 +105,7 @@ def test_refresh_keeps_the_original_sign_in_time_and_never_outlives_the_session(
 def test_refresh_is_refused_once_the_session_limit_is_reached(api_client, db, two_tenant_world):
     user = two_tenant_world["ta_user"]
     started = datetime.now(UTC) - timedelta(minutes=721)
-    resp = _refresh(api_client, _bearer(_forge(user.id, sst=int(started.timestamp()))))
+    resp = _refresh(api_client, _bearer(_forge(user, sst=int(started.timestamp()))))
     assert resp.status_code == 401
     assert "sign in again" in resp.json()["detail"]
 
@@ -112,7 +113,7 @@ def test_refresh_is_refused_once_the_session_limit_is_reached(api_client, db, tw
 def test_token_issued_before_this_change_refreshes_from_its_issue_time(api_client, db, two_tenant_world):
     user = two_tenant_world["ta_user"]
     issued = datetime.now(UTC) - timedelta(hours=3)
-    resp = _refresh(api_client, _bearer(_forge(user.id, iat=issued)))
+    resp = _refresh(api_client, _bearer(_forge(user, iat=issued)))
     assert resp.status_code == 200
     assert decode_session_token(resp.json()["access_token"])["sst"] == int(issued.timestamp())
 
@@ -120,7 +121,7 @@ def test_token_issued_before_this_change_refreshes_from_its_issue_time(api_clien
 def test_refresh_needs_a_valid_token_and_is_not_a_sign_in(api_client, db, two_tenant_world):
     assert _refresh(api_client, {}).status_code == 401
     assert _refresh(api_client, _bearer("garbage")).status_code == 401
-    expired = _forge(two_tenant_world["ta_user"].id, exp=datetime.now(UTC) - timedelta(minutes=1))
+    expired = _forge(two_tenant_world["ta_user"], exp=datetime.now(UTC) - timedelta(minutes=1))
     assert _refresh(api_client, _bearer(expired)).status_code == 401
 
     session = auth_headers(api_client, "test-ta")
