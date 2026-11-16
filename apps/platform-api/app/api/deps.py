@@ -53,7 +53,7 @@ def get_current_user(
     except (InvalidTokenError, KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
 
-    user =UserRepository(db).get_by_id(user_id)
+    user = UserRepository(db).get_by_id(user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
     if not _is_staff_session(payload, user):
