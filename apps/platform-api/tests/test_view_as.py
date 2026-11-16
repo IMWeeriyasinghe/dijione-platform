@@ -90,7 +90,12 @@ def test_only_an_active_internal_employee_other_than_oneself_can_be_viewed(db, w
     db.commit()
     outcomes["inactive"] = _start(api_client, "test-super-admin", inactive.id)
     assert {r.status_code for r in outcomes.values()} == {404}
-    assert len({r.json()["detail"] for r in outcomes.values()}) == 1  # one answer, whatever the reason
+    # Each refusal names its reason (the caller is a Super Admin who can already see the user).
+    detail = {k: r.json()["detail"] for k, r in outcomes.items()}
+    assert "yourself" in detail["self"]
+    assert "does not exist" in detail["unknown"]
+    assert "inactive" in detail["inactive"]
+    assert "not yet signed in" in detail["not internal"]  # never linked to a Microsoft sign-in
 
 
 def test_a_supplier_portal_identity_is_not_a_viewable_user(api_client, world):
