@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from auth_client_py.claims import AuthClaims, InvalidTokenError, decode_claims
+from auth_client_py.revocation import FRESH, RESTRICTED, SAFE_METHODS, SENSITIVE_SUFFIXES, get_guard
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -56,7 +57,10 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
         def list_requests(claims: AuthClaims = Depends(get_claims)): ...
     """
 
+    get_guard()  # starts the revocation snapshot at process start (no-op when disabled)
+
     def _get_claims(
+        request: Request,
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     ) -> AuthClaims:
         if credentials is None:
@@ -67,6 +71,50 @@ def make_get_claims(*, secret: str, algorithm: str = "HS256", issuer: str = "dij
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
         if not claims.is_active:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+        _enforce_revocation(request, claims)
         return claims
 
     return _get_claims
+
+
+def _enforce_revocation(request: Request, claims: AuthClaims) -> None:
+    """Reject a revoked session, and limit what an unverifiable one may do.
+
+    Supplier-portal and external-link sessions are another actor population whose ``sub``
+    is not a DijiOne user id; they have their own per-request checks and are not subject
+    to user revocation. Does nothing unless revocation is enabled."""
+    guard = get_guard()
+    if guard is None or claims.supplier is not None or claims.external is not None:
+        return
+    if guard.is_revoked(claims.user_id, claims.access_version):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Session revoked", headers={"X-Auth-Error": "session_revoked"}
+        )
+    if guard.state() == RESTRICTED and request.method not in SAFE_METHODS:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Revocation information is unavailable; changes are temporarily disabled",
+            headers={"Retry-After": "30", "X-Auth-Error": "revocation_restricted"},
+        )
+
+
+def require_fresh_revocation() -> None:
+    """Dependency for sensitive routes: refuse unless revocation information is current.
+    Add it where an action must not rely on a snapshot that may have missed a revocation."""
+    guard = get_guard()
+    if guard is not None and guard.state() != FRESH:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Revocation information is not current; this action is temporarily unavailable",
+            headers={"Retry-After": "30", "X-Auth-Error": "revocation_stale"},
+        )
+
+
+def _no_check() -> None:
+    return None
+
+
+def fresh_if_sensitive(permission_key: str) -> Callable[[], None]:
+    """``require_fresh_revocation`` for permissions ending in ``.manage``, ``.admin``,
+    ``.approve`` or ``.export``; a no-op dependency for every other permission."""
+    return require_fresh_revocation if permission_key.endswith(SENSITIVE_SUFFIXES) else _no_check

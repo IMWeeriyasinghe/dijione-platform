@@ -18,6 +18,7 @@ from auth_client_py.migration_status import alembic_head_status
 from auth_client_py.people_client import EmployeeDirectoryClient
 from auth_client_py.platform_client import PlatformClient
 from auth_client_py.recruitment_client import RecruitmentSourceClient
+from auth_client_py.revocation import RevocationGuard, revocation_status
 from auth_client_py.security import InsecureConfigError, assert_trust_anchors_safe
 from auth_client_py.workforce_client import WorkforceDirectoryClient
 
@@ -31,6 +32,8 @@ __all__ = [
     "SupplierClaims",
     "ExternalClaims",
     "InvalidTokenError",
+    "RevocationGuard",
+    "revocation_status",
     "decode_claims",
     "PlatformClient",
     "RecruitmentSourceClient",

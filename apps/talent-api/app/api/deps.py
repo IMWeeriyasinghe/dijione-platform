@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
 from auth_client_py.claims import ModuleRoleClaims
-from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.fastapi_deps import fresh_if_sensitive, make_get_claims, make_verify_internal_request
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -162,7 +162,10 @@ def require_customer_success_scope(scope: TalentScope = Depends(get_talent_scope
 def require_talent_permission(permission_key: str):
     """Reusable factory for DijiTalentFlow route-level permission gates."""
 
-    def _dependency(scope: TalentScope = Depends(get_talent_scope)) -> TalentScope:
+    def _dependency(
+        scope: TalentScope = Depends(get_talent_scope),
+        _fresh: None = Depends(fresh_if_sensitive(permission_key)),
+    ) -> TalentScope:
         if not scope.has(permission_key):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, f"Missing required permission: {permission_key}"

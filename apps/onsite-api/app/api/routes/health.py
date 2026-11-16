@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from auth_client_py import alembic_head_status
+from auth_client_py import alembic_head_status, revocation_status
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -22,6 +22,7 @@ def health() -> dict:
 def health_deep(db: Session = Depends(get_db)) -> dict:
     settings = get_settings()
     checks: dict[str, object] = {}
+    checks["revocation"] = revocation_status()  # diagnostic only: never fails the readiness probe
     ok = True
     try:
         db.execute(text("SELECT 1"))

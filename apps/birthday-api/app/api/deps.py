@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
-from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.fastapi_deps import fresh_if_sensitive, make_get_claims, make_verify_internal_request
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -65,7 +65,10 @@ def get_birthday_scope(claims: AuthClaims = Depends(get_claims)) -> BirthdayScop
 def require_birthday_permission(permission_key: str):
     """Reusable factory for DijiBirthday route-level permission gates."""
 
-    def _dependency(scope: BirthdayScope = Depends(get_birthday_scope)) -> BirthdayScope:
+    def _dependency(
+        scope: BirthdayScope = Depends(get_birthday_scope),
+        _fresh: None = Depends(fresh_if_sensitive(permission_key)),
+    ) -> BirthdayScope:
         if not scope.has(permission_key):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, f"Missing required permission: {permission_key}"

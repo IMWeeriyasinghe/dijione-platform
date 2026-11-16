@@ -87,6 +87,9 @@ class AuthClaims:
     module_roles: dict[str, ModuleRoleClaims]
     supplier: SupplierClaims | None = None
     external: ExternalClaims | None = None
+    # The user's ``access_version`` when the session was issued; a token from before
+    # the claim existed reads as 0.
+    access_version: int = 0
 
     def module(self, module_key: str) -> ModuleRoleClaims | None:
         return self.module_roles.get(module_key)
@@ -152,6 +155,7 @@ def decode_claims(
             module_roles=module_roles,
             supplier=supplier_claim,
             external=external_claim,
+            access_version=int(payload.get("av", 0)),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise InvalidTokenError(f"Token is missing expected Phase 2.5 claims: {exc}") from exc

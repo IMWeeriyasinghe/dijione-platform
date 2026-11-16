@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from auth_client_py import AuthClaims
-from auth_client_py.fastapi_deps import make_get_claims, make_verify_internal_request
+from auth_client_py.fastapi_deps import fresh_if_sensitive, make_get_claims, make_verify_internal_request
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -64,7 +64,10 @@ def get_onsite_scope(claims: AuthClaims = Depends(get_claims), db: Session = Dep
 
 
 def require_onsite_permission(permission_key: str):
-    def _dependency(scope: OnsiteScope = Depends(get_onsite_scope)) -> OnsiteScope:
+    def _dependency(
+        scope: OnsiteScope = Depends(get_onsite_scope),
+        _fresh: None = Depends(fresh_if_sensitive(permission_key)),
+    ) -> OnsiteScope:
         if not scope.has(permission_key):
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing required permission: {permission_key}")
         return scope
