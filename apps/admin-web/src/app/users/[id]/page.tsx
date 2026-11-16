@@ -103,6 +103,8 @@ function ModuleAssignmentEditor({
   const [allClients, setAllClients] = useState(current?.all_clients ?? true);
   const [clientIds, setClientIds] = useState<number[]>(current?.client_ids ?? []);
   const [error, setError] = useState<string | null>(null);
+  // An empty specific scope would be stored as unrestricted, so it cannot be saved.
+  const scopeMissing = supportsClientScope && !allClients && clientIds.length === 0;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -193,10 +195,11 @@ function ModuleAssignmentEditor({
         </div>
       )}
 
+      {scopeMissing && <p className="mt-3 text-sm text-dt-text-secondary">Select at least one client, or choose All Clients.</p>}
       {error && <p className="mt-3 text-sm text-dt-danger">{error}</p>}
 
       <div className="mt-4">
-        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!role}>
+        <Button size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!role || scopeMissing}>
           Save {moduleName} Access
         </Button>
       </div>

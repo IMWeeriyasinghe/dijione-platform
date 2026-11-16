@@ -81,6 +81,8 @@ function AssignModal({
   const [allClients, setAllClients] = useState(editing?.allClients ?? true);
   const [clientIds, setClientIds] = useState<number[]>(editing?.clientIds ?? []);
   const [error, setError] = useState<string | null>(null);
+  // An empty specific scope would be stored as unrestricted, so it cannot be saved.
+  const scopeMissing = supportsClientScope && !allClients && clientIds.length === 0;
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -164,12 +166,13 @@ function AssignModal({
             )}
           </>
         )}
+        {scopeMissing && <p className="text-sm text-dt-text-secondary">Select at least one client, or choose All Clients.</p>}
         {error && <p className="text-sm text-dt-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!principalId || !role}>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!principalId || !role || scopeMissing}>
             {editing ? "Save" : "Assign"}
           </Button>
         </div>

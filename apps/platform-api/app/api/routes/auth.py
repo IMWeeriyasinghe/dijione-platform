@@ -32,14 +32,14 @@ def _module_roles_payload(user: User, repo: UserRepository) -> list[dict]:
     ]
 
 
-def _with_baseline(assigned: list[dict], baseline: dict[str, str]) -> list[dict]:
-    held = {r["module_key"] for r in assigned if r["enabled"]}
-    extra = [
-        {"module_key": key, "role": role, "client_id": None, "enabled": True}
-        for key, role in baseline.items()
-        if key not in held
+def _effective_module_roles_payload(user: User, db: Session) -> list[dict]:
+    """The roles the session token carries: direct, Access Group and default
+    grants, enabled only. Frontends gate their shells on this list, so it must
+    never disagree with what the APIs enforce from the token."""
+    return [
+        {"module_key": module_key, "role": claim["role"], "client_id": claim["client_id"], "enabled": True}
+        for module_key, claim in build_claims(user, db)["module_roles"].items()
     ]
-    return assigned + extra
 
 
 def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> CurrentUserOut:
@@ -50,7 +50,7 @@ def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> Curre
         title=user.title,
         platform_role=user.platform_role,
         avatar_color=user.avatar_color,
-        module_roles=_with_baseline(_module_roles_payload(user, repo), AuthorizationService(db).baseline_roles(user)),
+        module_roles=_effective_module_roles_payload(user, db),
         platform_permissions=sorted(AuthorizationService(db).platform_permissions(user)),
     )
 

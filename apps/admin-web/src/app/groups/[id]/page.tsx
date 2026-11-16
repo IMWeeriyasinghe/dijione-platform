@@ -72,6 +72,8 @@ function GroupModuleAssignmentEditor({
   const [allClients, setAllClients] = useState(current?.all_clients ?? true);
   const [clientIds, setClientIds] = useState<number[]>(current?.client_ids ?? []);
   const [error, setError] = useState<string | null>(null);
+  // An empty specific scope would be stored as unrestricted, so it cannot be saved.
+  const scopeMissing = supportsClientScope && !allClients && clientIds.length === 0;
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -162,10 +164,11 @@ function GroupModuleAssignmentEditor({
         </div>
       )}
 
+      {scopeMissing && <p className="mt-3 text-sm text-dt-text-secondary">Select at least one client, or choose All Clients.</p>}
       {error && <p className="mt-3 text-sm text-dt-danger">{error}</p>}
 
       <div className="mt-4 flex items-center gap-2">
-        <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending} disabled={!role}>
+        <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending} disabled={!role || scopeMissing}>
           Save {moduleName} Access
         </Button>
         {current && (

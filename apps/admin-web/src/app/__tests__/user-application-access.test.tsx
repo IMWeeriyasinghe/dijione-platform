@@ -106,3 +106,30 @@ describe("Users -> Applications role selection", () => {
       { role: "FIELD_VIEWER", enabled: true, client_scope: undefined }));
   });
 });
+
+// D5: a specific scope with no client selected would be stored as unrestricted.
+describe("Users -> Applications client scope", () => {
+  it("cannot save a specific client scope until a client is selected", async () => {
+    api.getAdminUser.mockResolvedValue(user());
+    api.listAdminClients.mockResolvedValue([{ id: 7, name: "Acme" }]);
+    const { solo } = await openApplications();
+    fireEvent.click(within(solo).getByLabelText("Enabled"));
+    const save = within(solo).getByRole("button", { name: /save solo app access/i });
+    expect(save).toBeEnabled();
+
+    fireEvent.click(within(solo).getByLabelText("All Clients"));
+    expect(save).toBeDisabled();
+    expect(within(solo).getByText("Select at least one client, or choose All Clients.")).toBeInTheDocument();
+    fireEvent.click(save);
+    expect(api.upsertModuleAssignment).not.toHaveBeenCalled();
+
+    fireEvent.click(within(solo).getByLabelText("Acme"));
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(api.upsertModuleAssignment).toHaveBeenCalledWith(42, "solo", {
+        role: "SOLO_USER", enabled: true, client_scope: { all_clients: false, client_ids: [7] },
+      }),
+    );
+  });
+});

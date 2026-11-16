@@ -346,6 +346,17 @@ class AdminService:
             return ClientScopeIn(all_clients=True, client_ids=[])
         return client_scope
 
+    @staticmethod
+    def _require_explicit_client_scope(client_scope: ClientScopeIn | None, *, is_new: bool) -> None:
+        """An assignment with no scope rows resolves as unrestricted, so a scope
+        that names no client must never be stored as if it restricted anything."""
+        if client_scope is None:
+            if is_new:
+                raise AdminError("Client scope is required: choose All Clients or select at least one client.")
+            return
+        if not client_scope.all_clients and not client_scope.client_ids:
+            raise AdminError("Select at least one client, or choose All Clients.")
+
     def upsert_module_assignment(
         self,
         *,
@@ -370,6 +381,7 @@ class AdminService:
             UserModuleRole.user_id == target_user_id, UserModuleRole.module_key == module_key
         )
         module_role = self.db.execute(stmt).scalars().first()
+        self._require_explicit_client_scope(client_scope, is_new=module_role is None)
         previous_state = None
         if module_role is None:
             module_role = UserModuleRole(user_id=target_user_id, module_key=module_key, role=role, enabled=enabled)
@@ -790,6 +802,7 @@ class AdminService:
             GroupModuleRole.access_group_id == group_id, GroupModuleRole.module_key == module_key
         )
         group_role = self.db.execute(stmt).scalars().first()
+        self._require_explicit_client_scope(client_scope, is_new=group_role is None)
         previous_state = None
         if group_role is None:
             group_role = GroupModuleRole(access_group_id=group_id, module_key=module_key, role=role, enabled=enabled)
