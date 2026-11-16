@@ -167,3 +167,11 @@ def test_a_replica_with_no_snapshot_serves_only_read_and_own_routes(api_client, 
 
 def _matches(template, concrete):
     return re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", template), concrete) is not None
+
+
+def test_everything_a_manager_sees_about_others_is_sensitive_except_the_access_probe():
+    for key, klass in ROUTE_POLICY.items():
+        _method, path = key.split(" ", 1)
+        if path.startswith("/api/atwork/management") and not path.endswith("/management/access"):
+            assert klass == "SENSITIVE", key
+    assert ROUTE_POLICY["GET /api/atwork/management/access"] == "READ"

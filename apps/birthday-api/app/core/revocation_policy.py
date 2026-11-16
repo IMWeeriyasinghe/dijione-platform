@@ -15,7 +15,7 @@ See ``auth_client_py.revocation``.
 from auth_client_py.revocation import EXEMPT, READ, SENSITIVE, WRITE
 
 ROUTE_POLICY: dict[str, str] = {
-    # --- SENSITIVE (28)
+    # --- SENSITIVE (33)
     "POST /api/birthday/admin/run-attention": SENSITIVE,
     "POST /api/birthday/admin/run-detection": SENSITIVE,
     "GET /api/birthday/admin/scan-runs": SENSITIVE,
@@ -25,7 +25,11 @@ ROUTE_POLICY: dict[str, str] = {
     "PATCH /api/birthday/admin/test-email-recipients/{recipient_id}": SENSITIVE,
     "GET /api/birthday/config": SENSITIVE,
     "PATCH /api/birthday/config": SENSITIVE,
+    "GET /api/birthday/employees/upcoming-birthdays": SENSITIVE,
+    "GET /api/birthday/inbound-emails": SENSITIVE,
+    "GET /api/birthday/orders": SENSITIVE,
     "DELETE /api/birthday/orders/{order_id}": SENSITIVE,
+    "GET /api/birthday/orders/{order_id}": SENSITIVE,
     "POST /api/birthday/orders/{order_id}/cancel": SENSITIVE,
     "POST /api/birthday/orders/{order_id}/confirm-release": SENSITIVE,
     "POST /api/birthday/orders/{order_id}/hold": SENSITIVE,
@@ -40,6 +44,7 @@ ROUTE_POLICY: dict[str, str] = {
     "POST /api/birthday/suppliers/{supplier_id}/catalogue": SENSITIVE,
     "PATCH /api/birthday/suppliers/{supplier_id}/catalogue/{item_id}": SENSITIVE,
     "POST /api/birthday/suppliers/{supplier_id}/locations": SENSITIVE,
+    "GET /api/birthday/suppliers/{supplier_id}/users": SENSITIVE,
     "POST /api/birthday/suppliers/{supplier_id}/users": SENSITIVE,
     "PATCH /api/birthday/suppliers/{supplier_id}/users/{user_id}": SENSITIVE,
     "POST /api/birthday/suppliers/{supplier_id}/users/{user_id}/impersonate": SENSITIVE,
@@ -59,12 +64,8 @@ ROUTE_POLICY: dict[str, str] = {
     "POST /api/birthday/portal/orders/{order_id}/issues": WRITE,
     "POST /api/birthday/portal/orders/{order_id}/messages": WRITE,
     "PATCH /api/birthday/portal/orders/{order_id}/status": WRITE,
-    # --- READ (23)
+    # --- READ (18)
     "GET /api/birthday/dashboard": READ,
-    "GET /api/birthday/employees/upcoming-birthdays": READ,
-    "GET /api/birthday/inbound-emails": READ,
-    "GET /api/birthday/orders": READ,
-    "GET /api/birthday/orders/{order_id}": READ,
     "GET /api/birthday/orders/{order_id}/issues": READ,
     "GET /api/birthday/orders/{order_id}/readiness": READ,
     "GET /api/birthday/orders/{order_id}/timeline": READ,
@@ -80,7 +81,6 @@ ROUTE_POLICY: dict[str, str] = {
     "GET /api/birthday/suppliers/{supplier_id}/catalogue": READ,
     "GET /api/birthday/suppliers/{supplier_id}/locations": READ,
     "GET /api/birthday/suppliers/{supplier_id}/readiness": READ,
-    "GET /api/birthday/suppliers/{supplier_id}/users": READ,
     "GET /api/birthday/upcoming": READ,
     "GET /api/birthday/whoami": READ,
     # --- EXEMPT (15)

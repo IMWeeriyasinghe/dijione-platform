@@ -167,3 +167,12 @@ def test_a_replica_with_no_snapshot_serves_only_read_and_own_routes(api_client, 
 
 def _matches(template, concrete):
     return re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", template), concrete) is not None
+
+
+def test_bulk_personal_data_is_sensitive_not_read():
+    for key in (
+        "GET /api/talent/candidates", "GET /api/talent/candidates/paged", "GET /api/talent/candidates/{candidate_id}",
+        "GET /api/talent/applications", "GET /api/talent/applications/paged",
+        "GET /api/talent/requests/{request_id}/documents", "GET /api/talent/external/grants",
+    ):
+        assert ROUTE_POLICY[key] == "SENSITIVE", key

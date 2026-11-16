@@ -164,3 +164,12 @@ def test_a_replica_with_no_snapshot_serves_only_read_and_own_routes(api_client, 
 
 def _matches(template, concrete):
     return re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", template), concrete) is not None
+
+
+def test_named_people_attendance_and_photos_are_sensitive_not_read():
+    people = ("/api/onsite/employees", "/api/onsite/activity", "/api/onsite/today", "/api/onsite/exceptions",
+              "/api/onsite/dashboard/recent-activity")
+    for key, klass in ROUTE_POLICY.items():
+        method, path = key.split(" ", 1)
+        if method == "GET" and path.startswith(people):
+            assert klass == "SENSITIVE", key

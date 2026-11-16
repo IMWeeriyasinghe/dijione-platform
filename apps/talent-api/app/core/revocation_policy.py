@@ -15,8 +15,14 @@ See ``auth_client_py.revocation``.
 from auth_client_py.revocation import EXEMPT, READ, SENSITIVE, WRITE
 
 ROUTE_POLICY: dict[str, str] = {
-    # --- SENSITIVE (10)
+    # --- SENSITIVE (17)
+    "GET /api/talent/applications": SENSITIVE,
+    "GET /api/talent/applications/paged": SENSITIVE,
     "PATCH /api/talent/applications/{application_id}/visibility": SENSITIVE,
+    "GET /api/talent/candidates": SENSITIVE,
+    "GET /api/talent/candidates/paged": SENSITIVE,
+    "GET /api/talent/candidates/{candidate_id}": SENSITIVE,
+    "GET /api/talent/external/grants": SENSITIVE,
     "POST /api/talent/external/grants": SENSITIVE,
     "POST /api/talent/external/grants/{public_id}/extend": SENSITIVE,
     "POST /api/talent/external/grants/{public_id}/regenerate": SENSITIVE,
@@ -25,6 +31,7 @@ ROUTE_POLICY: dict[str, str] = {
     "POST /api/talent/postings/{ref_id}/reopen-mapping": SENSITIVE,
     "POST /api/talent/postings/{ref_id}/unmap-mapping": SENSITIVE,
     "POST /api/talent/postings/{ref_id}/verify-mapping": SENSITIVE,
+    "GET /api/talent/requests/{request_id}/documents": SENSITIVE,
     "POST /api/talent/requests/{request_id}/review": SENSITIVE,
     # --- WRITE (12)
     "POST /api/talent/applications": WRITE,
@@ -39,18 +46,12 @@ ROUTE_POLICY: dict[str, str] = {
     "POST /api/talent/requests/{request_id}/messages": WRITE,
     "POST /api/talent/requests/{request_id}/stage": WRITE,
     "POST /api/talent/requests/{request_id}/ta-status": WRITE,
-    # --- READ (31)
-    "GET /api/talent/applications": READ,
-    "GET /api/talent/applications/paged": READ,
-    "GET /api/talent/candidates": READ,
-    "GET /api/talent/candidates/paged": READ,
-    "GET /api/talent/candidates/{candidate_id}": READ,
+    # --- READ (24)
     "GET /api/talent/clients": READ,
     "GET /api/talent/clients/{client_id}": READ,
     "GET /api/talent/dashboard/client": READ,
     "GET /api/talent/external/applications/{application_id}": READ,
     "GET /api/talent/external/dashboard": READ,
-    "GET /api/talent/external/grants": READ,
     "GET /api/talent/external/interviews": READ,
     "GET /api/talent/external/requests": READ,
     "GET /api/talent/external/requests/{request_id}": READ,
@@ -68,7 +69,6 @@ ROUTE_POLICY: dict[str, str] = {
     "GET /api/talent/requests/paged": READ,
     "GET /api/talent/requests/{request_id}": READ,
     "GET /api/talent/requests/{request_id}/candidates": READ,
-    "GET /api/talent/requests/{request_id}/documents": READ,
     "GET /api/talent/requests/{request_id}/messages": READ,
     "GET /api/talent/ta/dashboard": READ,
     # --- EXEMPT (5)

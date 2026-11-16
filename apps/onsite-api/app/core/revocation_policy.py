@@ -15,7 +15,8 @@ See ``auth_client_py.revocation``.
 from auth_client_py.revocation import EXEMPT, READ, SENSITIVE
 
 ROUTE_POLICY: dict[str, str] = {
-    # --- SENSITIVE (28)
+    # --- SENSITIVE (37)
+    "GET /api/onsite/activity": SENSITIVE,
     "GET /api/onsite/activity/export": SENSITIVE,
     "GET /api/onsite/admin/health": SENSITIVE,
     "GET /api/onsite/admin/identity-match": SENSITIVE,
@@ -40,29 +41,28 @@ ROUTE_POLICY: dict[str, str] = {
     "GET /api/onsite/admin/sites/{site_id}": SENSITIVE,
     "PUT /api/onsite/admin/sites/{site_id}": SENSITIVE,
     "GET /api/onsite/dashboard/overview/export": SENSITIVE,
+    "GET /api/onsite/dashboard/recent-activity": SENSITIVE,
+    "GET /api/onsite/employees": SENSITIVE,
+    "GET /api/onsite/employees/by-id/{bamboohr_id}": SENSITIVE,
+    "GET /api/onsite/employees/by-id/{bamboohr_id}/photo": SENSITIVE,
     "GET /api/onsite/employees/export": SENSITIVE,
+    "GET /api/onsite/employees/{emp_code}": SENSITIVE,
+    "GET /api/onsite/employees/{emp_code}/photo": SENSITIVE,
+    "GET /api/onsite/exceptions": SENSITIVE,
     "GET /api/onsite/exceptions/export": SENSITIVE,
     "POST /api/onsite/sync": SENSITIVE,
+    "GET /api/onsite/today": SENSITIVE,
     "GET /api/onsite/today/export": SENSITIVE,
-    # --- READ (18)
-    "GET /api/onsite/activity": READ,
+    # --- READ (9)
     "GET /api/onsite/dashboard/activity-trend": READ,
     "GET /api/onsite/dashboard/hourly-activity": READ,
     "GET /api/onsite/dashboard/overview": READ,
-    "GET /api/onsite/dashboard/recent-activity": READ,
-    "GET /api/onsite/employees": READ,
-    "GET /api/onsite/employees/by-id/{bamboohr_id}": READ,
-    "GET /api/onsite/employees/by-id/{bamboohr_id}/photo": READ,
-    "GET /api/onsite/employees/{emp_code}": READ,
-    "GET /api/onsite/employees/{emp_code}/photo": READ,
-    "GET /api/onsite/exceptions": READ,
     "GET /api/onsite/freshness": READ,
     "GET /api/onsite/me": READ,
     "GET /api/onsite/sites": READ,
     "GET /api/onsite/summary": READ,
     "GET /api/onsite/sync/history": READ,
     "GET /api/onsite/sync/runs/{run_id}": READ,
-    "GET /api/onsite/today": READ,
     # --- EXEMPT (4)
     "POST /api/onsite/internal/scheduled-sync": EXEMPT,
     "GET /api/onsite/metadata": EXEMPT,

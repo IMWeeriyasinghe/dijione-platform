@@ -15,11 +15,20 @@ See ``auth_client_py.revocation``.
 from auth_client_py.revocation import EXEMPT, OWN, READ, SENSITIVE
 
 ROUTE_POLICY: dict[str, str] = {
-    # --- SENSITIVE (6)
+    # --- SENSITIVE (15)
     "GET /api/atwork/management/audit": SENSITIVE,
+    "GET /api/atwork/management/corrections": SENSITIVE,
+    "GET /api/atwork/management/corrections/{request_id}": SENSITIVE,
     "POST /api/atwork/management/corrections/{request_id}/approve": SENSITIVE,
     "POST /api/atwork/management/corrections/{request_id}/reject": SENSITIVE,
+    "GET /api/atwork/management/employees": SENSITIVE,
+    "GET /api/atwork/management/employees/{user_id}/attendance": SENSITIVE,
+    "GET /api/atwork/management/overview": SENSITIVE,
+    "GET /api/atwork/management/reports/corrections": SENSITIVE,
     "GET /api/atwork/management/reports/export": SENSITIVE,
+    "GET /api/atwork/management/reports/missed-checkouts": SENSITIVE,
+    "GET /api/atwork/management/reports/summary": SENSITIVE,
+    "GET /api/atwork/management/sessions/{session_id}": SENSITIVE,
     "GET /api/atwork/management/settings": SENSITIVE,
     "PUT /api/atwork/management/settings": SENSITIVE,
     # --- OWN (6)
@@ -29,7 +38,7 @@ ROUTE_POLICY: dict[str, str] = {
     "POST /api/atwork/attendance/check-out": OWN,
     "POST /api/atwork/corrections": OWN,
     "POST /api/atwork/corrections/{request_id}/withdraw": OWN,
-    # --- READ (18)
+    # --- READ (9)
     "GET /api/atwork/attendance/history": READ,
     "GET /api/atwork/attendance/policy": READ,
     "GET /api/atwork/attendance/sessions/{session_id}": READ,
@@ -38,15 +47,6 @@ ROUTE_POLICY: dict[str, str] = {
     "GET /api/atwork/corrections": READ,
     "GET /api/atwork/corrections/{request_id}": READ,
     "GET /api/atwork/management/access": READ,
-    "GET /api/atwork/management/corrections": READ,
-    "GET /api/atwork/management/corrections/{request_id}": READ,
-    "GET /api/atwork/management/employees": READ,
-    "GET /api/atwork/management/employees/{user_id}/attendance": READ,
-    "GET /api/atwork/management/overview": READ,
-    "GET /api/atwork/management/reports/corrections": READ,
-    "GET /api/atwork/management/reports/missed-checkouts": READ,
-    "GET /api/atwork/management/reports/summary": READ,
-    "GET /api/atwork/management/sessions/{session_id}": READ,
     "GET /api/atwork/me": READ,
     # --- EXEMPT (6)
     "POST /api/atwork/internal/notifications/retry-failed": EXEMPT,
