@@ -360,3 +360,16 @@ def test_the_background_thread_keeps_refreshing_and_stops(feed):
         time.sleep(0.01)
     guard.stop()
     assert feed.calls >= 4
+
+
+# --- rollout: enabling enforcement before platform-api has the feed ------------------------------
+
+
+def test_enforcement_switched_on_before_the_platform_has_a_feed_is_restricted_not_open(clock):
+    old_platform = RevocationGuard(lambda etag: (404, None, None), clock=clock)  # the endpoint does not exist yet
+    set_guard(old_platform)
+    assert old_platform.refresh_once() is False
+    assert old_platform.state() == RESTRICTED
+    assert client.get("/read", headers=token()).status_code == 200
+    assert client.post("/write", headers=token()).status_code == 503  # an outage to fix, never a bypass
+    assert client.post("/sensitive", headers=token()).status_code == 503
