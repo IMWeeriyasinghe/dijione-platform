@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     session_max_minutes: int = 60 * 12
     # A View-as session (read-only simulation of another employee) is short and cannot be refreshed.
     view_as_minutes: int = 30
+    # Off until an environment is deliberately switched on (VIEW_AS_ENABLED=true). Enforcement in the
+    # applications does not depend on it: a View-as token is read-only wherever it is presented.
+    view_as_enabled: bool = False
 
     # Dev-only shared secret trusted service-to-service calls present on the
     # `X-Internal-Token` header (talent-api/birthday-api/spark-api writing

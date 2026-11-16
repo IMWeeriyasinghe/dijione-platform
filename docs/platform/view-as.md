@@ -81,14 +81,20 @@ Sessions are also rows in `view_as_sessions`.
 * **Migration** `i5k7m9n1p3q4` (after `h4j6k8m0n2p3`): creates `view_as_sessions`, registers
   `platform.admin.view_as` and links it to `SUPER_ADMIN` only, raises every `access_version`. Additive;
   downgrade drops only the table. The permission becomes usable once a Super Admin's session is re-issued.
-* **No feature flag.** The capability is gated by the permission. To switch it off, remove the permission
-  link from `SUPER_ADMIN` (Admin Center → Roles) or do not deploy the Admin UI change.
+* **Feature flag `VIEW_AS_ENABLED`** (platform-api, **default off**). While it is off, starting a session
+  returns 404 "View as is not enabled in this environment" and nothing else changes. Turn it on one
+  environment at a time. This is also the kill switch: set it back to `false` and no new session can start
+  (an existing one ends within 30 minutes, or immediately if the administrator ends it).
+* **Enforcement does not depend on the flag.** An application API refuses changes from any View-as token it
+  is shown, whether or not the flag is on.
 * **Settings:** `VIEW_AS_MINUTES` (platform-api, default 30). Applications need nothing new.
 * **Order:** platform-api (migration, then code) → application APIs (library with the enforcement) →
-  web apps (banner and session handling) → admin-web (the action). An application API that has not yet
-  taken the new library simply ignores the token's `view_as` claim *but would then authorize the employee's
-  token for changes*, so **do not enable the Admin UI action before every API has the library**.
-* **Rollback:** redeploy the previous images; leave the table and permission in place (harmless).
+  web apps (banner and session handling) → admin-web (the action) → only then `VIEW_AS_ENABLED=true`. An
+  application API that has not yet taken the new library ignores the token's `view_as` claim *and would
+  authorize the employee's token for changes*, so **never set `VIEW_AS_ENABLED=true` in an environment
+  until every user-token API there (talent, birthday, onsite, atwork, spark) runs the new library.**
+* **Rollback:** set `VIEW_AS_ENABLED=false`; or redeploy the previous images. The table and permission stay
+  in place (harmless).
 
 ## Known limits (V1)
 

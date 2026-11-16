@@ -17,6 +17,16 @@ from tests.conftest import auth_headers
 START = "/api/platform/admin/view-as"
 
 
+@pytest.fixture(autouse=True)
+def _enabled(monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("VIEW_AS_ENABLED", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture()
 def world(db, two_tenant_world):
     """The employee to be viewed is an internal employee, as only a verified Microsoft sign-in makes one."""
@@ -242,3 +252,19 @@ def test_a_refused_view_as_attempt_reported_by_an_application_lands_in_the_emplo
         f"/api/platform/admin/audit?user_id={world['ta_user'].id}", headers=auth_headers(api_client, "test-super-admin")
     ).json()
     assert any(e["action"] == "view_as.blocked" and e["actor_id"] == world["super_admin"].id for e in history)
+
+
+def test_it_is_off_unless_an_environment_enables_it(api_client, world, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("VIEW_AS_ENABLED", "false")
+    get_settings.cache_clear()
+    resp = _start(api_client, "test-super-admin", world["ta_user"].id)
+    assert resp.status_code == 404 and "not enabled" in resp.json()["detail"]
+
+
+def test_the_default_is_off(monkeypatch):
+    from app.core.config import Settings
+
+    monkeypatch.delenv("VIEW_AS_ENABLED", raising=False)
+    assert Settings(_env_file=None).view_as_enabled is False

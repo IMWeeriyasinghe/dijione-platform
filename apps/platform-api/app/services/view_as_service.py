@@ -68,6 +68,8 @@ class ViewAsService:
             raise ViewAsForbidden("View-as requires the Super Admin role and the View As User permission")
 
     def start(self, actor: User, target_user_id: int) -> StartedSession:
+        if not get_settings().view_as_enabled:
+            raise ViewAsNotFound("View as is not enabled in this environment")
         self._require_authorised(actor)
         target = self.db.get(User, target_user_id)
         if target is None or target.id == actor.id or not target.is_active or not target.internal_employee:
