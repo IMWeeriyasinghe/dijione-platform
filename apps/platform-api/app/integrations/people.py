@@ -49,7 +49,7 @@ class PeopleSource(Protocol):
 class PeopleApiSource:
     """people-api over internal ingress (X-Internal-Token), using the shared clients."""
 
-    def __init__(self, *, timeout: float = 3.0) -> None:
+    def __init__(self, *, timeout: float = 20.0) -> None:
         self._timeout = timeout
 
     def _clients(self):
@@ -102,8 +102,25 @@ class EmployeeRecordChecker:
             self._snapshot, self._loaded_at = _Snapshot(by_email=by_email, by_number=by_number), time.monotonic()
             return self._snapshot
 
-    def check(self, *, email: str | None, employee_id: str | None = None) -> EmployeeRecord:
-        snapshot = self._load()
+    def cached(self) -> _Snapshot | None:
+        """The current snapshot if one is loaded and fresh; never calls people-api."""
+        with self._lock:
+            if self._snapshot is not None and time.monotonic() - self._loaded_at < _TTL_SECONDS:
+                return self._snapshot
+            return None
+
+    def warm_in_background(self) -> None:
+        threading.Thread(target=self._load, name="employee-records-warm", daemon=True).start()
+
+    def check(self, *, email: str | None, employee_id: str | None = None, cached_only: bool = False) -> EmployeeRecord:
+        """``cached_only`` (sign-in) answers from an already-loaded snapshot, or UNKNOWN while one is
+        loaded in the background: a sign-in never waits for the HR source."""
+        if cached_only:
+            snapshot = self.cached()
+            if snapshot is None:
+                self.warm_in_background()
+        else:
+            snapshot = self._load()
         if snapshot is None:
             return EmployeeRecord(UNKNOWN)
         hit = snapshot.by_email.get((email or "").strip().lower())

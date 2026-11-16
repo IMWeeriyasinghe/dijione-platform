@@ -3,6 +3,7 @@ groups. The directory and people-api are in-memory fakes; nothing here touches M
 
 import inspect
 import re
+import time
 
 import httpx
 import pytest
@@ -129,8 +130,16 @@ def directory():
 @pytest.fixture()
 def people():
     source = People()
-    set_employee_record_checker(EmployeeRecordChecker(source))
+    install(source)
     return source
+
+
+def install(source):
+    """A checker whose snapshot is already loaded, as in a running service (sign-in uses the cache)."""
+    checker = EmployeeRecordChecker(source)
+    checker.check(email="", employee_id=None)
+    set_employee_record_checker(checker)
+    return checker
 
 
 @pytest.fixture()
@@ -292,6 +301,31 @@ def test_a_service_account_signing_in_gets_no_employee_access(db, directory, peo
     assert standard(db, signed) == frozenset()
 
 
+def test_a_sign_in_never_waits_for_the_hr_source(db, directory):
+    """With no records loaded yet, the sign-in answers at once (UNKNOWN, nothing granted, nothing
+    overwritten) and the records are loaded in the background for next time."""
+    calls = []
+
+    class Slow(People):
+        def active_employees(self):
+            calls.append("load")
+            return super().active_employees()
+
+    checker = EmployeeRecordChecker(Slow())
+    set_employee_record_checker(checker)
+    user = User(email="ana@dijital.example", full_name="Ana", is_active=True, employee_record_status="LEGACY",
+                internal_employee=True, identity_provider="ENTRA", entra_object_id=OID["ana"])
+    db.add(user)
+    db.commit()
+    signed = resolve_entra_user(db, {"oid": OID["ana"], "email": "ana@dijital.example", "name": "A", "tid": TENANT, "acct": 0})
+    assert signed.employee_record_status == "LEGACY" and signed.last_login_at is not None
+    for _ in range(50):
+        if checker.cached() is not None:
+            break
+        time.sleep(0.02)
+    assert checker.cached() is not None and calls == ["load"]
+
+
 def test_an_unavailable_hr_source_never_grants(api_client, db, admin, directory):
     set_employee_record_checker(EmployeeRecordChecker(People(down=True)))
     body = add(api_client, admin, "ana").json()
@@ -306,8 +340,8 @@ def test_employee_number_from_the_directory_matches_a_single_active_hr_entry(api
 
 
 def test_legacy_employees_keep_access_and_are_reported_not_revoked(api_client, db, admin, directory, two_tenant_world):
-    set_employee_record_checker(EmployeeRecordChecker(People(employees=[
-        {"work_email": "ana@dijital.example", "employee_number": "0107", "employment_status": "Active"}])))
+    install(People(employees=[
+        {"work_email": "ana@dijital.example", "employee_number": "0107", "employment_status": "Active"}]))
     legacy = [User(email=f"{n}@dijital.example", full_name=n, is_active=True, internal_employee=True,
                    identity_provider="ENTRA", entra_object_id=OID[n], employee_record_status="LEGACY")
               for n in ("ana", "ben")]
