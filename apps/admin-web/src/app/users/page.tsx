@@ -1,21 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Plus } from "lucide-react";
-import { ApiError, createAdminUser, listAdminModules, listAdminUsers } from "@/lib/api";
+import { listAdminModules, listAdminUsers, userPhotoPath } from "@/lib/api";
 import { PLATFORM_ROLE_LABELS } from "@dijione/contracts";
 import {
-  Avatar,
   Button,
   EmptyState,
   ErrorState,
-  FormField,
   Input,
   LoadingState,
-  Modal,
   PageHeader,
   Select,
   StatusBadge,
@@ -26,59 +23,10 @@ import {
   Tr,
   formatDateTime,
 } from "@dijione/design-system";
+import { AddUserModal } from "./add-user-modal";
+import { EmployeeAvatar, IdentityBadges } from "./identity";
 
 const PLATFORM_ROLE_OPTIONS = ["PLATFORM_USER", "PLATFORM_ADMIN", "SUPER_ADMIN"];
-
-/** Adds an internal employee who has not signed in yet, so access can be
- * assigned in advance. The server enforces the internal-domain rule. */
-function AddUserModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: number) => void }) {
-  const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [title, setTitle] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const mutation = useMutation({
-    mutationFn: () => createAdminUser({ email: email.trim(), full_name: fullName.trim(), title: title.trim() || undefined }),
-    onSuccess: (created) => {
-      setEmail("");
-      setFullName("");
-      setTitle("");
-      setError(null);
-      onClose();
-      onCreated(created.id);
-    },
-    onError: (e: unknown) => setError(e instanceof ApiError ? e.message : "Could not add this user."),
-  });
-
-  return (
-    <Modal open={open} onClose={onClose} title="Add User">
-      <div className="flex flex-col gap-4">
-        <p className="text-sm text-dt-text-secondary">
-          Add an employee before their first sign-in. They hold no access until you assign it, and the account links
-          to their Microsoft sign-in the first time they use DijiOne.
-        </p>
-        <FormField label="Work email" htmlFor="add-user-email" required>
-          <Input id="add-user-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </FormField>
-        <FormField label="Full name" htmlFor="add-user-name" required>
-          <Input id="add-user-name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-        </FormField>
-        <FormField label="Job title" htmlFor="add-user-title">
-          <Input id="add-user-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </FormField>
-        {error && <p className="text-sm text-dt-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!email.trim() || !fullName.trim()}>
-            Add User
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 export default function AdminUsersPage() {
   const router = useRouter();
@@ -168,10 +116,13 @@ export default function AdminUsersPage() {
               <Tr key={u.id}>
                 <Td>
                   <div className="flex items-center gap-3">
-                    <Avatar name={u.full_name} size={32} />
+                    <EmployeeAvatar path={u.entra_object_id ? userPhotoPath(u.id) : null} name={u.full_name} />
                     <div className="min-w-0">
                       <p className="font-medium text-dt-text-primary">{u.full_name}</p>
                       <p className="truncate text-xs text-dt-text-secondary">{u.email}</p>
+                      <div className="mt-1">
+                        <IdentityBadges user={u} />
+                      </div>
                     </div>
                   </div>
                 </Td>

@@ -321,6 +321,12 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         // does not depend on this; it only allows starting a session. Enabled only after talent, birthday,
         // onsite and atwork APIs run the enforcing library (release 2026-11-16).
         { name: 'VIEW_AS_ENABLED', value: 'true' }
+        // Entra directory read (search, profile, photo, group memberships) with this app's own
+        // system-assigned managed identity: read-only Graph application permissions User.Read.All and
+        // GroupMember.Read.All, granted outside bicep (deploy/README.md, "Directory read"). No secret.
+        { name: 'DIRECTORY_MODE', value: 'graph' }
+        // BambooHR employee records through the People domain (internal ingress, INTERNAL_SERVICE_SECRET).
+        { name: 'PEOPLE_API_URL', value: 'http://people-api' }
       ],
       authMode == 'entra' ? [
         { name: 'ENTRA_TENANT_ID', value: entraTenantId }

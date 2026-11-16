@@ -35,6 +35,41 @@ export type AdminUserOut = {
   module_assignments: ModuleAssignmentOut[];
   /** A protected administrator: the platform role and active state cannot be changed. */
   protected?: boolean;
+  /** BambooHR Employee Number, verbatim. */
+  employee_number?: string | null;
+  /** Identity verified (from the Entra directory, or at a verified Microsoft sign-in). */
+  directory_verified?: boolean;
+  verification_source?: "DIRECTORY" | "SIGN_IN" | "NONE";
+  /** Matched to a BambooHR employee record. LEGACY: eligible before these checks, awaiting HR reconciliation. */
+  employee_record?: EmployeeRecordStatus | null;
+  /** Eligible for default employee access and View-as. */
+  eligible_employee?: boolean;
+  /** Has signed in to DijiOne at least once. */
+  signed_in?: boolean;
+};
+
+export type EmployeeRecordStatus = "MATCHED" | "NOT_FOUND" | "UNKNOWN" | "LEGACY";
+
+/** One Entra directory search result (bounded; never the whole directory). */
+export type DirectoryUserOut = {
+  entra_object_id: string;
+  full_name: string;
+  email: string;
+  user_principal_name: string;
+  job_title: string | null;
+  department: string | null;
+  employee_number: string | null;
+  employee_record: "MATCHED" | "NOT_FOUND" | "UNKNOWN";
+  existing_user_id: number | null;
+};
+
+/** A Microsoft Entra group membership, read only. Entra groups never grant DijiOne access. */
+export type EntraGroupOut = {
+  object_id: string;
+  display_name: string;
+  group_type: string;
+  membership: "DIRECT" | "INHERITED";
+  dijione_mapping: string | null;
 };
 
 export type AdminModuleOut = {

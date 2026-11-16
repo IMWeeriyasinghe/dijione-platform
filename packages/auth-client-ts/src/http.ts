@@ -91,9 +91,12 @@ export function setToken(token: string | null) {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** The parsed JSON error body, when there was one (e.g. a 409's ``existing_user_id``). */
+  body?: Record<string, unknown>;
+  constructor(status: number, message: string, body?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -193,13 +196,14 @@ export async function request<T>(path: string, options: RequestInit = {}, retrie
 
   if (!res.ok) {
     let detail = res.statusText;
+    let body: Record<string, unknown> | undefined;
     try {
-      const body = await res.json();
-      detail = body.detail ?? detail;
+      body = await res.json();
+      detail = (body?.detail as string | undefined) ?? detail;
     } catch {
       // response had no JSON body
     }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail), body);
   }
 
   if (res.status === 204) return undefined as T;

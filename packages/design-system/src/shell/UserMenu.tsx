@@ -2,11 +2,13 @@
 
 import { LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "@dijione/auth-client";
+import { useAuth, useAuthorizedImage } from "@dijione/auth-client";
 import { Avatar } from "../ui/Avatar";
 
 export function UserMenu() {
   const { user, logout } = useAuth();
+  // The signed-in person's Microsoft 365 photo, served by platform-api; initials when there is none.
+  const photo = useAuthorizedImage(user ? "/api/auth/me/photo" : null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -28,7 +30,7 @@ export function UserMenu() {
         aria-expanded={open}
         className="flex items-center gap-2 rounded-full p-0.5 hover:bg-dt-surface-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange"
       >
-        <Avatar name={user.full_name} color={user.avatar_color} size={32} />
+        <Avatar name={user.full_name} color={user.avatar_color} size={32} src={photo} />
       </button>
       {open && (
         <div className="absolute right-0 z-40 mt-2 w-56 rounded-2xl border border-dt-border bg-dt-surface p-2 shadow-xl">

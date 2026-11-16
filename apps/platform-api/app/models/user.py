@@ -33,6 +33,16 @@ class User(TimestampMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set only from a verified Entra sign-in. See entra_service.is_internal_employee.
     internal_employee: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Set when the identity was verified against the Entra directory (Microsoft Graph) rather than,
+    # or before, a first sign-in. See app/services/directory_verification.py.
+    directory_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # BambooHR Employee Number, verbatim (leading zeros kept), recorded from a matched employee record.
+    employee_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Whether this person matches a BambooHR employee record: MATCHED / NOT_FOUND / UNKNOWN, or LEGACY
+    # (eligible before employee-record checks existed; kept until reconciled). Default employee access
+    # requires MATCHED or LEGACY. See AuthorizationService.is_eligible_employee.
+    employee_record_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    employee_record_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Bumped, inside the same transaction, by every change that can alter what this
     # person may do (see ``app/services/access_version.py``). Session tokens carry the
     # value they were issued under (``av``); a token older than the current value is

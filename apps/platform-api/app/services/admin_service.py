@@ -262,6 +262,14 @@ class AdminService:
             created_at=user.created_at,
             module_assignments=[self._to_module_assignment_out(mr, module_names) for mr in module_roles],
             protected=protected_admin.is_protected_user(self.db, user),
+            employee_number=user.employee_number,
+            directory_verified=self.authz.identity_verified(user),
+            verification_source=(
+                ("DIRECTORY" if user.directory_verified_at else "SIGN_IN") if self.authz.identity_verified(user) else "NONE"
+            ),
+            employee_record=user.employee_record_status,
+            eligible_employee=self.authz.is_eligible_employee(user),
+            signed_in=user.last_login_at is not None,
         )
 
     def list_users(self) -> list[AdminUserOut]:
@@ -520,13 +528,11 @@ class AdminService:
         return self.to_user_out(target)
 
     def remove_module_assignment(self, *, actor: User, target_user_id: int, module_key: str) -> AdminUserOut:
-        """Remove a user's own access to an application.
+        """Remove a user's own (direct) assignment to an application.
 
-        A direct assignment is deleted. Default employee access has no row to
-        delete, so removing it records an explicit exclusion (a disabled
-        assignment of the default role, which ``baseline_roles`` honours).
-        Removing an exclusion that already exists changes nothing; it is lifted
-        with ``restore_default_access``."""
+        Default employee access is always on for an eligible employee: it has no row to delete and
+        cannot be removed here. Deleting a direct assignment never touches it, so a person whose
+        higher role is removed keeps the standard role."""
         target = self.db.get(User, target_user_id)
         if target is None:
             raise NotFoundError(f"User {target_user_id} not found")
@@ -534,25 +540,13 @@ class AdminService:
             UserModuleRole.user_id == target_user_id, UserModuleRole.module_key == module_key
         )
         module_role = self.db.execute(stmt).scalars().first()
-        default_role = self._default_role(module_key)
 
         if module_role is None:
-            if self.authz.baseline_roles(target).get(module_key) is None:
-                raise NotFoundError(f"User {target_user_id} has no assignment for module '{module_key}'")
-            exclusion = UserModuleRole(user_id=target_user_id, module_key=module_key, role=default_role, enabled=False)
-            self.db.add(exclusion)
-            self._flush_new_assignment()
-            self.audit.log(
-                actor_id=actor.id, action="module_assignment.default_access_removed", entity_type="UserModuleRole",
-                entity_id=exclusion.id, previous_state={"module_key": module_key, "role": default_role, "source": "DEFAULT"},
-                new_state={"user_id": target_user_id, "module_key": module_key, "role": default_role, "enabled": False},
-                subject_user_id=target_user_id,
-            )
-            self.db.commit()
-            return self.to_user_out(target)
-
-        if not module_role.enabled and module_role.role == default_role:
-            return self.to_user_out(target)  # already excluded from default access
+            if self.authz.baseline_roles(target).get(module_key) is not None:
+                raise ConflictError(
+                    "This application's standard access is included for every eligible employee and cannot be removed."
+                )
+            raise NotFoundError(f"User {target_user_id} has no assignment for module '{module_key}'")
 
         self.audit.log(
             actor_id=actor.id,
@@ -575,7 +569,8 @@ class AdminService:
         ).scalar_one_or_none()
 
     def restore_default_access(self, *, actor: User, target_user_id: int, module_key: str) -> AdminUserOut:
-        """Lift an explicit exclusion from default employee access."""
+        """Kept for compatibility. Default access is always on, so this only clears a leftover
+        exclusion row (one that predates always-on access), if any; otherwise it changes nothing."""
         target = self.db.get(User, target_user_id)
         if target is None:
             raise NotFoundError(f"User {target_user_id} not found")
@@ -587,7 +582,7 @@ class AdminService:
             )
         ).scalars().first()
         if default_role is None or exclusion is None:
-            raise NotFoundError(f"User {target_user_id} is not excluded from default access to '{module_key}'")
+            return self.to_user_out(target)
         self.audit.log(
             actor_id=actor.id, action="module_assignment.default_access_restored", entity_type="UserModuleRole",
             entity_id=exclusion.id, previous_state={"user_id": target_user_id, "module_key": module_key, "enabled": False},

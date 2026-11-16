@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.constants import PlatformRole
 from app.models.user import User
 from app.services import protected_admin
+from app.services.directory_service import check_at_sign_in
 
 logger = logging.getLogger("platform-api.entra")
 
@@ -132,6 +133,9 @@ def resolve_entra_user(db: Session, claims: dict) -> User:
     if user.internal_employee:
         # A protected administrator's required state is re-applied at every verified sign-in.
         protected_admin.converge(db, user)
+        # Default employee access also needs a matching employee record (BambooHR). A soft check:
+        # it never blocks the sign-in, never revokes, and an unavailable HR source changes nothing.
+        check_at_sign_in(user)
 
     if not user.is_active:
         db.commit()  # persist the just-created / newly-linked row

@@ -82,15 +82,23 @@ class AccessDiagnosticsService:
                 reasons.append("The application is disabled.")
             elif module_key in granted:
                 state = "GRANTED"
-                reasons.append("Held by being a verified internal employee signed in through Microsoft.")
+                reasons.append("Included for every eligible employee (verified identity and employee record); always on.")
+                if user.employee_record_status == "LEGACY":
+                    reasons.append("Eligible from before employee-record checks; HR reconciliation is still to be confirmed.")
             else:
                 state = "NOT_ELIGIBLE"
                 if not user.is_active:
                     reasons.append("The account is inactive.")
-                if user.identity_provider != "ENTRA" or not user.entra_object_id:
-                    reasons.append("The account is not linked to a Microsoft sign-in yet.")
-                if not user.internal_employee:
-                    reasons.append("Not verified as an internal employee (set only by a verified Microsoft sign-in).")
+                if user.identity_provider != "ENTRA" or not user.entra_object_id or not user.internal_employee:
+                    reasons.append(
+                        "The identity is not verified yet: verify it with the directory, or it is verified at the "
+                        "person's first Microsoft sign-in."
+                    )
+                if user.employee_record_status not in ("MATCHED", "LEGACY"):
+                    reasons.append(
+                        "Not matched to a BambooHR employee record"
+                        + (" (the HR system could not be reached)." if user.employee_record_status == "UNKNOWN" else ".")
+                    )
             out.append(
                 DiagDefaultAccessOut(module_key=module_key, module_name=name, role=role, state=state, reasons=reasons)
             )
@@ -320,7 +328,8 @@ class AccessDiagnosticsService:
             add(
                 "not_linked",
                 "info",
-                "Not linked to a Microsoft sign-in yet. The link is made at first sign-in by matching the email address.",
+                "Identity not verified yet. Use Verify with directory, or the link is made at first sign-in by matching "
+                "the email address.",
             )
         elif not account.internal_employee:
             add(

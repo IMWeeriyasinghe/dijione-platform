@@ -19,11 +19,14 @@ from app.core.constants import MODULE_TALENT_FLOW  # noqa: E402
 from app.core.permissions import ALL_PERMISSIONS, ALL_ROLES  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
+from app.integrations.directory import MockDirectoryProvider, set_directory_provider  # noqa: E402
+from app.integrations.people import EmployeeRecord, EmployeeRecordChecker, set_employee_record_checker  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.client import Client, ClientExternalId  # noqa: E402
 from app.models.role import Permission, Role, RolePermission  # noqa: E402
 from app.models.user import User, UserModuleRole  # noqa: E402
 from app.models.user_module_client_scope import UserModuleClientScope  # noqa: E402
+from app.services.directory_service import photo_cache  # noqa: E402
 
 # Legacy talent-api integer ids the Admin Center's client picker still
 # submits — resolved to a canonical Client.public_id via client_external_ids.
@@ -167,6 +170,34 @@ def two_tenant_world(db):
         "abc_user": abc_user, "xyz_user": xyz_user, "ta_user": ta_user, "cs_user": cs_user,
         "super_admin": super_admin, "platform_admin": platform_admin,
     }
+
+
+def make_eligible(user: User, *, oid: str | None = None) -> User:
+    """A verified internal Entra identity matched to an employee record (default employee access)."""
+    user.identity_provider = "ENTRA"
+    user.entra_object_id = user.entra_object_id or oid or f"oid-{user.email}"
+    user.internal_employee = True
+    user.employee_record_status = "MATCHED"
+    return user
+
+
+class _EveryoneMatches(EmployeeRecordChecker):
+    """Default for tests: every address matches an employee record (as most real employees do).
+    Tests about unmatched or unavailable HR records install their own checker."""
+
+    def check(self, *, email, employee_id=None):  # noqa: D401
+        return EmployeeRecord("MATCHED", employee_number=None, employment_status="Active")
+
+
+@pytest.fixture(autouse=True)
+def _employee_records():
+    set_employee_record_checker(_EveryoneMatches())
+    set_directory_provider(MockDirectoryProvider())
+    photo_cache.clear()
+    yield
+    set_employee_record_checker(None)
+    set_directory_provider(None)
+    photo_cache.clear()
 
 
 def auth_headers(api_client: TestClient, persona_key: str) -> dict:

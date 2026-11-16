@@ -10,7 +10,9 @@ import type {
   ApplicationDetailOut,
   AuditLogOut,
   ClientScope,
+  DirectoryUserOut,
   EffectiveAccessOut,
+  EntraGroupOut,
 } from "@dijione/contracts";
 import { qs, request } from "@dijione/auth-client";
 
@@ -23,6 +25,16 @@ export const listAdminUsers = () => request<AdminUserOut[]>("/api/admin/users");
 export const createAdminUser = (payload: { email: string; full_name: string; title?: string }) =>
   request<AdminUserOut>("/api/admin/users", { method: "POST", body: JSON.stringify(payload) });
 export const getAdminUser = (id: number) => request<AdminUserOut>(`/api/admin/users/${id}`);
+// Entra directory (read only, server-side; bounded results).
+export const searchDirectory = (q: string) =>
+  request<DirectoryUserOut[]>(`/api/admin/directory/users${qs({ q })}`);
+export const addUserFromDirectory = (entra_object_id: string) =>
+  request<AdminUserOut>("/api/admin/users/from-directory", { method: "POST", body: JSON.stringify({ entra_object_id }) });
+export const verifyUserWithDirectory = (id: number) =>
+  request<AdminUserOut>(`/api/admin/users/${id}/verify-directory`, { method: "POST" });
+export const getEntraGroups = (id: number) => request<EntraGroupOut[]>(`/api/admin/users/${id}/entra-groups`);
+export const userPhotoPath = (id: number) => `/api/admin/users/${id}/photo`;
+export const directoryPhotoPath = (objectId: string) => `/api/admin/directory/users/${objectId}/photo`;
 export const getEffectiveAccess = (id: number) =>
   request<EffectiveAccessOut>(`/api/admin/users/${id}/effective-access`);
 export const getAccessDiagnostics = (id: number) =>

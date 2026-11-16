@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     # "Service-to-service trust boundaries".
     internal_service_secret: str = "dev-only-internal-secret-change-me"
 
+    # "graph" reads the Entra directory with this Container App's managed identity (read-only Graph
+    # application permissions); "mock" (default: local, CI) serves an in-memory directory.
+    directory_mode: str = "mock"
+    # People / Workforce domain (BambooHR). Empty: employee records cannot be checked (UNKNOWN).
+    people_api_url: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

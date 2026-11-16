@@ -12,7 +12,7 @@ from app.models.view_as_session import ViewAsSession
 from app.schemas.admin import ClientScopeIn
 from app.services.admin_service import AdminService
 from app.services.claims_service import build_claims
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, make_eligible
 
 START = "/api/platform/admin/view-as"
 
@@ -29,9 +29,8 @@ def _enabled(monkeypatch):
 
 @pytest.fixture()
 def world(db, two_tenant_world):
-    """The employee to be viewed is an internal employee, as only a verified Microsoft sign-in makes one."""
-    ta = db.get(User, two_tenant_world["ta_user"].id)
-    ta.internal_employee = True
+    """The employee to be viewed is a verified internal employee matched to an employee record."""
+    make_eligible(db.get(User, two_tenant_world["ta_user"].id))
     db.commit()
     return two_tenant_world
 
@@ -95,7 +94,7 @@ def test_only_an_active_internal_employee_other_than_oneself_can_be_viewed(db, w
     assert "yourself" in detail["self"]
     assert "does not exist" in detail["unknown"]
     assert "inactive" in detail["inactive"]
-    assert "not yet signed in" in detail["not internal"]  # never linked to a Microsoft sign-in
+    assert "not verified yet" in detail["not internal"]  # never verified (directory or sign-in)
 
 
 def test_a_supplier_portal_identity_is_not_a_viewable_user(api_client, world):

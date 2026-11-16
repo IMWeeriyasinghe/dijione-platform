@@ -137,6 +137,38 @@ def test_create_user_is_forwarded_with_its_status_and_errors(api_client):
     assert denied.status_code == 403
 
 
+def test_directory_routes_are_forwarded(api_client):
+    hits = api_client.get("/api/admin/directory/users", params={"q": "ana"}, headers=VALID)
+    assert hits.status_code == 200 and hits.json()[0]["query"] == "ana"
+    assert api_client.get("/api/admin/directory/users", params={"q": "a"}, headers=VALID).status_code == 422
+    assert api_client.get("/api/admin/directory/users", params={"q": "ana"}, headers=INVALID).status_code == 403
+
+    verified = api_client.post("/api/admin/users/9/verify-directory", headers=VALID)
+    assert verified.status_code == 200 and verified.json()["directory_verified"] is True
+    refused = api_client.post("/api/admin/users/400/verify-directory", headers=VALID)
+    assert refused.status_code == 400 and "No directory account" in refused.json()["detail"]
+
+    assert api_client.post("/api/admin/employee-records/reconcile", headers=VALID).json()["matched"] == 1
+    groups = api_client.get("/api/admin/users/9/entra-groups", headers=VALID)
+    assert groups.status_code == 200 and groups.json()[0]["display_name"] == "All Staff"
+
+
+def test_adding_from_the_directory_passes_a_duplicate_through_with_its_existing_profile(api_client):
+    created = api_client.post("/api/admin/users/from-directory", json={"entra_object_id": "oid-9"}, headers=VALID)
+    assert created.status_code == 201 and created.json()["id"] == 88
+    taken = api_client.post("/api/admin/users/from-directory", json={"entra_object_id": "taken"}, headers=VALID)
+    assert taken.status_code == 409 and taken.json() == {"detail": "Already in DijiOne", "existing_user_id": 5}
+
+
+def test_photos_are_passed_through_as_images(api_client):
+    photo = api_client.get("/api/admin/directory/users/oid-1/photo", headers=VALID)
+    assert photo.status_code == 200 and photo.content == b"\xff\xd8jpeg"
+    assert photo.headers["content-type"] == "image/jpeg" and photo.headers["cache-control"] == "private, max-age=3600"
+    assert api_client.get("/api/admin/directory/users/none/photo", headers=VALID).status_code == 404
+    assert api_client.get("/api/admin/users/3/photo", headers=VALID).headers["content-type"] == "image/png"
+    assert api_client.get("/api/admin/users/3/photo", headers=INVALID).status_code == 403
+
+
 def test_audit_filters_are_forwarded_and_absent_ones_are_omitted(api_client):
     scoped = api_client.get("/api/admin/audit", params={"user_id": 42, "limit": 50}, headers=VALID)
     assert scoped.status_code == 200
