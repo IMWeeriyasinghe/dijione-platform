@@ -1,7 +1,7 @@
 # Access-management release candidate
 
-Everything below is **local or CI only until approved**. Nothing here has been deployed, no hosted
-migration has been run, and no hosted configuration has been changed.
+**Status: released to DEV, UAT and PROD on 2026-11-16/17.** Sections 1–9 are the plan as executed; section 10
+is the record of what is deployed, with the rollback targets. The 12-hour token lifetime is unchanged.
 
 ## 1. What is in it
 
@@ -123,3 +123,53 @@ mandatory in `_is_staff_session`.
 * A revocation takes up to about 35 seconds to reach every replica, and bulk personal data is served only while the
   snapshot is current; ordinary reads continue during a feed outage, writes and exports do not.
 * Birthday supplier impersonation tokens (an existing feature) are not covered by user revocation.
+
+## 10. Release record
+
+**Source:** `release/onsite-v1` at `9672d12` (merge of PR #114, which contains PR #113 `94295a2` and the D9 fix
+`e00b3b6`). Images were built once, from a clean checkout of that commit, into `crdijionenonprod`, and imported by exact
+digest into `crdijioneprod` for PROD (digest verified equal after the copy).
+
+**D9 on its own, first (2026-11-16 17:18 UTC, all three environments):** `platform-api`
+`sha256:d4aa6674e5ad7a92832ce9570b0e6277654b581b088f77aca62afd107ab2fce0` (from `e00b3b6`). A control run of the
+boundary test on the then-deployed DEV image showed a supplier-claim token accepted as the DijiOne user (200); after
+the fix every supplier, external, wrong-actor and no-email case was 401, and staff-marked and legacy sessions were
+200, in DEV, UAT and PROD. **Follow-up: make `actor_type=staff` mandatory in `_is_staff_session`** (a separate small
+PR; all pre-fix sessions have expired 12 hours after the D9 deploy).
+
+**Access release.** Migrations ran per environment before the new `platform-api` started. Restore points (PostgreSQL
+point-in-time restore; the servers are burstable and cannot take on-demand backups): DEV 2026-11-16 17:32 UTC,
+UAT 17:54 UTC, PROD 18:21 UTC. Revision in each database: `i5k7m9n1p3q4`.
+
+| Service | New (all envs) | Previous DEV | Previous UAT | Previous PROD |
+|---|---|---|---|---|
+| platform-api | `1aa5f1e44878` | `662d84dfd496` | `662d84dfd496` | `662d84dfd496` |
+| admin-api | `04ac25849d39` | `2f82f743c28a` | `2f82f743c28a` | `2f82f743c28a` |
+| talent-api | `a7d21fc03ee5` | `6b0d0f739e38` | `6b0d0f739e38` | `6b0d0f739e38` |
+| birthday-api | `2596b8b321c5` | `01438a3f6490` | `01438a3f6490` | `01438a3f6490` |
+| onsite-api | `4ec23ef49819` | `a31848cb5a9f` | `a31848cb5a9f` | `a31848cb5a9f` |
+| atwork-api | `dc322a777c8e` | `66e16c9dc966` | `66e16c9dc966` | `66e16c9dc966` |
+| shell-web 1.1.0 | `17bc733f5140` | `280deea3076a` | `280deea3076a` | `280deea3076a` |
+| admin-web 1.1.0 | `07a364982268` | `420d1b72b409` | `90dc28c58ad7` | `90dc28c58ad7` |
+| talent-web 1.2.0 | `8666ffb8c32b` | `ca69dd97f3fa` | `ca69dd97f3fa` | `ca69dd97f3fa` |
+| birthday-web 1.3.0 | `83529b71d9c1` | `7477f8faa85f` | `7477f8faa85f` | `7477f8faa85f` |
+| onsite-web 0.5.0 | `1605c1acc5b4` | `a833be03c643` | `a833be03c643` | `a833be03c643` |
+| atwork-web 0.2.0 | `e864e4505f49` | `71c34c94544e` | `71c34c94544e` | `71c34c94544e` |
+
+`migrate-platform-api` runs the new `platform-api` image in all three environments. The other `migrate-*` jobs and the
+scheduled jobs were not changed (they have no new migrations). Not released: `talentflow-portal-web`,
+`birthday-supplier-web`, `recruitment-api`, `people-api` (unchanged). To roll a service back, set it (and, for
+`platform-api`, `migrate-platform-api`) to the previous digest above with `az containerapp update --image`; the migrations
+are additive and are left in place.
+
+**Switches, in all three environments:** `REVOCATION_ENABLED=true` on talent, birthday, onsite and atwork APIs (each
+reports `revocation state None -> FRESH` in its logs); `VIEW_AS_ENABLED=true` on `platform-api`. They are also recorded in
+`deploy/bicep/main.bicep` so a later infrastructure deployment keeps them. `JWT_EXPIRES_MINUTES` is unchanged (720).
+
+**Verified in each environment:** the D9 boundary on the release image; the access-management functional run on the real
+PostgreSQL schema inside a transaction that was rolled back (Add User and its domain rule, Diagnostics, direct and group
+assignments, group-wide version bump, unique assignment, snapshot feed and its secret, deactivation and refresh refusal,
+View-as start/read-only/refusal/end/audit; user counts identical before and after); the View-as read-only gate on every
+route of the talent, birthday, onsite and atwork images (refused: 29/47/37/21 change, own-data and sensitive routes;
+admitted: 24/18/9/9 READ routes; no mismatch); the DijiBirthday supplier portal (portal 200, staff routes 403); logs clean;
+public shell, admin, DijiTalentFlow, Birthday, On-site and DijiAtWork paths and the supplier portal answer 200.
