@@ -2,10 +2,11 @@
 
 Additive and reversible. One column, no index, no data change:
 
-    ALTER TABLE users ADD COLUMN access_version INTEGER NOT NULL DEFAULT 0
+    ALTER TABLE users ADD COLUMN access_version BIGINT NOT NULL DEFAULT 0
 
 On PostgreSQL 11+ a constant default is stored in the catalog, so the table is not
-rewritten; the lock is brief. Existing sessions carry no ``av`` claim and are read as
+rewritten; the lock is brief. BIGINT because versions are floored at the current Unix time (see app/services/access_version.py)
+and a 32-bit column would overflow in 2038. Existing sessions carry no ``av`` claim and are read as
 version 0, so nothing is revoked by this migration.
 
 Revision ID: h4j6k8m0n2p3
@@ -30,7 +31,7 @@ def upgrade() -> None:
     if "access_version" in columns:
         return  # safe to re-run
     with op.batch_alter_table("users") as batch:
-        batch.add_column(sa.Column("access_version", sa.Integer(), nullable=False, server_default="0"))
+        batch.add_column(sa.Column("access_version", sa.BigInteger(), nullable=False, server_default="0"))
 
 
 def downgrade() -> None:

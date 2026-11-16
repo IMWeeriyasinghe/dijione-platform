@@ -1,9 +1,10 @@
 """D2: users.access_version moves with every change that can alter access; tokens carry
 the version they were issued under; the internal snapshot lists what applications need."""
 
+import time
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.routes import auth as auth_routes
@@ -214,7 +215,8 @@ def test_two_sessions_changing_one_person_never_lose_an_increment(db, two_tenant
     AdminService(db).upsert_module_assignment(
         actor=admin, target_user_id=ta.id, module_key=MODULE, role="TA_MEMBER", enabled=False, client_scope=ALL
     )
-    assert _av(db, ta.id) == base + 2
+    after = _av(db, ta.id)
+    assert after >= base + 2 and after > int(time.time()) - 5  # two distinct, ordered increments
 
 
 # --- tokens --------------------------------------------------------------------
@@ -457,3 +459,43 @@ def test_a_deactivated_account_is_refused_even_with_a_current_version(api_client
     token = auth_headers(api_client, "test-ta")
     AdminService(db).set_user_active(actor=admin, target_user_id=ta.id, is_active=False)
     assert api_client.post("/api/auth/refresh", headers=token).status_code == 401
+
+
+# --- a database restore must not let a new revocation reuse an old number --------------------------
+
+
+def test_a_bump_is_never_below_the_current_time(db, two_tenant_world):
+    ta, _cs, admin = _people(db, two_tenant_world)
+    AdminService(db).set_user_active(actor=admin, target_user_id=ta.id, is_active=False)
+    assert _av(db, ta.id) >= int(time.time()) - 5
+
+
+def test_after_a_restore_a_new_revocation_still_outranks_tokens_issued_before_it(db, two_tenant_world, monkeypatch):
+    """The database is restored to an earlier state, so its counter is low, while sessions
+    issued in the lost interval carry the higher number they were given. A plain +1 would
+    land below them and the revocation would not touch them."""
+    ta, _cs, admin = _people(db, two_tenant_world)
+    AdminService(db).set_user_active(actor=admin, target_user_id=ta.id, is_active=False)
+    issued_before_the_restore = _av(db, ta.id)
+    db.execute(update(User).where(User.id == ta.id).values(access_version=3))  # the restored counter
+    db.commit()
+    later = time.time() + 3600  # an hour on: restoring a backup takes at least that long to notice and do
+    monkeypatch.setattr("app.services.access_version.time.time", lambda: later)
+    AdminService(db).set_user_active(actor=admin, target_user_id=ta.id, is_active=True)
+    assert _av(db, ta.id) > issued_before_the_restore
+
+
+def test_the_post_restore_command_revokes_every_older_session(db, two_tenant_world):
+    from app.services.access_version import bump_all
+
+    ta, cs, _admin = _people(db, two_tenant_world)
+    db.execute(update(User).values(access_version=7))  # a restored database
+    db.commit()
+    with db.begin_nested():
+        assert bump_all(db.connection()) >= 2
+    db.commit()
+    assert _av(db, ta.id) >= int(time.time()) - 5 and _av(db, cs.id) >= int(time.time()) - 5
+
+
+def test_the_access_version_column_is_wide_enough_for_unix_time():
+    assert User.__table__.c.access_version.type.__class__.__name__ == "BigInteger"

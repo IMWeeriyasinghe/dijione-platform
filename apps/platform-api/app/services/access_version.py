@@ -10,14 +10,24 @@ each call site, so a future code path that changes access cannot forget it.
 Changes made by Alembic migrations do not go through the session and must call
 ``bump_all`` themselves.
 
-Concurrency: the bump is ``UPDATE users SET access_version = access_version + 1``.
-The row lock serialises concurrent changes to one person, and no clock is read,
-so there is no time boundary to get wrong. A version only ever increases.
+Concurrency: the bump is one atomic UPDATE, so the row lock serialises concurrent changes
+to one person. A version only ever increases.
+
+Surviving a database restore: the new value is ``max(old + 1, now_in_unix_seconds)``. The
+``+ 1`` is what orders changes; the clock is only a floor. If the database is restored to an
+earlier state, its counters go back, and a plain ``+ 1`` could reissue a number that tokens
+issued during the lost interval already carry, so a genuine revocation would not revoke them.
+Because every bump is at least the time it happened, any bump made after a restore is higher
+than anything issued before it (as long as the clock has not gone backwards past the backup).
+After a restore also run ``python -m app.services.access_version``: it raises every user above
+everything issued before, which ends every older session.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import event, inspect, select, update
+import time
+
+from sqlalchemy import case, event, inspect, select, update
 from sqlalchemy.orm import Session
 
 from app.models.access_group import (
@@ -114,9 +124,16 @@ def affected_users(session: Session) -> tuple[set[int], bool]:
     return users, everyone
 
 
+def _next_version():
+    """``max(access_version + 1, now)`` in a form every supported database accepts."""
+    column = User.__table__.c.access_version
+    floor = int(time.time())
+    return case((column + 1 > floor, column + 1), else_=floor)
+
+
 def _bump(session: Session, users: set[int], everyone: bool) -> None:
     connection = session.connection()
-    stmt = update(User.__table__).values(access_version=User.__table__.c.access_version + 1)
+    stmt = update(User.__table__).values(access_version=_next_version())
     if not everyone:
         users = {u for u in users if u is not None}
         if not users:
@@ -129,9 +146,17 @@ def _bump(session: Session, users: set[int], everyone: bool) -> None:
             session.expire(obj, ["access_version"])
 
 
-def bump_all(connection) -> None:
-    """For migrations and operational use: invalidate every session."""
-    connection.execute(update(User.__table__).values(access_version=User.__table__.c.access_version + 1))
+def bump_all(connection) -> int:
+    """For migrations and operational use (notably after a database restore): invalidate
+    every session. Returns the number of users raised."""
+    return connection.execute(update(User.__table__).values(access_version=_next_version())).rowcount
+
+
+if __name__ == "__main__":  # python -m app.services.access_version  (run after restoring a backup)
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as _session, _session.begin():
+        print(f"access_version raised for {bump_all(_session.connection())} users; all earlier sessions are now revoked")
 
 
 @event.listens_for(Session, "before_flush")

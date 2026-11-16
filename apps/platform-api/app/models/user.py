@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, false
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import PlatformRole
@@ -37,7 +37,7 @@ class User(TimestampMixin, Base):
     # person may do (see ``app/services/access_version.py``). Session tokens carry the
     # value they were issued under (``av``); a token older than the current value is
     # revoked and must be refreshed. Never decremented, never time-based.
-    access_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    access_version: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, server_default="0")
 
     module_roles: Mapped[list[UserModuleRole]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
