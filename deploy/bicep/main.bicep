@@ -317,6 +317,10 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         { name: 'INTEGRATIONS_MODE', value: 'mock' }
         { name: 'AUTH_MODE', value: authMode }
         { name: 'TALENT_API_URL', value: 'http://talent-api' }
+        // View-as User V1 (docs/platform/view-as.md). Enforcement of read-only in every user-token API
+        // does not depend on this; it only allows starting a session. Enabled only after talent, birthday,
+        // onsite and atwork APIs run the enforcing library (release 2026-11-16).
+        { name: 'VIEW_AS_ENABLED', value: 'true' }
       ],
       authMode == 'entra' ? [
         { name: 'ENTRA_TENANT_ID', value: entraTenantId }
@@ -337,6 +341,8 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
       { name: 'INTEGRATIONS_MODE', value: 'mock' }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
       { name: 'RECRUITMENT_API_URL', value: 'http://recruitment-api' }
+      // Session revocation from platform-api's access-version snapshot (docs/platform/release-candidate-access-management.md).
+      { name: 'REVOCATION_ENABLED', value: 'true' }
     ], empty(externalPortalBaseUrl) ? [] : [
       { name: 'EXTERNAL_PORTAL_BASE_URL', value: externalPortalBaseUrl }
     ])
@@ -363,6 +369,7 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         // start took 23s. Deployment-visible, not a buried code constant.
         { name: 'PEOPLE_API_TIMEOUT_SECONDS', value: '30' }
         { name: 'SUPPLIER_AUTH_MODE', value: supplierAuthMode }
+        { name: 'REVOCATION_ENABLED', value: 'true' }
       ],
       supplierAuthMode == 'entra' ? [
         { name: 'SUPPLIER_ENTRA_TENANT_ID', value: supplierEntraTenantId }
@@ -396,6 +403,7 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
         { name: 'PEOPLE_API_URL', value: 'http://people-api' }
         { name: 'PEOPLE_API_TIMEOUT_SECONDS', value: '30' }
+        { name: 'REVOCATION_ENABLED', value: 'true' }
       ],
       onsiteMode == 'live' ? [
         { name: 'ONSITE_SQL_SERVER', value: onsiteSqlServer }
@@ -405,6 +413,7 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
   : svc == 'atwork-api' ? [
       { name: 'INTEGRATIONS_MODE', value: 'mock' }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'REVOCATION_ENABLED', value: 'true' }
     ]
   : svc == 'atwork-web' ? [
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
