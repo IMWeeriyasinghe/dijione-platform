@@ -13,7 +13,7 @@ httpx>=0.27
 # Reads the Entra directory (Microsoft Graph) with the Container App's managed identity.
 azure-identity>=1.17
 python-multipart>=0.0.9
-python-dotenv>=1.0
+python-dotenv>=1.2.4
 -e ../../packages/auth-client-py
 
 pytest>=8.3
