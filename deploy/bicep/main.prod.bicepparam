@@ -61,6 +61,10 @@ param minReplicas = {
   // DijiTalentFlow (2026-11-13, same decision, Phase 1b): Home card + app page.
   'talent-api': 1
   'talent-web': 1
+  // Admin Center (2026-11-17, owner-approved): measured cold open 20 s (page) and
+  // 30 s proxy failure + 21 s retry (dashboard); warm < 1 s.
+  'admin-api': 1
+  'admin-web': 1
 }
 param maxReplicasDefault = 2
 param maxReplicasOverrides = {

@@ -20,7 +20,8 @@ export { ApiError } from "@dijione/auth-client";
 
 // DijiOne Admin Center — proxied to admin-api via this app's next.config.ts
 // rewrites (and, when reached through shell-web, via its gateway rewrites).
-export const getAdminDashboard = () => request<AdminDashboardOut>("/api/admin/dashboard");
+export const getAdminDashboard = (signal?: AbortSignal) =>
+  request<AdminDashboardOut>("/api/admin/dashboard", { signal });
 export const listAdminUsers = () => request<AdminUserOut[]>("/api/admin/users");
 export const createAdminUser = (payload: { email: string; full_name: string; title?: string }) =>
   request<AdminUserOut>("/api/admin/users", { method: "POST", body: JSON.stringify(payload) });

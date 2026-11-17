@@ -20,7 +20,11 @@ from app.services.platform_gateway import (
     forward_platform_admin,
     get_platform_client,
 )
-from app.services.talent_gateway import get_talent_client, pending_talent_requests
+from app.services.talent_gateway import (
+    get_talent_client,
+    pending_talent_requests_within_budget,
+    start_pending_talent_requests,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -31,8 +35,11 @@ def get_dashboard(
     platform: PlatformClient = Depends(get_platform_client),
     talent: PlatformClient = Depends(get_talent_client),
 ) -> dict:
+    # Both reads start together; Platform Core still authorizes the caller, and its
+    # refusal (401/403) is returned without the talent figure ever reaching the caller.
+    pending = start_pending_talent_requests(talent)
     dashboard = call_platform_admin(platform, "GET", "/api/platform/admin/dashboard", bearer_token=bearer_token)
-    dashboard["pending_talent_requests"] = pending_talent_requests(talent)
+    dashboard["pending_talent_requests"] = pending_talent_requests_within_budget(pending)
     return dashboard
 
 
