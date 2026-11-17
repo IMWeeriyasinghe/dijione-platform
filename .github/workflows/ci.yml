@@ -90,7 +90,7 @@ jobs:
       run_atwork_removal_api: ${{ steps.scope.outputs.run_atwork_removal_api }}
       run_atwork_removal_web: ${{ steps.scope.outputs.run_atwork_removal_web }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci
       # A plain run step, not a composite action: GitHub only forwards a
@@ -254,8 +254,8 @@ jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - name: Guard self-test
@@ -282,9 +282,9 @@ jobs:
       EMAIL_SENDING_MODE: mock
       MAIL_TRANSPORT: "null"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -310,9 +310,9 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -339,14 +339,14 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
       CI: "true"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -376,9 +376,9 @@ jobs:
     env:
       INTEGRATIONS_MODE: mock
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -421,9 +421,9 @@ jobs:
       # psycopg 3 dialect — the same URL shape deploy/README.md documents.
       DATABASE_URL: postgresql+psycopg://dijione:dijione@localhost:5432/${{ matrix.db }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -459,10 +459,10 @@ jobs:
       EMAIL_SENDING_MODE: mock
       MAIL_TRANSPORT: "null"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Remove the Diji On-site module
         run: rm -rf apps/onsite-api apps/onsite-web
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -489,8 +489,8 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -524,10 +524,10 @@ jobs:
       EMAIL_SENDING_MODE: mock
       MAIL_TRANSPORT: "null"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Remove the DijiAtWork module
         run: rm -rf apps/atwork-api apps/atwork-web
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
           cache: pip
@@ -550,8 +550,8 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -577,7 +577,7 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci
       - name: Guard passed and every in-scope job ran and passed
