@@ -27,16 +27,13 @@ document is the operating procedure around it.
 - Because `main` is the default branch, the weekly regression, the weekly
   full-history secret scan and Dependabot all work without extra plumbing.
 
-**Transition (one-time, requires the owner's approval).** Since September
-2026 day-to-day integration happened on `release/onsite-v1`; `main` was
-left at `e21fdb2` (2026-09-03). `main` has **no commits** that
-`release/onsite-v1` lacks, so it can be **fast-forwarded** to the release
-head: no merge commit, no conflict, no history rewrite. Afterwards new
-PRs target `main`; the open drafts into `release/onsite-v1` are retargeted
-to `main` when they are next worked on. Until the transition is approved,
-`release/onsite-v1` remains the integration branch, the weekly schedule
-does not fire (run it manually, §4) and Dependabot keeps targeting the
-stale `main` with the old workflows.
+**Transition — done 2026-11-17 (owner-approved).** From September to
+November 2026 integration ran on `release/onsite-v1` while `main` stayed
+at `e21fdb2`. On 2026-11-17 `main` was **fast-forwarded** to `d41b029`
+(no merge commit, no history rewrite) and became the integration branch
+again. The open draft PRs were retargeted to `main` (identical diffs).
+**All new PRs target `main`.** `release/onsite-v1` remains as the onsite
+release line for targeted hotfixes only.
 
 ## 3. Workflows and run modes
 
@@ -68,10 +65,9 @@ ready for review when it should be validated; the Gatekeeper verifies the
 `gh workflow run ci.yml --ref <release-branch> -f mode=full`, wait for
 green, and record the run link in the release record.
 
-**Weekly regression without a default-branch schedule** (only while the
-transition in §2 is pending): run
-`gh workflow run ci.yml --ref <integration-branch> -f mode=scheduled-regression`
-once a week.
+**Weekly regression.** Runs automatically from `main` (Monday 03:00 UTC).
+To run it on demand on any branch:
+`gh workflow run ci.yml --ref <branch> -f mode=scheduled-regression`.
 
 **After any change to `ci.yml`, `scripts/ci/**`, `dependabot.yml` or
 `secret-scan.yml`:** the PR runs in full mode; changes to schedules or
