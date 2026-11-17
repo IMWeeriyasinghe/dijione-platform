@@ -15,11 +15,12 @@ updates:
       npm-minor-patch:
         update-types: [minor, patch]
 
-  # GitHub Actions (keeps action majors off deprecated runtimes)
+  # GitHub Actions (keeps action majors off deprecated runtimes). Quarterly:
+  # an Actions bump edits the workflows, which forces a ~95-minute full run.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: quarterly
     groups:
       github-actions:
         patterns: ["*"]

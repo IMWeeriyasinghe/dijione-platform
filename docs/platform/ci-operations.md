@@ -95,8 +95,9 @@ Dependabot take effect only once they reach the default branch.
 
 - `gitleaks` on every pushed commit + weekly full-history scan.
 - `guard` (module independence) on every CI event.
-- Dependabot version updates: monthly, grouped per ecosystem, all Python
-  services (`/apps/*-api`, `/packages/*-py`), npm and Actions.
+- Dependabot version updates, grouped per ecosystem: npm and every Python
+  service/package (`/apps/*-api`, `/packages/*-py`) monthly; Actions
+  quarterly (an Actions bump forces a full CI run).
 - **Dependabot alerts** (vulnerability alerts) are a repository setting,
   free on private repositories — keep them enabled.
 - Workflow token permissions default to read; only `scope` gets
