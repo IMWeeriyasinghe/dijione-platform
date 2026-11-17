@@ -192,18 +192,21 @@ bypass it:
 
 - `required_status_checks.strict = true` — the branch must be up to date
   with `main` before merge.
-- `required_status_checks.contexts` — the exact per-matrix-leg check names
-  as GitHub renders them, `<job> (<matrix-value>)`:
-  - `lint-test`: platform-api, admin-api, talent-api, recruitment-api,
-    people-api, commercial-api, birthday-api, spark-api (8)
-  - `upgrade`: platform-api, talent-api, recruitment-api, people-api,
-    commercial-api, birthday-api (6)
-  - `pg`: platform-api, talent-api, recruitment-api, people-api,
-    commercial-api, birthday-api (6)
-  - `lint-build`: shell-web, admin-web, talent-web, birthday-web,
-    birthday-supplier-web (5)
-  - `gitleaks` (1)
-  - **26 named contexts total.**
+- `required_status_checks.contexts` — the **stable gate contexts** of the
+  change-aware CI (see "Change-aware CI" below), not the per-leg names:
+  - `api-result`, `web-result`, `migrations-result`, `postgres-result`,
+    `module-boundaries-result` (5) — each fails unless every in-scope leg
+    of its workflow ran and passed and every other leg was skipped by the
+    scope decision;
+  - `guard` (module independence, runs on every PR) and `gitleaks` (2);
+  - **7 named contexts total.** Matrix legs are added or removed without
+    touching this list.
+  - Caveat for the PUT: `api`, `web`, `migrations` and `postgres` keep
+    workflow-level `paths:` triggers, so on a PR that triggers none of
+    them their `-result` context never reports. Requiring those four in
+    branch protection would block such PRs; mark only `guard`, `gitleaks`
+    and `module-boundaries-result` (which run on every PR) as strictly
+    required, and keep the other four under the Gatekeeper rule below.
 - `enforce_admins = true` — protection applies even to the repo owner.
   CODEOWNERS names only the human user themselves, so without this the
   "no bypass" guarantee has a hole.
@@ -224,19 +227,69 @@ bypass it:
   remain the hard server-side enforcement layer regardless of who clicks
   merge.
 
-**Known brittleness.** GitHub has no wildcard/regex support for required
-status-check contexts, so the 26-context list above drifts whenever a
-workflow matrix changes (this has already happened once — `commercial-api`
-was added to CI in Wave H). Any PR that touches a matrix in
-`.github/workflows/*.yml` without an accompanying required-context update
-is a `CI_CONFIGURATION_DEFECT` finding (§5). Once branch protection is
-actually configured, the Gatekeeper checks this by comparing the current
-workflow matrices against a `GET` of the live branch protection settings;
-**while it remains unconfigured (current status, above), the Gatekeeper
-instead treats this document's 26-context list as the source of truth for
-"every required check" and must independently confirm all 26 ran and
-passed via `gh pr checks` on every PR** — there is no GitHub-side list to
-defer to.
+**Why gate contexts, not leg names.** The old per-leg list (26 contexts)
+drifted every time a matrix changed — it was already missing the
+`onsite-*`/`atwork-*` legs, `talentflow-portal-web`, `e2e` and the
+module-removal jobs. With change-aware CI a skipped leg reports no check
+at all, so a per-leg required list is no longer usable. The `-result`
+jobs are the fixed contexts; the leg lists live in each workflow's
+`ci-scope` spec. A PR that adds a job to one of the five workflows
+without adding it to that workflow's `-result` `needs:` fails
+`scripts/ci/ci-scope.test.js` and is a `CI_CONFIGURATION_DEFECT` (§5).
+
+**While protection remains unconfigured (current status, above), on
+every PR the Gatekeeper confirms via `gh pr checks`:**
+1. `guard`, `gitleaks` and `module-boundaries-result` ran and passed;
+2. for each of `api`, `web`, `migrations`, `postgres`: if the PR changes
+   any path in that workflow's `pull_request.paths`, its `-result`
+   context ran and passed; if it changes none, the workflow correctly
+   did not trigger (not a defect);
+3. every leg the scope summaries mark **RUN** has a passing check of its
+   own (`<job> (<id>)`), and every **skipped** leg passes the §6 skip
+   verification.
+
+## Change-aware CI
+
+`api`, `web`, `migrations`, `postgres` and `module-boundaries` each start
+with a `scope` job (`.github/actions/ci-scope` →
+`scripts/ci/ci-scope.js`) and end with a `<workflow>-result` job.
+
+- **Required, always executed:** `scope`, `<workflow>-result`, `guard`,
+  `gitleaks`. They never skip on a PR that triggers their workflow.
+- **Required when in scope:** a matrix leg (`lint-test (<service>)`,
+  `pg (<service>)`, `removal-api (<service>)`, …) or a single job
+  (`removal-web`, `atwork-removal-web`) runs when the PR changes
+  `apps/<id>/**`, a shared input of its kind, or a path the workflow's
+  spec declares for it in `also`:
+  - shared Python inputs (every Python leg): `packages/auth-client-py/**`,
+    `packages/mail-client-py/**`, `.python-version`;
+  - shared Node inputs (every Node leg): `packages/design-system/**`,
+    `packages/auth-client-ts/**`, `packages/contracts/**`, `package.json`,
+    `package-lock.json`, `.nvmrc` — except that a `package-lock.json`
+    change whose **only** difference (merge base vs PR head) is the
+    `version` of `apps/<id>` workspace entries counts as a change to
+    those apps (a per-app release bump, not a dependency change);
+  - declared extras: `shell-web` and both removal-web jobs ← `deploy/**`
+    (shell-web's regression test reads the Dockerfile and Bicep); the
+    removal-web jobs ← `scripts/check-module-independence.js`;
+    `onsite-api` ← `apps/onsite-web/src/__tests__/fixtures/**`; both
+    `e2e` legs ← `apps/talent-api/**` and the shared Python inputs.
+- **Safely skipped:** a leg whose inputs the PR does not touch. Its check
+  is absent and the scope job's summary lists it as `skipped — no change
+  to its inputs`.
+- **Every leg runs (full mode)** on push to `main`, the weekly
+  `module-boundaries` schedule, any manual `workflow_dispatch` run, and on
+  a PR whose changed-file list is unavailable/empty/at the 3000-file API
+  limit, that changes the workflow itself, `.github/actions/**`,
+  `scripts/ci/**` or `.gitattributes`, or that changes a path no rule
+  knows (outside `apps/`, `packages/`, `deploy/`, `docs/`, `scripts/`,
+  `.github/`, `.claude/`, `agents/`, `modules/`, `integrations/`, root
+  `*.md` and a few root dotfiles). Unknown means full, never skip.
+- **Release full run.** Pull requests into a release branch are scoped
+  like any other. Before UAT/PROD promotion, run `api`, `web`,
+  `migrations`, `postgres` and `module-boundaries` with
+  `workflow_dispatch` on the release branch head (full mode) and record
+  the run links in the release record.
 
 **Who applies this, once available.** The initial `PUT` is a one-time,
 user-run (or user-reviewed single agent action) step — not something the
@@ -319,6 +372,31 @@ classification does **not** by itself mean human escalation:
    whether it looks accidental or deliberate) — unless the PR also modified
    the guard test's own skip/allowlist logic, in which case treat it as
    the intentional-weakening case in §5/§7 (`HUMAN_REQUIRED`).
+
+   **A skipped CI leg is verified against the diff, never trusted
+   blindly** (§4 "Change-aware CI"). For each workflow the PR triggered,
+   read the `scope` job summary (`gh run view <run-id>` → job `scope`).
+   Then, from `gh pr diff --name-only`:
+   - a leg marked skipped whose `apps/<id>/**`, shared inputs of its kind
+     or declared `also` paths appear in the diff is a
+     `CI_CONFIGURATION_DEFECT` — route it to the Development Agent; never
+     accept it as `PASS`;
+   - a shared-input change (`packages/*`, `.python-version`, `.nvmrc`,
+     root `package.json`) with any same-kind leg skipped is the same
+     defect. A `package-lock.json` change narrowed to app legs must be
+     visible in the summary as "only workspace versions changed (<ids>)";
+     confirm with `gh pr diff -- package-lock.json` that only those
+     `"version"` lines changed;
+   - a PR that changes `.github/workflows/<wf>.yml`, `.github/actions/**`
+     or `scripts/ci/**` must show **full** mode in every triggered
+     workflow's summary;
+   - a missing or failed `<workflow>-result` on a triggered workflow is a
+     failed required check, whatever the per-leg checks show;
+   - a PR that edits `scripts/ci/ci-scope.js` rules (`SHARED`,
+     `FULL_RUN_PATHS`, `KNOWN_PATHS`), a workflow's `spec`, or a `-result`
+     job's `needs:` narrows CI by definition: treat any narrowing as the
+     intentional-weakening case (`HUMAN_REQUIRED`).
+   A verified skip is informational, like a workflow that did not trigger.
 2. **New cross-service DB/FK reference.** `gh pr diff` scanned for a new
    import of another service's SQLAlchemy models, or a new engine/session
    pointed at another service's `DATABASE_URL` env var — violates the "no
@@ -363,7 +441,7 @@ classification does **not** by itself mean human escalation:
 | Permission-model / security-boundary redesign | Diff changing `platform-api`'s additive-ALLOW-only Access Group semantics, or introducing a DENY construct |
 | Architecture-approved-change conflicts | Diff contradicting `docs/platform/data-ownership.md`'s ownership table, or the "architecture is CLOSED unless..." clause in CLAUDE.md; also the intentional-weakening branch of §5/§6.1 |
 | Enabling write access to a currently read-only provider | §6.3 (Lever), and the equivalent check for BambooHR writes |
-| Bypassing GitHub protection / required checks | Once branch protection is configured: the Gatekeeper's own `gh api .../branches/main/protection` `GET` returns settings drifted from the configured baseline in §4 — report the drift, never silently re-apply it (re-applying is itself a protection write the Gatekeeper is not permitted to make). **Currently (protection not configured, §4): treat any attempt to merge without every one of the 26 required checks having actually run and passed as this same trigger** — there is no GitHub-side backstop, so the Gatekeeper's own check is the only thing standing in for it |
+| Bypassing GitHub protection / required checks | Once branch protection is configured: the Gatekeeper's own `gh api .../branches/main/protection` `GET` returns settings drifted from the configured baseline in §4 — report the drift, never silently re-apply it (re-applying is itself a protection write the Gatekeeper is not permitted to make). **Currently (protection not configured, §4): treat any attempt to merge without every required check of §4 (the gate contexts plus every in-scope leg) having actually run and passed, or with an unverified skipped leg (§6), as this same trigger** — there is no GitHub-side backstop, so the Gatekeeper's own check is the only thing standing in for it |
 | Emergency merge with failing/skipped required checks | Refuse; always escalate rather than use `gh pr merge --admin` |
 | Major dependency upgrade with material compatibility risk | A Dependabot PR outside the pre-scoped `npm-minor-patch`/`pip-minor-patch` groups — i.e. a semver-major bump |
 | Anything the Gatekeeper cannot confidently classify | Two consecutive `UNKNOWN` classifications on the same PR (§5) |
