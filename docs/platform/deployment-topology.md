@@ -47,11 +47,11 @@ az containerapp list -g rg-dijione-prod \
 | `shell-web` | Next.js (standalone) | **external** (the DijiOne gateway) | 3000 | 0/1 → **1**/3 | — |
 | `talentflow-portal-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0/1 → 0/2 | — |
 | `birthday-supplier-web` | Next.js (standalone) | **external** (separate hostname) | 3000 | 0/1 → 0/2 | — |
-| `admin-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
+| `admin-web` | Next.js | internal | 3000 | 0/1 → **1**/2 | — |
 | `talent-web` | Next.js | internal | 3000 | 0/1 → **1**/2 | — |
 | `birthday-web` | Next.js | internal | 3000 | 0/1 → 0/2 | — |
 | `platform-api` | FastAPI | internal | 8000 | 0/1 → **1**/3 | `platform_dev` |
-| `admin-api` | FastAPI (zero-DB BFF) | internal | 8000 | 0/1 → 0/2 | — |
+| `admin-api` | FastAPI (zero-DB BFF) | internal | 8000 | 0/1 → **1**/2 | — |
 | `talent-api` | FastAPI | internal | 8000 | 0/1 → **1**/2 | `talent_dev` |
 | `recruitment-api` | FastAPI (source domain — Lever) | internal | 8000 | 0/1 → 0/2 | `recruitment_dev` |
 | `people-api` | FastAPI (source domain — BambooHR) | internal | 8000 | 0/1 → **1**/2 | `people_dev` |
@@ -74,7 +74,9 @@ entry point), plus — from the 2026-11 performance decision — `people-api`,
 `birthday-api`, `onsite-api`, `onsite-web`, `atwork-api`, `atwork-web`, `talent-api` and `talent-web`, whose
 15–24 s cold starts were user-visible (module open, Home cards, the Diji On-site
 Workforce Directory reload) or which scheduled Jobs kept waking at the higher
-active billing rate. Raise the rest per the scaling-trigger table, not
+active billing rate. `admin-api` and `admin-web` joined on 2026-11-17 (owner
+decision): a cold Admin Center open took 20 s for the page, and the dashboard
+request failed at shell-web's 30 s proxy limit before loading on a retry. Raise the rest per the scaling-trigger table, not
 preemptively. `commercial-api` and `spark-api` are skeletons and are **not**
 provisioned until they carry real business logic.
 
