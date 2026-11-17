@@ -197,7 +197,8 @@ bypass it:
   - `ci-result` — fails unless `scope` and `guard` passed, every in-scope
     job/leg of the `ci` workflow ran and passed, and every other one was
     skipped by the scope decision;
-  - `guard` (module independence) and `gitleaks` (secret scan);
+  - `guard` (module independence) and `gitleaks` (secret scan — reported
+    on the PR head commit by the push-triggered scan);
   - **3 named contexts total**, all reported on every pull request (no
     path filters). Matrix legs are added or removed without touching
     this list.
@@ -237,10 +238,16 @@ every non-draft PR the Gatekeeper confirms via `gh pr checks`:**
 1. `ci-result`, `guard` and `gitleaks` ran and passed on the PR head;
 2. the `scope` summary for that run is **scoped** or **full** — never
    **draft** (a draft-mode result says nothing about the code; the PR
-   must be marked ready and re-run first);
+   must be marked ready and re-run first). `ci-result` also raises a
+   "Not a full validation" warning on draft, post-merge and scheduled
+   runs;
 3. every leg the summary marks **RUN** has a passing check of its own
-   (`<job> (<id>)`), and every **skipped** leg passes the §6 skip
-   verification.
+   (GitHub's matrix name, e.g. `lint-test (talent-api)`,
+   `pg (talent-api, talent_dev)`), and every **skipped** leg passes the
+   §6 skip verification.
+
+Operating procedures (branch model, release full run, weekly regression,
+Actions-minutes monitoring): `docs/platform/ci-operations.md`.
 
 ## Change-aware CI
 
@@ -249,8 +256,10 @@ One workflow, `.github/workflows/ci.yml` (formerly `api`, `web`,
 request event (`opened`, `synchronize`, `reopened`, `ready_for_review`),
 push to `main`, a weekly schedule and manual `workflow_dispatch`. It
 starts with a `scope` job (a run step calling `scripts/ci/ci-scope.js`,
-legs declared in its `CI_SCOPE_SPEC`) and ends with `ci-result`. `secret-scan` stays
-a separate, unscoped workflow.
+legs declared in its `CI_SCOPE_SPEC`) and ends with `ci-result`.
+`secret-scan` stays a separate, unscoped workflow: gitleaks on every
+pushed commit of every branch (a PR's commits are pushed first, so its
+check is on the PR head), plus a weekly and on-demand full-history scan.
 
 - **Required, always executed:** `scope`, `guard` (which also runs the
   `ci-scope` self-test), `ci-result`, `gitleaks`. They run on every
@@ -261,7 +270,7 @@ a separate, unscoped workflow.
   demand with `workflow_dispatch` on its branch. GitHub cannot merge a
   draft, so no change reaches a protected branch untested.
 - **Required when in scope:** a matrix leg (`lint-test (<service>)`,
-  `pg (<service>)`, `removal-api (<service>)`, …) or a single job
+  `pg (<service>, <db>)`, `removal-api (<service>)`, …) or a single job
   (`removal-web`, `atwork-removal-web`) runs when the PR changes
   `apps/<id>/**` (for `upgrade`: only `alembic/**`, `alembic.ini`,
   `app/models/**` or `requirements.txt` in the service — the old
@@ -283,21 +292,28 @@ a separate, unscoped workflow.
 - **Safely skipped:** a leg whose inputs the PR does not touch. Its check
   is absent and the scope job's summary lists it as `skipped — no change
   to its inputs`.
-- **Every leg runs (full mode)** on push to `main`, any manual
-  `workflow_dispatch` run, and on a non-draft PR whose changed-file list
+- **Push to `main` (post-merge) runs gates only** (`scope`, `guard`,
+  `ci-result`, plus `gitleaks`): every change reached `main` through a PR
+  that was scoped and gated. The validation evidence is the PR's
+  `ci-result`, not the post-merge run.
+- **Every leg runs (full mode)** on a manual `workflow_dispatch` run
+  (`mode=full`, the default), and on a non-draft PR whose changed-file list
   is unavailable/empty/at the 3000-file API limit, that changes
   `.github/workflows/ci.yml`, `.github/actions/**`, `scripts/ci/**` or
   `.gitattributes`, or that changes a path no rule knows (outside
   `apps/`, `packages/`, `deploy/`, `docs/`, `scripts/`, `.github/`,
   `.claude/`, `agents/`, `modules/`, `integrations/`, root `*.md` and a
   few root dotfiles). Unknown means full, never skip.
-- **Weekly schedule** (Monday 03:00 UTC, default branch): `guard` plus the
-  four module-removal jobs in full — the scope of the old
-  `module-boundaries` schedule.
+- **Weekly schedule** (Monday 03:00 UTC): `guard` plus the four
+  module-removal jobs in full — the scope of the old `module-boundaries`
+  schedule. GitHub fires schedules only from the **default branch's**
+  copy of the workflow, so it runs only once that branch carries
+  `ci.yml`. The same set runs on demand with `workflow_dispatch`,
+  `mode=scheduled-regression`, on any branch.
 - **Release full run.** Pull requests into a release branch are scoped
   like any other. Before UAT/PROD promotion, run `ci` with
-  `workflow_dispatch` on the release branch head (full mode) and record
-  the run link in the release record.
+  `workflow_dispatch` (`mode=full`) on the release branch head and record
+  the run link in the release record (~95 billed minutes).
 
 **Who applies this, once available.** The initial `PUT` is a one-time,
 user-run (or user-reviewed single agent action) step — not something the
