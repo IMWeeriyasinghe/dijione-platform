@@ -49,7 +49,7 @@ class PeopleSource(Protocol):
 class PeopleApiSource:
     """people-api over internal ingress (X-Internal-Token), using the shared clients."""
 
-    def __init__(self, *, timeout: float = 20.0) -> None:
+    def __init__(self, *, timeout: float = 10.0) -> None:
         self._timeout = timeout
 
     def _clients(self):
@@ -83,11 +83,15 @@ class EmployeeRecordChecker:
         with self._lock:
             if self._snapshot is not None and time.monotonic() - self._loaded_at < _TTL_SECONDS:
                 return self._snapshot
-            try:
-                employees = self._source.active_employees()
-                workforce = self._source.active_workforce()
-            except Exception as exc:  # people-api down, misconfigured, or answered an error
-                logger.warning("Employee records unavailable: %s", type(exc).__name__)
+            employees = workforce = None
+            for attempt in (1, 2):  # one retry: a transient transport failure (seen on a fresh replica)
+                try:
+                    employees = self._source.active_employees()
+                    workforce = self._source.active_workforce()
+                    break
+                except Exception as exc:  # people-api down, misconfigured, or answered an error
+                    logger.warning("Employee records unavailable (attempt %d): %s", attempt, type(exc).__name__)
+            if employees is None or workforce is None:
                 return None
             by_email = {
                 (e.get("work_email") or "").strip().lower(): (e.get("employee_number"), e.get("employment_status") or "")
