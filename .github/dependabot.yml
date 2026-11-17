@@ -5,10 +5,14 @@ version: 2
 # updates are monthly and grouped so each ecosystem produces at most one
 # minor/patch PR per month — every PR costs change-aware CI minutes on a
 # private repository. Security alerts are a separate repository setting.
+# rebase-strategy: disabled — Dependabot does not auto-rebase its open PRs
+# when the base moves (each rebase re-runs CI); comment `@dependabot rebase`
+# on a PR to refresh it, and newer grouped PRs supersede older ones.
 updates:
   # Frontend workspaces + shared TS packages (single npm tree at the repo root)
   - package-ecosystem: npm
     directory: /
+    rebase-strategy: disabled
     schedule:
       interval: monthly
     groups:
@@ -19,6 +23,7 @@ updates:
   # an Actions bump edits the workflows, which forces a ~95-minute full run.
   - package-ecosystem: github-actions
     directory: /
+    rebase-strategy: disabled
     schedule:
       interval: quarterly
     groups:
@@ -31,6 +36,7 @@ updates:
     directories:
       - "/apps/*-api"
       - "/packages/*-py"
+    rebase-strategy: disabled
     schedule:
       interval: monthly
     groups:
