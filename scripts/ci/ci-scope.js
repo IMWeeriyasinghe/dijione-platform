@@ -21,8 +21,11 @@
  * head) is the `version` of `apps/<id>` workspace entries — a per-app
  * release bump — counts as a change to those apps, not to every Node leg.
  *
+ * A push (post-merge, e.g. to main) runs gates only: every change reached the
+ * branch through a pull request that was scoped and gated by this script.
+ *
  * Fail-safe: EVERY leg runs ("full" mode) when
- *   - the event is a push or a manual run (workflow_dispatch);
+ *   - the event is a manual run (workflow_dispatch, mode=full);
  *   - the changed-file list is unavailable, empty, or at GitHub's 3000-file
  *     API limit;
  *   - the PR changes this workflow file, the scoping action or this script;
@@ -233,6 +236,11 @@ function computeScope({ workflow, event, spec, changedFiles, lockfile = null, dr
     return finish(jobs, workflow, "draft",
       ["draft pull request: scoped legs run when it is marked ready for review"], [], new Map());
   }
+  if (event === "push") {
+    return finish(jobs, workflow, "post-merge",
+      ["push: gates only — the change was validated by its pull request; "
+        + "run workflow_dispatch (mode=full) for a full regression"], [], new Map());
+  }
   if (event !== "pull_request") fullReasons.push(`event "${event}" always runs every leg`);
   else if (files == null) fullReasons.push("changed-file list unavailable");
   else if (files.length === 0) fullReasons.push("changed-file list is empty");
@@ -312,6 +320,7 @@ function scopeSummary(result) {
     scoped: "skipped — no change to its inputs",
     draft: "skipped — draft PR",
     schedule: "skipped — not a scheduled job",
+    "post-merge": "skipped — validated by its PR",
   }[result.mode];
   lines.push("| Job | Leg | Decision | Changed paths that selected it |", "|---|---|---|---|");
   for (const [job, r] of Object.entries(result.jobs)) {
@@ -334,6 +343,10 @@ function verifyNeeds(needs) {
   const scope = needs.scope;
   if (!scope) return ["no `scope` job in needs"];
   if (scope.result !== "success") problems.push(`scope job result is "${scope.result}"`);
+  const flags = Object.keys(scope.outputs || {}).filter((k) => k.startsWith("run_"));
+  if (scope.result === "success" && flags.length === 0) {
+    problems.push("scope succeeded but published no run_* outputs (wiring defect)");
+  }
   for (const [job, n] of Object.entries(needs)) {
     if (job === "scope") continue;
     const flag = scope.outputs ? scope.outputs[`run_${outputKey(job)}`] : undefined;
@@ -348,6 +361,19 @@ function verifyNeeds(needs) {
     }
   }
   return problems;
+}
+
+/**
+ * A passing gate in these modes did not run the application test legs, so it
+ * must never be read as validation evidence. Returns the warning, or null.
+ */
+function validationNotice(needs) {
+  const mode = needs.scope && needs.scope.outputs ? needs.scope.outputs.mode : undefined;
+  return {
+    draft: "Draft PR: no application test legs ran. This result is NOT validation evidence — mark the PR ready for review.",
+    "post-merge": "Post-merge push: gates only. Validation evidence is the PR's ci-result; run workflow_dispatch (mode=full) for a full regression.",
+    schedule: "Scheduled regression: only the module-removal jobs ran.",
+  }[mode] || null;
 }
 
 /** Read the inline JSON `CI_SCOPE_SPEC: |` block of a workflow's scope step. */
@@ -415,9 +441,11 @@ function main(argv) {
   if (command === "verify") {
     const needs = JSON.parse(process.env.NEEDS || "{}");
     const problems = verifyNeeds(needs);
-    const report = problems.length
+    const notice = validationNotice(needs);
+    if (notice) process.stdout.write(`::warning title=Not a full validation::${notice}\n`);
+    const report = (notice ? `> **${notice}**\n\n` : "") + (problems.length
       ? `### Required checks: FAILED\n${problems.map((p) => `- ${p}`).join("\n")}\n`
-      : `### Required checks: passed\n${Object.entries(needs).map(([j, n]) => `- ${j}: ${n.result}`).join("\n")}\n`;
+      : `### Required checks: passed\n${Object.entries(needs).map(([j, n]) => `- ${j}: ${n.result}`).join("\n")}\n`);
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, report);
     process.stdout.write(report);
     return problems.length ? 1 : 0;
@@ -447,5 +475,6 @@ module.exports = {
   readSpecFromWorkflow,
   scopeOutputs,
   scopeSummary,
+  validationNotice,
   verifyNeeds,
 };
