@@ -20,6 +20,6 @@ tzdata>=2024.1
 openpyxl>=3.1
 -e ../../packages/auth-client-py
 
-pytest>=8.3
+pytest>=9.2.0
 pytest-asyncio>=0.24
 ruff>=0.7
