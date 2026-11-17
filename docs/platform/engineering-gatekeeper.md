@@ -197,8 +197,9 @@ bypass it:
   - `ci-result` — fails unless `scope` and `guard` passed, every in-scope
     job/leg of the `ci` workflow ran and passed, and every other one was
     skipped by the scope decision;
-  - `guard` (module independence) and `gitleaks` (secret scan — reported
-    on the PR head commit by the push-triggered scan);
+  - `guard` (module independence) and `gitleaks` (secret scan — the
+    `pull_request`-event run on the current PR head; a push-event run
+    alone is not accepted);
   - **3 named contexts total**, all reported on every pull request (no
     path filters). Matrix legs are added or removed without touching
     this list.
@@ -257,9 +258,9 @@ request event (`opened`, `synchronize`, `reopened`, `ready_for_review`),
 push to `main`, a weekly schedule and manual `workflow_dispatch`. It
 starts with a `scope` job (a run step calling `scripts/ci/ci-scope.js`,
 legs declared in its `CI_SCOPE_SPEC`) and ends with `ci-result`.
-`secret-scan` stays a separate, unscoped workflow: gitleaks on every
-pushed commit of every branch (a PR's commits are pushed first, so its
-check is on the PR head), plus a weekly and on-demand full-history scan.
+`secret-scan` stays a separate, unscoped workflow: gitleaks on every push,
+on every pull request (the PR's full commit range against its base — the
+required check), plus a weekly and on-demand full-history scan.
 
 - **Required, always executed:** `scope`, `guard` (which also runs the
   `ci-scope` self-test), `ci-result`, `gitleaks`. They run on every

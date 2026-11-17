@@ -52,9 +52,11 @@ stale `main` with the old workflows.
 | `workflow_dispatch`, `mode=full` | full | every leg — release-promotion regression | ~95 |
 | Weekly schedule, or `workflow_dispatch` `mode=scheduled-regression` | schedule | guard + the four module-removal jobs | ~25 |
 
-`secret-scan.yml` — `gitleaks` on every pushed commit of every branch
-(the PR's check comes from this push scan), plus a weekly (Monday 03:30
-UTC, default branch) and on-demand **full-history** scan.
+`secret-scan.yml` — `gitleaks` on every pushed commit of every branch,
+on every pull request (its full commit range against the base — this is
+the required PR check; a push scan alone can report "No commits to scan"),
+plus a weekly (Monday 03:30 UTC, default branch) and on-demand
+**full-history** scan.
 
 ## 4. Procedures
 
@@ -93,7 +95,8 @@ Dependabot take effect only once they reach the default branch.
 
 ## 6. Security baseline
 
-- `gitleaks` on every pushed commit + weekly full-history scan.
+- `gitleaks` on every push, on every pull request (required check), plus
+  a weekly full-history scan.
 - `guard` (module independence) on every CI event.
 - Dependabot version updates, grouped per ecosystem: npm and every Python
   service/package (`/apps/*-api`, `/packages/*-py`) monthly; Actions
