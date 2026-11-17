@@ -287,6 +287,18 @@ for (const wf of SCOPED_WORKFLOWS) {
     assert.deepEqual(jobs.filter((j) => !["scope", "guard", result].includes(j)).sort(), Object.keys(spec).sort());
   });
 
+  test(`${wf}.yml: the scope step is a plain run step in the scope job (not a composite action)`, () => {
+    // GitHub forwards only a composite action's DECLARED outputs; the run_*
+    // and matrix outputs are named by the spec, so they must be written by a
+    // run step whose id is `scope` (PR #122 draft run: outputs were {}).
+    const job = text.slice(text.indexOf("\n  scope:\n"), text.indexOf("\n  guard:\n"));
+    const step = job.slice(job.indexOf("      - id: scope\n"));
+    assert.ok(job.includes("      - id: scope\n"), "step id scope");
+    assert.ok(!/\n {8}uses:/.test(step), "scope step must not be a `uses:` action");
+    assert.match(step, /\n {8}run: \|\n[\s\S]*node scripts\/ci\/ci-scope\.js "\$\{args\[@\]\}"/);
+    assert.match(step, /\n {10}CI_SCOPE_SPEC: \|\n/);
+  });
+
   test(`${wf}.yml: runs on every pull request event, including ready_for_review, with no path filter`, () => {
     const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\nconcurrency:"));
     assert.match(on, /\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened, ready_for_review\]\n/);

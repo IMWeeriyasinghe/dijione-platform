@@ -8,9 +8,9 @@
  *   node scripts/ci/ci-scope.js verify
  *
  * `scope` decides which jobs/matrix legs of the CI workflow a pull request
- * must run. The workflow declares its legs inline (the `spec` input of
- * .github/actions/ci-scope), so they stay visible in the workflow file and
- * this script holds no application names — only generic rules.
+ * must run. The workflow declares its legs inline (the `CI_SCOPE_SPEC` env of
+ * its `scope` step), so they stay visible in the workflow file and this
+ * script holds no application names — only generic rules.
  *
  * A leg runs when the PR changes `apps/<id>/<within>` (default: anything in
  * the app), a shared dependency of its kind (SHARED below), or a path the
@@ -350,11 +350,11 @@ function verifyNeeds(needs) {
   return problems;
 }
 
-/** Read the inline JSON `spec: |` block of a workflow's ci-scope step. */
+/** Read the inline JSON `CI_SCOPE_SPEC: |` block of a workflow's scope step. */
 function readSpecFromWorkflow(text) {
   const lines = text.split(/\r?\n/);
-  const start = lines.findIndex((l) => /^\s+spec:\s*\|\s*$/.test(l));
-  if (start < 0) throw new Error("no `spec: |` block found");
+  const start = lines.findIndex((l) => /^\s+CI_SCOPE_SPEC:\s*\|\s*$/.test(l));
+  if (start < 0) throw new Error("no `CI_SCOPE_SPEC: |` block found");
   const indent = lines[start].match(/^\s*/)[0].length;
   const body = [];
   for (const line of lines.slice(start + 1)) {

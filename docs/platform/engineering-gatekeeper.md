@@ -248,8 +248,8 @@ One workflow, `.github/workflows/ci.yml` (formerly `api`, `web`,
 `migrations`, `postgres` and `module-boundaries`), runs on every pull
 request event (`opened`, `synchronize`, `reopened`, `ready_for_review`),
 push to `main`, a weekly schedule and manual `workflow_dispatch`. It
-starts with a `scope` job (`.github/actions/ci-scope` →
-`scripts/ci/ci-scope.js`) and ends with `ci-result`. `secret-scan` stays
+starts with a `scope` job (a run step calling `scripts/ci/ci-scope.js`,
+legs declared in its `CI_SCOPE_SPEC`) and ends with `ci-result`. `secret-scan` stays
 a separate, unscoped workflow.
 
 - **Required, always executed:** `scope`, `guard` (which also runs the

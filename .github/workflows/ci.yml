@@ -80,13 +80,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            .github/actions
-            scripts/ci
+          sparse-checkout: scripts/ci
+      # A plain run step, not a composite action: GitHub only forwards a
+      # composite action's DECLARED outputs, and these output names come from
+      # the spec (scripts/ci/ci-scope.test.js guards this).
       - id: scope
-        uses: ./.github/actions/ci-scope
-        with:
-          workflow: ci
+        name: Decide which jobs this event needs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
           # A leg runs when apps/<id>/<within> (default **), a shared input of
           # its kind, or an `also` path changes. Declared cross-directory inputs:
           # shell-web's regression test reads deploy/ (Dockerfile.web, Bicep);
@@ -94,7 +101,7 @@ jobs:
           # start talent-api; the removal-web jobs build shell-web and run the
           # guard script. `upgrade` keeps the old migrations trigger scope
           # (alembic + models), widened to requirements.txt and alembic.ini.
-          spec: |
+          CI_SCOPE_SPEC: |
             {
               "lint-test": {
                 "shared": ["python"],
@@ -198,6 +205,33 @@ jobs:
                          "birthday-web", "birthday-supplier-web", "onsite-web"]
               }
             }
+        run: |
+          set -uo pipefail
+          args=(scope --workflow ci --event "$EVENT")
+          if [ "$EVENT" = "pull_request" ]; then
+            args+=(--draft "${PR_DRAFT:-false}")
+            list="$RUNNER_TEMP/ci-scope-changed-files.txt"
+            # Both sides of a rename count: moving a file out of an app changes it too.
+            if gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+                 --jq '.[] | .filename, (.previous_filename // empty)' > "$list"; then
+              args+=(--changed-files "$list")
+              # Lockfile at the merge base and at the head, so a per-app version
+              # bump is not mistaken for a shared dependency change. Any failure
+              # here simply leaves the full Node fan-out in place.
+              if grep -qx 'package-lock.json' "$list"; then
+                raw='Accept: application/vnd.github.raw'
+                if mb=$(gh api "repos/$REPO/compare/$BASE_SHA...$HEAD_SHA" --jq '.merge_base_commit.sha') \
+                   && gh api -H "$raw" "repos/$REPO/contents/package-lock.json?ref=$mb" > "$RUNNER_TEMP/lock-base.json" \
+                   && gh api -H "$raw" "repos/$REPO/contents/package-lock.json?ref=$HEAD_SHA" > "$RUNNER_TEMP/lock-head.json"; then
+                  args+=(--lockfile-base "$RUNNER_TEMP/lock-base.json" --lockfile-head "$RUNNER_TEMP/lock-head.json")
+                fi
+              fi
+            else
+              echo "::warning::Could not list the PR's changed files; running every leg."
+              args+=(--diff-unavailable)
+            fi
+          fi
+          node scripts/ci/ci-scope.js "${args[@]}"
 
   # ---- module independence: static gate, every event --------------------
   guard:
