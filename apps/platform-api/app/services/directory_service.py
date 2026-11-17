@@ -77,7 +77,7 @@ def apply_employee_record(user: User, record: EmployeeRecord, *, now: datetime |
 def check_at_sign_in(user: User) -> None:
     """Soft employee-record check during a verified sign-in. Never blocks or fails the sign-in."""
     try:
-        record = get_employee_record_checker().check(email=user.email, employee_id=user.employee_number)
+        record = get_employee_record_checker().check(email=user.email, employee_id=user.employee_number, cached_only=True)
     except Exception:  # pragma: no cover - the checker already turns failures into UNKNOWN
         logger.warning("Employee-record check failed during sign-in")
         return
