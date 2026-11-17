@@ -333,6 +333,20 @@ def test_an_unavailable_hr_source_never_grants(api_client, db, admin, directory)
     assert standard(db, db.get(User, body["id"])) == frozenset()
 
 
+def test_a_transient_hr_failure_is_retried_once():
+    class Flaky(People):
+        calls = 0
+
+        def active_employees(self):
+            Flaky.calls += 1
+            if Flaky.calls == 1:
+                raise httpx.ReadTimeout("first load")
+            return super().active_employees()
+
+    checker = EmployeeRecordChecker(Flaky())
+    assert checker.check(email="ana@dijital.example").status == "MATCHED" and Flaky.calls == 2
+
+
 def test_employee_number_from_the_directory_matches_a_single_active_hr_entry(api_client, admin, directory):
     set_employee_record_checker(EmployeeRecordChecker(People(
         employees=[], workforce=[{"employee_number": "0107", "employment_status": "Active"}])))
