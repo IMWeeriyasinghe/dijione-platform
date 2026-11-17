@@ -22,7 +22,78 @@ concurrency:
 permissions:
   contents: read
 
+# `guard` runs on every event, unconditionally: it is the cheap static gate
+# that stops any new cross-module reference. The removal jobs are
+# change-aware on a pull request (scripts/ci/ci-scope.js): a leg proves that
+# its own service/app still works with the module removed, so it re-runs
+# only when that service/app, a shared input of its kind, or the guard
+# script changes. Push to main, the weekly schedule and manual runs always
+# run every leg. `module-boundaries-result` is the single required context.
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      removal_api: ${{ steps.scope.outputs.removal_api }}
+      run_removal_api: ${{ steps.scope.outputs.run_removal_api }}
+      run_removal_web: ${{ steps.scope.outputs.run_removal_web }}
+      atwork_removal_api: ${{ steps.scope.outputs.atwork_removal_api }}
+      run_atwork_removal_api: ${{ steps.scope.outputs.run_atwork_removal_api }}
+      run_atwork_removal_web: ${{ steps.scope.outputs.run_atwork_removal_web }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            scripts/ci
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: module-boundaries
+          # The removal-web jobs build shell-web (whose test reads deploy/)
+          # and run the guard script, so both are their inputs.
+          spec: |
+            {
+              "removal-api": {
+                "shared": ["python"],
+                "matrix": [
+                  {"service": "platform-api"},
+                  {"service": "people-api"},
+                  {"service": "birthday-api"},
+                  {"service": "talent-api"},
+                  {"service": "admin-api"},
+                  {"service": "recruitment-api"},
+                  {"service": "atwork-api"}
+                ]
+              },
+              "removal-web": {
+                "shared": ["node"],
+                "also": ["deploy/**", "scripts/check-module-independence.js"],
+                "apps": ["shell-web", "admin-web", "talent-web", "talentflow-portal-web",
+                         "birthday-web", "birthday-supplier-web", "atwork-web"]
+              },
+              "atwork-removal-api": {
+                "shared": ["python"],
+                "matrix": [
+                  {"service": "platform-api"},
+                  {"service": "people-api"},
+                  {"service": "birthday-api"},
+                  {"service": "talent-api"},
+                  {"service": "admin-api"},
+                  {"service": "recruitment-api"},
+                  {"service": "onsite-api", "also": ["apps/onsite-web/src/__tests__/fixtures/**"]}
+                ]
+              },
+              "atwork-removal-web": {
+                "shared": ["node"],
+                "also": ["deploy/**", "scripts/check-module-independence.js"],
+                "apps": ["shell-web", "admin-web", "talent-web", "talentflow-portal-web",
+                         "birthday-web", "birthday-supplier-web", "onsite-web"]
+              }
+            }
+
   guard:
     runs-on: ubuntu-latest
     steps:
@@ -36,18 +107,13 @@ jobs:
         run: node scripts/check-module-independence.js
 
   removal-api:
+    needs: scope
+    if: needs.scope.outputs.run_removal_api == 'true'
+    name: removal-api (${{ matrix.service }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        service:
-          - platform-api
-          - people-api
-          - birthday-api
-          - talent-api
-          - admin-api
-          - recruitment-api
-          - atwork-api
+      matrix: ${{ fromJSON(needs.scope.outputs.removal_api) }}
     env:
       INTEGRATIONS_MODE: mock
       EMAIL_SENDING_MODE: mock
@@ -77,6 +143,8 @@ jobs:
           fi
 
   removal-web:
+    needs: scope
+    if: needs.scope.outputs.run_removal_web == 'true'
     runs-on: ubuntu-latest
     env:
       NEXT_TELEMETRY_DISABLED: "1"
@@ -105,18 +173,13 @@ jobs:
   # DijiAtWork removal gate (docs/atwork/module-removal.md). Separate jobs so
   # the names of the Diji On-site checks above stay unchanged.
   atwork-removal-api:
+    needs: scope
+    if: needs.scope.outputs.run_atwork_removal_api == 'true'
+    name: atwork-removal-api (${{ matrix.service }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        service:
-          - platform-api
-          - people-api
-          - birthday-api
-          - talent-api
-          - admin-api
-          - recruitment-api
-          - onsite-api
+      matrix: ${{ fromJSON(needs.scope.outputs.atwork_removal_api) }}
     env:
       INTEGRATIONS_MODE: mock
       EMAIL_SENDING_MODE: mock
@@ -142,6 +205,8 @@ jobs:
         run: DATABASE_URL="sqlite:///./removal-check.db" alembic upgrade head
 
   atwork-removal-web:
+    needs: scope
+    if: needs.scope.outputs.run_atwork_removal_web == 'true'
     runs-on: ubuntu-latest
     env:
       NEXT_TELEMETRY_DISABLED: "1"
@@ -166,3 +231,16 @@ jobs:
           done
       - name: Guard still clean with the module removed
         run: node scripts/check-module-independence.js
+
+  module-boundaries-result:
+    needs: [scope, guard, removal-api, removal-web, atwork-removal-api, atwork-removal-web]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci
+      - name: Guard passed and every in-scope removal leg ran and passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci/ci-scope.js verify

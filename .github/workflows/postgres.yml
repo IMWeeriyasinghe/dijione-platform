@@ -24,6 +24,10 @@ on:
       - "apps/*-api/**"
       - "packages/auth-client-py/**"
       - ".github/workflows/postgres.yml"
+      - ".github/actions/ci-scope/**"
+      - "scripts/ci/**"
+  # Manual full run (every leg), e.g. on a release branch before promotion.
+  workflow_dispatch:
 
 concurrency:
   group: postgres-${{ github.ref }}
@@ -32,25 +36,51 @@ concurrency:
 permissions:
   contents: read
 
+# Change-aware: on a pull request only the legs whose inputs changed run
+# (scripts/ci/ci-scope.js); push, schedule and manual runs run every leg.
+# `postgres-result` is the single required context that proves it.
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pg: ${{ steps.scope.outputs.pg }}
+      run_pg: ${{ steps.scope.outputs.run_pg }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            scripts/ci
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: postgres
+          spec: |
+            {
+              "pg": {
+                "shared": ["python"],
+                "matrix": [
+                  {"service": "platform-api", "db": "platform_dev"},
+                  {"service": "talent-api", "db": "talent_dev"},
+                  {"service": "recruitment-api", "db": "recruitment_dev"},
+                  {"service": "people-api", "db": "people_dev"},
+                  {"service": "commercial-api", "db": "commercial_dev"},
+                  {"service": "birthday-api", "db": "birthday_dev"}
+                ]
+              }
+            }
+
   pg:
+    needs: scope
+    if: needs.scope.outputs.run_pg == 'true'
+    name: pg (${{ matrix.service }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - service: platform-api
-            db: platform_dev
-          - service: talent-api
-            db: talent_dev
-          - service: recruitment-api
-            db: recruitment_dev
-          - service: people-api
-            db: people_dev
-          - service: commercial-api
-            db: commercial_dev
-          - service: birthday-api
-            db: birthday_dev
+      matrix: ${{ fromJSON(needs.scope.outputs.pg) }}
     services:
       postgres:
         image: postgres:16
@@ -98,3 +128,16 @@ jobs:
         # `os.environ.setdefault("DATABASE_URL", <sqlite>)`, so with
         # DATABASE_URL exported above the whole suite runs against Postgres.
         run: pytest -q
+
+  postgres-result:
+    needs: [scope, pg]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci
+      - name: Every in-scope leg ran and passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci/ci-scope.js verify
