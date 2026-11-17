@@ -12,6 +12,7 @@ const {
   readSpecFromWorkflow,
   scopeOutputs,
   scopeSummary,
+  validationNotice,
   verifyNeeds,
 } = require("./ci-scope");
 
@@ -58,12 +59,18 @@ test("glob: ** spans directories, * stays within one segment", () => {
   assert.ok(!globToRegExp("package.json").test("packageXjson"));
 });
 
-test("push and manual runs always run every leg", () => {
-  for (const event of ["push", "workflow_dispatch"]) {
-    const r = scope(["docs/a.md"], event);
-    assert.equal(r.mode, "full", event);
-    assert.deepEqual(running(r), ALL);
-  }
+test("a manual run (workflow_dispatch, mode=full) runs every leg", () => {
+  const r = scope(["docs/a.md"], "workflow_dispatch");
+  assert.equal(r.mode, "full");
+  assert.deepEqual(running(r), ALL);
+});
+
+test("a push (post-merge) runs gates only and says so", () => {
+  const r = scope(null, "push");
+  assert.equal(r.mode, "post-merge");
+  assert.deepEqual(running(r), NONE);
+  assert.match(scopeSummary(r), /validated by its PR/);
+  assert.match(scopeSummary(r), /workflow_dispatch \(mode=full\)/);
 });
 
 test("a scheduled run runs only onSchedule jobs, in full", () => {
@@ -250,6 +257,30 @@ test("verify fails on any failed, cancelled or missing evidence", () => {
   for (const needs of cases) assert.notDeepEqual(verifyNeeds(needs), [], JSON.stringify(needs));
 });
 
+test("verify fails closed when scope succeeded but published no flags", () => {
+  const problems = verifyNeeds({ scope: { result: "success", outputs: {} }, a: { result: "skipped" } });
+  assert.ok(problems.some((p) => /published no run_\* outputs/.test(p)), problems.join("; "));
+});
+
+test("draft, post-merge and scheduled gates carry a not-validation notice; full and scoped do not", () => {
+  const n = (mode) => validationNotice({ scope: { result: "success", outputs: { mode } } });
+  assert.match(n("draft"), /NOT validation evidence/);
+  assert.match(n("post-merge"), /gates only/);
+  assert.match(n("schedule"), /module-removal/);
+  assert.equal(n("full"), null);
+  assert.equal(n("scoped"), null);
+  assert.equal(validationNotice({}), null);
+});
+
+test("no workflow uses a Node 20 action major (deprecated, removed from runners)", () => {
+  const deprecated = [/actions\/checkout@v[1-4]\b/, /actions\/setup-node@v[1-4]\b/,
+    /actions\/setup-python@v[1-5]\b/, /gitleaks\/gitleaks-action@v[12]\b/];
+  for (const f of fs.readdirSync(WORKFLOWS_DIR).filter((x) => /\.ya?ml$/.test(x))) {
+    const text = fs.readFileSync(path.join(WORKFLOWS_DIR, f), "utf8");
+    for (const re of deprecated) assert.ok(!re.test(text), `${f}: ${re}`);
+  }
+});
+
 // The real workflow: wiring that would otherwise let a leg be bypassed.
 function topLevelJobs(text) {
   const lines = text.split(/\r?\n/);
@@ -307,8 +338,19 @@ for (const wf of SCOPED_WORKFLOWS) {
     assert.match(on, /\n {2}workflow_dispatch:/);
   });
 
-  test(`${wf}.yml: push runs every leg; the schedule runs exactly the onSchedule jobs`, () => {
-    const full = computeScope({ workflow: wf, event: "push", spec, changedFiles: null });
+  test(`${wf}.yml: dispatch modes, the schedule, the mode output and stable job names`, () => {
+    const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\nconcurrency:"));
+    assert.match(on, /\n {2}schedule:\n {4}- cron: "0 3 \* \* 1"/);
+    assert.match(on, /options: \[full, scheduled-regression\]\n {8}default: full/);
+    assert.match(text, /DISPATCH_MODE: \$\{\{ inputs\.mode \}\}/);
+    assert.match(text, /"\$EVENT" = "workflow_dispatch" \] && \[ "\$\{DISPATCH_MODE:-full\}" = "scheduled-regression" \]; then\n {12}EVENT=schedule/);
+    assert.ok(text.includes("mode: ${{ steps.scope.outputs.mode }}"), "scope exposes mode to ci-result");
+    assert.ok(!/\n {4}name: [^\n]*\$\{\{ matrix\./.test(text), "no matrix-template job names (render literally when skipped)");
+    assert.match(text, /group: ci-\$\{\{ github\.ref \}\}-\$\{\{ github\.event_name \}\}-/);
+  });
+
+  test(`${wf}.yml: a full manual run runs every leg; the schedule runs exactly the onSchedule jobs`, () => {
+    const full = computeScope({ workflow: wf, event: "workflow_dispatch", spec, changedFiles: null });
     for (const [job, r] of Object.entries(full.jobs)) {
       assert.ok(r.legs.every((l) => l.run), job);
       if (r.matrix) assert.equal(r.include.length, spec[job].matrix.length, job);
