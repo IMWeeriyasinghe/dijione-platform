@@ -2,30 +2,33 @@
 /**
  * Change-aware CI scoping (docs/platform/engineering-gatekeeper.md §4 and §6).
  *
- *   node scripts/ci/ci-scope.js scope  --workflow <name> --event <event>
+ *   node scripts/ci/ci-scope.js scope  --workflow <name> --event <event> [--draft true|false]
  *                                       [--changed-files <file> | --diff-unavailable]
  *                                       [--lockfile-base <file> --lockfile-head <file>]
  *   node scripts/ci/ci-scope.js verify
  *
- * `scope` decides which matrix legs of ONE workflow a pull request must run.
- * Each workflow declares its own legs inline (the `spec` input of
- * .github/actions/ci-scope), so the legs stay visible in the workflow file
- * and this script holds no application names — only generic rules.
+ * `scope` decides which jobs/matrix legs of the CI workflow a pull request
+ * must run. The workflow declares its legs inline (the `spec` input of
+ * .github/actions/ci-scope), so they stay visible in the workflow file and
+ * this script holds no application names — only generic rules.
  *
- * A leg runs when the PR changes `apps/<id>/**`, a shared dependency of its
- * kind (SHARED below), or a path the leg declares in `also`. One narrowing:
+ * A leg runs when the PR changes `apps/<id>/<within>` (default: anything in
+ * the app), a shared dependency of its kind (SHARED below), or a path the
+ * leg declares in `also`. A draft PR runs no scoped leg; marking it ready
+ * for review re-runs the scope on the whole diff. A scheduled run runs only
+ * jobs marked `onSchedule`, in full. One narrowing:
  * a root package-lock.json change whose ONLY difference (merge base vs PR
  * head) is the `version` of `apps/<id>` workspace entries — a per-app
  * release bump — counts as a change to those apps, not to every Node leg.
  *
  * Fail-safe: EVERY leg runs ("full" mode) when
- *   - the event is not `pull_request` (push to main, schedule, manual run);
+ *   - the event is a push or a manual run (workflow_dispatch);
  *   - the changed-file list is unavailable, empty, or at GitHub's 3000-file
  *     API limit;
  *   - the PR changes this workflow file, the scoping action or this script;
  *   - the PR changes a path no rule knows about (KNOWN_PATHS).
  *
- * `verify` runs in each workflow's `<workflow>-result` job. It fails unless
+ * `verify` runs in the workflow's `<workflow>-result` job. It fails unless
  * the scope job succeeded, every job that had to run succeeded, and every
  * job that was scoped out was skipped (never failed or cancelled).
  *
@@ -171,17 +174,23 @@ function compileSpec(spec) {
       if (!SHARED[kind]) throw new Error(`${job}: unknown shared kind "${kind}"`);
     }
     const base = [...shared.flatMap((k) => SHARED[k]), ...(def.also || [])];
+    // `within`: app-relative globs that count as a change to the app for this
+    // job (default: anything in the app).
+    const within = def.within || ["**"];
+    if (!Array.isArray(within) || !within.length) throw new Error(`${job}: within must be a non-empty list`);
+    const appPaths = (id) => within.map((w) => `apps/${id}/${w}`);
+    const onSchedule = def.onSchedule === true;
     if (Array.isArray(def.matrix)) {
       if (!def.matrix.length) throw new Error(`${job}: matrix is empty`);
       const legs = def.matrix.map((entry) => {
         const id = entryId(entry, job);
         const { also = [], ...matrixFields } = entry;
-        return { id, matrixFields, paths: [`apps/${id}/**`, ...base, ...also] };
+        return { id, matrixFields, paths: [...appPaths(id), ...base, ...also] };
       });
-      jobs.push({ job, matrix: true, legs });
+      jobs.push({ job, matrix: true, onSchedule, legs });
     } else if (Array.isArray(def.apps) && def.apps.length) {
-      const paths = [...def.apps.map((a) => `apps/${a}/**`), ...base];
-      jobs.push({ job, matrix: false, legs: [{ id: job, paths }] });
+      const paths = [...def.apps.flatMap(appPaths), ...base];
+      jobs.push({ job, matrix: false, onSchedule, legs: [{ id: job, paths }] });
     } else {
       throw new Error(`${job}: needs a non-empty "matrix" or "apps" list`);
     }
@@ -196,8 +205,10 @@ function compileSpec(spec) {
  *   changedFiles null/undefined means the diff could not be read.
  *   lockfile: the root lockfile at the merge base and at the PR head, when
  *   the PR changes it (see lockfileVersionOnlyApps).
+ *   draft: the pull request is a draft — no scoped leg runs until it is
+ *   marked ready for review (that event re-runs the scope on the full diff).
  */
-function computeScope({ workflow, event, spec, changedFiles, lockfile = null }) {
+function computeScope({ workflow, event, spec, changedFiles, lockfile = null, draft = false }) {
   const jobs = compileSpec(spec);
   const fullReasons = [];
   const notes = [];
@@ -214,6 +225,14 @@ function computeScope({ workflow, event, spec, changedFiles, lockfile = null }) 
     }
   }
 
+  if (event === "schedule") {
+    return finish(jobs, workflow, "schedule",
+      ["scheduled run: only jobs marked onSchedule run, in full"], [], new Map());
+  }
+  if (event === "pull_request" && draft) {
+    return finish(jobs, workflow, "draft",
+      ["draft pull request: scoped legs run when it is marked ready for review"], [], new Map());
+  }
   if (event !== "pull_request") fullReasons.push(`event "${event}" always runs every leg`);
   else if (files == null) fullReasons.push("changed-file list unavailable");
   else if (files.length === 0) fullReasons.push("changed-file list is empty");
@@ -248,11 +267,16 @@ function computeScope({ workflow, event, spec, changedFiles, lockfile = null }) 
   }
 
   const full = fullReasons.length > 0;
-  const result = { workflow, mode: full ? "full" : "scoped", reasons: fullReasons, notes: full ? [] : notes, jobs: {} };
+  return finish(jobs, workflow, full ? "full" : "scoped", fullReasons, full ? [] : notes, hits);
+}
+
+function finish(jobs, workflow, mode, reasons, notes, hits) {
+  const result = { workflow, mode, reasons, notes, jobs: {} };
   for (const j of jobs) {
     const legs = j.legs.map((leg) => {
       const why = hits.get(`${j.job}/${leg.id}`) || [];
-      return { id: leg.id, run: full || why.length > 0, matrixFields: leg.matrixFields, because: full ? [] : why };
+      const run = mode === "full" || (mode === "schedule" && j.onSchedule) || (mode === "scoped" && why.length > 0);
+      return { id: leg.id, run, matrixFields: leg.matrixFields, because: mode === "scoped" ? why : [] };
     });
     const run = legs.some((l) => l.run);
     result.jobs[j.job] = {
@@ -280,12 +304,19 @@ function scopeSummary(result) {
   const lines = [`### CI scope — \`${result.workflow}\`: **${result.mode}**`, ""];
   if (result.mode === "full") {
     lines.push("Every leg runs because:", ...result.reasons.map((r) => `- ${r}`), "");
+  } else if (result.reasons.length) {
+    lines.push(...result.reasons.map((r) => `- ${r}`), "");
   }
   if (result.notes.length) lines.push(...result.notes.map((n) => `- ${n}`), "");
+  const skipped = {
+    scoped: "skipped — no change to its inputs",
+    draft: "skipped — draft PR",
+    schedule: "skipped — not a scheduled job",
+  }[result.mode];
   lines.push("| Job | Leg | Decision | Changed paths that selected it |", "|---|---|---|---|");
   for (const [job, r] of Object.entries(result.jobs)) {
     for (const leg of r.legs) {
-      const decision = leg.run ? "RUN" : "skipped — no change to its inputs";
+      const decision = leg.run ? "RUN" : skipped;
       const shown = leg.because.slice(0, 3).map((f) => `\`${f}\``).join(", ");
       const more = leg.because.length > 3 ? ` (+${leg.because.length - 3} more)` : "";
       lines.push(`| ${job} | ${leg.id} | ${decision} | ${shown}${more} |`);
@@ -373,7 +404,8 @@ function main(argv) {
         lockfile = null; // unreadable -> treated as a real dependency change
       }
     }
-    const result = computeScope({ workflow: args.workflow, event: args.event, spec, changedFiles, lockfile });
+    const draft = args.draft === "true";
+    const result = computeScope({ workflow: args.workflow, event: args.event, spec, changedFiles, lockfile, draft });
     writeKeyValues(process.env.GITHUB_OUTPUT, scopeOutputs(result));
     const summary = scopeSummary(result);
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);

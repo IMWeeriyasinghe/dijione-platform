@@ -1,9 +1,9 @@
 name: ci-scope
 description: >-
-  Change-aware CI scoping. Reads the pull request's changed files and decides
-  which of the calling workflow's matrix legs must run (scripts/ci/ci-scope.js).
-  Anything that is not a pull_request event, or any doubt about the diff,
-  runs every leg. Needs `pull-requests: read` and a checkout that includes
+  Change-aware CI scoping. Reads the pull request's changed files and draft
+  state and decides which of the calling workflow's jobs/legs must run
+  (scripts/ci/ci-scope.js). A push or manual run, or any doubt about the
+  diff, runs every leg. Needs `pull-requests: read` and a checkout that includes
   .github/actions and scripts/ci.
 
 inputs:
@@ -28,6 +28,7 @@ runs:
         GH_TOKEN: ${{ github.token }}
         EVENT: ${{ github.event_name }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_DRAFT: ${{ github.event.pull_request.draft }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         REPO: ${{ github.repository }}
@@ -37,6 +38,7 @@ runs:
         set -uo pipefail
         args=(scope --workflow "$WORKFLOW" --event "$EVENT")
         if [ "$EVENT" = "pull_request" ]; then
+          args+=(--draft "${PR_DRAFT:-false}")
           list="$RUNNER_TEMP/ci-scope-changed-files.txt"
           # Both sides of a rename count: moving a file out of an app changes it too.
           if gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \

@@ -11,12 +11,13 @@ const {
   outputKey,
   readSpecFromWorkflow,
   scopeOutputs,
+  scopeSummary,
   verifyNeeds,
 } = require("./ci-scope");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
-const SCOPED_WORKFLOWS = ["api", "web", "migrations", "postgres", "module-boundaries"];
+const SCOPED_WORKFLOWS = ["ci"];
 
 // Synthetic spec: generic ids only.
 const SPEC = {
@@ -32,11 +33,19 @@ const SPEC = {
     shared: ["node"],
     matrix: [{ app: "alpha-web", also: ["deploy/**"] }, { app: "beta-web" }],
   },
-  "bundle": { shared: ["node"], apps: ["alpha-web", "beta-web"], also: ["scripts/guard.js"] },
+  "bundle": { shared: ["node"], apps: ["alpha-web", "beta-web"], also: ["scripts/guard.js"], onSchedule: true },
+  "migrate": { shared: ["python"], within: ["alembic/**", "app/models/**"], matrix: [{ service: "alpha-api" }] },
+};
+const NONE = { "lint-test": [], "lint-build": [], bundle: [], migrate: [] };
+const ALL = {
+  "lint-test": ["alpha-api", "beta-api", "gamma-api"],
+  "lint-build": ["alpha-web", "beta-web"],
+  bundle: ["bundle"],
+  migrate: ["alpha-api"],
 };
 
-const scope = (changedFiles, event = "pull_request") =>
-  computeScope({ workflow: "demo", event, spec: SPEC, changedFiles });
+const scope = (changedFiles, event = "pull_request", extra = {}) =>
+  computeScope({ workflow: "demo", event, spec: SPEC, changedFiles, ...extra });
 const running = (r) =>
   Object.fromEntries(Object.entries(r.jobs).map(([j, v]) => [j, v.legs.filter((l) => l.run).map((l) => l.id)]));
 
@@ -49,16 +58,30 @@ test("glob: ** spans directories, * stays within one segment", () => {
   assert.ok(!globToRegExp("package.json").test("packageXjson"));
 });
 
-test("non-pull_request events always run every leg", () => {
-  for (const event of ["push", "schedule", "workflow_dispatch"]) {
+test("push and manual runs always run every leg", () => {
+  for (const event of ["push", "workflow_dispatch"]) {
     const r = scope(["docs/a.md"], event);
     assert.equal(r.mode, "full", event);
-    assert.deepEqual(running(r), {
-      "lint-test": ["alpha-api", "beta-api", "gamma-api"],
-      "lint-build": ["alpha-web", "beta-web"],
-      bundle: ["bundle"],
-    });
+    assert.deepEqual(running(r), ALL);
   }
+});
+
+test("a scheduled run runs only onSchedule jobs, in full", () => {
+  const r = scope(null, "schedule");
+  assert.equal(r.mode, "schedule");
+  assert.deepEqual(running(r), { ...NONE, bundle: ["bundle"] });
+  assert.match(scopeSummary(r), /skipped — not a scheduled job/);
+});
+
+test("a draft pull request runs no scoped leg, whatever it changes", () => {
+  for (const files of [["apps/alpha-api/app/x.py"], ["scripts/ci/ci-scope.js"], ["Makefile"], null]) {
+    const r = scope(files, "pull_request", { draft: true });
+    assert.equal(r.mode, "draft", JSON.stringify(files));
+    assert.deepEqual(running(r), NONE);
+    assert.match(scopeSummary(r), /draft pull request/);
+  }
+  // marking it ready re-runs the scope on the whole diff
+  assert.deepEqual(running(scope(["apps/alpha-api/app/x.py"], "pull_request", { draft: false }))["lint-test"], ["alpha-api"]);
 });
 
 test("an unreadable, empty or truncated diff runs every leg", () => {
@@ -72,7 +95,7 @@ test("an unreadable, empty or truncated diff runs every leg", () => {
 test("a docs-only pull request runs no scoped leg", () => {
   const r = scope(["docs/platform/x.md", "README.md", ".claude/settings.json", "docs/a/b/c.png"]);
   assert.equal(r.mode, "scoped");
-  assert.deepEqual(running(r), { "lint-test": [], "lint-build": [], bundle: [] });
+  assert.deepEqual(running(r), NONE);
   assert.deepEqual(scopeOutputs(r), {
     mode: "scoped",
     run_lint_test: "false",
@@ -80,15 +103,24 @@ test("a docs-only pull request runs no scoped leg", () => {
     run_lint_build: "false",
     lint_build: '{"include":[]}',
     run_bundle: "false",
+    run_migrate: "false",
+    migrate: '{"include":[]}',
   });
 });
 
 test("an app change runs only that app's legs", () => {
   const r = scope(["apps/beta-api/app/x.py"]);
   assert.equal(r.mode, "scoped");
-  assert.deepEqual(running(r), { "lint-test": ["beta-api"], "lint-build": [], bundle: [] });
+  assert.deepEqual(running(r), { ...NONE, "lint-test": ["beta-api"] });
   // matrix fields pass through; `also` never leaks into the matrix
   assert.deepEqual(r.jobs["lint-test"].include, [{ service: "beta-api", db: "beta_dev" }]);
+});
+
+test("`within` limits which app paths select a job", () => {
+  assert.deepEqual(running(scope(["apps/alpha-api/app/routes/x.py"])), { ...NONE, "lint-test": ["alpha-api"] });
+  for (const f of ["apps/alpha-api/alembic/versions/1.py", "apps/alpha-api/app/models/user.py"]) {
+    assert.deepEqual(running(scope([f])), { ...NONE, "lint-test": ["alpha-api"], migrate: ["alpha-api"] }, f);
+  }
 });
 
 test("an app's own README still counts as a change to that app", () => {
@@ -97,31 +129,19 @@ test("an app's own README still counts as a change to that app", () => {
 
 test("a shared Python input fans out to every Python leg and no Node leg", () => {
   for (const file of ["packages/auth-client-py/x.py", "packages/mail-client-py/y.py", ".python-version"]) {
-    assert.deepEqual(running(scope([file])), {
-      "lint-test": ["alpha-api", "beta-api", "gamma-api"],
-      "lint-build": [],
-      bundle: [],
-    }, file);
+    assert.deepEqual(running(scope([file])), { ...NONE, "lint-test": ALL["lint-test"], migrate: ["alpha-api"] }, file);
   }
 });
 
 test("a shared Node input fans out to every Node leg and no Python leg", () => {
   for (const file of ["package-lock.json", "package.json", ".nvmrc", "packages/design-system/src/a.tsx",
     "packages/contracts/x.ts", "packages/auth-client-ts/y.ts"]) {
-    assert.deepEqual(running(scope([file])), {
-      "lint-test": [],
-      "lint-build": ["alpha-web", "beta-web"],
-      bundle: ["bundle"],
-    }, file);
+    assert.deepEqual(running(scope([file])), { ...NONE, "lint-build": ALL["lint-build"], bundle: ["bundle"] }, file);
   }
 });
 
 test("declared cross-directory inputs (`also`) select their leg", () => {
-  assert.deepEqual(running(scope(["deploy/bicep/main.bicep"])), {
-    "lint-test": [],
-    "lint-build": ["alpha-web"],
-    bundle: [],
-  });
+  assert.deepEqual(running(scope(["deploy/bicep/main.bicep"])), { ...NONE, "lint-build": ["alpha-web"] });
   assert.deepEqual(running(scope(["apps/gamma-web/fixtures/a.json"]))["lint-test"], ["gamma-api"]);
   assert.deepEqual(running(scope(["scripts/guard.js"])).bundle, ["bundle"]);
 });
@@ -138,7 +158,7 @@ test("changes to the scoping machinery or this workflow run every leg", () => {
 test("another workflow's file does not widen this workflow", () => {
   const r = scope([".github/workflows/other.yml"]);
   assert.equal(r.mode, "scoped");
-  assert.deepEqual(running(r), { "lint-test": [], "lint-build": [], bundle: [] });
+  assert.deepEqual(running(r), NONE);
 });
 
 test("an unknown path runs every leg (fail-safe)", () => {
@@ -165,9 +185,9 @@ test("lockfile: a workspace version bump is a change to that app only", () => {
   const head = lock({ "apps/alpha-web": { version: "1.0.1", dependencies: { react: "^19" } } });
   const r = scope(["apps/alpha-web/package.json", "package-lock.json"]);
   assert.deepEqual(running(r)["lint-build"], ["alpha-web", "beta-web"], "without lockfile content: fan-out");
-  const narrowed = computeScope({ workflow: "demo", event: "pull_request", spec: SPEC,
-    changedFiles: ["apps/alpha-web/package.json", "package-lock.json"], lockfile: { base: lock(), head } });
-  assert.deepEqual(running(narrowed), { "lint-test": [], "lint-build": ["alpha-web"], bundle: ["bundle"] });
+  const narrowed = scope(["apps/alpha-web/package.json", "package-lock.json"], "pull_request",
+    { lockfile: { base: lock(), head } });
+  assert.deepEqual(running(narrowed), { ...NONE, "lint-build": ["alpha-web"], bundle: ["bundle"] });
   assert.match(narrowed.notes.join(), /only workspace versions changed \(alpha-web\)/);
 });
 
@@ -180,8 +200,7 @@ test("lockfile: any dependency-tree difference keeps the full Node fan-out", () 
     { ...lock(), packages: undefined },
   ];
   for (const head of heads) {
-    const r = computeScope({ workflow: "demo", event: "pull_request", spec: SPEC,
-      changedFiles: ["package-lock.json"], lockfile: { base: lock(), head } });
+    const r = scope(["package-lock.json"], "pull_request", { lockfile: { base: lock(), head } });
     assert.deepEqual(running(r)["lint-build"], ["alpha-web", "beta-web"], JSON.stringify(head).slice(0, 80));
   }
   assert.equal(lockfileVersionOnlyApps(null, lock()), null);
@@ -194,7 +213,7 @@ test("lockfile: identical content selects nothing", () => {
 
 test("invalid specs are rejected, never silently empty", () => {
   const bad = [{}, [], null, { j: {} }, { j: { matrix: [] } }, { j: { matrix: [{ x: 1 }] } },
-    { j: { shared: ["cobol"], apps: ["a"] } }];
+    { j: { shared: ["cobol"], apps: ["a"] } }, { j: { apps: ["a"], within: [] } }];
   for (const spec of bad) {
     assert.throws(() => computeScope({ workflow: "w", event: "pull_request", spec, changedFiles: ["a"] }));
   }
@@ -231,7 +250,7 @@ test("verify fails on any failed, cancelled or missing evidence", () => {
   for (const needs of cases) assert.notDeepEqual(verifyNeeds(needs), [], JSON.stringify(needs));
 });
 
-// The real workflows: wiring that would otherwise let a leg be bypassed.
+// The real workflow: wiring that would otherwise let a leg be bypassed.
 function topLevelJobs(text) {
   const lines = text.split(/\r?\n/);
   const start = lines.findIndex((l) => l === "jobs:");
@@ -255,33 +274,49 @@ for (const wf of SCOPED_WORKFLOWS) {
     }
   });
 
-  test(`${wf}.yml: the result job requires every other job`, () => {
+  test(`${wf}.yml: the result job requires every other job, and only scope-spec jobs are gated`, () => {
     const jobs = topLevelJobs(text);
     const result = `${wf}-result`;
     assert.ok(jobs.includes(result), "result job exists");
-    const needsLine = text.split(/\r?\n/)[text.split(/\r?\n/).indexOf(`  ${result}:`) + 1];
+    const lines = text.split(/\r?\n/);
+    const needsLine = lines[lines.indexOf(`  ${result}:`) + 1];
     const needed = needsLine.replace(/^\s*needs:\s*\[|\]\s*$/g, "").split(",").map((s) => s.trim());
     assert.deepEqual([...needed].sort(), jobs.filter((j) => j !== result).sort());
     assert.ok(text.includes(`  ${result}:\n    needs: [`) && text.includes("if: ${{ !cancelled() }}"));
+    // every job except scope, guard and the result job is a scoped job
+    assert.deepEqual(jobs.filter((j) => !["scope", "guard", result].includes(j)).sort(), Object.keys(spec).sort());
   });
 
-  test(`${wf}.yml: scope changes trigger the workflow, and push runs every leg`, () => {
-    if (wf !== "module-boundaries") {
-      assert.ok(text.includes('- ".github/actions/ci-scope/**"') && text.includes('- "scripts/ci/**"'));
-    }
+  test(`${wf}.yml: runs on every pull request event, including ready_for_review, with no path filter`, () => {
+    const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\nconcurrency:"));
+    assert.match(on, /\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened, ready_for_review\]\n/);
+    assert.ok(!/paths(-ignore)?:/.test(on), "no paths filter on any trigger");
+    assert.match(on, /\n {2}push:\n {4}branches: \[main\]\n/);
+    assert.match(on, /\n {2}workflow_dispatch:/);
+  });
+
+  test(`${wf}.yml: push runs every leg; the schedule runs exactly the onSchedule jobs`, () => {
     const full = computeScope({ workflow: wf, event: "push", spec, changedFiles: null });
     for (const [job, r] of Object.entries(full.jobs)) {
       assert.ok(r.legs.every((l) => l.run), job);
       if (r.matrix) assert.equal(r.include.length, spec[job].matrix.length, job);
     }
+    const weekly = computeScope({ workflow: wf, event: "schedule", spec, changedFiles: null });
+    const scheduled = Object.keys(spec).filter((j) => spec[j].onSchedule);
+    assert.ok(scheduled.length > 0);
+    for (const [job, r] of Object.entries(weekly.jobs)) {
+      assert.equal(r.legs.every((l) => l.run), scheduled.includes(job), job);
+      assert.equal(r.legs.some((l) => l.run), scheduled.includes(job), job);
+    }
   });
 
   test(`${wf}.yml: each leg is selected by its own app, by its shared kind and by its 'also' paths`, () => {
     for (const [job, def] of Object.entries(spec)) {
-      const legs = def.matrix || [{ id: job, also: [], app: def.apps[0] }];
+      const legs = def.matrix || [{ app: def.apps[0] }];
+      const within = (def.within || ["**"])[0];
       for (const leg of legs) {
         const id = leg.service || leg.app;
-        const samples = [`apps/${id}/x/y.txt`, ...(leg.also || []), ...(def.also || []),
+        const samples = [`apps/${id}/${within}`, ...(leg.also || []), ...(def.also || []),
           ...[].concat(def.shared).map((k) => SHARED[k][0])]
           .map((g) => g.replace(/\*\*/g, "x/y.txt").replace(/\*/g, "z"));
         for (const sample of samples) {

@@ -194,19 +194,13 @@ bypass it:
   with `main` before merge.
 - `required_status_checks.contexts` — the **stable gate contexts** of the
   change-aware CI (see "Change-aware CI" below), not the per-leg names:
-  - `api-result`, `web-result`, `migrations-result`, `postgres-result`,
-    `module-boundaries-result` (5) — each fails unless every in-scope leg
-    of its workflow ran and passed and every other leg was skipped by the
-    scope decision;
-  - `guard` (module independence, runs on every PR) and `gitleaks` (2);
-  - **7 named contexts total.** Matrix legs are added or removed without
-    touching this list.
-  - Caveat for the PUT: `api`, `web`, `migrations` and `postgres` keep
-    workflow-level `paths:` triggers, so on a PR that triggers none of
-    them their `-result` context never reports. Requiring those four in
-    branch protection would block such PRs; mark only `guard`, `gitleaks`
-    and `module-boundaries-result` (which run on every PR) as strictly
-    required, and keep the other four under the Gatekeeper rule below.
+  - `ci-result` — fails unless `scope` and `guard` passed, every in-scope
+    job/leg of the `ci` workflow ran and passed, and every other one was
+    skipped by the scope decision;
+  - `guard` (module independence) and `gitleaks` (secret scan);
+  - **3 named contexts total**, all reported on every pull request (no
+    path filters). Matrix legs are added or removed without touching
+    this list.
 - `enforce_admins = true` — protection applies even to the repo owner.
   CODEOWNERS names only the human user themselves, so without this the
   "no bypass" guarantee has a hole.
@@ -231,36 +225,48 @@ bypass it:
 drifted every time a matrix changed — it was already missing the
 `onsite-*`/`atwork-*` legs, `talentflow-portal-web`, `e2e` and the
 module-removal jobs. With change-aware CI a skipped leg reports no check
-at all, so a per-leg required list is no longer usable. The `-result`
-jobs are the fixed contexts; the leg lists live in each workflow's
-`ci-scope` spec. A PR that adds a job to one of the five workflows
-without adding it to that workflow's `-result` `needs:` fails
-`scripts/ci/ci-scope.test.js` and is a `CI_CONFIGURATION_DEFECT` (§5).
+at all, so a per-leg required list is no longer usable. `ci-result` is
+the fixed gate; the leg lists live in the `ci` workflow's `ci-scope`
+spec. A PR that adds a job to `ci.yml` without gating it on its scope
+flag and adding it to `ci-result`'s `needs:` fails
+`scripts/ci/ci-scope.test.js` (run inside `guard` on every PR) and is a
+`CI_CONFIGURATION_DEFECT` (§5).
 
 **While protection remains unconfigured (current status, above), on
-every PR the Gatekeeper confirms via `gh pr checks`:**
-1. `guard`, `gitleaks` and `module-boundaries-result` ran and passed;
-2. for each of `api`, `web`, `migrations`, `postgres`: if the PR changes
-   any path in that workflow's `pull_request.paths`, its `-result`
-   context ran and passed; if it changes none, the workflow correctly
-   did not trigger (not a defect);
-3. every leg the scope summaries mark **RUN** has a passing check of its
-   own (`<job> (<id>)`), and every **skipped** leg passes the §6 skip
+every non-draft PR the Gatekeeper confirms via `gh pr checks`:**
+1. `ci-result`, `guard` and `gitleaks` ran and passed on the PR head;
+2. the `scope` summary for that run is **scoped** or **full** — never
+   **draft** (a draft-mode result says nothing about the code; the PR
+   must be marked ready and re-run first);
+3. every leg the summary marks **RUN** has a passing check of its own
+   (`<job> (<id>)`), and every **skipped** leg passes the §6 skip
    verification.
 
 ## Change-aware CI
 
-`api`, `web`, `migrations`, `postgres` and `module-boundaries` each start
-with a `scope` job (`.github/actions/ci-scope` →
-`scripts/ci/ci-scope.js`) and end with a `<workflow>-result` job.
+One workflow, `.github/workflows/ci.yml` (formerly `api`, `web`,
+`migrations`, `postgres` and `module-boundaries`), runs on every pull
+request event (`opened`, `synchronize`, `reopened`, `ready_for_review`),
+push to `main`, a weekly schedule and manual `workflow_dispatch`. It
+starts with a `scope` job (`.github/actions/ci-scope` →
+`scripts/ci/ci-scope.js`) and ends with `ci-result`. `secret-scan` stays
+a separate, unscoped workflow.
 
-- **Required, always executed:** `scope`, `<workflow>-result`, `guard`,
-  `gitleaks`. They never skip on a PR that triggers their workflow.
+- **Required, always executed:** `scope`, `guard` (which also runs the
+  `ci-scope` self-test), `ci-result`, `gitleaks`. They run on every
+  event, drafts included.
+- **Draft PRs run no scoped leg.** Marking the PR ready for review fires
+  `ready_for_review`, which scopes the whole PR diff and runs every leg it
+  needs; later pushes are scoped as usual. A draft can be fully tested on
+  demand with `workflow_dispatch` on its branch. GitHub cannot merge a
+  draft, so no change reaches a protected branch untested.
 - **Required when in scope:** a matrix leg (`lint-test (<service>)`,
   `pg (<service>)`, `removal-api (<service>)`, …) or a single job
   (`removal-web`, `atwork-removal-web`) runs when the PR changes
-  `apps/<id>/**`, a shared input of its kind, or a path the workflow's
-  spec declares for it in `also`:
+  `apps/<id>/**` (for `upgrade`: only `alembic/**`, `alembic.ini`,
+  `app/models/**` or `requirements.txt` in the service — the old
+  `migrations` trigger, slightly widened), a shared input of its kind, or
+  a path the spec declares for it in `also`:
   - shared Python inputs (every Python leg): `packages/auth-client-py/**`,
     `packages/mail-client-py/**`, `.python-version`;
   - shared Node inputs (every Node leg): `packages/design-system/**`,
@@ -277,19 +283,21 @@ with a `scope` job (`.github/actions/ci-scope` →
 - **Safely skipped:** a leg whose inputs the PR does not touch. Its check
   is absent and the scope job's summary lists it as `skipped — no change
   to its inputs`.
-- **Every leg runs (full mode)** on push to `main`, the weekly
-  `module-boundaries` schedule, any manual `workflow_dispatch` run, and on
-  a PR whose changed-file list is unavailable/empty/at the 3000-file API
-  limit, that changes the workflow itself, `.github/actions/**`,
-  `scripts/ci/**` or `.gitattributes`, or that changes a path no rule
-  knows (outside `apps/`, `packages/`, `deploy/`, `docs/`, `scripts/`,
-  `.github/`, `.claude/`, `agents/`, `modules/`, `integrations/`, root
-  `*.md` and a few root dotfiles). Unknown means full, never skip.
+- **Every leg runs (full mode)** on push to `main`, any manual
+  `workflow_dispatch` run, and on a non-draft PR whose changed-file list
+  is unavailable/empty/at the 3000-file API limit, that changes
+  `.github/workflows/ci.yml`, `.github/actions/**`, `scripts/ci/**` or
+  `.gitattributes`, or that changes a path no rule knows (outside
+  `apps/`, `packages/`, `deploy/`, `docs/`, `scripts/`, `.github/`,
+  `.claude/`, `agents/`, `modules/`, `integrations/`, root `*.md` and a
+  few root dotfiles). Unknown means full, never skip.
+- **Weekly schedule** (Monday 03:00 UTC, default branch): `guard` plus the
+  four module-removal jobs in full — the scope of the old
+  `module-boundaries` schedule.
 - **Release full run.** Pull requests into a release branch are scoped
-  like any other. Before UAT/PROD promotion, run `api`, `web`,
-  `migrations`, `postgres` and `module-boundaries` with
+  like any other. Before UAT/PROD promotion, run `ci` with
   `workflow_dispatch` on the release branch head (full mode) and record
-  the run links in the release record.
+  the run link in the release record.
 
 **Who applies this, once available.** The initial `PUT` is a one-time,
 user-run (or user-reviewed single agent action) step — not something the
@@ -374,11 +382,13 @@ classification does **not** by itself mean human escalation:
    the intentional-weakening case in §5/§7 (`HUMAN_REQUIRED`).
 
    **A skipped CI leg is verified against the diff, never trusted
-   blindly** (§4 "Change-aware CI"). For each workflow the PR triggered,
-   read the `scope` job summary (`gh run view <run-id>` → job `scope`).
-   Then, from `gh pr diff --name-only`:
-   - a leg marked skipped whose `apps/<id>/**`, shared inputs of its kind
-     or declared `also` paths appear in the diff is a
+   blindly** (§4 "Change-aware CI"). Read the `scope` job summary of the
+   `ci` run on the PR head (`gh run view <run-id>` → job `scope`). A
+   **draft**-mode summary is never evidence: the PR must be marked ready
+   and re-run. Then, from `gh pr diff --name-only`:
+   - a leg marked skipped whose `apps/<id>/**` (for `upgrade`, its
+     `within` paths), shared inputs of its kind or declared `also` paths
+     appear in the diff is a
      `CI_CONFIGURATION_DEFECT` — route it to the Development Agent; never
      accept it as `PASS`;
    - a shared-input change (`packages/*`, `.python-version`, `.nvmrc`,
@@ -387,16 +397,16 @@ classification does **not** by itself mean human escalation:
      visible in the summary as "only workspace versions changed (<ids>)";
      confirm with `gh pr diff -- package-lock.json` that only those
      `"version"` lines changed;
-   - a PR that changes `.github/workflows/<wf>.yml`, `.github/actions/**`
-     or `scripts/ci/**` must show **full** mode in every triggered
-     workflow's summary;
-   - a missing or failed `<workflow>-result` on a triggered workflow is a
-     failed required check, whatever the per-leg checks show;
+   - a non-draft PR that changes `.github/workflows/ci.yml`,
+     `.github/actions/**` or `scripts/ci/**` must show **full** mode;
+   - a missing or failed `ci-result` is a failed required check, whatever
+     the per-leg checks show;
    - a PR that edits `scripts/ci/ci-scope.js` rules (`SHARED`,
-     `FULL_RUN_PATHS`, `KNOWN_PATHS`), a workflow's `spec`, or a `-result`
-     job's `needs:` narrows CI by definition: treat any narrowing as the
-     intentional-weakening case (`HUMAN_REQUIRED`).
-   A verified skip is informational, like a workflow that did not trigger.
+     `FULL_RUN_PATHS`, `KNOWN_PATHS`, the draft/schedule handling),
+     `ci.yml`'s `spec` (legs, `within`, `also`, `onSchedule`), its
+     triggers, or `ci-result`'s `needs:` narrows CI by definition: treat
+     any narrowing as the intentional-weakening case (`HUMAN_REQUIRED`).
+   A verified skip is informational, like a job that did not need to run.
 2. **New cross-service DB/FK reference.** `gh pr diff` scanned for a new
    import of another service's SQLAlchemy models, or a new engine/session
    pointed at another service's `DATABASE_URL` env var — violates the "no

@@ -1,0 +1,542 @@
+name: ci
+
+# One change-aware CI workflow (formerly api, web, migrations, postgres and
+# module-boundaries). docs/platform/engineering-gatekeeper.md §4 "Change-aware
+# CI" is the contract.
+#
+#   scope     — decides which jobs/legs this event needs (scripts/ci/ci-scope.js,
+#               rules + the `spec` below). Pull request: only legs whose inputs
+#               changed; a draft runs none until it is marked ready for review.
+#               Push to main and manual runs: every leg. Weekly schedule: the
+#               module-removal jobs, in full.
+#   guard     — module-independence static gate; runs on EVERY event.
+#   ci-result — the single required context: fails unless `scope` and `guard`
+#               passed, every in-scope job ran and passed, and every other
+#               job was skipped by the scope decision.
+#
+# Module-independence gate for Diji On-site and DijiAtWork
+# (docs/onsite/module-removal.md, docs/atwork/module-removal.md):
+#   1. guard   — no module references outside its own apps and the
+#                allow-listed registration points (zero tolerance elsewhere);
+#   2. removal — physically delete a module's apps, then prove every remaining
+#                service still tests, migrates and builds.
+#
+# Real-PostgreSQL verification (`pg`) for every service that owns a database
+# (Architecture Completion Plan Wave D / Wave H-local). Local dev + the
+# `lint-test` / `upgrade` jobs stay on SQLite for speed; `pg` proves
+# migrations apply and the full suite passes against Postgres 16 — the
+# production engine (Azure Database for PostgreSQL Flexible Server).
+#
+# The `_dev`-suffixed database names in the `pg` spec below (platform_dev,
+# talent_dev, ...) are INTENTIONALLY environment-agnostic and unrelated to
+# any real DEV/UAT/PROD Azure database. The job spins up a throwaway
+# `postgres:16` service container per matrix run that exists only for the
+# duration of the CI job and is discarded afterward — it never connects to
+# `psql-dijione-<env>` or any other real, hosted server. Reviewed as part of
+# the deploy/bicep environment-awareness fix (foundation.bicep/main.bicep/
+# init-secrets.sh) and deliberately left unchanged: these are ephemeral CI
+# database names, not an infrastructure environment leak.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "0 3 * * 1"   # weekly, Monday 03:00 UTC — module-removal jobs
+  # Manual full run (every leg), e.g. on a release branch before promotion.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      lint_test: ${{ steps.scope.outputs.lint_test }}
+      run_lint_test: ${{ steps.scope.outputs.run_lint_test }}
+      lint_build: ${{ steps.scope.outputs.lint_build }}
+      run_lint_build: ${{ steps.scope.outputs.run_lint_build }}
+      e2e: ${{ steps.scope.outputs.e2e }}
+      run_e2e: ${{ steps.scope.outputs.run_e2e }}
+      upgrade: ${{ steps.scope.outputs.upgrade }}
+      run_upgrade: ${{ steps.scope.outputs.run_upgrade }}
+      pg: ${{ steps.scope.outputs.pg }}
+      run_pg: ${{ steps.scope.outputs.run_pg }}
+      removal_api: ${{ steps.scope.outputs.removal_api }}
+      run_removal_api: ${{ steps.scope.outputs.run_removal_api }}
+      run_removal_web: ${{ steps.scope.outputs.run_removal_web }}
+      atwork_removal_api: ${{ steps.scope.outputs.atwork_removal_api }}
+      run_atwork_removal_api: ${{ steps.scope.outputs.run_atwork_removal_api }}
+      run_atwork_removal_web: ${{ steps.scope.outputs.run_atwork_removal_web }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            scripts/ci
+      - id: scope
+        uses: ./.github/actions/ci-scope
+        with:
+          workflow: ci
+          # A leg runs when apps/<id>/<within> (default **), a shared input of
+          # its kind, or an `also` path changes. Declared cross-directory inputs:
+          # shell-web's regression test reads deploy/ (Dockerfile.web, Bicep);
+          # onsite-api's contract test reads onsite-web fixtures; the e2e legs
+          # start talent-api; the removal-web jobs build shell-web and run the
+          # guard script. `upgrade` keeps the old migrations trigger scope
+          # (alembic + models), widened to requirements.txt and alembic.ini.
+          spec: |
+            {
+              "lint-test": {
+                "shared": ["python"],
+                "matrix": [
+                  {"service": "platform-api"},
+                  {"service": "admin-api"},
+                  {"service": "talent-api"},
+                  {"service": "recruitment-api"},
+                  {"service": "people-api"},
+                  {"service": "commercial-api"},
+                  {"service": "birthday-api"},
+                  {"service": "spark-api"},
+                  {"service": "onsite-api", "also": ["apps/onsite-web/src/__tests__/fixtures/**"]},
+                  {"service": "atwork-api"}
+                ]
+              },
+              "lint-build": {
+                "shared": ["node"],
+                "matrix": [
+                  {"app": "shell-web", "also": ["deploy/**"]},
+                  {"app": "admin-web"},
+                  {"app": "talent-web"},
+                  {"app": "talentflow-portal-web"},
+                  {"app": "birthday-web"},
+                  {"app": "birthday-supplier-web"},
+                  {"app": "onsite-web"},
+                  {"app": "atwork-web"}
+                ]
+              },
+              "e2e": {
+                "shared": ["node", "python"],
+                "also": ["apps/talent-api/**"],
+                "matrix": [
+                  {"app": "talent-web"},
+                  {"app": "talentflow-portal-web"}
+                ]
+              },
+              "upgrade": {
+                "shared": ["python"],
+                "within": ["alembic/**", "alembic.ini", "app/models/**", "requirements.txt"],
+                "matrix": [
+                  {"service": "platform-api"},
+                  {"service": "talent-api"},
+                  {"service": "recruitment-api"},
+                  {"service": "people-api"},
+                  {"service": "commercial-api"},
+                  {"service": "birthday-api"},
+                  {"service": "onsite-api"},
+                  {"service": "atwork-api"}
+                ]
+              },
+              "pg": {
+                "shared": ["python"],
+                "matrix": [
+                  {"service": "platform-api", "db": "platform_dev"},
+                  {"service": "talent-api", "db": "talent_dev"},
+                  {"service": "recruitment-api", "db": "recruitment_dev"},
+                  {"service": "people-api", "db": "people_dev"},
+                  {"service": "commercial-api", "db": "commercial_dev"},
+                  {"service": "birthday-api", "db": "birthday_dev"}
+                ]
+              },
+              "removal-api": {
+                "shared": ["python"],
+                "onSchedule": true,
+                "matrix": [
+                  {"service": "platform-api"},
+                  {"service": "people-api"},
+                  {"service": "birthday-api"},
+                  {"service": "talent-api"},
+                  {"service": "admin-api"},
+                  {"service": "recruitment-api"},
+                  {"service": "atwork-api"}
+                ]
+              },
+              "removal-web": {
+                "shared": ["node"],
+                "onSchedule": true,
+                "also": ["deploy/**", "scripts/check-module-independence.js"],
+                "apps": ["shell-web", "admin-web", "talent-web", "talentflow-portal-web",
+                         "birthday-web", "birthday-supplier-web", "atwork-web"]
+              },
+              "atwork-removal-api": {
+                "shared": ["python"],
+                "onSchedule": true,
+                "matrix": [
+                  {"service": "platform-api"},
+                  {"service": "people-api"},
+                  {"service": "birthday-api"},
+                  {"service": "talent-api"},
+                  {"service": "admin-api"},
+                  {"service": "recruitment-api"},
+                  {"service": "onsite-api", "also": ["apps/onsite-web/src/__tests__/fixtures/**"]}
+                ]
+              },
+              "atwork-removal-web": {
+                "shared": ["node"],
+                "onSchedule": true,
+                "also": ["deploy/**", "scripts/check-module-independence.js"],
+                "apps": ["shell-web", "admin-web", "talent-web", "talentflow-portal-web",
+                         "birthday-web", "birthday-supplier-web", "onsite-web"]
+              }
+            }
+
+  # ---- module independence: static gate, every event --------------------
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Guard self-test
+        run: node --test scripts/check-module-independence.test.js
+      - name: CI scope self-test
+        run: node --test scripts/ci/ci-scope.test.js
+      - name: No On-site references outside its module and registration points
+        run: node scripts/check-module-independence.js
+
+  # ---- formerly api.yml ---------------------------------------------------
+  lint-test:
+    needs: scope
+    if: needs.scope.outputs.run_lint_test == 'true'
+    name: lint-test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.lint_test) }}
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.service }}
+    env:
+      # Never let a test reach a real external system.
+      INTEGRATIONS_MODE: mock
+      EMAIL_SENDING_MODE: mock
+      MAIL_TRANSPORT: "null"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest -q
+
+  # ---- formerly web.yml ---------------------------------------------------
+  lint-build:
+    needs: scope
+    if: needs.scope.outputs.run_lint_build == 'true'
+    name: lint-build (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.lint_build) }}
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm --workspace apps/${{ matrix.app }} run lint
+
+      - name: Test
+        run: npm --workspace apps/${{ matrix.app }} run test --if-present
+
+      - name: Build
+        run: npm --workspace apps/${{ matrix.app }} run build
+
+  e2e:
+    needs: scope
+    if: needs.scope.outputs.run_e2e == 'true'
+    name: e2e (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.e2e) }}
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install talent-api
+        working-directory: apps/talent-api
+        run: pip install -r requirements.txt
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: npm --workspace apps/${{ matrix.app }} run test:e2e
+
+  # ---- formerly migrations.yml -------------------------------------------
+  upgrade:
+    needs: scope
+    if: needs.scope.outputs.run_upgrade == 'true'
+    name: upgrade (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.upgrade) }}
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.service }}
+    env:
+      INTEGRATIONS_MODE: mock
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: alembic upgrade head (fresh SQLite)
+        run: alembic upgrade head
+
+  # ---- formerly postgres.yml ---------------------------------------------
+  pg:
+    needs: scope
+    if: needs.scope.outputs.run_pg == 'true'
+    name: pg (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.pg) }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dijione
+          POSTGRES_PASSWORD: dijione
+          POSTGRES_DB: ${{ matrix.db }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dijione"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.service }}
+    env:
+      INTEGRATIONS_MODE: mock
+      EMAIL_SENDING_MODE: mock
+      # psycopg 3 dialect — the same URL shape deploy/README.md documents.
+      DATABASE_URL: postgresql+psycopg://dijione:dijione@localhost:5432/${{ matrix.db }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: alembic upgrade head (real Postgres)
+        run: alembic upgrade head
+
+      - name: alembic downgrade base / upgrade head (idempotency)
+        run: |
+          alembic downgrade base || echo "no reversible chain — continuing"
+          alembic upgrade head
+
+      - name: Pytest (real Postgres)
+        # each service's tests/conftest.py does
+        # `os.environ.setdefault("DATABASE_URL", <sqlite>)`, so with
+        # DATABASE_URL exported above the whole suite runs against Postgres.
+        run: pytest -q
+
+  # ---- formerly module-boundaries.yml: removal gates ---------------------
+  removal-api:
+    needs: scope
+    if: needs.scope.outputs.run_removal_api == 'true'
+    name: removal-api (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.removal_api) }}
+    env:
+      INTEGRATIONS_MODE: mock
+      EMAIL_SENDING_MODE: mock
+      MAIL_TRANSPORT: "null"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove the Diji On-site module
+        run: rm -rf apps/onsite-api apps/onsite-web
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+      - name: Install
+        working-directory: apps/${{ matrix.service }}
+        run: pip install -r requirements.txt
+      - name: Pytest (module removed)
+        working-directory: apps/${{ matrix.service }}
+        run: pytest -q
+      - name: alembic upgrade head on a fresh database (module removed)
+        working-directory: apps/${{ matrix.service }}
+        run: |
+          if [ -d alembic ]; then
+            DATABASE_URL="sqlite:///./removal-check.db" alembic upgrade head
+          else
+            echo "no database for ${{ matrix.service }}"
+          fi
+
+  removal-web:
+    needs: scope
+    if: needs.scope.outputs.run_removal_web == 'true'
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Remove the Diji On-site module and its workspace entry
+        run: |
+          rm -rf apps/onsite-api apps/onsite-web
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.workspaces=p.workspaces.filter(w=>!w.startsWith('apps/onsite-'));fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+      - run: npm install --no-audit --no-fund
+      - name: Build every remaining web app (module removed)
+        run: |
+          for app in shell-web admin-web talent-web talentflow-portal-web birthday-web birthday-supplier-web atwork-web; do
+            echo "::group::$app"
+            npm --workspace apps/$app run test --if-present
+            npm --workspace apps/$app run build
+            echo "::endgroup::"
+          done
+      - name: Guard still clean with the module removed
+        run: node scripts/check-module-independence.js
+
+  # DijiAtWork removal gate (docs/atwork/module-removal.md). Separate jobs so
+  # the names of the Diji On-site checks above stay unchanged.
+  atwork-removal-api:
+    needs: scope
+    if: needs.scope.outputs.run_atwork_removal_api == 'true'
+    name: atwork-removal-api (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.atwork_removal_api) }}
+    env:
+      INTEGRATIONS_MODE: mock
+      EMAIL_SENDING_MODE: mock
+      MAIL_TRANSPORT: "null"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove the DijiAtWork module
+        run: rm -rf apps/atwork-api apps/atwork-web
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: apps/${{ matrix.service }}/requirements.txt
+      - name: Install
+        working-directory: apps/${{ matrix.service }}
+        run: pip install -r requirements.txt
+      - name: Pytest (module removed)
+        working-directory: apps/${{ matrix.service }}
+        run: pytest -q
+      - name: alembic upgrade head on a fresh database (module removed)
+        if: matrix.service != 'admin-api'
+        working-directory: apps/${{ matrix.service }}
+        run: DATABASE_URL="sqlite:///./removal-check.db" alembic upgrade head
+
+  atwork-removal-web:
+    needs: scope
+    if: needs.scope.outputs.run_atwork_removal_web == 'true'
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Remove the DijiAtWork module and its workspace entry
+        run: |
+          rm -rf apps/atwork-api apps/atwork-web
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.workspaces=p.workspaces.filter(w=>!w.startsWith('apps/atwork-'));fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+      - run: npm install --no-audit --no-fund
+      - name: Build every remaining web app (module removed)
+        run: |
+          for app in shell-web admin-web talent-web talentflow-portal-web birthday-web birthday-supplier-web onsite-web; do
+            echo "::group::$app"
+            npm --workspace apps/$app run test --if-present
+            npm --workspace apps/$app run build
+            echo "::endgroup::"
+          done
+      - name: Guard still clean with the module removed
+        run: node scripts/check-module-independence.js
+
+  # ---- the single required gate -------------------------------------------
+  ci-result:
+    needs: [scope, guard, lint-test, lint-build, e2e, upgrade, pg, removal-api, removal-web, atwork-removal-api, atwork-removal-web]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci
+      - name: Guard passed and every in-scope job ran and passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci/ci-scope.js verify
