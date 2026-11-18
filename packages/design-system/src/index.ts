@@ -19,6 +19,7 @@ export * from "./shell/AuthGate";
 export * from "./shell/DevPersonaSwitcher";
 export * from "./shell/EntraSignIn";
 export * from "./shell/NotificationsPanel";
+export * from "./shell/RoleIndicator";
 export * from "./shell/Sidebar";
 export * from "./shell/TopNav";
 export * from "./shell/UserMenu";

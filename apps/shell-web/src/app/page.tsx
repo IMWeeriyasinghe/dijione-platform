@@ -48,6 +48,7 @@ function HomeContent() {
 
   return (
     <AppShell
+      roleContext="platform"
       eyebrow="Dijital Team"
       title="DijiOne"
       topNavTitle="DijiOne Home"

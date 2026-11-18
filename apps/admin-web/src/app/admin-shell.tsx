@@ -61,6 +61,7 @@ function AdminGate({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell
+      roleContext="platform"
       eyebrow="DijiOne"
       title="Admin Center"
       topNavTitle="DijiOne Admin"

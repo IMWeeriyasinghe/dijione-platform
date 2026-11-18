@@ -81,6 +81,7 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell
+      roleContext="talent-flow"
       eyebrow="by Dijital Team"
       title="DijiTalentFlow"
       topNavTitle={

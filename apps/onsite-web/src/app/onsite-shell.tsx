@@ -65,6 +65,7 @@ export function OnsiteContent({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell
+      roleContext="onsite"
       eyebrow="by Dijital Team"
       title="Diji On-site"
       topNavTitle="On-site Attendance Operations"

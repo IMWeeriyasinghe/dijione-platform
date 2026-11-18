@@ -13,6 +13,22 @@ export type ModuleRole = {
   /** The permissions this application entry carries (as the session token does). Shells use it
    * to show navigation such as Management → Access; the APIs enforce. */
   permissions?: string[];
+  /** Display-only access summary (resolved by Platform Core like the session token). */
+  role_name?: string;
+  grants?: AccessGrantSummary[];
+  /** null for applications that do not read client scope. */
+  client_scope?: { all_clients: boolean; clients: string[] } | null;
+};
+
+export type AccessGrantSummary = {
+  role: string;
+  role_name: string;
+  source: "DIRECT" | "GROUP" | "BASELINE" | "APPOINTMENT";
+  group_name: string | null;
+  /** Default employee access or a SYSTEM group. */
+  mandatory: boolean;
+  /** A delegated Access Administrator appointment, not a business role. */
+  administrative: boolean;
 };
 
 export type CurrentUser = {
@@ -21,6 +37,7 @@ export type CurrentUser = {
   full_name: string;
   title: string | null;
   platform_role: "PLATFORM_USER" | "PLATFORM_ADMIN" | "SUPER_ADMIN";
+  platform_role_name?: string | null;
   avatar_color: string | null;
   module_roles: ModuleRole[];
   platform_permissions: string[];

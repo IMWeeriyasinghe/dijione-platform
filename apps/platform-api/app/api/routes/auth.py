@@ -8,6 +8,8 @@ from app.api.deps import Viewer, get_current_user, get_session_payload, get_view
 from app.core.config import get_settings
 from app.core.security import issue_session_token
 from app.db.session import get_db
+from app.models.client import Client
+from app.models.module import ApplicationModule
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import CurrentUserOut, DevLoginRequest, DevPersonaOut, TokenResponse
@@ -57,14 +59,47 @@ def _effective_module_roles_payload(user: User, db: Session) -> list[dict]:
     """The roles the session token carries: direct, Access Group and default
     grants, enabled only. Frontends gate their shells on this list, so it must
     never disagree with what the APIs enforce from the token."""
-    return [
-        {
+    authz = AuthorizationService(db)
+    grants_by_module = authz.effective_module_roles(user)
+    scoped = dict(db.execute(select(ApplicationModule.key, ApplicationModule.supports_client_scope)).all())
+    out = []
+    for module_key, claim in build_claims(user, db)["module_roles"].items():
+        role_row = authz.role_display(module_key, claim["role"])
+        out.append({
             "module_key": module_key, "role": claim["role"], "client_id": claim["client_id"], "enabled": True,
             # Shells gate navigation on permissions (e.g. Management → Access); the APIs enforce.
             "permissions": claim["permissions"],
-        }
-        for module_key, claim in build_claims(user, db)["module_roles"].items()
-    ]
+            # Read-only access summary for the header (same resolution as the token; display only).
+            "role_name": role_row.name if role_row else claim["role"],
+            "grants": [_grant_payload(authz, module_key, g) for g in grants_by_module.get(module_key, [])],
+            "client_scope": _scope_names(db, claim["client_public_ids"]) if scoped.get(module_key, True) else None,
+        })
+    return out
+
+
+def _grant_payload(authz: AuthorizationService, module_key: str, grant) -> dict:
+    role_row = authz.role_display(module_key, grant.role)
+    return {
+        "role": grant.role,
+        "role_name": role_row.name if role_row else grant.role,
+        "source": grant.source_type,  # DIRECT / GROUP / BASELINE / APPOINTMENT
+        "group_name": grant.source_name,
+        "mandatory": grant.mandated,
+        # A delegated Access Administrator appointment, not a business role.
+        "administrative": grant.source_type == "APPOINTMENT",
+    }
+
+
+def _scope_names(db: Session, client_refs: list[str] | None) -> dict:
+    if client_refs is None:
+        return {"all_clients": True, "clients": []}
+    names = db.execute(select(Client.name).where(Client.public_id.in_(client_refs)).order_by(Client.name)).scalars()
+    return {"all_clients": False, "clients": list(names)}
+
+
+def _platform_role_name(db: Session, role: str) -> str:
+    row = AuthorizationService(db).role_display(None, role)
+    return row.name if row else role
 
 
 def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> CurrentUserOut:
@@ -74,6 +109,7 @@ def _to_current_user_out(user: User, repo: UserRepository, db: Session) -> Curre
         full_name=user.full_name,
         title=user.title,
         platform_role=user.platform_role,
+        platform_role_name=_platform_role_name(db, user.platform_role),
         avatar_color=user.avatar_color,
         module_roles=_effective_module_roles_payload(user, db),
         platform_permissions=sorted(AuthorizationService(db).platform_permissions(user)),

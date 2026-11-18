@@ -20,6 +20,9 @@ ROUTE_POLICY: dict[str, str] = {
     "POST /api/birthday/admin/run-detection": SENSITIVE,
     "GET /api/birthday/admin/scan-runs": SENSITIVE,
     "GET /api/birthday/admin/test-email-recipients": SENSITIVE,
+    # Employee names and work addresses for the allowlist: sensitive, like the list itself.
+    "GET /api/birthday/admin/test-email-recipients/employee-search": SENSITIVE,
+    "GET /api/birthday/admin/test-email-recipients/employee-matches": SENSITIVE,
     "POST /api/birthday/admin/test-email-recipients": SENSITIVE,
     "DELETE /api/birthday/admin/test-email-recipients/{recipient_id}": SENSITIVE,
     "PATCH /api/birthday/admin/test-email-recipients/{recipient_id}": SENSITIVE,
