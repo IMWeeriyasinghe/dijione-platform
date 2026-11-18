@@ -77,6 +77,9 @@ class ExceptionReason(StrEnum):
     SEND_FAILED = "SEND_FAILED"
     DELIVERY_FAILED = "DELIVERY_FAILED"
     SUPPLIER_CANNOT_FULFIL = "SUPPLIER_CANNOT_FULFIL"
+    # Set by the one-time clean start: birthday before the operational
+    # start boundary, cancelled (history kept, reopenable).
+    PRE_LAUNCH_EXCLUDED = "PRE_LAUNCH_EXCLUDED"
 
 
 class OrderIssueType(StrEnum):
