@@ -111,7 +111,7 @@ managers can map or reject from it, read-only users see why they cannot.
 "Team Member(s)" replaces "Employee(s)" for people; "EMP Number" replaces
 "Employee Number"; "ZKBioTime ID" replaces "ZKBioTime Employee Code";
 "BHR ID" replaces "BHR Employee ID" (2026-11-19, v0.8.0 — BambooHR's internal
-record id, e.g. BHR ID 297; distinct from the EMP Number, e.g. 161). Routes
+record id; distinct from the EMP Number, the organisation's employee number). Routes
 (`/onsite/employees`), API fields (`bamboohr_id`, `employee_number`), database
 columns, permissions and audit-event names keep their technical identifiers.
 

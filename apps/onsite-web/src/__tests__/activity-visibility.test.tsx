@@ -24,7 +24,7 @@ vi.mock("@/lib/api", async (orig) => ({
 
 const SITE = { site_id: "dev-site", name: "DEV Site (Colombo)", time_zone: "Asia/Colombo", today: "2026-11-18",
   first_activity_date: "2024-11-27", last_activity_date: "2026-11-18", terminals: ["Main Door"] };
-const VERIFIED = { emp_code: "161", bamboohr_id: "297", employee_number: "161", mapping_status: "MAPPED", mapping_state: "VERIFIED",
+const VERIFIED = { emp_code: "9001", bamboohr_id: "B9001", employee_number: "E-9001", mapping_status: "MAPPED", mapping_state: "VERIFIED",
   employee_name: "Verified Person", department: "Ops", identity_class: "MATCHED_ACTIVE", local_time: "2026-11-18T08:30:00+05:30",
   local_date: "2026-11-18", terminal: "Main Door", area: null, punch_state_raw: "0", tz_consistent: true, event_id: "e1",
   punch_sequence: "FIRST", punch_position: 1, punches_in_day: 3 };
