@@ -1,3 +1,4 @@
+export * from "./access-api";
 export * from "./auth-api";
 export * from "./auth-context";
 export * from "./http";

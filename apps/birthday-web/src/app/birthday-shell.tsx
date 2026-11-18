@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
+import { AccessManagementPage, AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useBirthdayScope } from "@dijione/auth-client";
-import { CakeSlice, LayoutDashboard, ListOrdered, Mail, ShieldCheck, Truck } from "lucide-react";
+import { CakeSlice, KeyRound, LayoutDashboard, ListOrdered, Mail, ShieldCheck, Truck } from "lucide-react";
 import { getReleaseMetadata } from "@/lib/api";
 
 function BirthdayContent({ children }: { children: React.ReactNode }) {
@@ -37,7 +37,11 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const sections: NavSection[] = [
+  const accessSection: NavSection = {
+    label: "Management",
+    items: [{ label: "Staff Access", href: "/admin/access", icon: KeyRound }],
+  };
+  const sections: NavSection[] = scope.accessAdminOnly ? [accessSection] : [
     {
       items: [
         { label: "Dashboard", href: "/", icon: LayoutDashboard, exact: true },
@@ -65,6 +69,7 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
           },
         ]
       : []),
+    ...(scope.canManageAccess ? [accessSection] : []),
   ];
 
   return (
@@ -83,7 +88,12 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
         />
       }
     >
-      {children}
+      {scope.accessAdminOnly ? (
+        // No business role: every page but Access would only be refused by birthday-api.
+        <AccessManagementPage moduleKey="birthday" appName="DIJI Birthday" />
+      ) : (
+        children
+      )}
     </AppShell>
   );
 }

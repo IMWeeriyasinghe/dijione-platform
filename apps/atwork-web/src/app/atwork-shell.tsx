@@ -4,7 +4,7 @@ import { AppShell, AuthGate, EmptyState, ErrorState, LoadingState, VersionFooter
 import type { NavSection } from "@dijione/design-system";
 
 type NavItem = NavSection["items"][number];
-import { BarChart3, CalendarClock, ClipboardCheck, FilePenLine, History, ScrollText, Settings, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, CalendarClock, ClipboardCheck, FilePenLine, History, KeyRound, ScrollText, Settings, ShieldCheck, Users } from "lucide-react";
 import { hasPermission, PERM, useAtworkScope, type AtworkScope } from "@/lib/atwork-scope";
 
 export function buildSections(scope: AtworkScope | null): NavSection[] {
@@ -23,7 +23,11 @@ export function buildSections(scope: AtworkScope | null): NavSection[] {
     if (can(PERM.REPORTS)) items.push({ label: "Reports", href: "/management/reports", icon: BarChart3 });
     if (can(PERM.AUDIT)) items.push({ label: "Audit History", href: "/management/audit", icon: ScrollText });
     if (can(PERM.SETTINGS)) items.push({ label: "Settings", href: "/management/settings", icon: Settings });
+    if (can(PERM.ACCESS_MANAGE)) items.push({ label: "Access", href: "/management/access", icon: KeyRound });
     sections.push({ label: "Management", items });
+  } else if (can(PERM.ACCESS_MANAGE)) {
+    // An access administrator without the Management area sees only Access.
+    sections.push({ label: "Management", items: [{ label: "Access", href: "/management/access", icon: KeyRound }] });
   }
   return sections;
 }

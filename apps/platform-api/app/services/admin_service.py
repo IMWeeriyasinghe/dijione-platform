@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole
-from app.core.permissions import APPOINTMENT_ONLY_ROLES
+from app.core.permissions import APPOINTMENT_ONLY_ROLES, DELEGATION
 from app.models.access_group import (
     AccessGroup,
     AccessGroupStatus,
@@ -57,6 +57,7 @@ from app.schemas.admin import (
     AdminModuleOut,
     AdminPermissionOut,
     AdminRoleOut,
+    AdminRoleRefOut,
     AdminUserOut,
     ApplicationAssignedGroupOut,
     ApplicationAssignedUserOut,
@@ -1184,6 +1185,12 @@ class AdminService:
             assigned_users=assigned_users, assigned_groups=assigned_groups,
             direct_user_count=len(assigned_users), group_count=len(assigned_groups),
             supports_client_scope=module.supports_client_scope,
+            delegation_supported=module_key in DELEGATION,
+            delegable_roles=[
+                AdminRoleRefOut(key=r, name=(self.authz.role_display(module_key, r).name
+                                             if self.authz.role_display(module_key, r) else r))
+                for r in (DELEGATION[module_key].delegable_roles if module_key in DELEGATION else ())
+            ],
         )
 
     # --- Dashboard ----------------------------------------------------------

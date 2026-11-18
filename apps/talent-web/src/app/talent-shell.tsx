@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
+import { AccessManagementPage, AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useTalentScope } from "@dijione/auth-client";
 import {
@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarClock,
   FileText,
+  KeyRound,
   LayoutDashboard,
   Link2,
   Tags,
@@ -72,12 +73,20 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
     },
   ];
 
+  const accessItem = { label: "Access", href: "/access", icon: KeyRound };
+  if (scope.canManageAccess && !scope.accessAdminOnly) {
+    staffSections.push({ label: "Management", items: [accessItem] });
+  }
+  const adminOnlySections: NavSection[] = [{ label: "Management", items: [accessItem] }];
+
   return (
     <AppShell
       eyebrow="by Dijital Team"
       title="DijiTalentFlow"
-      topNavTitle={scope.isStaff ? "Talent Acquisition Workspace" : "Client Workspace"}
-      sections={scope.isStaff ? staffSections : clientSections}
+      topNavTitle={
+        scope.accessAdminOnly ? "Access Management" : scope.isStaff ? "Talent Acquisition Workspace" : "Client Workspace"
+      }
+      sections={scope.accessAdminOnly ? adminOnlySections : scope.isStaff ? staffSections : clientSections}
       footer={
         <VersionFooter
           appName="DijiTalentFlow"
@@ -88,7 +97,12 @@ function TalentFlowContent({ children }: { children: React.ReactNode }) {
         />
       }
     >
-      {children}
+      {scope.accessAdminOnly ? (
+        // No business role: every page but Access would only be refused by talent-api.
+        <AccessManagementPage moduleKey="talent-flow" appName="DijiTalentFlow" />
+      ) : (
+        children
+      )}
     </AppShell>
   );
 }

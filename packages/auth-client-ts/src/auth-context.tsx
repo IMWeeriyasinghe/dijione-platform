@@ -255,12 +255,14 @@ export function useTalentScope() {
     if (!user) return null;
     const role = user.module_roles.find((r) => r.module_key === MODULE_TALENT_FLOW);
     if (!role) return null;
+    const access = accessFlags(role.permissions, "talent");
     return {
       role: role.role,
       clientId: role.client_id,
-      isStaff: STAFF_ROLES.has(role.role),
-      isClient: role.role === "TALENT_CLIENT",
+      isStaff: !access.accessAdminOnly && STAFF_ROLES.has(role.role),
+      isClient: !access.accessAdminOnly && role.role === "TALENT_CLIENT",
       isCustomerSuccessOrManager: role.role === "CUSTOMER_SUCCESS" || role.role === "TA_MANAGER",
+      ...access,
     };
   }, [user]);
 }
@@ -277,9 +279,21 @@ export function useBirthdayScope() {
     if (!user) return null;
     const role = user.module_roles.find((r) => r.module_key === MODULE_BIRTHDAY);
     if (!role) return null;
+    const access = accessFlags(role.permissions, "birthday");
     return {
       role: role.role,
-      isAdmin: BIRTHDAY_STAFF_ROLES.has(role.role),
+      isAdmin: !access.accessAdminOnly && BIRTHDAY_STAFF_ROLES.has(role.role),
+      ...access,
     };
   }, [user]);
+}
+
+/** Application access administration flags for one application entry. ``accessAdminOnly``: the
+ * person is an appointed access administrator with no business role in the application, so its
+ * shell shows only Management → Access (every business API refuses them anyway). */
+export function accessFlags(permissions: string[] | undefined, prefix: string) {
+  const perms = permissions ?? [];
+  const canManageAccess = perms.includes(`${prefix}.access.manage`);
+  const accessAdminOnly = canManageAccess && perms.every((p) => p.startsWith(`${prefix}.access.`));
+  return { canManageAccess, accessAdminOnly };
 }

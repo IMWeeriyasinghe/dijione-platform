@@ -289,6 +289,11 @@ class ApplicationAssignedGroupOut(BaseModel):
     client_scope: ClientScopeOut
 
 
+class AdminRoleRefOut(BaseModel):
+    key: str
+    name: str
+
+
 class ApplicationDetailOut(BaseModel):
     module_key: str
     module_name: str
@@ -300,6 +305,10 @@ class ApplicationDetailOut(BaseModel):
     direct_user_count: int
     group_count: int
     supports_client_scope: bool = True
+    # Delegated access administration: whether this application has an Access page, and the
+    # employee roles an Application Administrator may be authorised to grant.
+    delegation_supported: bool = False
+    delegable_roles: list[AdminRoleRefOut] = []
 
 
 class AdminDashboardOut(BaseModel):

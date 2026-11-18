@@ -4,3 +4,4 @@ export * from "./talent";
 export * from "./birthday";
 export * from "./admin";
 export * from "./sync";
+export * from "./access";

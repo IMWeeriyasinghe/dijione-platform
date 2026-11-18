@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, AuthGate, EmptyState, LoadingState, VersionFooter } from "@dijione/design-system";
+import { AccessManagementPage, AppShell, AuthGate, EmptyState, LoadingState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import {
   Activity,
@@ -8,14 +8,17 @@ import {
   CalendarDays,
   Fingerprint,
   HeartPulse,
+  KeyRound,
   LayoutDashboard,
   MapPin,
   Users,
 } from "lucide-react";
 import { MobileNav } from "@/components/MobileNav";
-import { hasPermission, PERM, useOnsiteScope, type OnsiteScope } from "@/lib/onsite-scope";
+import { hasPermission, isAccessAdminOnly, PERM, useOnsiteScope, type OnsiteScope } from "@/lib/onsite-scope";
 
 export function buildSections(scope: OnsiteScope | null): NavSection[] {
+  const access = { label: "Access", href: "/admin/access", icon: KeyRound };
+  if (isAccessAdminOnly(scope)) return [{ label: "Admin", items: [access] }];
   const sections: NavSection[] = [
     {
       items: [
@@ -32,6 +35,7 @@ export function buildSections(scope: OnsiteScope | null): NavSection[] {
     hasPermission(scope, PERM.HEALTH) && { label: "Site Health", href: "/admin/health", icon: HeartPulse },
     hasPermission(scope, PERM.IDENTITY) && { label: "Identity Management", href: "/admin/identity", icon: Fingerprint },
     hasPermission(scope, PERM.SITES) && { label: "Sites", href: "/admin/sites", icon: MapPin },
+    hasPermission(scope, PERM.ACCESS_MANAGE) && access,
   ].filter((i) => i !== false);
   if (admin.length) sections.push({ label: "Admin", items: admin });
   return sections;
@@ -74,8 +78,15 @@ export function OnsiteContent({ children }: { children: React.ReactNode }) {
         />
       }
     >
-      <div className="pb-20 md:pb-0">{children}</div>
-      <MobileNav />
+      {isAccessAdminOnly(scope) ? (
+        // No business role: every page but Access would only be refused by onsite-api.
+        <AccessManagementPage moduleKey="onsite" appName="Diji On-site" />
+      ) : (
+        <>
+          <div className="pb-20 md:pb-0">{children}</div>
+          <MobileNav />
+        </>
+      )}
     </AppShell>
   );
 }

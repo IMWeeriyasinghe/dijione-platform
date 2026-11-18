@@ -96,6 +96,8 @@ export type AdminRoleOut = {
   is_system: boolean;
   permission_count: number;
   user_count: number;
+  /** Granted only by appointing an Application Administrator; never offered for assignment. */
+  appointment_only?: boolean;
 };
 
 export type AdminPermissionOut = {
@@ -121,10 +123,12 @@ export type AuditLogOut = {
 };
 
 export type AccessSourceOut = {
-  type: "DIRECT" | "GROUP" | "BASELINE";
+  type: "DIRECT" | "GROUP" | "BASELINE" | "APPOINTMENT";
   role: string | null;
   group_id: number | null;
   group_name: string | null;
+  /** Default access or a SYSTEM group: an application suspension never removes it. */
+  mandated?: boolean;
 };
 
 export type EffectiveModuleAccessOut = {
@@ -146,6 +150,10 @@ export type EffectiveAccessOut = {
   is_active: boolean;
   platform_permissions: string[];
   modules: EffectiveModuleAccessOut[];
+  /** Applications where an access administrator suspended this person's ordinary access. */
+  suspended_modules?: string[];
+  /** Applications this person is an appointed access administrator of. */
+  administered_modules?: string[];
 };
 
 export type DiagSource = {
@@ -281,6 +289,10 @@ export type ApplicationDetailOut = {
   direct_user_count: number;
   group_count: number;
   supports_client_scope?: boolean;
+  /** Whether this application has its own Management → Access page. */
+  delegation_supported?: boolean;
+  /** Employee roles an Application Administrator may be authorised to grant. */
+  delegable_roles?: { key: string; name: string }[];
 };
 
 export type AdminDashboardOut = {

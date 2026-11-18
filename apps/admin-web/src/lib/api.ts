@@ -13,6 +13,9 @@ import type {
   DirectoryUserOut,
   EffectiveAccessOut,
   EntraGroupOut,
+  AccessSuspension,
+  ApplicationAdministrator,
+  AppointIn,
 } from "@dijione/contracts";
 import { qs, request } from "@dijione/auth-client";
 
@@ -121,3 +124,23 @@ export const removeGroupModuleAssignment = (id: number, moduleKey: string) =>
 // --- Application-centric admin (Phase 2.6) ---------------------------------
 export const getApplicationDetail = (moduleKey: string) =>
   request<ApplicationDetailOut>(`/api/admin/applications/${moduleKey}`);
+
+// Delegated application access: administrators (Super Admin), suspensions, registry switch.
+const breakGlass = (reason?: string) => (reason ? `?break_glass_reason=${encodeURIComponent(reason)}` : "");
+export const listApplicationAdministrators = (moduleKey: string) =>
+  request<ApplicationAdministrator[]>(`/api/admin/applications/${moduleKey}/administrators`);
+export const appointApplicationAdministrator = (moduleKey: string, userId: number, payload: AppointIn) =>
+  request<ApplicationAdministrator>(`/api/admin/applications/${moduleKey}/administrators/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+export const removeApplicationAdministrator = (moduleKey: string, userId: number, reason?: string) =>
+  request<{ status: string }>(`/api/admin/applications/${moduleKey}/administrators/${userId}${breakGlass(reason)}`, {
+    method: "DELETE",
+  });
+export const listApplicationSuspensions = (moduleKey: string) =>
+  request<AccessSuspension[]>(`/api/admin/applications/${moduleKey}/suspensions`);
+export const liftApplicationSuspension = (moduleKey: string, userId: number) =>
+  request<{ status: string }>(`/api/admin/applications/${moduleKey}/suspensions/${userId}`, { method: "DELETE" });
+export const setModuleEnabled = (moduleKey: string, enabled: boolean) =>
+  request<AdminModuleOut>(`/api/admin/modules/${moduleKey}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
