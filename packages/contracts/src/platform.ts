@@ -10,6 +10,9 @@ export type ModuleRole = {
   role: string;
   client_id: number | null;
   enabled?: boolean;
+  /** The permissions this application entry carries (as the session token does). Shells use it
+   * to show navigation such as Management → Access; the APIs enforce. */
+  permissions?: string[];
 };
 
 export type CurrentUser = {

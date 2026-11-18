@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # Off until an environment is deliberately switched on (VIEW_AS_ENABLED=true). Enforcement in the
     # applications does not depend on it: a View-as token is read-only wherever it is presented.
     view_as_enabled: bool = False
+    # Delegated application access administration: appointments and the /api/access endpoints.
+    # Off until switched on (DELEGATED_ACCESS_ENABLED=true). Enforcement does not depend on it:
+    # existing appointments and suspensions keep applying when it is off, so turning it off is a
+    # safe rollback of the feature that never restores access removed by a suspension.
+    delegated_access_enabled: bool = False
 
     # Dev-only shared secret trusted service-to-service calls present on the
     # `X-Internal-Token` header (talent-api/birthday-api/spark-api writing

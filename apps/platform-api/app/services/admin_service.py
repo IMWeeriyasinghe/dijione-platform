@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import MODULE_BIRTHDAY, MODULE_SPARK, MODULE_TALENT_FLOW, PlatformRole
+from app.core.permissions import APPOINTMENT_ONLY_ROLES, DELEGATION
 from app.models.access_group import (
     AccessGroup,
     AccessGroupStatus,
@@ -56,6 +57,7 @@ from app.schemas.admin import (
     AdminModuleOut,
     AdminPermissionOut,
     AdminRoleOut,
+    AdminRoleRefOut,
     AdminUserOut,
     ApplicationAssignedGroupOut,
     ApplicationAssignedUserOut,
@@ -73,8 +75,10 @@ from app.schemas.admin import (
 from app.services import protected_admin
 from app.services.audit_service import AuditService
 from app.services.authorization_service import AuthorizationService
+from app.services.notification_service import NotificationService
 
 ADMIN_PLATFORM_ROLES = {PlatformRole.SUPER_ADMIN.value, PlatformRole.PLATFORM_ADMIN.value}
+BREAK_GLASS_MIN_REASON = 10
 
 _MODULE_DISPLAY_ORDER = [MODULE_TALENT_FLOW, MODULE_BIRTHDAY, MODULE_SPARK]
 
@@ -339,10 +343,61 @@ class AdminService:
             self.db.commit()
             raise ProtectedAdminForbiddenError(str(exc)) from exc
 
+    # --- Guards on who may change whose access ---------------------------------
+
+    def can_manage_admins(self, actor: User) -> bool:
+        return "platform.admin.manage_admins" in self.authz.platform_permissions(actor)
+
+    def guard_access_change(
+        self, *, actor: User, target: User, break_glass_reason: str | None = None
+    ) -> dict | None:
+        """Refuse a change to the actor's own access, and a change to an administrator's access by
+        anyone who may not manage administrators. A Super Admin may change their own access only
+        as a break-glass action with a written reason; the returned metadata marks the audit entry
+        and ``notify_break_glass`` tells the other Super Admins. Returns None for an ordinary change."""
+        if actor.id == target.id:
+            reason = (break_glass_reason or "").strip()
+            if self.can_manage_admins(actor) and len(reason) >= BREAK_GLASS_MIN_REASON:
+                return {"break_glass": True, "break_glass_reason": reason}
+            raise ForbiddenError(
+                "You cannot change your own access. Ask another administrator"
+                + (
+                    f", or use break-glass with a reason of at least {BREAK_GLASS_MIN_REASON} characters."
+                    if self.can_manage_admins(actor)
+                    else "."
+                )
+            )
+        if target.platform_role in ADMIN_PLATFORM_ROLES and not self.can_manage_admins(actor):
+            raise ForbiddenError("Only a Super Admin may change an administrator's access.")
+        return None
+
+    def notify_break_glass(self, *, actor: User, summary: str) -> None:
+        """Tell every other active Super Admin (best effort, inside the caller's transaction)."""
+        others = self.db.execute(
+            select(User.id).where(
+                User.platform_role == PlatformRole.SUPER_ADMIN.value, User.is_active.is_(True), User.id != actor.id
+            )
+        ).scalars().all()
+        for user_id in others:
+            NotificationService(self.db).notify_user(
+                user_id=user_id, type="ACCESS_BREAK_GLASS",
+                title=f"Break-glass access change by {actor.full_name}",
+                body=summary, related_entity_type="User", related_entity_id=actor.id,
+            )
+
+    @staticmethod
+    def _audit_meta(channel: str, break_glass: dict | None, **extra) -> dict:
+        meta = {"channel": channel, **extra}
+        if break_glass:
+            meta.update(break_glass)
+        return meta
+
     def set_user_active(self, *, actor: User, target_user_id: int, is_active: bool) -> AdminUserOut:
         target = self.db.get(User, target_user_id)
         if target is None:
             raise NotFoundError(f"User {target_user_id} not found")
+        if target.platform_role in ADMIN_PLATFORM_ROLES and not self.can_manage_admins(actor):
+            raise ForbiddenError("Only a Super Admin may activate or deactivate an administrator.")
         if not is_active:
             self._refuse_protected(actor=actor, target=target, attempted={"is_active": False}, deactivate=True)
 
@@ -450,6 +505,9 @@ class AdminService:
         role: str,
         enabled: bool,
         client_scope: ClientScopeIn | None,
+        channel: str = "CENTRAL",
+        break_glass_reason: str | None = None,
+        extra_audit: dict | None = None,
     ) -> AdminUserOut:
         target = self.db.get(User, target_user_id)
         if target is None:
@@ -458,6 +516,9 @@ class AdminService:
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
+        if (module_key, role) in APPOINTMENT_ONLY_ROLES:
+            raise AdminError("This role is granted only by appointing an Application Administrator.")
+        break_glass = self.guard_access_change(actor=actor, target=target, break_glass_reason=break_glass_reason)
         client_scope = self._effective_client_scope(module_key, client_scope)
         ref_map = self._resolve_client_scope_refs(client_scope)
 
@@ -522,12 +583,19 @@ class AdminService:
                     else (client_scope.client_ids if client_scope else None)
                 ),
             },
+            metadata=self._audit_meta(channel, break_glass, module_key=module_key, **(extra_audit or {})),
             subject_user_id=target_user_id,
         )
+        if break_glass:
+            self.notify_break_glass(actor=actor, summary=f"{module_key}: own role set to {role}. Reason: "
+                                    f"{break_glass['break_glass_reason']}")
         self.db.commit()
         return self.to_user_out(target)
 
-    def remove_module_assignment(self, *, actor: User, target_user_id: int, module_key: str) -> AdminUserOut:
+    def remove_module_assignment(
+        self, *, actor: User, target_user_id: int, module_key: str, channel: str = "CENTRAL",
+        break_glass_reason: str | None = None,
+    ) -> AdminUserOut:
         """Remove a user's own (direct) assignment to an application.
 
         Default employee access is always on for an eligible employee: it has no row to delete and
@@ -547,6 +615,7 @@ class AdminService:
                     "This application's standard access is included for every eligible employee and cannot be removed."
                 )
             raise NotFoundError(f"User {target_user_id} has no assignment for module '{module_key}'")
+        break_glass = self.guard_access_change(actor=actor, target=target, break_glass_reason=break_glass_reason)
 
         self.audit.log(
             actor_id=actor.id,
@@ -554,8 +623,12 @@ class AdminService:
             entity_type="UserModuleRole",
             entity_id=module_role.id,
             previous_state={"user_id": target_user_id, "module_key": module_key, "role": module_role.role},
+            metadata=self._audit_meta(channel, break_glass, module_key=module_key),
             subject_user_id=target_user_id,
         )
+        if break_glass:
+            self.notify_break_glass(actor=actor, summary=f"{module_key}: own assignment removed. Reason: "
+                                    f"{break_glass['break_glass_reason']}")
         self.db.delete(module_role)
         self.db.commit()
         return self.to_user_out(target)
@@ -615,6 +688,26 @@ class AdminService:
             for m in modules
         ]
 
+    def set_module_enabled(self, *, actor: User, module_key: str, enabled: bool) -> AdminModuleOut:
+        """Enable or disable an application in the registry. The access-version listener raises
+        every user's version in the same transaction, so every session issued with the old setting
+        is refused by the applications and refreshed without (or with) the application."""
+        module = self.db.execute(select(ApplicationModule).where(ApplicationModule.key == module_key)).scalars().first()
+        if module is None:
+            raise NotFoundError(f"Module '{module_key}' not found")
+        previous = module.enabled
+        if previous != enabled:
+            module.enabled = enabled
+            self.db.flush()
+            self.audit.log(
+                actor_id=actor.id, action="module.enabled" if enabled else "module.disabled",
+                entity_type="ApplicationModule", entity_id=module.id,
+                previous_state={"enabled": previous}, new_state={"enabled": enabled},
+                metadata={"channel": "CENTRAL", "module_key": module_key},
+            )
+            self.db.commit()
+        return next(m for m in self.list_modules() if m.key == module_key)
+
     def list_roles(self) -> list[AdminRoleOut]:
         roles = list(self.db.execute(select(Role).order_by(Role.module_key.nulls_first(), Role.name)).scalars().all())
         permission_counts = dict(
@@ -639,6 +732,7 @@ class AdminService:
                 AdminRoleOut(
                     id=r.id, module_key=r.module_key, key=r.key, name=r.name, description=r.description,
                     is_system=r.is_system, permission_count=permission_counts.get(r.id, 0), user_count=user_count,
+                    appointment_only=(r.module_key, r.key) in APPOINTMENT_ONLY_ROLES,
                 )
             )
         return out
@@ -710,7 +804,9 @@ class AdminService:
             client_ids, scope_sources = self.authz.effective_client_scope(user, module_key)
             enabled = True  # only enabled grants are ever collected by effective_module_roles
             sources = [
-                AccessSourceOut(type=g.source_type, role=g.role, group_name=g.source_name)
+                AccessSourceOut(
+                    type=g.source_type, role=g.role, group_id=g.group_id, group_name=g.source_name, mandated=g.mandated
+                )
                 for g in grants
             ]
             modules_out.append(
@@ -734,6 +830,8 @@ class AdminService:
             platform_permissions=sorted(self.authz.platform_permissions(user)),
             modules=modules_out,
             default_access_excluded=[key for key, _role in self.authz.baseline_exclusions(user)],
+            suspended_modules=sorted(self.authz.suspended_modules(user)),
+            administered_modules=sorted(a.module_key for a in self.authz.appointments(user)),
         )
 
     # --- Access Groups (Phase 2.6, additive) --------------------------------
@@ -884,11 +982,30 @@ class AdminService:
         self.db.commit()
         return self._to_group_detail_out(group)
 
-    def add_group_member(self, *, actor: User, group_id: int, target_user_id: int) -> AccessGroupDetailOut:
+    def _guard_group_change(self, *, actor: User, group_id: int, break_glass_reason: str | None) -> dict | None:
+        """A change to a group's grants changes every member's access: refused when the actor is a
+        member (their own access; Super Admin break-glass only) or, for anyone who may not manage
+        administrators, when an administrator is a member."""
+        members = self.db.execute(
+            select(User).join(UserGroupMembership, UserGroupMembership.user_id == User.id)
+            .where(UserGroupMembership.access_group_id == group_id)
+        ).scalars().all()
+        break_glass = None
+        for member in members:
+            if member.id == actor.id:
+                break_glass = self.guard_access_change(actor=actor, target=member, break_glass_reason=break_glass_reason)
+        if not self.can_manage_admins(actor) and any(m.platform_role in ADMIN_PLATFORM_ROLES for m in members):
+            raise ForbiddenError("Only a Super Admin may change a group that has administrators as members.")
+        return break_glass
+
+    def add_group_member(
+        self, *, actor: User, group_id: int, target_user_id: int, break_glass_reason: str | None = None
+    ) -> AccessGroupDetailOut:
         group = self._get_group_or_404(group_id)
         target = self.db.get(User, target_user_id)
         if target is None:
             raise NotFoundError(f"User {target_user_id} not found")
+        break_glass = self.guard_access_change(actor=actor, target=target, break_glass_reason=break_glass_reason)
         existing = self.db.execute(
             select(UserGroupMembership).where(
                 UserGroupMembership.access_group_id == group_id, UserGroupMembership.user_id == target_user_id
@@ -903,13 +1020,22 @@ class AdminService:
             actor_id=actor.id, action="access_group.member_added", entity_type="UserGroupMembership",
             entity_id=membership.id,
             new_state={"user_id": target_user_id, "access_group_id": group_id},
+            metadata=self._audit_meta("CENTRAL", break_glass),
             subject_user_id=target_user_id,
         )
+        if break_glass:
+            self.notify_break_glass(actor=actor, summary=f"Added self to group {group.display_name}. Reason: "
+                                    f"{break_glass['break_glass_reason']}")
         self.db.commit()
         return self._to_group_detail_out(group)
 
-    def remove_group_member(self, *, actor: User, group_id: int, target_user_id: int) -> AccessGroupDetailOut:
+    def remove_group_member(
+        self, *, actor: User, group_id: int, target_user_id: int, break_glass_reason: str | None = None
+    ) -> AccessGroupDetailOut:
         group = self._get_group_or_404(group_id)
+        target = self.db.get(User, target_user_id)
+        if target is not None:
+            self.guard_access_change(actor=actor, target=target, break_glass_reason=break_glass_reason)
         membership = self.db.execute(
             select(UserGroupMembership).where(
                 UserGroupMembership.access_group_id == group_id, UserGroupMembership.user_id == target_user_id
@@ -930,12 +1056,15 @@ class AdminService:
 
     def upsert_group_module_assignment(
         self, *, actor: User, group_id: int, module_key: str, role: str, enabled: bool,
-        client_scope: ClientScopeIn | None,
+        client_scope: ClientScopeIn | None, break_glass_reason: str | None = None,
     ) -> AccessGroupDetailOut:
         group = self._get_group_or_404(group_id)
         role_row = self.authz.role_display(module_key, role)
         if role_row is None:
             raise AdminError(f"Unknown role '{role}' for module '{module_key}'")
+        if (module_key, role) in APPOINTMENT_ONLY_ROLES:
+            raise AdminError("This role is granted only by appointing an Application Administrator.")
+        self._guard_group_change(actor=actor, group_id=group_id, break_glass_reason=break_glass_reason)
         client_scope = self._effective_client_scope(module_key, client_scope)
         ref_map = self._resolve_client_scope_refs(client_scope)
 
@@ -989,8 +1118,11 @@ class AdminService:
         self.db.commit()
         return self._to_group_detail_out(group)
 
-    def remove_group_module_assignment(self, *, actor: User, group_id: int, module_key: str) -> AccessGroupDetailOut:
+    def remove_group_module_assignment(
+        self, *, actor: User, group_id: int, module_key: str, break_glass_reason: str | None = None
+    ) -> AccessGroupDetailOut:
         group = self._get_group_or_404(group_id)
+        self._guard_group_change(actor=actor, group_id=group_id, break_glass_reason=break_glass_reason)
         stmt = select(GroupModuleRole).where(
             GroupModuleRole.access_group_id == group_id, GroupModuleRole.module_key == module_key
         )
@@ -1053,6 +1185,12 @@ class AdminService:
             assigned_users=assigned_users, assigned_groups=assigned_groups,
             direct_user_count=len(assigned_users), group_count=len(assigned_groups),
             supports_client_scope=module.supports_client_scope,
+            delegation_supported=module_key in DELEGATION,
+            delegable_roles=[
+                AdminRoleRefOut(key=r, name=(self.authz.role_display(module_key, r).name
+                                             if self.authz.role_display(module_key, r) else r))
+                for r in (DELEGATION[module_key].delegable_roles if module_key in DELEGATION else ())
+            ],
         )
 
     # --- Dashboard ----------------------------------------------------------

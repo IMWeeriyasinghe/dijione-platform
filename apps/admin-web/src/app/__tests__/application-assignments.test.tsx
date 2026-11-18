@@ -23,6 +23,8 @@ const api = vi.hoisted(() => ({
   upsertGroupModuleAssignment: vi.fn(),
 }));
 vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), ...api }));
+// Delegated access administration has its own test (delegated-access.test.tsx).
+vi.mock("../applications/[key]/delegated-access", () => ({ DelegatedAccessSection: () => null }));
 
 import Page from "../applications/[key]/page";
 

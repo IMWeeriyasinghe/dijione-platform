@@ -123,11 +123,15 @@ def test_issued_sessions_are_marked_staff_and_work(api_client, db, two_tenant_wo
         assert api_client.get("/api/platform/admin/users", headers=headers).status_code == admin_status
 
 
-def test_session_issued_before_the_marker_existed_still_works_until_it_expires(api_client, db, two_tenant_world):
-    """Users signed in when the fix is deployed are not signed out."""
+def test_a_session_without_the_staff_marker_is_refused(api_client, db, two_tenant_world):
+    """The marker is mandatory: every session issued before it existed (2026-11-16) has expired,
+    so an unmarked token can only be a forged or foreign one."""
     admin = two_tenant_world["super_admin"]
     legacy = _signed({"sub": str(admin.id), "email": admin.email.upper(), "is_active": True, "platform_role": "SUPER_ADMIN"})
-    assert api_client.get("/api/platform/admin/users", headers=legacy).status_code == 200
+    assert api_client.get("/api/platform/admin/users", headers=legacy).status_code == 401
+    marked = _signed({"sub": str(admin.id), "email": admin.email, "is_active": True, "platform_role": "SUPER_ADMIN",
+                      "actor_type": "staff"})
+    assert api_client.get("/api/platform/admin/users", headers=marked).status_code == 200
 
 
 def test_deactivated_user_session_is_rejected(api_client, db, two_tenant_world):

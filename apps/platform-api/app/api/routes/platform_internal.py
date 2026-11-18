@@ -23,8 +23,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_internal_service
+from app.core.permissions import APPOINTMENT_ONLY_ROLES
 from app.db.session import get_db
+from app.models.access_group import GroupModuleRole, UserGroupMembership
 from app.models.client import Client
+from app.models.module_baseline import ModuleBaselineRole
 from app.models.user import User, UserModuleRole
 from app.services.audit_service import AuditEventConflict, AuditService
 from app.services.authorization_service import AuthorizationService
@@ -224,10 +227,39 @@ def module_role_holders(
     db: Session = Depends(get_db),
     _service: None = Depends(require_internal_service),
 ) -> ModuleRoleHoldersOut:
-    stmt = select(UserModuleRole.user_id).where(
-        UserModuleRole.module_key == module_key, UserModuleRole.role == role, UserModuleRole.enabled.is_(True)
+    """Active people the role applies to in that application, from any source (direct, group,
+    default access, appointment), after precedence (disabled application, suspension). The same
+    resolution as the session token, so a notification never reaches someone the role no longer
+    applies to, nor misses someone who holds it through a group."""
+    authz = AuthorizationService(db)
+    candidates = set(
+        db.execute(
+            select(UserModuleRole.user_id).where(
+                UserModuleRole.module_key == module_key, UserModuleRole.role == role, UserModuleRole.enabled.is_(True)
+            )
+        ).scalars()
     )
-    return ModuleRoleHoldersOut(user_ids=[row[0] for row in db.execute(stmt).all()])
+    candidates |= set(
+        db.execute(
+            select(UserGroupMembership.user_id)
+            .join(GroupModuleRole, GroupModuleRole.access_group_id == UserGroupMembership.access_group_id)
+            .where(GroupModuleRole.module_key == module_key, GroupModuleRole.role == role)
+        ).scalars()
+    )
+    is_default = db.execute(
+        select(ModuleBaselineRole.role).where(
+            ModuleBaselineRole.module_key == module_key, ModuleBaselineRole.role == role,
+            ModuleBaselineRole.enabled.is_(True),
+        )
+    ).first() is not None
+    if is_default or (module_key, role) in APPOINTMENT_ONLY_ROLES:
+        candidates |= set(db.execute(select(User.id).where(User.is_active.is_(True))).scalars())
+    holders = []
+    for user_id in sorted(candidates):
+        user = db.get(User, user_id)
+        if user is not None and authz.holds_role(user, module_key, role):
+            holders.append(user_id)
+    return ModuleRoleHoldersOut(user_ids=holders)
 
 
 @router.get("/access-versions")

@@ -511,7 +511,9 @@ export default function AdminUserDetailPage() {
         <div className="grid gap-4">
           {modules.map((m) => {
             const assignment = user.module_assignments.find((a) => a.module_key === m.key);
-            const moduleRoles = roles.filter((r) => r.module_key === m.key).map((r) => ({ key: r.key, name: r.name }));
+            const moduleRoles = roles
+              .filter((r) => r.module_key === m.key && !r.appointment_only)
+              .map((r) => ({ key: r.key, name: r.name }));
             const effective = effectiveQuery.data?.modules?.find((e) => e.module_key === m.key);
             const defaultSource = (effective?.sources ?? []).find((src) => src.type === "BASELINE");
             const defaultRoleName = defaultSource
@@ -653,6 +655,17 @@ export default function AdminUserDetailPage() {
                   Default employee access removed for: {effectiveQuery.data.default_access_excluded?.join(", ")}
                 </p>
               )}
+              {(effectiveQuery.data.suspended_modules ?? []).length > 0 && (
+                <p className="border-t border-dt-border pt-4 text-sm text-dt-warning">
+                  Suspended by an application access administrator in: {effectiveQuery.data.suspended_modules?.join(", ")}.
+                  Mandatory access still applies; lift a suspension on the application&apos;s page.
+                </p>
+              )}
+              {(effectiveQuery.data.administered_modules ?? []).length > 0 && (
+                <p className="border-t border-dt-border pt-4 text-sm text-dt-text-secondary">
+                  Access administrator of: {effectiveQuery.data.administered_modules?.join(", ")}
+                </p>
+              )}
               {effectiveQuery.data.modules.map((m) => (
                 <div key={m.module_key} className="border-t border-dt-border pt-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -680,7 +693,15 @@ export default function AdminUserDetailPage() {
                       <StatusBadge
                         key={idx}
                         status={s.type}
-                        label={s.type === "DIRECT" ? "Direct" : s.type === "BASELINE" ? "Default employee access" : `Inherited from ${s.group_name}`}
+                        label={
+                          s.type === "DIRECT"
+                            ? "Direct"
+                            : s.type === "BASELINE"
+                              ? "Default employee access (mandatory)"
+                              : s.type === "APPOINTMENT"
+                                ? "Access administrator"
+                                : `Inherited from ${s.group_name}${s.mandated ? " (SYSTEM, mandatory)" : ""}`
+                        }
                       />
                     ))}
                   </div>

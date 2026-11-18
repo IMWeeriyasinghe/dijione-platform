@@ -29,7 +29,7 @@ def _forge(user, **claims):
     now = datetime.now(UTC)
     payload = {
         "sub": str(user.id), "email": user.email, "iat": now, "exp": now + timedelta(minutes=5),
-        "iss": "dijione-dev-identity", **claims,
+        "iss": "dijione-dev-identity", "actor_type": "staff", **claims,
     }
     return jwt.encode(payload, os.environ["PLATFORM_JWT_SECRET"], algorithm="HS256")
 

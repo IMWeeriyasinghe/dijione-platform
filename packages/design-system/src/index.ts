@@ -24,5 +24,6 @@ export * from "./shell/TopNav";
 export * from "./shell/UserMenu";
 export * from "./shell/VersionFooter";
 
+export * from "./access/AccessManagementPage";
 export * from "./providers";
 export * from "./utils";

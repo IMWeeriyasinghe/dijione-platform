@@ -75,6 +75,8 @@ describe("TalentShell", () => {
       isStaff: true,
       isClient: false,
       isCustomerSuccessOrManager: false,
+      canManageAccess: false,
+      accessAdminOnly: false,
     });
 
     render(<TalentShell>content</TalentShell>);
@@ -94,6 +96,8 @@ describe("TalentShell", () => {
       isStaff: false,
       isClient: true,
       isCustomerSuccessOrManager: false,
+      canManageAccess: false,
+      accessAdminOnly: false,
     });
 
     render(<TalentShell>content</TalentShell>);

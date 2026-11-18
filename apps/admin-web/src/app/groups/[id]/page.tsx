@@ -481,7 +481,9 @@ export default function AdminGroupDetailPage() {
       <div className="grid gap-4">
         {modules.map((m) => {
           const assignment = group.module_assignments.find((a) => a.module_key === m.key);
-          const moduleRoles = roles.filter((r) => r.module_key === m.key).map((r) => ({ key: r.key, name: r.name }));
+          const moduleRoles = roles
+            .filter((r) => r.module_key === m.key && !r.appointment_only)
+            .map((r) => ({ key: r.key, name: r.name }));
           return (
             <GroupModuleAssignmentEditor
               key={m.key}

@@ -12,6 +12,8 @@ from sqlalchemy import create_engine, text
 
 from app.core.constants import MODULE_ONSITE
 from app.core.permissions import (
+    ACCESS_PERMISSIONS,
+    ACCESS_ROLES,
     ALL_PERMISSIONS,
     ALL_ROLES,
     BIRTHDAY_PERMISSIONS,
@@ -60,8 +62,11 @@ def test_other_modules_catalog_unchanged():
     roles = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES
     assert ALL_PERMISSIONS[: len(permissions)] == permissions
     assert ALL_ROLES[: len(roles)] == roles
-    assert not any(p.module_key == "onsite" for p in ALL_PERMISSIONS[len(permissions) :])
-    assert not any(r.module_key == "onsite" for r in ALL_ROLES[len(roles) :])
+    # Only the delegated-access catalogue (appended for every application) may add On-site rows later.
+    assert not any(
+        p.module_key == "onsite" for p in ALL_PERMISSIONS[len(permissions) :] if p not in ACCESS_PERMISSIONS
+    )
+    assert not any(r.module_key == "onsite" for r in ALL_ROLES[len(roles) :] if r not in ACCESS_ROLES)
     for defs in (PLATFORM_PERMISSIONS, TALENT_PERMISSIONS, BIRTHDAY_PERMISSIONS):
         assert not any(p.key.startswith("onsite.") or p.module_key == "onsite" for p in defs)
     for defs in (PLATFORM_ROLES, TALENT_ROLES, BIRTHDAY_ROLES):
@@ -151,7 +156,10 @@ def test_admin_center_lists_both_roles_and_no_client_scope(api_client, db, two_t
     db.add(ApplicationModule(key="talent-flow", name="DijiTalentFlow", description="", route="/talent-flow"))
     db.commit()
     headers = auth_headers(api_client, "test-super-admin")
-    roles = [r for r in api_client.get("/api/platform/admin/roles", headers=headers).json() if r["module_key"] == "onsite"]
+    roles = [
+        r for r in api_client.get("/api/platform/admin/roles", headers=headers).json()
+        if r["module_key"] == "onsite" and not r["appointment_only"]
+    ]
     assert [(r["key"], r["name"]) for r in roles] == [("ONSITE_ADMIN", "On-site Admin"), ("ONSITE_VIEWER", "On-site Viewer")]
     modules = {m["key"]: m for m in api_client.get("/api/platform/admin/modules", headers=headers).json()}
     assert modules["onsite"]["supports_client_scope"] is False
@@ -292,8 +300,8 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
 
     first = snapshot()
     assert first[0] == [("onsite", "Diji On-site", "/onsite", "ACTIVE", 1, "ANY")]  # DEV (APP_ENV=development)
-    assert first[1] == ["ONSITE_ADMIN", "ONSITE_VIEWER"]
-    assert set(first[2]) == ADMIN
+    assert first[1] == ["ONSITE_ACCESS_ADMIN", "ONSITE_ACCESS_OWNER", "ONSITE_ADMIN", "ONSITE_VIEWER"]
+    assert set(first[2]) == ADMIN | {"onsite.access.manage", "onsite.access.manage_admins"}
     with eng.connect() as c:
         caps = dict(c.execute(text("SELECT key, supports_client_scope FROM application_modules")).all())
     # Only the modules registered before On-site; later ones declare their own.

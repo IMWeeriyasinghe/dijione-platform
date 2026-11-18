@@ -58,7 +58,11 @@ def _effective_module_roles_payload(user: User, db: Session) -> list[dict]:
     grants, enabled only. Frontends gate their shells on this list, so it must
     never disagree with what the APIs enforce from the token."""
     return [
-        {"module_key": module_key, "role": claim["role"], "client_id": claim["client_id"], "enabled": True}
+        {
+            "module_key": module_key, "role": claim["role"], "client_id": claim["client_id"], "enabled": True,
+            # Shells gate navigation on permissions (e.g. Management → Access); the APIs enforce.
+            "permissions": claim["permissions"],
+        }
         for module_key, claim in build_claims(user, db)["module_roles"].items()
     ]
 

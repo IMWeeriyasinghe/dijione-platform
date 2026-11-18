@@ -19,6 +19,7 @@ export const PERM = {
   EXPORT: "atwork.reports.export",
   SETTINGS: "atwork.settings.manage",
   AUDIT: "atwork.audit.read",
+  ACCESS_MANAGE: "atwork.access.manage", // appointed access administrators (Management → Access)
 } as const;
 
 export type AtworkScope = {

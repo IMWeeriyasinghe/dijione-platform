@@ -42,8 +42,10 @@ from app.schemas.admin import (
     UpdatePlatformRoleIn,
     UpdateUserStatusIn,
 )
+from app.schemas.app_access import AdministratorOut, AppointIn, ModuleEnabledIn, SuspensionOut
 from app.services.access_diagnostics import AccessDiagnosticsService
 from app.services.admin_service import AdminError, AdminService, ConflictError, ForbiddenError, NotFoundError
+from app.services.delegated_access_service import DelegatedAccessService
 from app.services.protected_admin import ProtectedAdminError
 
 router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
@@ -172,6 +174,7 @@ def upsert_module_assignment(
             role=payload.role,
             enabled=payload.enabled,
             client_scope=payload.client_scope,
+            break_glass_reason=payload.break_glass_reason,
         )
     )
 
@@ -180,11 +183,14 @@ def upsert_module_assignment(
 def remove_module_assignment(
     user_id: int,
     module_key: str,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
     admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
     db: Session = Depends(get_db),
 ) -> AdminUserOut:
     return _handle(
-        lambda: AdminService(db).remove_module_assignment(actor=admin, target_user_id=user_id, module_key=module_key)
+        lambda: AdminService(db).remove_module_assignment(
+            actor=admin, target_user_id=user_id, module_key=module_key, break_glass_reason=break_glass_reason
+        )
     )
 
 
@@ -296,7 +302,9 @@ def add_group_member(
     db: Session = Depends(get_db),
 ) -> AccessGroupDetailOut:
     return _handle(
-        lambda: AdminService(db).add_group_member(actor=admin, group_id=group_id, target_user_id=payload.user_id)
+        lambda: AdminService(db).add_group_member(
+            actor=admin, group_id=group_id, target_user_id=payload.user_id, break_glass_reason=payload.break_glass_reason
+        )
     )
 
 
@@ -304,11 +312,14 @@ def add_group_member(
 def remove_group_member(
     group_id: int,
     user_id: int,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
     admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
     db: Session = Depends(get_db),
 ) -> AccessGroupDetailOut:
     return _handle(
-        lambda: AdminService(db).remove_group_member(actor=admin, group_id=group_id, target_user_id=user_id)
+        lambda: AdminService(db).remove_group_member(
+            actor=admin, group_id=group_id, target_user_id=user_id, break_glass_reason=break_glass_reason
+        )
     )
 
 
@@ -324,6 +335,7 @@ def upsert_group_module_assignment(
         lambda: AdminService(db).upsert_group_module_assignment(
             actor=admin, group_id=group_id, module_key=module_key, role=payload.role,
             enabled=payload.enabled, client_scope=payload.client_scope,
+            break_glass_reason=payload.break_glass_reason,
         )
     )
 
@@ -332,11 +344,14 @@ def upsert_group_module_assignment(
 def remove_group_module_assignment(
     group_id: int,
     module_key: str,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
     admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
     db: Session = Depends(get_db),
 ) -> AccessGroupDetailOut:
     return _handle(
-        lambda: AdminService(db).remove_group_module_assignment(actor=admin, group_id=group_id, module_key=module_key)
+        lambda: AdminService(db).remove_group_module_assignment(
+            actor=admin, group_id=group_id, module_key=module_key, break_glass_reason=break_glass_reason
+        )
     )
 
 
@@ -345,3 +360,68 @@ def application_detail(
     module_key: str, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
 ) -> ApplicationDetailOut:
     return _handle(lambda: AdminService(db).application_detail(module_key))
+
+
+# --- Delegated application access: appointments, suspensions, registry switch -------------------
+
+
+@router.get("/applications/{module_key}/administrators", response_model=list[AdministratorOut])
+def list_application_administrators(
+    module_key: str, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
+) -> list[AdministratorOut]:
+    return _handle(lambda: DelegatedAccessService(db).central_administrators(module_key))
+
+
+@router.put("/applications/{module_key}/administrators/{user_id}", response_model=AdministratorOut)
+def appoint_application_administrator(
+    module_key: str,
+    user_id: int,
+    payload: AppointIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_admins")),
+    db: Session = Depends(get_db),
+) -> AdministratorOut:
+    return _handle(lambda: DelegatedAccessService(db).central_appoint(admin, module_key, user_id, payload))
+
+
+@router.delete("/applications/{module_key}/administrators/{user_id}")
+def remove_application_administrator(
+    module_key: str,
+    user_id: int,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
+    admin: User = Depends(require_platform_permission("platform.admin.manage_admins")),
+    db: Session = Depends(get_db),
+) -> dict:
+    _handle(lambda: DelegatedAccessService(db).central_remove_administrator(admin, module_key, user_id, break_glass_reason))
+    return {"status": "removed"}
+
+
+@router.get("/applications/{module_key}/suspensions", response_model=list[SuspensionOut])
+def list_application_suspensions(
+    module_key: str, _admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)
+) -> list[SuspensionOut]:
+    return _handle(lambda: DelegatedAccessService(db).central_suspensions(module_key))
+
+
+@router.delete("/applications/{module_key}/suspensions/{user_id}")
+def lift_application_suspension(
+    module_key: str,
+    user_id: int,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
+    admin: User = Depends(require_platform_permission("platform.admin.manage_users")),
+    db: Session = Depends(get_db),
+) -> dict:
+    _handle(lambda: DelegatedAccessService(db).central_lift_suspension(admin, module_key, user_id, break_glass_reason))
+    return {"status": "lifted"}
+
+
+@router.patch("/modules/{module_key}", response_model=AdminModuleOut)
+def set_module_enabled(
+    module_key: str,
+    payload: ModuleEnabledIn,
+    admin: User = Depends(require_platform_permission("platform.admin.manage_modules")),
+    db: Session = Depends(get_db),
+) -> AdminModuleOut:
+    """Enable or disable an application. Disabling ends every session that carried it (each
+    person's access version is raised, so applications refuse the old token and the browser
+    refreshes to a token without the application)."""
+    return _handle(lambda: AdminService(db).set_module_enabled(actor=admin, module_key=module_key, enabled=payload.enabled))

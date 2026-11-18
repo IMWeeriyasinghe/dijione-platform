@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
+import { DelegatedAccessSection } from "./delegated-access";
 import {
   ApiError,
   getApplicationDetail,
@@ -209,7 +210,7 @@ export default function AdminApplicationDetailPage() {
   const users = usersQuery.data ?? [];
   const groups = groupsQuery.data ?? [];
   const moduleRoles = (rolesQuery.data ?? [])
-    .filter((r) => r.module_key === moduleKey)
+    .filter((r) => r.module_key === moduleKey && !r.appointment_only)
     .map((r) => ({ key: r.key, name: r.name }));
 
   const supportsClientScope = app.supports_client_scope !== false;
@@ -355,6 +356,8 @@ export default function AdminApplicationDetailPage() {
           </tbody>
         </Table>
       )}
+
+      <DelegatedAccessSection app={app} users={users} clients={clients} />
 
       <AssignModal
         key={assignUserOpen ? "assign-user-open" : "assign-user"}

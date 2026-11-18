@@ -76,7 +76,7 @@ describe("BirthdayShell", () => {
   });
 
   it("renders the full DijiBirthday nav for a persona holding a birthday role", () => {
-    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true });
+    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true, canManageAccess: false, accessAdminOnly: false });
 
     wrap(<BirthdayShell>content</BirthdayShell>);
 
@@ -88,7 +88,7 @@ describe("BirthdayShell", () => {
   });
 
   it("shows the Email Safety admin nav item for an admin in a non-production environment", async () => {
-    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true });
+    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true, canManageAccess: false, accessAdminOnly: false });
     getReleaseMetadata.mockResolvedValue({ release_date: null, is_production: false });
 
     wrap(<BirthdayShell>content</BirthdayShell>);
@@ -97,7 +97,7 @@ describe("BirthdayShell", () => {
   });
 
   it("hides the Email Safety admin nav item for a non-admin internal user", async () => {
-    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_USER", isAdmin: false });
+    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_USER", isAdmin: false, canManageAccess: false, accessAdminOnly: false });
     getReleaseMetadata.mockResolvedValue({ release_date: null, is_production: false });
 
     wrap(<BirthdayShell>content</BirthdayShell>);
@@ -107,7 +107,7 @@ describe("BirthdayShell", () => {
   });
 
   it("hides the Email Safety admin nav item in a production environment, even for an admin", async () => {
-    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true });
+    mockedUseBirthdayScope.mockReturnValue({ role: "BIRTHDAY_ADMIN", isAdmin: true, canManageAccess: false, accessAdminOnly: false });
     getReleaseMetadata.mockResolvedValue({ release_date: null, is_production: true });
 
     wrap(<BirthdayShell>content</BirthdayShell>);

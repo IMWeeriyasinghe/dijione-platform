@@ -57,6 +57,8 @@ const nextConfig: NextConfig = {
 
       { source: "/api/auth/:path*", destination: `${PLATFORM_API_URL}/api/auth/:path*` },
       { source: "/api/modules", destination: `${PLATFORM_API_URL}/api/modules` },
+      // Delegated application access administration (each app's Management → Access page).
+      { source: "/api/access/:path*", destination: `${PLATFORM_API_URL}/api/access/:path*` },
       { source: "/api/notifications/:path*", destination: `${PLATFORM_API_URL}/api/notifications/:path*` },
       { source: "/api/admin/:path*", destination: `${ADMIN_API_URL}/api/admin/:path*` },
       { source: "/api/talent/:path*", destination: `${TALENT_API_URL}/api/talent/:path*` },

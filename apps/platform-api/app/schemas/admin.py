@@ -40,6 +40,8 @@ class ModuleAssignmentIn(BaseModel):
     role: str
     enabled: bool = True
     client_scope: ClientScopeIn | None = None
+    # Required only when a Super Admin changes their own access (break-glass).
+    break_glass_reason: str | None = Field(default=None, max_length=500)
 
 
 class AdminUserOut(BaseModel):
@@ -140,6 +142,8 @@ class AdminRoleOut(BaseModel):
     is_system: bool
     permission_count: int
     user_count: int
+    # Granted only by an Application Administrator appointment; never offered for assignment.
+    appointment_only: bool = False
 
 
 class AdminPermissionOut(BaseModel):
@@ -165,10 +169,11 @@ class AuditLogOut(BaseModel):
 
 
 class AccessSourceOut(BaseModel):
-    type: str  # "DIRECT" | "GROUP"
+    type: str  # "DIRECT" | "GROUP" | "BASELINE" | "APPOINTMENT"
     role: str | None = None
     group_id: int | None = None
     group_name: str | None = None
+    mandated: bool = False  # default access or a SYSTEM group: an application suspension never removes it
 
 
 class EffectiveModuleAccessOut(BaseModel):
@@ -190,6 +195,8 @@ class EffectiveAccessOut(BaseModel):
     platform_permissions: list[str]
     modules: list[EffectiveModuleAccessOut]
     default_access_excluded: list[str] = []
+    suspended_modules: list[str] = []  # application suspensions (ordinary grants do not apply there)
+    administered_modules: list[str] = []  # applications this person is an access administrator of
 
 
 class GroupModuleAssignmentOut(BaseModel):
@@ -205,6 +212,7 @@ class GroupModuleAssignmentIn(BaseModel):
     role: str
     enabled: bool = True
     client_scope: ClientScopeIn | None = None
+    break_glass_reason: str | None = Field(default=None, max_length=500)
 
 
 class GroupMemberOut(BaseModel):
@@ -258,6 +266,7 @@ class AccessGroupStatusIn(BaseModel):
 
 class AddGroupMemberIn(BaseModel):
     user_id: int
+    break_glass_reason: str | None = Field(default=None, max_length=500)
 
 
 class ApplicationAssignedUserOut(BaseModel):
@@ -280,6 +289,11 @@ class ApplicationAssignedGroupOut(BaseModel):
     client_scope: ClientScopeOut
 
 
+class AdminRoleRefOut(BaseModel):
+    key: str
+    name: str
+
+
 class ApplicationDetailOut(BaseModel):
     module_key: str
     module_name: str
@@ -291,6 +305,10 @@ class ApplicationDetailOut(BaseModel):
     direct_user_count: int
     group_count: int
     supports_client_scope: bool = True
+    # Delegated access administration: whether this application has an Access page, and the
+    # employee roles an Application Administrator may be authorised to grant.
+    delegation_supported: bool = False
+    delegable_roles: list[AdminRoleRefOut] = []
 
 
 class AdminDashboardOut(BaseModel):

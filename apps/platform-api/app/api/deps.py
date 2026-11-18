@@ -34,13 +34,12 @@ def _is_staff_session(payload: dict, user: User) -> bool:
     The signature and issuer are shared with supplier-portal tokens, so they
     prove only that a DijiOne service signed the token. A staff session must:
     carry no claim of another actor population; be marked ``actor_type=staff``
-    (tokens issued before that marker existed carry none and are accepted on the
-    remaining checks until they expire); and name the same email address as the
+    (required: tokens from before that marker existed have all expired); and name the same email address as the
     user record its ``sub`` points at, which binds the token to that account
     rather than to whichever account happens to share the number."""
     if any(payload.get(claim) is not None for claim in _FOREIGN_ACTOR_CLAIMS):
         return False
-    if payload.get(SESSION_ACTOR_CLAIM, SESSION_ACTOR_STAFF) != SESSION_ACTOR_STAFF:
+    if payload.get(SESSION_ACTOR_CLAIM) != SESSION_ACTOR_STAFF:  # mandatory since every pre-marker token expired
         return False
     email = payload.get("email")
     return isinstance(email, str) and email.strip().lower() == user.email.strip().lower()

@@ -19,7 +19,15 @@ export const PERM = {
   IDENTITY_MANAGE: "onsite.identity.manage",
   SYNC: "onsite.sync.request",
   SITES: "onsite.sites.manage",
+  DASHBOARD: "onsite.dashboard.read",
+  /** Appointed access administrators: Admin → Access. */
+  ACCESS_MANAGE: "onsite.access.manage",
 } as const;
+
+/** An appointed access administrator with no business role: the shell shows only Access. */
+export function isAccessAdminOnly(scope: OnsiteScope | null | undefined): boolean {
+  return Boolean(scope && scope.permissions.includes(PERM.ACCESS_MANAGE) && !scope.permissions.includes(PERM.DASHBOARD));
+}
 
 export type OnsiteScope = {
   role: string;
