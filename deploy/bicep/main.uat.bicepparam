@@ -56,6 +56,8 @@ param maxReplicasOverrides = {}
 param authMode = 'entra'
 param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param entraInternalEmailDomains = 'dijitalteam.com'
+// Delegated application access administration: off until separately authorized for UAT.
+param delegatedAccessEnabled = false
 param entraClientId = 'f7455106-f91b-42e0-9a6a-2f3dc256727c'
 // Custom domain (reconciled from 8dca96b; equals live UAT). The old
 // shell-web.mangofield-96838df7... callback stays registered in Entra as a

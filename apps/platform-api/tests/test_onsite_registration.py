@@ -305,7 +305,8 @@ def test_migration_fresh_db_registers_onsite_and_is_idempotent(tmp_path):
     with eng.connect() as c:
         caps = dict(c.execute(text("SELECT key, supports_client_scope FROM application_modules")).all())
     # Only the modules registered before On-site; later ones declare their own.
-    assert caps.pop("onsite") in (0, False) and all(caps[k] in (1, True) for k in ("talent-flow", "birthday", "spark"))
+    assert caps.pop("onsite") in (0, False) and all(caps[k] in (1, True) for k in ("talent-flow", "spark"))
+    assert caps["birthday"] in (0, False)  # birthday-api never reads client scope (r9t1v3x5z7b9)
 
     # Downgrade one step is a no-op data migration (repo convention); re-upgrade converges, no duplicates.
     # The head is a merge point, where "-1" is ambiguous, so step back to one parent.
