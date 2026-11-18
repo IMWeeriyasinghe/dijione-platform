@@ -63,7 +63,8 @@ def test_upgrade_is_additive_idempotent_and_downgrade_is_guarded(tmp_path):
     assert refused.returncode != 0 and "silently restore" in refused.stderr
     with engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM application_access_suspensions")).scalar() == 1
-        assert REVISION in c.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        # Still at or after this revision: the refused downgrade did not pass it.
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() != PREVIOUS
 
     # Once removed deliberately, the downgrade proceeds.
     with engine.begin() as c:
@@ -72,4 +73,34 @@ def test_upgrade_is_additive_idempotent_and_downgrade_is_guarded(tmp_path):
     with engine.connect() as c:
         tables = {r[0] for r in c.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'"))}
     assert "application_access_suspensions" not in tables and "application_administrators" not in tables
+    engine.dispose()
+
+
+def test_birthday_registry_no_longer_claims_client_scope(tmp_path):
+    """r9t1v3x5z7b9: registry metadata only; assignments and their client-scope rows are untouched."""
+    url = f"sqlite:///{(tmp_path / 'birthday-scope.db').as_posix()}"
+    assert _alembic(url, "upgrade", REVISION).returncode == 0
+    engine = create_engine(url)
+
+    def state():
+        with engine.connect() as c:
+            return (
+                dict(c.execute(text("SELECT key, supports_client_scope FROM application_modules")).all()),
+                c.execute(text("SELECT COUNT(*) FROM user_module_client_scopes")).scalar(),
+                c.execute(text("SELECT COUNT(*) FROM user_module_roles")).scalar(),
+            )
+
+    caps, scopes, roles = state()
+    if "birthday" not in caps:  # a database without the module registered: nothing to correct
+        engine.dispose()
+        return
+    assert caps["birthday"] in (1, True)
+    assert _alembic(url, "upgrade", "head").returncode == 0
+    after, scopes_after, roles_after = state()
+    assert after["birthday"] in (0, False)
+    assert {k: v for k, v in after.items() if k != "birthday"} == {k: v for k, v in caps.items() if k != "birthday"}
+    assert (scopes_after, roles_after) == (scopes, roles)
+    assert _alembic(url, "upgrade", "head").returncode == 0  # idempotent
+    assert _alembic(url, "downgrade", REVISION).returncode == 0
+    assert state()[0]["birthday"] in (1, True)
     engine.dispose()

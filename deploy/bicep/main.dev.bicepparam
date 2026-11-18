@@ -55,6 +55,8 @@ param seedTalentClientExtensions = true
 param authMode = 'entra'
 param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 param entraInternalEmailDomains = 'dijitalteam.com'
+// Delegated application access administration: on in DEV since 2026-11-18 (docs/platform/delegated-access.md).
+param delegatedAccessEnabled = true
 param entraClientId = '2ea7f6b8-d3c2-4dda-b806-32549efeadb6'
 // Custom domain — equals live DEV platform-api ENTRA_REDIRECT_URI/PUBLIC_BASE_URL.
 param publicBaseUrl = 'https://dijione-dev.dijitalteam.com'

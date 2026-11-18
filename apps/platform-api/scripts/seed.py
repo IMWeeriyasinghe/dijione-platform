@@ -130,6 +130,7 @@ def seed_module_registry(db) -> None:
             # birthday-web) — same gating as DijiTalentFlow: only users
             # with an actual BIRTHDAY_* module assignment see the card.
             required_roles="ANY",
+            supports_client_scope=False,  # birthday-api never reads client scope (r9t1v3x5z7b9)
         ),
         dict(
             key=MODULE_SPARK, name="DijiSpark",

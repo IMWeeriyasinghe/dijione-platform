@@ -98,6 +98,8 @@ param authMode = 'entra'
 param entraTenantId = '2abce006-6ea2-4675-b39d-33e0a54c46c7'
 // Default module access needs a verified internal employee (docs/atwork/deployment.md).
 param entraInternalEmailDomains = 'dijitalteam.com'
+// Delegated application access administration: off until separately authorized for Production.
+param delegatedAccessEnabled = false
 param entraClientId = '98b1f056-68a2-492e-9d37-ae2e5eb0d218'
 // Custom domain. The old shell-web.icybush-52a8142b... callback stays
 // registered in Entra as a rollback fallback but is not the public URL.

@@ -85,6 +85,9 @@ param seedTalentClientExtensions bool = false
 @allowed([ 'dev', 'entra' ])
 param authMode string = 'dev'
 
+@description('Delegated application access administration (docs/platform/delegated-access.md): appointments and the /api/access endpoints. Off by default. Turning it off is always a safe rollback: existing suspensions stay enforced.')
+param delegatedAccessEnabled bool = false
+
 @description('Entra directory (tenant) id. Only used when authMode == entra.')
 param entraTenantId string = ''
 
@@ -490,7 +493,8 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], s.name == 'birthday-web' ? birthdayWebEnv : [], s.name == 'birthday-api' ? birthdayApiMailEnv : [], contains(releaseDates, s.name) ? [ { name: 'RELEASE_DATE', value: string(releaseDates[s.name]) } ] : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase, externalPortalBaseUrl))
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], s.name == 'birthday-web' ? birthdayWebEnv : [], s.name == 'birthday-api' ? birthdayApiMailEnv : [],
+        s.name == 'platform-api' ? [ { name: 'DELEGATED_ACCESS_ENABLED', value: delegatedAccessEnabled ? 'true' : 'false' } ] : [], contains(releaseDates, s.name) ? [ { name: 'RELEASE_DATE', value: string(releaseDates[s.name]) } ] : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase, externalPortalBaseUrl))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
       //   matching *IntegrationsMode == 'live'
