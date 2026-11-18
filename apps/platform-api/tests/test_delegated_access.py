@@ -19,7 +19,7 @@ from app.services.claims_service import build_claims
 from app.services.delegated_access_rollback import check as rollback_check
 from tests.conftest import auth_headers, internal_headers, make_eligible
 
-TALENT, ATWORK, BIRTHDAY = "talent-flow", "atwork", "birthday"
+TALENT, BIRTHDAY = "talent-flow", "birthday"
 ADMIN = "/api/platform/admin"
 ABC, XYZ = 1, 2  # platform Client.id (seeded in this order by conftest)
 OID_NEW = "11111111-0000-4000-8000-000000000001"
@@ -52,10 +52,8 @@ def _feature(monkeypatch):
 def world(db, two_tenant_world):
     db.add_all([
         ApplicationModule(key=TALENT, name="DijiTalentFlow", description="", route="/talent-flow"),
-        ApplicationModule(key=ATWORK, name="DijiAtWork", description="", route="/atwork", supports_client_scope=False),
         ApplicationModule(key=BIRTHDAY, name="DIJI Birthday", description="", route="/birthday",
                           supports_client_scope=False),
-        ModuleBaselineRole(module_key=ATWORK, role="ATWORK_USER", enabled=True),
     ])
     people = {}
     for key in ("tom", "david", "erin", "gina", "hal"):
@@ -311,27 +309,38 @@ def test_revoking_with_a_group_grant_suspends_only_this_app(api_client, db, worl
     assert {"module_access.suspended", "module_access.suspension_lifted"} <= actions
 
 
-def test_mandated_access_survives_revocation(api_client, db, world):
-    hal = world["hal"]
-    assert _appoint(api_client, ATWORK, world["tom"].id, ["ATWORK_MANAGER"]).status_code == 200
-    _group(db, "all-staff", hal, ATWORK, "ATWORK_MANAGER", system=True)
-    # Only mandatory access: nothing to remove.
-    resp = _revoke(api_client, "test-tom", ATWORK, hal.id)
-    assert resp.status_code == 409  # only default access and a SYSTEM group: nothing removable
-    assert {"atwork.access", "atwork.management.access"} <= _perms(db, hal, ATWORK)
-    # A direct grant on top is removable; the default access and the SYSTEM group stay.
-    assert _grant(api_client, "test-tom", ATWORK, world["erin"].id, "ATWORK_MANAGER").status_code == 200
-    assert _revoke(api_client, "test-tom", ATWORK, world["erin"].id).status_code == 200
-    assert _perms(db, world["erin"], ATWORK) == frozenset({
-        "atwork.access", "atwork.attendance.read_own", "atwork.attendance.record_own", "atwork.corrections.request_own",
-    })
+# Mandatory access, shown with a module-neutral default role: here BIRTHDAY_USER is made the default
+# role for every eligible employee (the same shape as the real always-on default access).
+USER_PERMS = frozenset({"birthday.dashboard.read", "birthday.orders.read", "birthday.suppliers.read"})
 
 
-def test_suspension_never_removes_default_access(db, world):
-    hal = db.get(User, world["hal"].id)
-    db.add(ApplicationAccessSuspension(user_id=hal.id, module_key=ATWORK, reason="x"))
+@pytest.fixture()
+def default_access(db, world):
+    db.add(ModuleBaselineRole(module_key=BIRTHDAY, role="BIRTHDAY_USER", enabled=True))
     db.commit()
-    assert "atwork.access" in _perms(db, hal, ATWORK)
+    return world
+
+
+def test_mandated_access_survives_revocation(api_client, db, default_access):
+    world = default_access
+    hal = world["hal"]
+    assert _appoint(api_client, BIRTHDAY, world["tom"].id, ["BIRTHDAY_ADMIN"]).status_code == 200
+    _group(db, "all-staff", hal, BIRTHDAY, "BIRTHDAY_ADMIN", system=True)
+    # Only mandatory access: nothing to remove.
+    resp = _revoke(api_client, "test-tom", BIRTHDAY, hal.id)
+    assert resp.status_code == 409  # only default access and a SYSTEM group: nothing removable
+    assert "birthday.orders.create" in _perms(db, hal, BIRTHDAY)
+    # A direct grant on top is removable; the default access stays.
+    assert _grant(api_client, "test-tom", BIRTHDAY, world["erin"].id, "BIRTHDAY_ADMIN").status_code == 200
+    assert _revoke(api_client, "test-tom", BIRTHDAY, world["erin"].id).status_code == 200
+    assert _perms(db, world["erin"], BIRTHDAY) == USER_PERMS
+
+
+def test_suspension_never_removes_default_access(db, default_access):
+    hal = db.get(User, default_access["hal"].id)
+    db.add(ApplicationAccessSuspension(user_id=hal.id, module_key=BIRTHDAY, reason="x"))
+    db.commit()
+    assert _perms(db, hal, BIRTHDAY) == USER_PERMS
 
 
 def test_suspended_group_scope_outside_authority_cannot_be_removed(api_client, db, world, tom):
