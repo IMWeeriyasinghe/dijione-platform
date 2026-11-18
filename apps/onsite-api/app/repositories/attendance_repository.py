@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from datetime import date, datetime
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.mirror import AgentStatus, AttendanceEvent
@@ -37,6 +37,19 @@ class AttendanceRepository:
         clauses = [and_(AttendanceEvent.emp_code == c, AttendanceEvent.site_local_date >= lo,
                         AttendanceEvent.site_local_date <= hi) for c, lo, hi in code_windows]
         return [or_(*clauses)] if clauses else [AttendanceEvent.event_id.is_(None)]
+
+    @staticmethod
+    def _windows_clause(code_windows: Collection[tuple[str, date, date]]):
+        """OR of ``(code, lo..hi)`` windows, or ``None`` when there are none."""
+        clauses = [and_(AttendanceEvent.emp_code == c, AttendanceEvent.site_local_date >= lo,
+                        AttendanceEvent.site_local_date <= hi) for c, lo, hi in code_windows]
+        return or_(*clauses) if clauses else None
+
+    @classmethod
+    def _not_windows(cls, code_windows: Collection[tuple[str, date, date]] | None) -> list:
+        """Events OUTSIDE every window (``None``/empty = no restriction)."""
+        clause = cls._windows_clause(code_windows or ())
+        return [] if clause is None else [~clause]
 
     @staticmethod
     def _range(site_id: str, date_from: date, date_to: date) -> list:
@@ -147,30 +160,110 @@ class AttendanceRepository:
             .group_by(AttendanceEvent.site_local_date).order_by(AttendanceEvent.site_local_date)
         ).all()]
 
-    def events_page(
-        self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,
-        emp_codes: Collection[str] | None = None, terminal: str | None = None,
-        tz_inconsistent_only: bool = False, offset: int = 0, limit: int = 50,
-        utc_windows: Collection[tuple[datetime, datetime]] | None = None, oldest_first: bool = False,
-        code_windows: Collection[tuple[str, date, date]] | None = None,
-    ) -> tuple[int, list[AttendanceEvent]]:
-        """Newest-first (or oldest-first) raw events plus the total count.
-        ``utc_windows`` keeps only events with ``start <= punch_time_utc < end``
-        in any window (exact hour drill-down, no double counting at the edges).
-        Ordering is total and stable: (punch_time_utc, event_id)."""
-        if site_id not in allowed_site_ids:
-            return 0, []
+    def _event_where(
+        self, *, site_id: str, date_from: date, date_to: date, emp_codes: Collection[str] | None,
+        terminal: str | None, tz_inconsistent_only: bool,
+        utc_windows: Collection[tuple[datetime, datetime]] | None,
+        code_windows: Collection[tuple[str, date, date]] | None,
+        exclude_code_windows: Collection[tuple[str, date, date]] | None,
+    ) -> list | None:
+        """Shared WHERE of the Activity selection; ``None`` = matches nothing."""
         where = [*self._range(site_id, date_from, date_to), *self._emp_filter(emp_codes),
-                 *self._windows(code_windows)]
+                 *self._windows(code_windows), *self._not_windows(exclude_code_windows)]
         if terminal:
             where.append(AttendanceEvent.terminal_alias == terminal)
         if tz_inconsistent_only:
             where.append(AttendanceEvent.tz_consistent.is_(False))
         if utc_windows is not None:
             if not utc_windows:
-                return 0, []
+                return None
             where.append(or_(*[and_(AttendanceEvent.punch_time_utc >= s, AttendanceEvent.punch_time_utc < e)
                                for s, e in utc_windows]))
+        return where
+
+    def mapping_counts(
+        self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,
+        verified_windows: Collection[tuple[str, date, date]],
+        conflict_windows: Collection[tuple[str, date, date]],
+        emp_codes: Collection[str] | None = None, terminal: str | None = None,
+        tz_inconsistent_only: bool = False, utc_windows: Collection[tuple[datetime, datetime]] | None = None,
+        code_windows: Collection[tuple[str, date, date]] | None = None,
+    ) -> dict[str, int]:
+        """One aggregate over the same selection as ``events_page``: recorded
+        events split into verified / conflict / unmapped, so the three always
+        add up to ``recorded``. Verified = inside a verified period and not a
+        conflict day; conflict = a day covered by overlapping periods."""
+        empty = {"recorded": 0, "verified": 0, "conflict": 0, "unmapped": 0}
+        if site_id not in allowed_site_ids:
+            return empty
+        where = self._event_where(site_id=site_id, date_from=date_from, date_to=date_to, emp_codes=emp_codes,
+                                  terminal=terminal, tz_inconsistent_only=tz_inconsistent_only,
+                                  utc_windows=utc_windows, code_windows=code_windows, exclude_code_windows=None)
+        if where is None:
+            return empty
+        v_clause = self._windows_clause(verified_windows)
+        c_clause = self._windows_clause(conflict_windows)
+        is_conflict = c_clause if c_clause is not None else false()
+        is_verified = (and_(v_clause, ~c_clause) if c_clause is not None else v_clause) \
+            if v_clause is not None else false()
+        recorded, verified, conflict = self.db.execute(
+            select(func.count(), func.sum(case((is_verified, 1), else_=0)), func.sum(case((is_conflict, 1), else_=0)))
+            .select_from(AttendanceEvent).where(*where)
+        ).one()
+        recorded, verified, conflict = int(recorded or 0), int(verified or 0), int(conflict or 0)
+        return {"recorded": recorded, "verified": verified, "conflict": conflict,
+                "unmapped": recorded - verified - conflict}
+
+    def day_punches(
+        self, *, allowed_site_ids: Collection[str], site_id: str, codes: Collection[str], date_from: date,
+        date_to: date,
+    ) -> list[tuple[str, date, datetime, str]]:
+        """(emp_code, local_date, punch_time_utc, event_id) of whole site-local
+        days — the complete day, independent of any page or filter."""
+        if site_id not in allowed_site_ids or not codes:
+            return []
+        return [tuple(r) for r in self.db.execute(
+            select(AttendanceEvent.emp_code, AttendanceEvent.site_local_date, AttendanceEvent.punch_time_utc,
+                   AttendanceEvent.event_id)
+            .where(*self._range(site_id, date_from, date_to), AttendanceEvent.emp_code.in_(list(codes)))
+            .order_by(AttendanceEvent.punch_time_utc, AttendanceEvent.event_id)
+        ).all()]
+
+    def code_day_bounds(
+        self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,
+    ) -> list[tuple[str, date, int, str, str]]:
+        """(emp_code, local_date, events, first_local, last_local) per code-day —
+        the site-local wall clock of the first and last recorded punch."""
+        if site_id not in allowed_site_ids:
+            return []
+        return [tuple(r) for r in self.db.execute(
+            select(AttendanceEvent.emp_code, AttendanceEvent.site_local_date, func.count(),
+                   func.min(AttendanceEvent.punch_time_local), func.max(AttendanceEvent.punch_time_local))
+            .where(*self._range(site_id, date_from, date_to))
+            .group_by(AttendanceEvent.emp_code, AttendanceEvent.site_local_date)
+        ).all()]
+
+    def events_page(
+        self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,
+        emp_codes: Collection[str] | None = None, terminal: str | None = None,
+        tz_inconsistent_only: bool = False, offset: int = 0, limit: int = 50,
+        utc_windows: Collection[tuple[datetime, datetime]] | None = None, oldest_first: bool = False,
+        code_windows: Collection[tuple[str, date, date]] | None = None,
+        exclude_code_windows: Collection[tuple[str, date, date]] | None = None,
+    ) -> tuple[int, list[AttendanceEvent]]:
+        """Newest-first (or oldest-first) raw events plus the total count.
+        ``utc_windows`` keeps only events with ``start <= punch_time_utc < end``
+        in any window (exact hour drill-down, no double counting at the edges).
+        ``exclude_code_windows`` drops events inside those windows (unmapped
+        selection). Ordering is total and stable: (punch_time_utc, event_id)."""
+        if site_id not in allowed_site_ids:
+            return 0, []
+        where = self._event_where(site_id=site_id, date_from=date_from, date_to=date_to, emp_codes=emp_codes,
+                                  terminal=terminal, tz_inconsistent_only=tz_inconsistent_only,
+                                  utc_windows=utc_windows, code_windows=code_windows,
+                                  exclude_code_windows=exclude_code_windows)
+        if where is None:
+            return 0, []
         order = (AttendanceEvent.punch_time_utc.asc(), AttendanceEvent.event_id.asc()) if oldest_first else \
             (AttendanceEvent.punch_time_utc.desc(), AttendanceEvent.event_id.desc())
         total = int(self.db.execute(select(func.count()).select_from(AttendanceEvent).where(*where)).scalar_one())

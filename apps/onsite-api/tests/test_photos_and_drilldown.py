@@ -179,8 +179,14 @@ def test_hour_drilldown_matches_hourly_chart(api_client, db, audit_calls, direct
         hours = _get(api_client, f"/api/onsite/dashboard/hourly-activity?site_id=dev-site&{rng}").json()["hours"]
         for h in hours:
             got = _get(api_client, f"/api/onsite/activity?site_id=dev-site&{rng}&hour={h['hour']}").json()
-            assert got["total"] == h["events"], (rng, h)
+            assert got["total"] == h["verified_events"], (rng, h)  # default = verified selection
             assert len({e["emp_code"] for e in got["items"]}) <= h["employees"]
+            base = f"/api/onsite/activity?site_id=dev-site&{rng}&hour={h['hour']}"
+            for mapping, key in (("all", "events"), ("verified", "verified_events")):
+                assert _get(api_client, f"{base}&mapping={mapping}").json()["total"] == h[key], (rng, mapping, h)
+            unverified = _get(api_client, f"{base}&mapping=unverified").json()
+            assert unverified["total"] == h["unmapped_events"] + h["conflict_events"], (rng, h)
+            assert unverified["summary"]["recorded"] == h["events"]
 
 
 def _add(db, event_id, utc):

@@ -143,7 +143,7 @@ def _directory_entry(directory: DirectorySnapshot, bamboohr_id: str) -> dict:
     e = directory.by_bamboohr_id().get(str(bamboohr_id))
     if e is None:
         raise IdentityError(422, {"error": "UNKNOWN_EMPLOYEE",
-                                  "message": "BHR Employee ID is not in the Workforce Directory."})
+                                  "message": "BHR ID is not in the Workforce Directory."})
     return e
 
 

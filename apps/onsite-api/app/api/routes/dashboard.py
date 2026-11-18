@@ -24,6 +24,7 @@ router = APIRouter(prefix="/api/onsite", tags=["onsite-dashboard"])
 
 _FLAG_PATTERN = "^(" + "|".join(svc.REVIEW_FLAGS) + ")$"
 _IDENTITY_PATTERN = "^(" + "|".join(svc.IDENTITY_CLASSES) + ")$"
+_MAPPING_PATTERN = "^(" + "|".join(svc.MAPPING_FILTERS) + ")$"
 
 
 def _site_and_day(db, scope: OnsiteScope, site_id: str | None, day: date | None) -> tuple[str, str | None, date]:
@@ -110,6 +111,9 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
              flag: str | None = Query(None, pattern=_FLAG_PATTERN),
              hour: int | None = Query(None, ge=0, le=23, description="Site-local clock hour on every date in the range"),
              sort: str = Query("-time", pattern="^-?time$"),
+             mapping: str | None = Query(None, pattern=_MAPPING_PATTERN, description=(
+                 "Recorded events by the mapping state of their own day: all | verified | unverified "
+                 "(unmapped + conflict) | conflict. Omitted = the verified employee-attributed selection.")),
              page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=200),
              fmt: str = Query("json", alias="format", pattern="^(json|csv)$"),
              scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)), db: Session = Depends(get_db)):
@@ -121,14 +125,19 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
     data = svc.activity(db, scope.allowed_site_ids, site, start, end, workforce_directory.load(), q=q,
                         department=department, terminal=terminal, identity_class=identity_class, flag=flag,
                         page=page, page_size=page_size, technical=technical, tz=tz, emp_code=emp_code,
-                        hour=hour, oldest_first=sort == "time", bamboohr_id=bamboohr_id)
+                        hour=hour, oldest_first=sort == "time", bamboohr_id=bamboohr_id, mapping=mapping)
     if fmt == "json":
+        # Unmapped events carry only the raw ZKBioTime ID for every reader; only
+        # identity administrators get the route into Identity Management.
+        data["can_investigate_identity"] = scope.has(Perm.IDENTITY_READ)
         return data
     if data["total"] > page_size:  # never silently truncate the CSV
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                             "Too many rows for CSV — narrow the date range or add filters.")
     cols = ["local_time", "emp_code", "employee_name", "department", "terminal", "area", "identity_class",
             "punch_state_raw", "tz_consistent"]
+    if mapping is not None:
+        cols += ["mapping_state", "punch_sequence"]
     if technical:
         cols += ["event_id", "source_epoch", "source_transaction_id", "verify_type"]
     buf = io.StringIO()

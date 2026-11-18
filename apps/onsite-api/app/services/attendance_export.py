@@ -136,7 +136,7 @@ def pair_events(events, by_code_day: dict) -> list[dict]:
 # --- sheets ------------------------------------------------------------------
 
 _ATTENDANCE_COLUMNS = [
-    Column("Date", 12, "date"), Column("Team Member Name", 26), Column("BHR Employee ID", 14),
+    Column("Date", 12, "date"), Column("Team Member Name", 26), Column("BHR ID", 14),
     Column("EMP Number", 16), Column("ZKBioTime ID(s)", 16), Column("Department", 20),
     Column("Employment Status", 14), Column("First Activity", 13, "time"), Column("Latest Activity", 13, "time"),
     Column("Punch Count", 12, "int"), Column("Activity Span (minutes)", 14, "int"),
@@ -167,7 +167,7 @@ def attendance_sheet(days: list[dict], *, title: str = "Attendance Report", with
 
 def event_sheet(events: list[dict]) -> Sheet:
     cols = [Column("Local Date", 12, "date"), Column("Local Time", 11, "time"), Column("ZKBioTime ID", 14),
-            Column("Team Member Name", 26), Column("BHR Employee ID", 14), Column("EMP Number", 16),
+            Column("Team Member Name", 26), Column("BHR ID", 14), Column("EMP Number", 16),
             Column("Department", 20), Column("Terminal", 18), Column("Verify Type", 11), Column("Mapping Status", 22),
             Column("Review Flags", 32, wrap=True)]
     rows = []
@@ -177,6 +177,59 @@ def event_sheet(events: list[dict]) -> Sheet:
                      day.get("bamboohr_id"), day.get("employee_number"), day.get("department"), e.terminal_alias,
                      e.verify_type, _mapping_label(day), _flags_text(day["flags"])])
     return Sheet("Event Detail", cols, rows)
+
+
+# --- recorded activity (raw events of every mapping state) --------------------
+
+RECORDED_TITLE = {
+    "all": "Recorded Activity — all mapping states",
+    "unverified": "Recorded Activity — unmapped / needs review only",
+    "conflict": "Recorded Activity — mapping conflicts only",
+}
+MAPPING_FILTER_LABEL = {
+    "all": "All activity", "verified": "Verified", "unverified": "Unmapped / needs review",
+    "conflict": "Mapping conflict",
+}
+STATE_LABEL = {"VERIFIED": "Verified", "UNMAPPED": "Unmapped — needs review", "CONFLICT": "Mapping conflict"}
+SEQUENCE_LABEL = {"FIRST": "First recorded", "LAST": "Last recorded", "INTERMEDIATE": "Intermediate",
+                  "SINGLE": "Single activity"}
+
+
+def recorded_event_sheet(events, ident, seqs: dict[str, dict]) -> Sheet:
+    """One row per recorded event (oldest first). Unverified events carry only
+    the raw ZKBioTime ID — never a name, BHR ID or EMP Number."""
+    cols = [Column("Local Date", 12, "date"), Column("Local Time", 11, "time"), Column("ZKBioTime ID", 14),
+            Column("Mapping Status", 24), Column("Punch Sequence (whole day)", 22), Column("Team Member Name", 26),
+            Column("BHR ID", 12), Column("EMP Number", 14), Column("Department", 20), Column("Terminal", 18),
+            Column("Raw State", 10), Column("Verify Type", 11)]
+    rows = []
+    for e in events:
+        r = ident.resolve(e.emp_code, e.site_local_date, e.site_id)
+        state = svc.mapping_state(r)
+        verified = state == svc.VERIFIED
+        seq = seqs.get(e.event_id, {})
+        rows.append([e.site_local_date, _time(e.punch_time_local), e.emp_code, STATE_LABEL[state],
+                     SEQUENCE_LABEL.get(seq.get("punch_sequence"), ""),
+                     r.employee_name if verified else None, r.bamboohr_id if verified else None,
+                     r.employee_number if verified else None, r.department if verified else None,
+                     e.terminal_alias, e.punch_state, e.verify_type])
+    return Sheet("Recorded Events", cols, rows)
+
+
+def recorded_summary_sheet(counts: dict, start: date, end: date, mapping: str, exported: int) -> Sheet:
+    rows: list[list] = [
+        ["Date range", f"{start.isoformat()} to {end.isoformat()}"],
+        ["Export scope", "Recorded attendance events (raw), not employee-attributed attendance"],
+        ["Mapping status filter", MAPPING_FILTER_LABEL[mapping]],
+        ["Events in this export", exported],
+        ["Recorded events (all mapping states, same filters)", counts["recorded"]],
+        ["Verified events", counts["verified"]],
+        ["Unmapped events (needs review)", counts["unmapped"]],
+        ["Mapping-conflict events (never attributed)", counts["conflict"]],
+        ["Note", "Verified + unmapped + conflict = recorded. Each event is classified by the mapping valid on "
+                 "its own site-local day. First/last recorded punches are not check-in/check-out."],
+    ]
+    return Sheet("Summary", [Column("Measure", 44), Column("Value", 60, wrap=True)], rows)
 
 
 def summary_sheet(days: list[dict], start: date, end: date, unmapped: int | None = None) -> Sheet:

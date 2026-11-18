@@ -4,9 +4,13 @@ Neutral facts only (first/latest activity, punch count, span, terminals,
 needs-review flags). No Present/Absent/Late/Early/worked-hours judgements —
 those need an approved attendance policy. ``PunchState`` is passed through
 raw and never interpreted. Employee identity comes ONLY from administrator-
-verified ZKBioTime ID -> BambooHR mappings (``identity_resolution``); unmapped
-attendance is excluded from these viewer records (it stays visible in Identity
-Management). Headcounts count distinct BambooHR employees, never codes.
+verified ZKBioTime ID -> BambooHR mappings (``identity_resolution``).
+Employee-attributed views (Today, Team Members, Exceptions, attributed KPIs,
+attendance exports) contain verified attendance only. Activity (with a
+``mapping`` filter) and the Overview charts show ALL recorded events, each
+classified VERIFIED / UNMAPPED / CONFLICT for its own site-local day; an
+unverified event shows its raw ZKBioTime ID and never a person. Headcounts
+count distinct BambooHR employees, never codes.
 """
 
 from __future__ import annotations
@@ -95,8 +99,48 @@ class Identity:
         return out
 
 
+# --- mapping states (Activity + Overview charts) -------------------------------
+# Every recorded event is in exactly one state for ITS OWN site-local day:
+#   VERIFIED  — one verified mapping covers that day (attributed to that person)
+#   UNMAPPED  — no verified mapping covers that day
+#   CONFLICT  — more than one mapping covers that day (never attributed)
+# "Needs review" (filter value ``unverified``) = UNMAPPED + CONFLICT.
+VERIFIED, UNMAPPED, CONFLICT = "VERIFIED", "UNMAPPED", "CONFLICT"
+MAPPING_FILTERS = ("all", "verified", "unverified", "conflict")
+STATES = (VERIFIED, UNMAPPED, CONFLICT)
+
+
+def mapping_state(r) -> str:
+    if r.identified:
+        return VERIFIED
+    return CONFLICT if r.mapping_status == MappingStatus.MAPPING_CONFLICT else UNMAPPED
+
+
+def _subtract(windows: list[tuple[str, date, date]], holes: list[tuple[str, date, date]]) -> list[tuple[str, date, date]]:
+    """``windows`` minus ``holes`` (same code), as inclusive day windows."""
+    by_code: dict[str, list[tuple[date, date]]] = defaultdict(list)
+    for c, lo, hi in holes:
+        by_code[c].append((lo, hi))
+    out = []
+    for c, lo, hi in windows:
+        pieces = [(lo, hi)]
+        for hlo, hhi in by_code.get(c, ()):
+            nxt = []
+            for plo, phi in pieces:
+                if hhi < plo or hlo > phi:
+                    nxt.append((plo, phi))
+                    continue
+                if plo < hlo:
+                    nxt.append((plo, hlo - timedelta(days=1)))
+                if hhi < phi:
+                    nxt.append((hhi + timedelta(days=1), phi))
+            pieces = nxt
+        out.extend((c, a, b) for a, b in pieces)
+    return out
+
+
 def _search_hit(row: dict, q: str | None) -> bool:
-    """Viewer search: employee name, BHR Employee ID or BambooHR Employee
+    """Viewer search: employee name, BHR ID or BambooHR Employee
     Number. ZKBioTime ID search is administrative (Identity Management)."""
     if not q:
         return True
@@ -237,6 +281,8 @@ def overview(db: Session, allowed, site_id: str, tz: str | None, day: date, dire
             "feed_state": site_fresh.get("feed_state"),
             "identified_employees": identified,
             "identified_punches": sum(r["punch_count"] for r in rows),
+            # All recorded events by mapping state (same totals as the charts and Activity "All").
+            **recorded_split(db, allowed, site_id, day, end, ident.index),
         },
         "review_breakdown": {f: breakdown.get(f, 0) for f in REVIEW_FLAGS},
         "last_successful_sync_at": fresh["last_successful_sync_at"],
@@ -248,50 +294,109 @@ def overview(db: Session, allowed, site_id: str, tz: str | None, day: date, dire
     return out
 
 
+def _state_counts(counter: dict, key) -> dict:
+    return {"verified_events": counter[VERIFIED].get(key, 0), "unmapped_events": counter[UNMAPPED].get(key, 0),
+            "conflict_events": counter[CONFLICT].get(key, 0)}
+
+
+def day_groups(index: MappingIndex, site_id: str, bounds) -> dict:
+    """Whole site-local days per identity: a verified person (all of their
+    ZKBioTime IDs that day) or, when unverified, the raw ZKBioTime ID.
+    ``bounds`` = (code, date, events, first_local, last_local) per code-day.
+    Returns {(state, identity, date): [events, first_local, last_local]}."""
+    groups: dict[tuple, list] = {}
+    for code, d, n, first, last in bounds:
+        r = index.resolve(site_id, code, d)
+        state = mapping_state(r)
+        key = (state, r.bamboohr_id if state == VERIFIED else code, d)
+        g = groups.get(key)
+        if g is None:
+            groups[key] = [n, first, last]
+        else:
+            g[0] += n
+            g[1] = min(g[1], first)
+            g[2] = max(g[2], last)
+    return groups
+
+
 def hourly(db: Session, allowed, site_id: str, day: date, date_to: date | None = None,
            directory: DirectorySnapshot | None = None) -> dict:
-    """Identified events and distinct verified employees per site-local hour."""
+    """ALL recorded events per site-local hour, split by mapping state (each
+    event classified for its own day), plus distinct verified people and the
+    hour of each identity's first / last recorded punch of the whole day
+    (single = only one punch that day). Never interpreted as check-in/out."""
     end = date_to or day
     index = MappingIndex.load(db, allowed_site_ids=allowed, directory=directory or DirectorySnapshot(False))
-    events: Counter = Counter()
+    repo = AttendanceRepository(db)
+    by_state: dict[str, Counter] = {s: Counter() for s in STATES}
     people: dict[str, set[str]] = defaultdict(set)
-    for hh, code, d, n in AttendanceRepository(db).code_day_hours(
-            allowed_site_ids=allowed, site_id=site_id, date_from=day, date_to=end,
-            code_windows=index.windows(site_id, day, end)):
+    for hh, code, d, n in repo.code_day_hours(allowed_site_ids=allowed, site_id=site_id, date_from=day, date_to=end):
         r = index.resolve(site_id, code, d)
-        if r.identified:
-            events[hh] += n
+        state = mapping_state(r)
+        by_state[state][hh] += n
+        if state == VERIFIED:
             people[hh].add(r.bamboohr_id)
-    return {
-        "site_id": site_id, "date": day.isoformat(), "date_from": day.isoformat(), "date_to": end.isoformat(),
-        "hours": [{"hour": h, "events": events.get(f"{h:02d}", 0), "employees": len(people.get(f"{h:02d}", ()))}
-                  for h in range(24)],
-    }
+    seq = {k: {s: Counter() for s in STATES} for k in ("first", "last", "single")}
+    for (state, _ident, _d), (n, first, last) in day_groups(index, site_id, repo.code_day_bounds(
+            allowed_site_ids=allowed, site_id=site_id, date_from=day, date_to=end)).items():
+        if n == 1:
+            seq["single"][state][first[11:13]] += 1
+        else:
+            seq["first"][state][first[11:13]] += 1
+            seq["last"][state][last[11:13]] += 1
+    hours = []
+    for h in range(24):
+        hh = f"{h:02d}"
+        split = _state_counts(by_state, hh)
+        hours.append({"hour": h, "events": sum(split.values()), "employees": len(people.get(hh, ())), **split,
+                      **{k: {s.lower(): seq[k][s].get(hh, 0) for s in STATES} for k in seq}})
+    return {"site_id": site_id, "date": day.isoformat(), "date_from": day.isoformat(), "date_to": end.isoformat(),
+            "hours": hours}
 
 
 def trend(db: Session, allowed, site_id: str, start: date, end: date,
           directory: DirectorySnapshot | None = None) -> dict:
+    """ALL recorded events per site-local day, split by mapping state, plus
+    distinct verified people."""
     index = MappingIndex.load(db, allowed_site_ids=allowed, directory=directory or DirectorySnapshot(False))
-    events: Counter = Counter()
+    by_state: dict[str, Counter] = {s: Counter() for s in STATES}
     people: dict[date, set[str]] = defaultdict(set)
     for code, d, n, _last in AttendanceRepository(db).code_day_stats(
-            allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end,
-            code_windows=index.windows(site_id, start, end)):
+            allowed_site_ids=allowed, site_id=site_id, date_from=start, date_to=end):
         r = index.resolve(site_id, code, d)
-        if r.identified:
-            events[d] += n
+        state = mapping_state(r)
+        by_state[state][d] += n
+        if state == VERIFIED:
             people[d].add(r.bamboohr_id)
     days = []
     d = start
     while d <= end:
-        days.append({"date": d.isoformat(), "events": events.get(d, 0), "employees": len(people.get(d, ()))})
+        split = _state_counts(by_state, d)
+        days.append({"date": d.isoformat(), "events": sum(split.values()), "employees": len(people.get(d, ())),
+                     **split})
         d += timedelta(days=1)
     return {"site_id": site_id, "date_from": start.isoformat(), "date_to": end.isoformat(), "days": days}
 
 
+def recorded_split(db: Session, allowed, site_id: str, start: date, end: date, index: MappingIndex) -> dict:
+    """Recorded events in the range by mapping state (Overview KPIs)."""
+    out = {VERIFIED: 0, UNMAPPED: 0, CONFLICT: 0}
+    for code, d, n, _last in AttendanceRepository(db).code_day_stats(allowed_site_ids=allowed, site_id=site_id,
+                                                                     date_from=start, date_to=end):
+        out[mapping_state(index.resolve(site_id, code, d))] += n
+    return {"recorded_events": sum(out.values()), "verified_events": out[VERIFIED],
+            "unmapped_events": out[UNMAPPED], "conflict_events": out[CONFLICT]}
+
+
 def _event_out(e: AttendanceEvent, ident: Identity, *, technical: bool) -> dict:
+    described = ident.describe(e.emp_code, e.site_local_date, e.site_local_date, site_id=e.site_id)
+    state = mapping_state(ident.resolve(e.emp_code, e.site_local_date, e.site_id))
+    if state != VERIFIED:  # the raw ZKBioTime ID only: never a name, BHR ID, number or hint
+        described["identity_class"] = (IdentityClass.AMBIGUOUS if state == CONFLICT
+                                       else IdentityClass.UNMATCHED).value
     out = {
-        **ident.describe(e.emp_code, e.site_local_date, e.site_local_date, site_id=e.site_id),
+        **described,
+        "mapping_state": state,
         "local_time": e.punch_time_local,
         "local_date": e.site_local_date.isoformat(),
         "terminal": e.terminal_alias,
@@ -353,21 +458,91 @@ def _employee_filter(index: MappingIndex, site_id: str, start: date, end: date, 
     return chosen
 
 
+def _mapping_plan(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot,
+                  index: MappingIndex, *, mapping: str, q: str | None, department: str | None,
+                  terminal: str | None, identity_class: str | None, flag: str | None, tz: str | None,
+                  emp_code: str | None, hour: int | None, bamboohr_id: str | None) -> dict | None:
+    """Shared WHERE inputs of the mapping-aware Activity selection, so the page,
+    its total, its state counts and the export are the same selection.
+
+    * ``emp_code`` is the exact ZKBioTime ID (SQL), in every state.
+    * Name/BHR ID/EMP Number search, department and BHR ID can only match
+      verified events, as do the legacy identity classes and day review flags.
+    Returns None when nothing can match."""
+    tz_only = flag == ReviewFlag.TZ_INCONSISTENT.value
+    day_flag = flag if flag and not tz_only else None
+    conflicts = index.conflict_windows(site_id, start, end)
+    verified = _subtract(index.windows(site_id, start, end), conflicts)
+    restrict = None  # verified-only restriction from person filters
+    employees = _employee_filter(index, site_id, start, end, q=q, department=department, emp_code=None,
+                                 bamboohr_id=bamboohr_id)
+    if employees is not None:
+        restrict = _subtract(index.windows(site_id, start, end, bamboohr_ids=employees), conflicts)
+    if identity_class or day_flag:
+        rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz, date_from=start,
+                              date_to=end, directory=directory, bamboohr_ids=employees, index=index)
+        selected = [r for r in rows if (not identity_class or r["identity_class"] == identity_class)
+                    and (not day_flag or day_flag in r["flags"])]
+        restrict = _subtract([(c, date.fromisoformat(r["local_date"]), date.fromisoformat(r["local_date"]))
+                              for r in selected for c in r["zk_emp_codes"]], conflicts)
+    base = {"date_from": start, "date_to": end, "terminal": terminal, "tz_inconsistent_only": tz_only,
+            "utc_windows": hour_windows(start, end, hour, tz) if hour is not None else None,
+            "emp_codes": [emp_code] if emp_code else None}
+    if mapping == "all":
+        select_kw = {"code_windows": restrict}
+    elif mapping == "verified":
+        select_kw = {"code_windows": restrict if restrict is not None else verified}
+    elif mapping == "conflict":
+        if restrict is not None:
+            return None
+        select_kw = {"code_windows": conflicts}
+    else:  # unverified = unmapped + conflict = NOT verified
+        if restrict is not None:
+            return None
+        select_kw = {"exclude_code_windows": verified}
+    return {"base": base, "select": select_kw, "restrict": restrict, "verified": verified, "conflicts": conflicts}
+
+
+def activity_counts(db: Session, allowed, site_id: str, plan: dict | None) -> dict:
+    """Recorded / verified / unmapped / conflict for the filters (ignoring the
+    mapping filter itself), from one aggregate query."""
+    if plan is None:
+        return {"recorded": 0, "verified": 0, "unverified": 0, "unmapped": 0, "conflict": 0}
+    c = AttendanceRepository(db).mapping_counts(
+        allowed_site_ids=allowed, site_id=site_id, verified_windows=plan["verified"],
+        conflict_windows=plan["conflicts"], code_windows=plan["restrict"], **plan["base"])
+    return {**c, "unverified": c["unmapped"] + c["conflict"]}
+
+
 def select_activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
                     q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
                     flag: str | None, tz: str | None, emp_code: str | None = None, offset: int = 0,
                     limit: int = 50, hour: int | None = None, oldest_first: bool = False,
                     bamboohr_id: str | None = None, index: MappingIndex | None = None,
+                    mapping: str | None = None,
                     ) -> tuple[int, list[AttendanceEvent]]:
     """The single Activity selection shared by the paged UI and the Excel
-    export (newest first). Only events inside verified mapping periods are
-    selectable; identity class and review flags are evaluated per verified
-    employee-day — the same values each row displays."""
+    export (newest first).
+
+    ``mapping=None`` is the verified employee-attributed selection (exports,
+    recent activity, profiles — unchanged). ``mapping`` = all | verified |
+    unverified | conflict selects recorded events by the mapping state of
+    their own day (see ``_mapping_plan``)."""
     repo = AttendanceRepository(db)
     index = index or MappingIndex.load(db, allowed_site_ids=allowed, directory=directory)
+    if mapping is not None:
+        plan = _mapping_plan(db, allowed, site_id, start, end, directory, index, mapping=mapping, q=q,
+                             department=department, terminal=terminal, identity_class=identity_class, flag=flag,
+                             tz=tz, emp_code=emp_code, hour=hour, bamboohr_id=bamboohr_id)
+        if plan is None:
+            return 0, []
+        return repo.events_page(allowed_site_ids=allowed, site_id=site_id, offset=offset, limit=limit,
+                                oldest_first=oldest_first, **plan["base"], **plan["select"])
     employees = _employee_filter(index, site_id, start, end, q=q, department=department, emp_code=emp_code,
                                  bamboohr_id=bamboohr_id)
-    windows = index.windows(site_id, start, end, bamboohr_ids=employees)
+    # Conflict days (overlapping periods) are never attributed to anyone.
+    windows = _subtract(index.windows(site_id, start, end, bamboohr_ids=employees),
+                        index.conflict_windows(site_id, start, end))
     tz_only = flag == ReviewFlag.TZ_INCONSISTENT.value
     day_flag = flag if flag and not tz_only else None
     utc = hour_windows(start, end, hour, tz) if hour is not None else None
@@ -383,17 +558,74 @@ def select_activity(db: Session, allowed, site_id: str, start: date, end: date, 
                             utc_windows=utc, oldest_first=oldest_first, code_windows=windows)
 
 
+FIRST, LAST, INTERMEDIATE, SINGLE = "FIRST", "LAST", "INTERMEDIATE", "SINGLE"
+
+
+def _identity_key(index: MappingIndex, site_id: str, code: str, d: date) -> tuple:
+    """The identity a punch belongs to on its own day: a verified person (all of
+    their IDs that day) or the raw ZKBioTime ID (unmapped / conflict)."""
+    r = index.resolve(site_id, code, d)
+    return ("P", r.bamboohr_id, d) if r.identified else ("C", code, d)
+
+
+def punch_sequences(db: Session, allowed, site_id: str, index: MappingIndex,
+                    events: list[AttendanceEvent]) -> dict[str, dict]:
+    """FIRST / LAST / INTERMEDIATE / SINGLE of each event within its identity's
+    COMPLETE site-local day (every punch of every ID of that person that day,
+    regardless of the page or filters). Recorded order only — never check-in/out."""
+    if not events:
+        return {}
+    keys = {e.event_id: _identity_key(index, site_id, e.emp_code, e.site_local_date) for e in events}
+    code_days: set[tuple[str, date]] = set()
+    for (kind, ident, d) in set(keys.values()):
+        if kind == "C":
+            code_days.add((ident, d))
+        else:
+            for p in index.periods_for_employee(ident, site_id):
+                if p.covers(d):
+                    code_days.add((p.zk_emp_code, d))
+    ordered: dict[tuple, list[str]] = defaultdict(list)
+    wanted = set(keys.values())
+    days = [d for _c, d in code_days]
+    for code, d, _utc, event_id in AttendanceRepository(db).day_punches(
+            allowed_site_ids=allowed, site_id=site_id, codes={c for c, _d in code_days},
+            date_from=min(days), date_to=max(days)):
+        if (code, d) not in code_days:
+            continue
+        key = _identity_key(index, site_id, code, d)
+        if key in wanted:
+            ordered[key].append(event_id)
+    out = {}
+    for event_id, key in keys.items():
+        seq = ordered.get(key) or [event_id]
+        pos = seq.index(event_id) if event_id in seq else 0
+        n = len(seq)
+        kind = SINGLE if n == 1 else FIRST if pos == 0 else LAST if pos == n - 1 else INTERMEDIATE
+        out[event_id] = {"punch_sequence": kind, "punch_position": pos + 1, "punches_in_day": n}
+    return out
+
+
 def activity(db: Session, allowed, site_id: str, start: date, end: date, directory: DirectorySnapshot, *,
              q: str | None, department: str | None, terminal: str | None, identity_class: str | None,
              flag: str | None, page: int, page_size: int, technical: bool, tz: str | None = None,
              emp_code: str | None = None, hour: int | None = None, oldest_first: bool = False,
-             bamboohr_id: str | None = None) -> dict:
+             bamboohr_id: str | None = None, mapping: str | None = None) -> dict:
     ident = Identity(db, allowed, directory, site_id)
     total, rows = select_activity(db, allowed, site_id, start, end, directory, q=q, department=department,
                                   terminal=terminal, identity_class=identity_class, flag=flag, tz=tz,
                                   emp_code=emp_code, offset=(page - 1) * page_size, limit=page_size,
-                                  hour=hour, oldest_first=oldest_first, bamboohr_id=bamboohr_id, index=ident.index)
+                                  hour=hour, oldest_first=oldest_first, bamboohr_id=bamboohr_id, index=ident.index,
+                                  mapping=mapping)
     items = [_event_out(e, ident, technical=technical) for e in rows]
+    extra: dict = {}
+    if mapping is not None:
+        seqs = punch_sequences(db, allowed, site_id, ident.index, rows)
+        for e, item in zip(rows, items, strict=True):
+            item.update(seqs.get(e.event_id, {}))
+        plan = _mapping_plan(db, allowed, site_id, start, end, directory, ident.index, mapping="all", q=q,
+                             department=department, terminal=terminal, identity_class=identity_class, flag=flag,
+                             tz=tz, emp_code=emp_code, hour=hour, bamboohr_id=bamboohr_id)
+        extra = {"mapping": mapping, "summary": activity_counts(db, allowed, site_id, plan)}
     # Review flags of each row's verified employee-day — computed for this page's rows only.
     if rows:
         days = {(r["local_date"], r["bamboohr_id"]): r["flags"] for r in daily_activity(
@@ -404,7 +636,7 @@ def activity(db: Session, allowed, site_id: str, start: date, end: date, directo
         for item in items:
             item["review_flags"] = days.get((item["local_date"], item["bamboohr_id"]), [])
     return {"total": total, "page": page, "page_size": page_size, "directory_available": ident.available,
-            "items": items}
+            "items": items, **extra}
 
 
 def _with_terminals(db, allowed, site_id, start, end, rows: list[dict], emp_codes=None) -> list[dict]:

@@ -17,6 +17,7 @@ from app.services import attendance_export as ex
 from app.services import dashboard_service as svc
 from app.services import workforce_directory
 from app.services.excel_report import XLSX_MEDIA_TYPE, Column, ReportMeta, Sheet, build_workbook
+from app.services.identity_resolution import MappingIndex
 from app.services.time_derivation import site_today
 
 router = APIRouter(prefix="/api/onsite", tags=["onsite-exports"])
@@ -75,6 +76,7 @@ def export_activity(site_id: str | None = None, date_from: date | None = None, d
                     terminal: str | None = None, identity_class: str | None = Query(None, pattern=_IDENTITY),
                     flag: str | None = Query(None, pattern=_FLAG),
                     hour: int | None = Query(None, ge=0, le=23),
+                    mapping: str | None = Query(None, pattern="^(" + "|".join(svc.MAPPING_FILTERS) + ")$"),
                     scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)),
                     db: Session = Depends(get_db)):
     site, tz, today = _site(db, scope, site_id)
@@ -82,13 +84,30 @@ def export_activity(site_id: str | None = None, date_from: date | None = None, d
     f = ex.ExportFilters(q=q, emp_code=emp_code, department=department, identity_class=identity_class, review=flag,
                          terminal=terminal)
     directory = workforce_directory.load()
+    index = MappingIndex.load(db, allowed_site_ids=scope.allowed_site_ids, directory=directory)
     # Exactly the Activity view's selection (all pages), not a re-derivation.
     total, events = svc.select_activity(db, scope.allowed_site_ids, site, start, end, directory, q=q,
                                         department=department, terminal=terminal, identity_class=identity_class,
                                         flag=flag, tz=tz, emp_code=emp_code, offset=0,
-                                        limit=ex.MAX_EXPORT_EVENTS + 1, hour=hour)
+                                        limit=ex.MAX_EXPORT_EVENTS + 1, hour=hour, mapping=mapping, index=index)
     if total > ex.MAX_EXPORT_EVENTS:
         raise ex.too_large(total, ex.MAX_EXPORT_EVENTS)
+    label = start.isoformat() if start == end else f"{start.isoformat()} to {end.isoformat()}"
+    if mapping not in (None, "verified"):
+        # Recorded events of every requested mapping state — explicitly a raw-event export, not attendance.
+        title = ex.RECORDED_TITLE[mapping]
+        plan = svc._mapping_plan(db, scope.allowed_site_ids, site, start, end, directory, index, mapping="all", q=q,
+                                 department=department, terminal=terminal, identity_class=identity_class, flag=flag,
+                                 tz=tz, emp_code=emp_code, hour=hour, bamboohr_id=None)
+        counts = svc.activity_counts(db, scope.allowed_site_ids, site, plan)
+        ident = svc.Identity(db, scope.allowed_site_ids, directory, site, index=index)
+        seqs = svc.punch_sequences(db, scope.allowed_site_ids, site, index, events)
+        sheets = [ex.recorded_event_sheet(list(reversed(events)), ident, seqs),
+                  ex.recorded_summary_sheet(counts, start, end, mapping, total)]
+        meta = ReportMeta(title=title, generated_by=scope.user.full_name,
+                          filters=[*ex.filter_summary(ex.site_name(db, scope.allowed_site_ids, site), label, f),
+                                   ("Mapping status", ex.MAPPING_FILTER_LABEL[mapping])])
+        return _xlsx(build_workbook(meta, sheets), ex.filename("Recorded-Activity", start, end, mapping, emp_code))
     pairs = {(e.site_local_date.isoformat(), e.emp_code) for e in events}
     # Verified employee-day rows for exactly those (date, ZKBioTime ID) pairs.
     days = [r for r in ex.day_rows(db, scope.allowed_site_ids, site, tz, start, end, directory, ex.ExportFilters())
@@ -96,7 +115,6 @@ def export_activity(site_id: str | None = None, date_from: date | None = None, d
     sheets = [ex.attendance_sheet(days), ex.event_sheet(ex.pair_events(events, ex._by_code_day(days))),
               ex.summary_sheet(days, start, end,
                                ex.unmapped_punches(db, scope.allowed_site_ids, site, start, end, directory))]
-    label = start.isoformat() if start == end else f"{start.isoformat()} to {end.isoformat()}"
     meta = ReportMeta(title="Attendance Activity Report", generated_by=scope.user.full_name,
                       filters=ex.filter_summary(ex.site_name(db, scope.allowed_site_ids, site), label, f))
     return _xlsx(build_workbook(meta, sheets), ex.filename("Attendance", start, end, department, emp_code))
@@ -137,7 +155,7 @@ def export_employees(site_id: str | None = None, date_from: date | None = None, 
              r["activity_days"], r["events"], r["review_flags"],
              ex._local(r["last_activity_local"]).replace(tzinfo=None) if r["last_activity_local"] else None]
             for r in data["items"]]
-    cols = [Column("Team Member Name", 26), Column("BHR Employee ID", 14), Column("EMP Number", 16),
+    cols = [Column("Team Member Name", 26), Column("BHR ID", 14), Column("EMP Number", 16),
             Column("ZKBioTime ID(s)", 16), Column("Department", 20), Column("Employment Status", 14),
             Column("Mapping Status", 22), Column("Activity Days", 12, "int"),
             Column("Attendance Events", 12, "int"), Column("Review Flags", 12, "int"),

@@ -145,6 +145,15 @@ def test_identity_resolution_at_volume(perf):
     k2 = {(i["local_time"], i["emp_code"]) for i in act2["items"]}
     assert not k1 & k2 and act1["total"] == act2["total"] < perf["events"]
     assert not {i["emp_code"] for i in act1["items"] + act2["items"]} & unmapped
+    # Mapping-aware Activity (v0.8): all recorded events, reconciled counts, whole-day sequence.
+    all_ = _timed(c, "activity all 92d page 1", f"/api/onsite/activity?{rng}&mapping=all&page=1&page_size=200",
+                  V).json()
+    unv = _timed(c, "activity unverified 92d", f"/api/onsite/activity?{rng}&mapping=unverified&page_size=200",
+                 V).json()
+    s = all_["summary"]
+    assert all_["total"] == s["recorded"] == perf["events"] == s["verified"] + s["unmapped"] + s["conflict"]
+    assert unv["total"] == s["unverified"] and {i["emp_code"] for i in unv["items"]} <= unmapped
+    assert all(i["punch_sequence"] in {"FIRST", "LAST", "INTERMEDIATE", "SINGLE"} for i in all_["items"])
     _timed(c, "exceptions 92d", f"/api/onsite/exceptions?{rng}&page_size=200", V)
 
     # Reassigned ID: each owner sees only their own half.
