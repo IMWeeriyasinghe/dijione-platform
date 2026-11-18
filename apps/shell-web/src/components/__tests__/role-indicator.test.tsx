@@ -27,8 +27,9 @@ const USER = {
       client_scope: { all_clients: false, clients: ["ABC Company"] },
     },
     {
-      module_key: "atwork", role: "ATWORK_USER", role_name: "DijiAtWork User", client_id: null,
-      grants: [g("ATWORK_USER", "DijiAtWork User", "BASELINE", { mandatory: true })], client_scope: null,
+      // A neutral application with default employee access (mandatory).
+      module_key: "field-ops", role: "FIELD_USER", role_name: "Field User", client_id: null,
+      grants: [g("FIELD_USER", "Field User", "BASELINE", { mandatory: true })], client_scope: null,
     },
   ],
 } as unknown as CurrentUser;
@@ -75,7 +76,7 @@ describe("RoleIndicator", () => {
   });
 
   it("marks mandatory access", () => {
-    render(<RoleIndicator context="atwork" />);
+    render(<RoleIndicator context="field-ops" />);
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByRole("dialog")).toHaveTextContent("Every employee (mandatory)");
   });
