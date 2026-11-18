@@ -312,8 +312,36 @@ export type DetectionConfig = {
   verify_buffer_days: number;
   acknowledgement_sla_hours: number;
   auto_release_enabled: boolean;
+  operational_start_date: string | null;
+  supplier_lead_time_days: number;
+  first_eligible_birthday: string | null;
+  clean_start_applied_at: string | null;
+  clean_start_applied_by: number | null;
+  clean_start_excluded_count: number | null;
+  clean_start_first_eligible: string | null;
   updated_by: number | null;
 };
+
+export type CleanStartPreview = {
+  operational_start_date: string | null;
+  supplier_lead_time_days: number;
+  first_eligible_birthday: string | null;
+  total: number;
+  by_status: Record<string, number>;
+  released_to_supplier: number;
+  already_applied: boolean;
+  clean_start_applied_at: string | null;
+  clean_start_excluded_count: number | null;
+};
+
+export const getCleanStartPreview = () =>
+  request<CleanStartPreview>("/api/birthday/config/clean-start/preview");
+
+export const applyCleanStart = (firstEligibleBirthday: string) =>
+  request<CleanStartPreview>("/api/birthday/config/clean-start", {
+    method: "POST",
+    body: JSON.stringify({ confirm: true, first_eligible_birthday: firstEligibleBirthday }),
+  });
 
 export const getConfig = () => request<DetectionConfig>("/api/birthday/config");
 

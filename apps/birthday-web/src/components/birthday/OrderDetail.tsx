@@ -30,6 +30,7 @@ import {
   StatusBadge,
   Textarea,
 } from "@dijione/design-system";
+import { exceptionReasonLabel } from "@/lib/exception-reason";
 import {
   cancelOrder,
   confirmRelease,
@@ -569,7 +570,7 @@ export function OrderDetail({ orderId }: { orderId: number }) {
               <DetailRow label="Manual Override" value={order.is_manual_override ? "Yes" : "No"} />
               <DetailRow label="Verify By" value={order.verify_by ?? "—"} />
               {order.exception_reason && (
-                <DetailRow label="Exception" value={<StatusBadge status="REQUIRES_ATTENTION" label={order.exception_reason} />} />
+                <DetailRow label="Exception" value={<StatusBadge status="REQUIRES_ATTENTION" label={exceptionReasonLabel(order.exception_reason)} />} />
               )}
               <DetailRow
                 label="Released"
