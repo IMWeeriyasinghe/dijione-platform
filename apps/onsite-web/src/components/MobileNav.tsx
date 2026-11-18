@@ -10,7 +10,7 @@ const ITEMS = [
   { label: "Today", href: "/today", icon: CalendarDays },
   { label: "Activity", href: "/activity", icon: Activity },
   { label: "Team Members", href: "/employees", icon: Users },
-  { label: "Review", href: "/exceptions", icon: AlertTriangle },
+  { label: "Exceptions", href: "/exceptions", icon: AlertTriangle },
 ];
 
 /** Bottom navigation for the five operational pages on phones (below md).

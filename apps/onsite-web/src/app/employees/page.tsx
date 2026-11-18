@@ -15,7 +15,7 @@ import { SiteProvider, useSite } from "@/components/SiteContext";
 import { ToneBadge } from "@/components/ToneBadge";
 import { getEmployees, type EmployeeRow, type EmployeesSummary } from "@/lib/dashboard";
 import { addDays, localTime } from "@/lib/flags";
-import { IDENTITY_LABEL } from "@/lib/format";
+import { ID_LABELS, IDENTITY_LABEL } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
 import { fmtNum, fmtPeriod, fmtShortDay } from "@/lib/period";
 import type { IdentityClass } from "@/lib/types";
@@ -38,7 +38,7 @@ function StatusBadge({ r }: { r: EmployeeRow }) {
 function SummaryTiles({ s, period }: { s: EmployeesSummary; period: string }) {
   const coverage = s.employees ? Math.round((s.matched / s.employees) * 100) : 0;
   const tiles: [string, string, string][] = [
-    ["Team members in view", fmtNum(s.employees), "Verified team members (by BHR Employee ID) with a ZKBioTime ID mapping in the period, after your filters. Unmapped IDs are listed only in Identity Management."],
+    ["Team members in view", fmtNum(s.employees), "Verified team members (by BHR ID) with a ZKBioTime ID mapping in the period, after your filters. Unmapped IDs are listed only in Identity Management."],
     ["With recorded activity", fmtNum(s.with_activity), `Team members in view with at least one recorded activity in ${period}.`],
     ["Active · Inactive", `${fmtNum(s.active)} · ${fmtNum(s.inactive)}`, "Employment status from the Workforce Directory (BambooHR)."],
     ["Needing review", fmtNum(s.needing_review), "Employees in view with at least one review flag in the period. Flags are prompts, not confirmed issues."],
@@ -122,7 +122,7 @@ function EmployeesView() {
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
                 { key: "emp", header: "Team Member", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
-                { key: "bhr", header: "BHR Employee ID", minWidth: "xl", cell: (r) => <span className="font-mono">{r.bamboohr_id ?? "—"}</span> },
+                { key: "bhr", header: ID_LABELS.bhr, minWidth: "xl", nowrap: true, cell: (r) => <span className="font-mono">{r.bamboohr_id ?? "—"}</span> },
                 { key: "num", header: "EMP Number", minWidth: "xl", cell: (r) => <span className="font-mono">{r.employee_number ?? "—"}</span> },
                 { key: "status", header: "Status", cell: (r) => <StatusBadge r={r} /> },
                 { key: "id", header: "Mapping Status", minWidth: "xl", cell: (r) => <MappingBadge status={r.mapping_status} cls={r.identity_class} /> },

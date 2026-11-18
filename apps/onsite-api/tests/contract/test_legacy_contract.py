@@ -286,17 +286,18 @@ LABEL_RENAMES = {
     "Review flag: Inactive employee activity": "Review flag: Inactive team member activity",
 }
 SHEET_RENAMES = {"Employees": "Team Members"}
+# Terminology standard (2026-11-19): BambooHR's record id is "BHR ID"; "EMP Number" is the employee number.
 NEW_EXPORT_HEADERS = {
-    "Attendance Report": ["Date", "Team Member Name", "BHR Employee ID", "EMP Number", "ZKBioTime ID(s)",
+    "Attendance Report": ["Date", "Team Member Name", "BHR ID", "EMP Number", "ZKBioTime ID(s)",
                           "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
                           "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags"],
-    "Exception Report": ["Date", "Team Member Name", "BHR Employee ID", "EMP Number", "ZKBioTime ID(s)",
+    "Exception Report": ["Date", "Team Member Name", "BHR ID", "EMP Number", "ZKBioTime ID(s)",
                          "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
                          "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags", "Review Reasons"],
-    "Event Detail": ["Local Date", "Local Time", "ZKBioTime ID", "Team Member Name", "BHR Employee ID",
+    "Event Detail": ["Local Date", "Local Time", "ZKBioTime ID", "Team Member Name", "BHR ID",
                      "EMP Number", "Department", "Terminal", "Verify Type", "Mapping Status",
                      "Review Flags"],
-    "Team Members": ["Team Member Name", "BHR Employee ID", "EMP Number", "ZKBioTime ID(s)", "Department",
+    "Team Members": ["Team Member Name", "BHR ID", "EMP Number", "ZKBioTime ID(s)", "Department",
                   "Employment Status", "Mapping Status", "Activity Days", "Attendance Events", "Review Flags",
                   "Last Activity (site local)"],
 }

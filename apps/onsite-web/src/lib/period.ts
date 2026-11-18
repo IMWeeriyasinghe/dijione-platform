@@ -80,6 +80,15 @@ export function fmtShortDay(iso: string): string {
   return m && d ? `${d} ${MONTH[m - 1]}` : iso;
 }
 
+/** Compact day span: "3–18 Nov" (same month), "28 Oct – 3 Nov", "3 Nov" (one day). */
+export function fmtDaySpan(from: string, to: string): string {
+  if (from === to) return fmtShortDay(from);
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  if (fy === ty && fm === tm && fd) return `${fd}–${fmtShortDay(to)}`;
+  return `${fmtShortDay(from)} – ${fmtShortDay(to)}`;
+}
+
 export function fmtPeriod(p: Period, today?: string): string {
   if (isSingleDay(p)) {
     const label = fmtDay(p.from, p.from.slice(0, 4) !== (today ?? p.from).slice(0, 4));

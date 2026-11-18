@@ -56,4 +56,25 @@ describe("DataView responsive columns", () => {
     expect(screen.getByRole("button", { name: "About Name" })).toBeInTheDocument();
     expect(container.querySelector("button button")).toBeNull();
   });
+
+  it("keeps 2xl columns for very wide screens and short values on one line", () => {
+    const wideView = () => render(
+      <DataView<Row> caption="Tiers" rows={rows} rowKey={(r) => r.id} rowLabel={(r) => r.name}
+        columns={[
+          { key: "name", header: "Name", nowrap: true, cell: (r) => r.name },
+          { key: "extra", header: "Rare detail", minWidth: "2xl", cell: (r) => r.extra },
+        ]}
+        card={(r) => <span>{r.name}</span>} />,
+    );
+    viewport(1440); // e.g. 1366–1440 laptops: the rare column moves to details
+    const { unmount } = wideView();
+    expect(screen.queryByRole("columnheader", { name: "Rare detail" })).not.toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Alpha" })).toHaveClass("whitespace-nowrap");
+    fireEvent.click(screen.getByRole("button", { name: "Show details for Alpha" }));
+    expect(screen.getByText("Only in details")).toBeInTheDocument();
+    unmount();
+    viewport(1920);
+    wideView();
+    expect(screen.getByRole("columnheader", { name: "Rare detail" })).toBeInTheDocument();
+  });
 });

@@ -176,6 +176,24 @@ class MappingIndex:
                     out.append((code, *clipped))
         return out
 
+    def conflict_windows(self, site_id: str, start: date, end: date) -> list[tuple[str, date, date]]:
+        """``(code, lo, hi)`` days covered by MORE than one verified period of
+        the same ID (``resolve`` reports MAPPING_CONFLICT there). Validation
+        prevents overlaps, so this is normally empty; such days are never
+        attributed to anyone."""
+        out = []
+        for (site, code), ps in self._by_code.items():
+            if site != site_id or len(ps) < 2:
+                continue
+            for i, a in enumerate(ps):
+                for b in ps[i + 1:]:
+                    ca, cb = a.clip(start, end), b.clip(start, end)
+                    if ca and cb:
+                        lo, hi = max(ca[0], cb[0]), min(ca[1], cb[1])
+                        if lo <= hi:
+                            out.append((code, lo, hi))
+        return out
+
     def employees_in_period(self, site_id: str, start: date, end: date) -> dict[str, list[MappingPeriod]]:
         out: dict[str, list[MappingPeriod]] = defaultdict(list)
         for (site, _code), ps in self._by_code.items():

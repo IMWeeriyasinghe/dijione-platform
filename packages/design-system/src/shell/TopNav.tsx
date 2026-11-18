@@ -19,7 +19,10 @@ export function TopNav({
   onMenuClick?: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-dt-border bg-dt-surface/90 px-4 backdrop-blur sm:px-6">
+    // Below sm the row is gap-2 and the (placeholder) search box is hidden: with
+    // the role indicator in the right cluster the header was 345px wide at a
+    // 320px viewport (real-browser measurement, 2026-11-19).
+    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b border-dt-border bg-dt-surface/90 px-4 backdrop-blur sm:gap-4 sm:px-6">
       {onMenuClick && (
         <button
           type="button"
@@ -56,7 +59,7 @@ export function TopNav({
           clusters on both sides, pushed the whole row wider than the
           viewport and overflowed the page at ~700-950px widths (found via
           real-browser measurement, not assumed). */}
-      <div className="relative flex min-w-0 max-w-sm flex-1 items-center">
+      <div className="relative hidden min-w-0 max-w-sm flex-1 items-center sm:flex">
         <Search className="pointer-events-none absolute left-3 size-4 text-dt-text-secondary" />
         <input
           type="search"

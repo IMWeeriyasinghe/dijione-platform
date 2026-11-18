@@ -57,16 +57,20 @@ def test_hourly_grouping_uses_site_local_hour(api_client, db, audit_calls, direc
     _ready(api_client)
     hours = _get(api_client, f"/api/onsite/dashboard/hourly-activity?date={DAY1}").json()["hours"]
     assert len(hours) == 24
-    by = {h["hour"]: h["events"] for h in hours}
-    assert by[8] == 4  # 03:00-03:09 UTC = 08:30-08:39 Colombo (999 is unverified -> excluded)
+    by = {h["hour"]: h["verified_events"] for h in hours}
+    assert by[8] == 4  # 03:00-03:09 UTC = 08:30-08:39 Colombo (999 is unverified -> not verified)
     assert by[17] == 1  # +9h
     assert sum(by.values()) == 5
+    # All recorded events are charted; 999 is the unmapped one at 08:xx.
+    assert {h["hour"]: h["unmapped_events"] for h in hours}[8] == 1
+    assert all(h["events"] == h["verified_events"] + h["unmapped_events"] + h["conflict_events"] for h in hours)
 
 
 def test_activity_trend_range(api_client, db, audit_calls, directory):
     _ready(api_client)
     body = _get(api_client, f"/api/onsite/dashboard/activity-trend?days=2&date_to={DAY2}").json()
-    assert [(d["date"], d["events"]) for d in body["days"]] == [(DAY1, 5), (DAY2, 2)]  # verified only
+    assert [(d["date"], d["verified_events"]) for d in body["days"]] == [(DAY1, 5), (DAY2, 2)]
+    assert [(d["date"], d["events"]) for d in body["days"]] == [(DAY1, 6), (DAY2, 4)]  # all recorded events
     assert _get(api_client, "/api/onsite/dashboard/activity-trend?days=200").status_code == 422
 
 

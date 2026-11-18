@@ -71,7 +71,7 @@ def _xlsx_rows(client, url, sheet):
     assert resp.status_code == 200, resp.text
     ws = load_workbook(io.BytesIO(resp.content))[sheet]
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
-    start = next(i for i, r in enumerate(rows) if len(r) > 1 and r[1] in ("Team Member Name", "Local Time", "BHR Employee ID"))
+    start = next(i for i, r in enumerate(rows) if len(r) > 1 and r[1] in ("Team Member Name", "Local Time", "BHR ID"))
     header = rows[start]
     data = [dict(zip(header, r, strict=False)) for r in rows[start + 1:] if r[1] is not None]
     return data, {r[0]: r[1] for r in rows[4:start] if r[0]}

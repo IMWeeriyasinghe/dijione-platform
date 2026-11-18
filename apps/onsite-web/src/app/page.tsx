@@ -5,38 +5,55 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorState } from "@dijione/design-system";
 import { Activity, AlertTriangle, ChevronRight, Clock, Fingerprint, Radio, Users, UserX } from "lucide-react";
-import { BarChart, BreakdownList } from "@/components/charts";
+import { BreakdownList, seriesValue, StatusBarChart, type StatusBar, type StatusSeries } from "@/components/charts";
 import { PeriodControl, SiteSelect } from "@/components/FilterBar";
 import { MappingBadge } from "@/components/FlagChips";
 import { ExportButton } from "@/components/ExportButton";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
-import { buttonClass, EmployeeRefCell, InlineAlert, KpiCard, PageTop, Panel, Segmented, Skeleton } from "@/components/kit";
+import { buttonClass, EmployeeRefCell, InfoTip, InlineAlert, KpiCard, PageTop, Panel, Segmented, Skeleton } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { SyncNowButton } from "@/components/SyncNowButton";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
 import { HourActivitySheet } from "@/components/HourActivitySheet";
-import { getHourly, getOverview, getRecent, getTrend, type Overview } from "@/lib/dashboard";
+import { getHourly, getOverview, getRecent, getTrend, type HourBucket, type Overview } from "@/lib/dashboard";
 import { addDays, localTime } from "@/lib/flags";
-import { FEED_LABEL } from "@/lib/format";
+import { FEED_LABEL, MAPPING_STATE } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
 import { hasPermission, PERM, useOnsiteScope } from "@/lib/onsite-scope";
 import { dayCount, fmtDay, fmtNum, fmtPeriod, fmtShortDay, isSingleDay, type Period, previousPeriod } from "@/lib/period";
 import { hrefWith, useUrlState } from "@/lib/url-state";
 
 const HELP = {
-  employees: "Distinct verified team members (by BHR Employee ID — several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
-  events: "Activity events attributed to verified team members in the period. Punches of unmapped ZKBioTime IDs are excluded (see Identity Management).",
-  review: "Distinct team members with at least one review flag in the period. A flag is a prompt to look, not a confirmed issue.",
-  single: "Distinct team members with a completed day on which only one activity was recorded.",
-  unmapped: "ZKBioTime IDs with activity in the period but no verified BambooHR mapping, and their punches. Excluded from attendance figures until an administrator verifies them. Visible to administrators only.",
+  employees: "Distinct verified team members (by BHR ID — several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
+  events: "Every attendance event recorded in the period, whatever its mapping status. Verified events are attributed to a team member; unmapped and conflicting events are shown by ZKBioTime ID only. Verified + needs review = recorded.",
+  review: "Distinct verified team members with at least one review flag in the period. A flag is a prompt to look, not a confirmed issue.",
+  single: "Distinct verified team members with a completed day on which only one activity was recorded.",
+  unmapped: "ZKBioTime IDs with activity in the period but no verified BambooHR mapping, and their punches. Shown in Activity by ID only; not attributed to anyone until an administrator verifies them.",
   feed: "Whether DijiOne's mirror of Diji On-site Attendance is current. Open Site Health for the details.",
 };
+
+const SERIES = [
+  { value: "all", label: "All recorded" },
+  { value: "verified", label: "Verified" },
+  { value: "unverified", label: "Needs review" },
+] as const;
+const SERIES_NOUN: Record<StatusSeries, string> = { all: "recorded", verified: "verified", unverified: "needs-review" };
+
+/** "first 3 · last 1 · single 2" for the shown series (whole-day first / last recorded punches). */
+function sequenceNote(h: HourBucket, series: StatusSeries): string | null {
+  const pick = (x?: { verified: number; unmapped: number; conflict: number }) =>
+    !x ? 0 : series === "verified" ? x.verified : series === "unverified" ? x.unmapped + x.conflict : x.verified + x.unmapped + x.conflict;
+  const first = pick(h.first), last = pick(h.last), single = pick(h.single);
+  if (!first && !last && !single) return null;
+  return `First recorded punch of the day: ${fmtNum(first)} · last: ${fmtNum(last)} · single: ${fmtNum(single)}`;
+}
 
 function OverviewView() {
   const { site } = useSite();
   const { scope } = useOnsiteScope();
   const queryClient = useQueryClient();
-  const [s, set] = useUrlState({ from: site.today, to: site.today, trend: "30", hour: "", open: "" });
+  const [s, set] = useUrlState({ from: site.today, to: site.today, trend: "30", hour: "", open: "", series: "all" });
+  const series = (SERIES.some((x) => x.value === s.series) ? s.series : "all") as StatusSeries;
   // Changing the period always clears an hour selection, so no widget shows a different range.
   const setPeriod = (p: Period) => set({ from: p.from, to: p.to, hour: "" });
   const period: Period = { from: s.from, to: s.to };
@@ -64,20 +81,35 @@ function OverviewView() {
   const ex = (flag?: string) => hrefWith("/exceptions", { from: period.from, to: period.to, flag });
 
   const hours = useMemo(() => hourly.data?.hours ?? [], [hourly.data]);
-  const peak = useMemo(() => {
-    const max = Math.max(0, ...hours.map((h) => h.events));
-    return new Set(max ? hours.filter((h) => h.events === max).map((h) => String(h.hour)) : []);
-  }, [hours]);
+  const hourBars: StatusBar[] = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const note = sequenceNote(h, series);
+    return { key: String(h.hour), tick: hh, verified: h.verified_events ?? h.events, unmapped: h.unmapped_events ?? 0,
+      conflict: h.conflict_events ?? 0,
+      label: `${hh}:00–${hh}:59${site.time_zone ? ` (${site.time_zone})` : ""}${single ? "" : ", all days"}`,
+      notes: [`${fmtNum(h.employees)} verified team members`, ...(note ? [note] : [])] };
+  });
+  const peakMax = Math.max(0, ...hourBars.map((b) => seriesValue(b, series)));
+  const peak = new Set(peakMax ? hourBars.filter((b) => seriesValue(b, series) === peakMax).map((b) => b.key) : []);
   const trendData = trend.data?.days ?? [];
-  const active = trendData.filter((d) => d.events > 0);
-  const avg = active.length ? Math.round(active.reduce((a, d) => a + d.events, 0) / active.length) : 0;
+  const trendBars: StatusBar[] = trendData.map((d) => ({ key: d.date, label: fmtDay(d.date, true),
+    tick: trendDays === 7 ? fmtDay(d.date).slice(0, 3) : fmtShortDay(d.date),
+    verified: d.verified_events ?? d.events, unmapped: d.unmapped_events ?? 0, conflict: d.conflict_events ?? 0,
+    notes: [`${fmtNum(d.employees)} verified team members`] }));
+  // The average describes exactly the series shown: days with any shown activity.
+  const shownDays = trendBars.map((b) => seriesValue(b, series)).filter((v) => v > 0);
+  const avg = shownDays.length ? Math.round(shownDays.reduce((a, v) => a + v, 0) / shownDays.length) : 0;
 
   if (overview.isLoading) return <OverviewSkeleton />;
   if (!overview.data) return <ErrorState onRetry={() => overview.refetch()} />;
   const o = overview.data;
   const k = o.kpis;
   const feed = k.feed_state ?? "NOT_SYNCED";
-  const emptyToday = single && period.from === site.today && k.total_events === 0;
+  const recorded = k.recorded_events ?? k.total_events;
+  const needsReview = (k.unmapped_events ?? 0) + (k.conflict_events ?? 0);
+  const emptyToday = single && period.from === site.today && recorded === 0;
+  const activityHref = (mapping: string, extra: Record<string, string> = {}) =>
+    hrefWith("/activity", { from: period.from, to: period.to, mapping, ...extra });
 
   return (
     <div className="space-y-4">
@@ -105,7 +137,7 @@ function OverviewView() {
           <span>Selected day: <span className="font-semibold text-dt-text-primary">{fmtDay(period.from, true)}</span>
             <span className="text-dt-text-secondary"> · every widget below shows this day</span></span>
           <span className="flex flex-wrap gap-2">
-            <Link href={hrefWith("/activity", { from: period.from, to: period.from })} className={buttonClass("secondary")}>View all events</Link>
+            <Link href={hrefWith("/activity", { from: period.from, to: period.from, mapping: series })} className={buttonClass("secondary")}>View all events</Link>
             <button type="button" className={buttonClass("ghost")} onClick={() => setPeriod({ from: site.today, to: site.today })}>Clear selection</button>
           </span>
         </div>
@@ -132,10 +164,16 @@ function OverviewView() {
           delta={delta((x) => x.kpis.employees_with_activity)}
           href={single ? hrefWith("/today", { date: period.from }) : hrefWith("/employees", { from: period.from, to: period.to })}
           hrefLabel={single ? "Open Today" : "Open Team Members"} />
-        <KpiCard label="Activity events" value={fmtNum(k.total_events)} icon={Activity} help={HELP.events}
-          delta={delta((x) => x.kpis.total_events)}
-          sub={!single && k.activity_days ? <span>{fmtNum(k.activity_days)} days with activity</span> : undefined}
-          href={hrefWith("/activity", { from: period.from, to: period.to })} hrefLabel="Open Activity" />
+        <KpiCard label="Recorded events" value={fmtNum(recorded)} icon={Activity} help={HELP.events}
+          delta={delta((x) => x.kpis.recorded_events ?? x.kpis.total_events)}
+          sub={k.recorded_events !== undefined ? (
+            <span>
+              <span className={MAPPING_STATE.VERIFIED.text}>{fmtNum(k.verified_events ?? 0)} verified</span>
+              {" · "}<span className={MAPPING_STATE.UNMAPPED.text}>{fmtNum(needsReview)} needs review</span>
+              {k.conflict_events ? <> ({fmtNum(k.conflict_events)} conflict)</> : null}
+            </span>
+          ) : undefined}
+          href={activityHref("all")} hrefLabel="Open Activity" />
         <KpiCard label="Needing review" value={fmtNum(k.employees_needing_review)} icon={AlertTriangle} tone={k.employees_needing_review ? "attention" : "default"}
           help={HELP.review} delta={delta((x) => x.kpis.employees_needing_review)} href={ex()} hrefLabel="Open Exceptions" />
         <KpiCard label="Single activity" value={fmtNum(k.single_punch_employees)} icon={UserX} help={HELP.single}
@@ -143,7 +181,7 @@ function OverviewView() {
         {o.operational ? (
           <KpiCard label="Unmapped IDs" value={fmtNum(o.operational.unmapped_codes)} icon={Fingerprint}
             tone={o.operational.unmapped_codes ? "attention" : "default"} help={HELP.unmapped}
-            sub={<span>{fmtNum(o.operational.unmapped_punches)} of {fmtNum(o.operational.total_punches)} punches excluded</span>}
+            sub={<span>{fmtNum(o.operational.unmapped_punches)} of {fmtNum(o.operational.total_punches)} punches unmapped</span>}
             href={hasPermission(scope, PERM.IDENTITY) ? "/admin/identity?tab=unmapped" : undefined} hrefLabel="Open Identity Management" />
         ) : (
           <KpiCard label="Identified team members" value={fmtNum(k.identified_employees ?? k.employees_with_activity)} icon={Fingerprint}
@@ -158,16 +196,18 @@ function OverviewView() {
         <InlineAlert>Team member details are unavailable right now — verified attendance is shown without names.</InlineAlert>
       )}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented size="sm" label="Chart activity" value={series} onChange={(v) => set({ series: v, hour: "" })}
+          options={SERIES.map((x) => ({ value: x.value, label: x.label }))} />
+        <InfoTip label="About the activity charts" text="Bars are stacked by identity status for each event's own site-local day: green verified, amber unmapped (needs review), red mapping conflict. Bar height is the events shown. Tooltips add the hours of each team member's or ZKBioTime ID's first and last recorded punch of the whole day — recorded order only, not check-in or check-out." />
+      </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Panel title="Activity by hour of day" subtitle={`Recorded events per site-local hour · ${periodLabel} · ${site.name}`}
+        <Panel title="Activity by hour of day" subtitle={`${SERIES.find((x) => x.value === series)!.label} events per site-local hour · ${periodLabel} · ${site.name}`}
           action={peak.size ? <span className="text-xs text-dt-text-secondary">Busiest: <span className="font-medium text-dt-red">{[...peak].map((h) => `${h.padStart(2, "0")}:00`).join(", ")}</span></span> : undefined}>
           {hourly.data ? (
             <>
-              <BarChart measure="events" summary={`Activity events by hour, ${periodLabel}, ${site.name}`} highlight={peak} tickEvery={[6, 3]}
-                selected={s.hour || null} onSelect={(h) => set({ hour: h })} minBarPx={18}
-                data={hours.map((h) => ({ key: String(h.hour), value: h.events, tick: String(h.hour).padStart(2, "0"),
-                  label: `${String(h.hour).padStart(2, "0")}:00–${String(h.hour).padStart(2, "0")}:59${site.time_zone ? ` (${site.time_zone})` : ""}${single ? "" : ", all days"}`,
-                  note: `${fmtNum(h.employees)} employees` }))}
+              <StatusBarChart series={series} summary={`${SERIES.find((x) => x.value === series)!.label} events by hour, ${periodLabel}, ${site.name}`}
+                highlight={peak} tickEvery={[6, 3]} selected={s.hour || null} onSelect={(h) => set({ hour: h })} minBarPx={18} data={hourBars}
                 empty={emptyToday ? "No activity recorded yet today." : "No activity recorded in this period."} />
               <p className="mt-2 text-xs text-dt-text-secondary">
                 {single ? "Select an hour to see its recorded events." : `Each bar combines that hour across all ${dayCount(period)} days. Select one to see its events.`}
@@ -176,17 +216,18 @@ function OverviewView() {
           ) : <Skeleton className="h-44 w-full" />}
         </Panel>
         <Panel title="Daily activity trend"
-          subtitle={`Events per day, ${trendDays} days to ${fmtShortDay(period.to)} · ${site.name}${avg ? ` · line = average of days with activity (${fmtNum(avg)})` : ""}`}
+          subtitle={`${SERIES.find((x) => x.value === series)!.label} events per day, ${trendDays} days to ${fmtShortDay(period.to)} · ${site.name}${avg ? ` · dashed line = average ${SERIES_NOUN[series]} events per day with activity (${fmtNum(avg)})` : ""}`}
           action={<Segmented size="sm" label="Trend range" value={String(trendDays)} onChange={(v) => set({ trend: v })}
             options={[{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }]} />}>
           {trend.data ? (
             <>
-              <BarChart measure="events" summary={`Daily activity events, ${trendDays} days to ${period.to}, ${site.name}`}
+              <StatusBarChart series={series} summary={`Daily ${SERIES_NOUN[series]} events, ${trendDays} days to ${period.to}, ${site.name}`}
                 selected={single ? period.from : null} onSelect={(d) => setPeriod({ from: d, to: d })} tickEvery={trendDays === 7 ? [1, 1] : [7, 3]}
-                average={avg ? { value: avg, label: `avg ${fmtNum(avg)}` } : null}
-                data={trendData.map((d) => ({ key: d.date, value: d.events, tick: trendDays === 7 ? fmtDay(d.date).slice(0, 3) : fmtShortDay(d.date),
-                  label: fmtDay(d.date, true), note: `${fmtNum(d.employees)} employees${avg && d.events ? ` · ${d.events >= avg ? "+" : "−"}${fmtNum(Math.abs(d.events - avg))} vs average` : ""}` }))} />
-              <p className="mt-2 text-xs text-dt-text-secondary">Select a day to view it in this overview.</p>
+                average={avg ? { value: avg, label: `avg ${fmtNum(avg)} ${SERIES_NOUN[series]}/day` } : null} data={trendBars} />
+              <p className="mt-2 text-xs text-dt-text-secondary">
+                Select a day to view it in this overview, or <Link className="font-medium text-dt-burnt-orange underline-offset-2 hover:underline"
+                  href={hrefWith("/activity", { from: addDays(period.to, -(trendDays - 1)), to: period.to, mapping: series })}>open these {trendDays} days in Activity</Link>.
+              </p>
             </>
           ) : <Skeleton className="h-44 w-full" />}
         </Panel>
@@ -196,7 +237,7 @@ function OverviewView() {
         <Panel title="Needs review" subtitle={`Team-member days per review category · ${periodLabel}. Flags are prompts, not confirmed issues.`}>
           <BreakdownList counts={o.review_breakdown} hrefFor={(f) => ex(f)} />
         </Panel>
-        <Panel title="Recent activity" subtitle={`Latest recorded events at ${site.name}`}
+        <Panel title="Recent activity" subtitle={`Latest verified team-member events at ${site.name} · all events in Activity`}
           action={<Link href="/activity" className="inline-flex min-h-9 items-center gap-0.5 text-xs font-medium text-dt-burnt-orange">All activity <ChevronRight className="size-3" aria-hidden /></Link>}
           bodyClassName="p-0">
           <div className="flex flex-wrap gap-2 border-b border-dt-border/70 px-4 py-2">
@@ -232,7 +273,7 @@ function OverviewView() {
       </div>
 
       {s.hour !== "" && (
-        <HourActivitySheet period={period} hour={Number(s.hour)}
+        <HourActivitySheet period={period} hour={Number(s.hour)} mapping={series}
           employees={hours.find((h) => String(h.hour) === s.hour)?.employees ?? null}
           onHour={(h) => set({ hour: String(h) })} onClose={() => set({ hour: "" })} onOpenEmployee={(code) => set({ open: code })} />
       )}

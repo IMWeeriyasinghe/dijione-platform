@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X, type LucideIcon } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, X, type LucideIcon } from "lucide-react";
 import { cn } from "../utils";
 
 export type NavItem = {
@@ -32,6 +32,8 @@ export function Sidebar({
   homeHref,
   onNavigate,
   onClose,
+  collapsed = false,
+  onToggleCollapsed,
 }: {
   eyebrow?: string;
   title: string;
@@ -49,8 +51,25 @@ export function Sidebar({
    * set. Omitted for the persistent desktop sidebar, which has nothing to
    * close. */
   onClose?: () => void;
+  /** Desktop only, opt-in (AppShell `collapsible`): icon-only rail. */
+  collapsed?: boolean;
+  /** Desktop only, opt-in: renders the collapse / expand control when set. */
+  onToggleCollapsed?: () => void;
 }) {
   const pathname = usePathname();
+  const ToggleIcon = collapsed ? ChevronsRight : ChevronsLeft;
+  const toggle = onToggleCollapsed && (
+    <button
+      type="button"
+      onClick={onToggleCollapsed}
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+      title={collapsed ? "Expand navigation" : "Collapse navigation"}
+      className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+    >
+      <ToggleIcon className="size-5" aria-hidden />
+    </button>
+  );
 
   const brand = (
     <>
@@ -68,7 +87,7 @@ export function Sidebar({
           className="h-auto w-full object-contain"
         />
       </div>
-      <div className="min-w-0">
+      <div className={cn("min-w-0", collapsed && "sr-only")}>
         {eyebrow && <p className="truncate text-[11px] font-medium uppercase tracking-wide text-white/70">{eyebrow}</p>}
         <p className="truncate text-base font-semibold leading-tight">{title}</p>
       </div>
@@ -76,21 +95,29 @@ export function Sidebar({
   );
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col bg-linear-to-b from-dt-red-deep via-dt-red to-dt-burnt-orange text-white">
-      <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
+    <aside
+      data-collapsed={collapsed || undefined}
+      className={cn(
+        "flex h-full shrink-0 flex-col bg-linear-to-b from-dt-red-deep via-dt-red to-dt-burnt-orange text-white",
+        onToggleCollapsed && "transition-[width] duration-200 ease-out motion-reduce:transition-none",
+        collapsed ? "w-16" : "w-64"
+      )}
+    >
+      <div className={cn("flex items-center gap-2.5 pb-5 pt-6", collapsed ? "flex-col px-2" : "px-5")}>
         {homeHref ? (
           // eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone escape, see NavItem.external
           <a
             href={homeHref}
             title="DijiOne Home"
             onClick={onNavigate}
-            className="flex min-w-0 flex-1 items-center gap-2.5 transition hover:opacity-90"
+            className={cn("flex min-w-0 items-center gap-2.5 transition hover:opacity-90", !collapsed && "flex-1")}
           >
             {brand}
           </a>
         ) : (
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">{brand}</div>
+          <div className={cn("flex min-w-0 items-center gap-2.5", !collapsed && "flex-1")}>{brand}</div>
         )}
+        {toggle}
         {onClose && (
           <button
             type="button"
@@ -103,35 +130,48 @@ export function Sidebar({
         )}
       </div>
 
-      <nav className="dt-scrollbar flex-1 space-y-5 overflow-y-auto px-3 pb-4">
+      <nav aria-label={title} className={cn("dt-scrollbar flex-1 space-y-5 overflow-y-auto pb-4", collapsed ? "px-2" : "px-3")}>
         {sections.map((section, i) => (
           <div key={section.label ?? i}>
-            {section.label && (
-              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/50">
-                {section.label}
-              </p>
-            )}
+            {section.label &&
+              (collapsed ? (
+                // Collapsed: a thin separator keeps the grouping; the name stays for screen readers.
+                <p className="mx-2 mb-2 border-t border-white/20 pt-2">
+                  <span className="sr-only">{section.label}</span>
+                </p>
+              ) : (
+                <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                  {section.label}
+                </p>
+              ))}
             <div className="space-y-0.5">
               {section.items.map((item) => {
                 const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
                 const Icon = item.icon;
                 const className = cn(
-                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition",
+                  "flex items-center rounded-xl py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
+                  collapsed ? "justify-center px-0" : "gap-2.5 px-3",
                   active ? "bg-dt-cream text-dt-red-deep shadow-sm" : "text-white/85 hover:bg-white/10"
                 );
                 const content = (
                   <>
-                    <Icon className="size-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
+                    <Icon className="size-4 shrink-0" aria-hidden={collapsed || undefined} />
+                    <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
                   </>
                 );
+                const shared = {
+                  onClick: onNavigate,
+                  className,
+                  "aria-current": active ? ("page" as const) : undefined,
+                  title: collapsed ? item.label : undefined,
+                };
                 return item.external ? (
                   // eslint-disable-next-line @next/next/no-html-link-for-pages -- cross-zone, see NavItem.external
-                  <a key={item.href} href={item.href} onClick={onNavigate} className={className}>
+                  <a key={item.href} href={item.href} {...shared}>
                     {content}
                   </a>
                 ) : (
-                  <Link key={item.href} href={item.href} onClick={onNavigate} className={className}>
+                  <Link key={item.href} href={item.href} {...shared}>
                     {content}
                   </Link>
                 );
@@ -141,7 +181,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      {footer && <div className="border-t border-white/15 px-4 py-4">{footer}</div>}
+      {footer && !collapsed && <div className="border-t border-white/15 px-4 py-4">{footer}</div>}
     </aside>
   );
 }

@@ -134,7 +134,7 @@ describe("Identity Management", () => {
     fireEvent.change(screen.getByLabelText(/Verification evidence/), { target: { value: "IT enrolment sheet signed by HR" } });
     const box = await screen.findByRole("checkbox", { name: /Earlier punches stay unmapped/ });
     expect(screen.getByTestId("confirm-sentence")).toHaveTextContent(
-      "Map ZKBioTime ID 352 to Tom Example (BHR Employee ID 1234, EMP Number 352) from 2026-11-01 (open-ended) — 4 earlier punch(es) stay unmapped.");
+      "Map ZKBioTime ID 352 to Tom Example (BHR ID 1234, EMP Number 352) from 2026-11-01 (open-ended) — 4 earlier punch(es) stay unmapped.");
     const confirm = screen.getByRole("button", { name: "Confirm mapping" });
     expect(confirm).toBeDisabled();
     fireEvent.click(box);

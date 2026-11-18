@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { cn } from "../utils";
 import type { NavSection } from "./Sidebar";
 import { Sidebar } from "./Sidebar";
@@ -15,6 +15,7 @@ export function AppShell({
   topNavTitle,
   homeHref,
   roleContext,
+  collapsible,
   children,
 }: {
   eyebrow?: string;
@@ -25,8 +26,34 @@ export function AppShell({
   homeHref?: string;
   /** Header role indicator context ("platform" or the application's module key). */
   roleContext?: RoleContext;
+  /** OPT-IN: a collapse / expand control on the desktop sidebar (icon-only
+   * rail, preference remembered per browser under `storageKey`). Omitted =
+   * the unchanged always-expanded sidebar. Never affects the mobile drawer. */
+  collapsible?: { storageKey: string };
   children: React.ReactNode;
 }) {
+  const storageKey = collapsible?.storageKey;
+  const [collapsed, setCollapsed] = useState(false);
+  // Applied before paint after hydration (server render is always expanded).
+  useLayoutEffect(() => {
+    if (!storageKey) return;
+    try {
+      if (window.localStorage.getItem(storageKey) === "1") setCollapsed(true);
+    } catch {
+      /* storage unavailable: stay expanded */
+    }
+  }, [storageKey]);
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        if (storageKey) window.localStorage.setItem(storageKey, next ? "1" : "0");
+      } catch {
+        /* preference just isn't remembered */
+      }
+      return next;
+    });
+  };
   // Responsive audit finding (post-hardening review): the sidebar was a
   // permanently-rendered fixed w-64 column with no mobile collapse — on a
   // 375-414px viewport it consumed the majority of the screen, leaving
@@ -51,7 +78,15 @@ export function AppShell({
     <div className="flex min-h-screen print:block">
       {/* Desktop sidebar — persistent at md (768px) and up. */}
       <div className="hidden print:hidden md:flex">
-        <Sidebar eyebrow={eyebrow} title={title} sections={sections} footer={footer} homeHref={homeHref} />
+        <Sidebar
+          eyebrow={eyebrow}
+          title={title}
+          sections={sections}
+          footer={footer}
+          homeHref={homeHref}
+          collapsed={Boolean(storageKey) && collapsed}
+          onToggleCollapsed={storageKey ? toggleCollapsed : undefined}
+        />
       </div>
 
       {/* Mobile nav drawer — below md, opened via the hamburger in TopNav.

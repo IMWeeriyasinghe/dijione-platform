@@ -147,10 +147,12 @@ export function SelectField({ label, value, onChange, options }: {
  *  the employment-derived refinements of a verified mapping. */
 export const IDENTITY_CLASSES: IdentityClass[] = ["MATCHED_ACTIVE", "MATCHED_INACTIVE", "MATCHED_BEFORE_HIRE"];
 
-export function IdentitySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function IdentitySelect({ value, onChange, label = "Mapping status", anyLabel = "All verified" }: {
+  value: string; onChange: (v: string) => void; label?: string; anyLabel?: string;
+}) {
   return (
-    <SelectField label="Mapping status" value={value} onChange={onChange}
-      options={[{ value: "", label: "All verified" }, ...IDENTITY_CLASSES.map((c) => ({ value: c, label: IDENTITY_LABEL[c] }))]} />
+    <SelectField label={label} value={value} onChange={onChange}
+      options={[{ value: "", label: anyLabel }, ...IDENTITY_CLASSES.map((c) => ({ value: c, label: IDENTITY_LABEL[c] }))]} />
   );
 }
 

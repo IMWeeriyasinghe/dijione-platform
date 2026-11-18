@@ -127,9 +127,9 @@ def test_two_codes_one_employee_is_one_person_everywhere(api_client, db, directo
     k = _get(api_client, f"/api/onsite/dashboard/overview?date={DAY1}").json()["kpis"]
     assert (k["employees_with_activity"], k["total_events"], k["identified_employees"]) == (1, 4, 1)
     hours = _get(api_client, f"/api/onsite/dashboard/hourly-activity?date={DAY1}").json()["hours"]
-    assert max(h["employees"] for h in hours) == 1 and sum(h["events"] for h in hours) == 4
+    assert max(h["employees"] for h in hours) == 1 and sum(h["verified_events"] for h in hours) == 4
     trend = _get(api_client, f"/api/onsite/dashboard/activity-trend?days=2&date_to={DAY2}").json()["days"]
-    assert [(d["employees"], d["events"]) for d in trend] == [(1, 4), (1, 1)]
+    assert [(d["employees"], d["verified_events"]) for d in trend] == [(1, 4), (1, 1)]
     today = _get(api_client, f"/api/onsite/today?date={DAY1}").json()
     assert today["total"] == 1
     row = today["items"][0]
