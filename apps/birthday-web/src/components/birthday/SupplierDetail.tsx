@@ -247,7 +247,8 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
     setUserForm({
       email: user.email,
       full_name: user.full_name,
-      role: user.role,
+      // One supplier operational role: every supplier user has the same access.
+      role: "SUPPLIER_USER",
       status: user.status,
       entra_object_id: user.entra_object_id ?? "",
     });
@@ -468,7 +469,7 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
                           {user.full_name || user.email}
                         </p>
                         <p className="wrap-break-word text-xs text-dt-text-secondary">
-                          {user.email} · {user.role.replace(/_/g, " ")}
+                          {user.email} · Supplier user
                           {user.last_login_at &&
                             ` · last sign-in ${new Date(user.last_login_at).toLocaleDateString()}`}
                           {user.invited_at &&
@@ -777,16 +778,6 @@ export function SupplierDetail({ supplierId }: { supplierId: number }) {
               value={userForm.full_name}
               onChange={(e) => setUserForm((f) => ({ ...f, full_name: e.target.value }))}
             />
-          </FormField>
-          <FormField label="Role" htmlFor="user-role">
-            <Select
-              id="user-role"
-              value={userForm.role}
-              onChange={(e) => setUserForm((f) => ({ ...f, role: e.target.value }))}
-            >
-              <option value="SUPPLIER_USER">Supplier User</option>
-              <option value="SUPPLIER_ADMIN">Supplier Admin</option>
-            </Select>
           </FormField>
           <FormField label="Status" htmlFor="user-status">
             <Select

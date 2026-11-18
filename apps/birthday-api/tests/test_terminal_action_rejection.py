@@ -8,7 +8,7 @@ actually enforces.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -73,6 +73,9 @@ def test_supplier_message_rejected_on_cancelled_order(api_client, db):
     db.commit()
     db.refresh(supplier)
     order = _order(db, status="CANCELLED", supplier_id=supplier.id)
+    # Released before it was cancelled — only then is it the supplier's to see.
+    order.released_at = datetime.now(UTC)
+    db.commit()
     resp = api_client.post(
         f"/api/birthday/portal/orders/{order.id}/messages",
         json={"body": "hello"}, headers=supplier_headers_for(db, supplier),

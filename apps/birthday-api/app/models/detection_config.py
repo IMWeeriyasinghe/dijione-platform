@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Integer
+from datetime import date, datetime
+
+from sqlalchemy import Boolean, Date, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -29,6 +31,22 @@ class BirthdayDetectionConfig(TimestampMixin, Base):
     # auto-released on verification — every verified order routes to
     # REQUIRES_REVIEW instead, regardless of how "standard" it looks.
     auto_release_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Operational go-live boundary (V1 clean start). The first birthday
+    # occurrence eligible for processing is operational_start_date +
+    # supplier_lead_time_days. NULL start date = no boundary. The global
+    # lead time is used ONLY for this boundary; per-supplier lead_time_days
+    # still drives on-hold routing and verify-by dates.
+    operational_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    supplier_lead_time_days: Mapped[int] = mapped_column(Integer, default=7, server_default="7")
+
+    # One-time clean-start record: set when an admin explicitly confirms the
+    # pre-launch backlog exclusion. Once set, the exclusion cannot run again,
+    # so later settings changes never cancel operational orders.
+    clean_start_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    clean_start_applied_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clean_start_excluded_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clean_start_first_eligible: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # No FK to `users.id` — User is owned by platform-api's own database.
     updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True)

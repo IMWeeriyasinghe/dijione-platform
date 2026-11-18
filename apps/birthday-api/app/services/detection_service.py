@@ -28,7 +28,7 @@ from app.models.scan_run import ScanRun
 from app.models.supplier import Supplier
 from app.models.supplier_catalogue_item import SupplierCatalogueItem
 from app.repositories.supplier_repository import SupplierRepository
-from app.services import delivery_date_service
+from app.services import delivery_date_service, operational_start_service
 from app.services.eligibility_service import compute_eligibility
 from app.services.order_sequence_service import next_order_reference
 from app.services.order_service import create_or_get_order
@@ -185,6 +185,7 @@ def run_daily_scan(
             "orders_existing": 0,
             "exceptions": 0,
             "ineligible_skipped": 0,
+            "pre_launch_skipped": 0,
             "errors": [],
         }
 
@@ -193,6 +194,7 @@ def run_daily_scan(
     orders_existing = 0
     exceptions = 0
     ineligible_skipped = 0
+    pre_launch_skipped = 0
     errors: list[dict] = []
 
     for raw_employee in active_employees:
@@ -206,6 +208,14 @@ def run_daily_scan(
             days_remaining = (occurrence_date - today).days
 
             if not is_within_scan_window(days_remaining, config):
+                continue
+
+            # Operational go-live boundary (V1 clean start): never create an
+            # order for an occurrence before operational_start_date + the
+            # global supplier lead time. Only this occurrence is skipped —
+            # next year's occurrence is computed afresh and is eligible.
+            if operational_start_service.is_pre_launch(occurrence_date, config):
+                pre_launch_skipped += 1
                 continue
 
             # Eligibility gate (plan requirement: never create a cake order
@@ -361,5 +371,6 @@ def run_daily_scan(
         "orders_existing": orders_existing,
         "exceptions": exceptions,
         "ineligible_skipped": ineligible_skipped,
+        "pre_launch_skipped": pre_launch_skipped,
         "errors": errors,
     }

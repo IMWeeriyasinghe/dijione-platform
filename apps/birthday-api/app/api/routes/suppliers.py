@@ -238,7 +238,10 @@ def _clear_default_catalogue_item(repo: SupplierRepository, supplier_id: int, *,
 # it's a status flip, not a row removal, so historical OrderEvent/audit
 # actor references stay resolvable.
 
-_VALID_ROLES = {"SUPPLIER_USER", "SUPPLIER_ADMIN"}
+# One supplier operational access level (V1): every ACTIVE supplier user has
+# the same portal capabilities. The legacy ``role`` field is still accepted
+# from older clients but always stored as SUPPLIER_USER.
+SUPPLIER_USER_ROLE = "SUPPLIER_USER"
 _VALID_USER_STATUSES = {"ACTIVE", "INACTIVE"}
 
 
@@ -299,8 +302,6 @@ def create_supplier_user(
     scope: BirthdayScope = Depends(require_birthday_permission("birthday.suppliers.manage")),
 ) -> SupplierUserRead:
     _get_supplier_or_404(db, supplier_id)
-    if payload.role not in _VALID_ROLES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid role: {payload.role!r}")
     if payload.status not in _VALID_USER_STATUSES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid status: {payload.status!r}")
 
@@ -311,7 +312,7 @@ def create_supplier_user(
     user = SupplierRepository(db).add_user(
         SupplierUser(
             supplier_id=supplier_id, email=payload.email, full_name=payload.full_name,
-            role=payload.role, status=payload.status,
+            role=SUPPLIER_USER_ROLE, status=payload.status,
         )
     )
     db.commit()
@@ -354,8 +355,8 @@ def update_supplier_user(
         from datetime import UTC, datetime
 
         user.invited_at = datetime.now(UTC)
-    if "role" in updates and updates["role"] not in _VALID_ROLES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid role: {updates['role']!r}")
+    if "role" in updates:
+        updates["role"] = SUPPLIER_USER_ROLE
     if "status" in updates and updates["status"] not in _VALID_USER_STATUSES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid status: {updates['status']!r}")
     if "email" in updates and updates["email"] != user.email:

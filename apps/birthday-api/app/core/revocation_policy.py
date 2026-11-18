@@ -25,6 +25,8 @@ ROUTE_POLICY: dict[str, str] = {
     "PATCH /api/birthday/admin/test-email-recipients/{recipient_id}": SENSITIVE,
     "GET /api/birthday/config": SENSITIVE,
     "PATCH /api/birthday/config": SENSITIVE,
+    "GET /api/birthday/config/clean-start/preview": SENSITIVE,
+    "POST /api/birthday/config/clean-start": SENSITIVE,
     "GET /api/birthday/employees/upcoming-birthdays": SENSITIVE,
     "GET /api/birthday/inbound-emails": SENSITIVE,
     "GET /api/birthday/orders": SENSITIVE,
