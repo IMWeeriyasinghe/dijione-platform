@@ -83,10 +83,14 @@ const {
   createTestEmailRecipient: vi.fn(),
   updateTestEmailRecipient: vi.fn(),
 }));
+const searchRecipientEmployees = vi.fn();
+const getRecipientEmployeeMatches = vi.fn();
 vi.mock("@/lib/api", () => ({
   listTestEmailRecipients,
   createTestEmailRecipient,
   updateTestEmailRecipient,
+  searchRecipientEmployees: (...a: unknown[]) => searchRecipientEmployees(...a),
+  getRecipientEmployeeMatches: (...a: unknown[]) => getRecipientEmployeeMatches(...a),
 }));
 
 import EmailSafetyPage from "../admin/email-safety/page";
@@ -114,6 +118,69 @@ describe("Email Safety admin page", () => {
     listTestEmailRecipients.mockReset().mockResolvedValue({ items: [RECIPIENT] });
     createTestEmailRecipient.mockReset();
     updateTestEmailRecipient.mockReset();
+    searchRecipientEmployees.mockReset().mockResolvedValue({ items: [] });
+    getRecipientEmployeeMatches.mockReset().mockResolvedValue({ available: true, matches: {} });
+  });
+
+  it("adds an employee chosen from the directory, filling address and label", async () => {
+    const user = userEvent.setup();
+    searchRecipientEmployees.mockResolvedValue({
+      items: [
+        { full_name: "Nina Perera", email_address: "nina@dijitalteam.com", department: "Ops", already_recipient: false },
+        { full_name: "Madushanka", email_address: RECIPIENT.email_address, department: null, already_recipient: true },
+      ],
+    });
+    createTestEmailRecipient.mockResolvedValue({ ...RECIPIENT, id: 3 });
+    wrap(<EmailSafetyPage />);
+    await screen.findAllByText(RECIPIENT.email_address);
+    await user.click(screen.getByRole("button", { name: /Add Recipient/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Find an employee/), "nin");
+    expect(await within(dialog).findByText("Nina Perera")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Already added" })).toBeDisabled(); // no duplicates
+    await user.click(within(dialog).getByRole("button", { name: "Select" }));
+    expect(within(dialog).getByLabelText(/Email Address/i)).toHaveValue("nina@dijitalteam.com");
+    expect(within(dialog).getByLabelText(/Email Address/i)).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: /Add Recipient/i }));
+    await waitFor(() =>
+      expect(createTestEmailRecipient).toHaveBeenCalledWith(
+        expect.objectContaining({ email_address: "nina@dijitalteam.com", display_label: "Nina Perera" }),
+      ),
+    );
+  });
+
+  it("shows the directory being unavailable and still allows manual entry", async () => {
+    const user = userEvent.setup();
+    searchRecipientEmployees.mockRejectedValue(new Error("503"));
+    wrap(<EmailSafetyPage />);
+    await screen.findAllByText(RECIPIENT.email_address);
+    await user.click(screen.getByRole("button", { name: /Add Recipient/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Find an employee/), "nin");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("employee directory is unavailable");
+    await user.click(within(dialog).getByText("Enter manually"));
+    expect(within(dialog).getByText(/not a DijiOne user and gets no application access/)).toBeInTheDocument();
+  });
+
+  it("prevents a manual duplicate before calling the API", async () => {
+    const user = userEvent.setup();
+    wrap(<EmailSafetyPage />);
+    await screen.findAllByText(RECIPIENT.email_address);
+    await user.click(screen.getByRole("button", { name: /Add Recipient/i }));
+    await user.click(await screen.findByText("Enter manually"));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Email Address/i), RECIPIENT.email_address.toUpperCase());
+    expect(within(dialog).getByRole("button", { name: /Add Recipient/i })).toBeDisabled();
+    expect(createTestEmailRecipient).not.toHaveBeenCalled();
+  });
+
+  it("reports internal testers who are no longer active employees without changing them", async () => {
+    getRecipientEmployeeMatches.mockResolvedValue({
+      available: true, matches: { [RECIPIENT.email_address]: "NOT_AN_ACTIVE_EMPLOYEE" },
+    });
+    wrap(<EmailSafetyPage />);
+    expect(await screen.findByRole("status")).toHaveTextContent("no longer belong to an active employee");
+    expect(updateTestEmailRecipient).not.toHaveBeenCalled();
   });
 
   it("loads and displays the approved recipient list with the safety banner", async () => {
@@ -153,6 +220,7 @@ describe("Email Safety admin page", () => {
     await screen.findAllByText("madushanka.weeriyasinghe@dijitalteam.com");
 
     await user.click(screen.getByRole("button", { name: /Add Recipient/i }));
+    await user.click(await screen.findByText("Enter manually"));
     const dialog = await screen.findByRole("dialog");
     const emailInput = within(dialog).getByLabelText(/Email Address/i);
     await user.type(emailInput, "madusankaweeriyasinghe20@gmail.com");
@@ -172,6 +240,7 @@ describe("Email Safety admin page", () => {
     await screen.findAllByText("madushanka.weeriyasinghe@dijitalteam.com");
 
     await user.click(screen.getByRole("button", { name: /Add Recipient/i }));
+    await user.click(await screen.findByText("Enter manually"));
     const dialog = await screen.findByRole("dialog");
     const emailInput = within(dialog).getByLabelText(/Email Address/i);
     await user.type(emailInput, "not-an-email");
@@ -189,6 +258,7 @@ describe("Email Safety admin page", () => {
     await screen.findAllByText("madushanka.weeriyasinghe@dijitalteam.com");
 
     await user.click(screen.getByRole("button", { name: /Add Recipient/i }));
+    await user.click(await screen.findByText("Enter manually"));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/Email Address/i), "dup@dijitalteam.com");
     await user.click(within(dialog).getByRole("button", { name: /Add Recipient/i }));

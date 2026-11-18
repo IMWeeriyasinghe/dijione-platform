@@ -63,6 +63,7 @@ export function AtworkContent({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell
+      roleContext="atwork"
       eyebrow="by Dijital Team"
       title="DijiAtWork"
       topNavTitle="Work Check-in and Attendance"

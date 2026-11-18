@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { cn } from "../utils";
 import type { NavSection } from "./Sidebar";
 import { Sidebar } from "./Sidebar";
+import type { RoleContext } from "./RoleIndicator";
 import { TopNav } from "./TopNav";
 
 export function AppShell({
@@ -13,6 +14,7 @@ export function AppShell({
   footer,
   topNavTitle,
   homeHref,
+  roleContext,
   children,
 }: {
   eyebrow?: string;
@@ -21,6 +23,8 @@ export function AppShell({
   footer?: React.ReactNode;
   topNavTitle?: string;
   homeHref?: string;
+  /** Header role indicator context ("platform" or the application's module key). */
+  roleContext?: RoleContext;
   children: React.ReactNode;
 }) {
   // Responsive audit finding (post-hardening review): the sidebar was a
@@ -85,7 +89,7 @@ export function AppShell({
 
       <div className="flex min-w-0 flex-1 flex-col print:block">
         <div className="print:hidden">
-          <TopNav title={topNavTitle} onMenuClick={() => setMobileNavOpen(true)} />
+          <TopNav title={topNavTitle} onMenuClick={() => setMobileNavOpen(true)} roleContext={roleContext} />
         </div>
         <main className="dt-scrollbar min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:p-0">
           {children}

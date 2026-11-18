@@ -24,9 +24,11 @@ import {
 } from "@dijione/design-system";
 import {
   createTestEmailRecipient,
+  getRecipientEmployeeMatches,
   listTestEmailRecipients,
   updateTestEmailRecipient,
 } from "@/lib/api";
+import { EmployeePicker } from "./employee-picker";
 import type {
   TestEmailRecipientCreateInput,
   TestEmailRecipientOut,
@@ -143,6 +145,8 @@ export default function EmailSafetyPage() {
   const [editing, setEditing] = useState<TestEmailRecipientOut | null>(null);
   const [form, setForm] = useState<TestEmailRecipientCreateInput>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  // Adding a recipient: pick an active employee first; "Enter manually" for anyone else.
+  const [entryMode, setEntryMode] = useState<"search" | "manual">("search");
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["birthday-test-email-recipients"],
@@ -150,6 +154,21 @@ export default function EmailSafetyPage() {
     enabled: !!scope?.isAdmin,
   });
   const recipientList = data?.items ?? [];
+  const matches = useQuery({
+    queryKey: ["birthday-test-email-recipients", "employee-matches"],
+    queryFn: getRecipientEmployeeMatches,
+    enabled: !!scope?.isAdmin && recipientList.length > 0,
+    retry: false,
+  });
+  // Internal testers whose address is no longer an active employee's. Reported only: nothing changes
+  // automatically, and the allowlist never widens because someone left.
+  const leavers = recipientList.filter(
+    (r) =>
+      r.is_active &&
+      r.recipient_type === "INTERNAL_TESTER" &&
+      matches.data?.available &&
+      matches.data.matches[r.email_address.trim().toLowerCase()] === "NOT_AN_ACTIVE_EMPLOYEE",
+  );
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["birthday-test-email-recipients"] });
 
@@ -181,6 +200,7 @@ export default function EmailSafetyPage() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setFormError(null);
+    setEntryMode("search");
     setModalOpen(true);
   }
 
@@ -210,10 +230,18 @@ export default function EmailSafetyPage() {
   // that server-side check.
   const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
 
+  const duplicate =
+    !editing && recipientList.some((r) => r.email_address.trim().toLowerCase() === trimmedEmail.toLowerCase());
+  const choosing = !editing && entryMode === "search" && !trimmedEmail;
+
   function submit() {
     setFormError(null);
     if (!emailLooksValid) {
       setFormError("Enter a valid email address.");
+      return;
+    }
+    if (duplicate) {
+      setFormError("This address is already on the list.");
       return;
     }
     if (editing) {
@@ -264,6 +292,13 @@ export default function EmailSafetyPage() {
         </div>
       </div>
 
+      {leavers.length > 0 && (
+        <div role="status" className="mb-4 rounded-2xl border border-dt-warning/25 p-4 text-sm text-dt-text-primary">
+          These internal tester addresses no longer belong to an active employee:{" "}
+          <strong>{leavers.map((r) => r.email_address).join(", ")}</strong>. They are still on the list; deactivate
+          them if they should no longer receive test email.
+        </div>
+      )}
       {isLoading ? (
         <LoadingState label="Loading approved recipients…" />
       ) : isError || !data ? (
@@ -328,16 +363,38 @@ export default function EmailSafetyPage() {
 
       <Modal open={modalOpen} onClose={closeModal} title={editing ? "Edit Recipient" : "Add Recipient"}>
         <div className="flex flex-col gap-4">
-          <FormField label="Email Address" htmlFor="recipient-email" required>
-            <Input
-              id="recipient-email"
-              type="email"
-              value={form.email_address}
-              disabled={!!editing}
-              onChange={(e) => setForm((f) => ({ ...f, email_address: e.target.value }))}
-              placeholder="name@example.com"
+          {choosing ? (
+            <EmployeePicker
+              onSelect={(e) => setForm((f) => ({ ...f, email_address: e.email_address, display_label: e.full_name }))}
+              onManual={() => setEntryMode("manual")}
             />
-          </FormField>
+          ) : (
+            <FormField label="Email Address" htmlFor="recipient-email" required>
+              <Input
+                id="recipient-email"
+                type="email"
+                value={form.email_address}
+                disabled={!!editing || entryMode === "search"}
+                onChange={(e) => setForm((f) => ({ ...f, email_address: e.target.value }))}
+                placeholder="name@example.com"
+              />
+            </FormField>
+          )}
+          {!editing && entryMode === "search" && !choosing && (
+            <button
+              type="button"
+              className="-mt-2 self-start text-xs font-medium text-dt-burnt-orange underline underline-offset-2"
+              onClick={() => setForm((f) => ({ ...f, email_address: "", display_label: "" }))}
+            >
+              Choose a different employee
+            </button>
+          )}
+          {!editing && entryMode === "manual" && (
+            <p className="-mt-2 text-xs text-dt-text-secondary">
+              A manually entered address is only allowed to receive test email. It is not a DijiOne user and gets no
+              application access.
+            </p>
+          )}
           {editing && (
             <p className="-mt-2 text-xs text-dt-text-secondary">
               The address itself cannot be changed here — remove this recipient and add the correct address instead.
@@ -366,7 +423,7 @@ export default function EmailSafetyPage() {
             <Button variant="secondary" size="sm" onClick={closeModal}>
               Cancel
             </Button>
-            <Button size="sm" loading={saving} disabled={!emailLooksValid} onClick={submit}>
+            <Button size="sm" loading={saving} disabled={!emailLooksValid || duplicate || choosing} onClick={submit}>
               {editing ? "Save Changes" : "Add Recipient"}
             </Button>
           </div>

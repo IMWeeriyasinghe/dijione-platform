@@ -11,8 +11,12 @@ from tests.conftest import ABC_CLIENT_ID, assign_client_scope, auth_headers
 MODULE = "talent-flow"
 
 
+_ROLE_KEYS = {"module_key", "role", "client_id", "enabled"}
+
+
 def _without_permissions(entries):
-    return [{k: v for k, v in e.items() if k != "permissions"} for e in entries]
+    """The role entry itself (permissions and the display-only access summary are checked elsewhere)."""
+    return [{k: v for k, v in e.items() if k in _ROLE_KEYS} for e in entries]
 
 
 def _me(api_client, headers):

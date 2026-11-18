@@ -381,6 +381,26 @@ export const impersonateSupplierUser = (supplierId: number, userId: number) =>
 export const listTestEmailRecipients = () =>
   request<TestEmailRecipientListResponse>("/api/birthday/admin/test-email-recipients");
 
+export type RecipientEmployee = {
+  full_name: string;
+  email_address: string;
+  department: string | null;
+  already_recipient: boolean;
+};
+
+/** Active employees (People domain / BambooHR) to fill in a recipient. Grants nothing. */
+export const searchRecipientEmployees = (q: string, signal?: AbortSignal) =>
+  request<{ items: RecipientEmployee[] }>(
+    `/api/birthday/admin/test-email-recipients/employee-search?q=${encodeURIComponent(q)}`,
+    { signal },
+  );
+
+/** Whether each allowlisted address still belongs to an active employee (informational). */
+export const getRecipientEmployeeMatches = () =>
+  request<{ available: boolean; matches: Record<string, "ACTIVE_EMPLOYEE" | "NOT_AN_ACTIVE_EMPLOYEE"> }>(
+    "/api/birthday/admin/test-email-recipients/employee-matches",
+  );
+
 export const createTestEmailRecipient = (payload: TestEmailRecipientCreateInput) =>
   request<TestEmailRecipientOut>("/api/birthday/admin/test-email-recipients", {
     method: "POST",

@@ -2,13 +2,18 @@
 
 import { Home, Menu, Search, Sparkles } from "lucide-react";
 import { NotificationsPanel } from "./NotificationsPanel";
+import { RoleIndicator, type RoleContext } from "./RoleIndicator";
 import { UserMenu } from "./UserMenu";
 
 export function TopNav({
   title,
   onMenuClick,
+  roleContext,
 }: {
   title?: string;
+  /** Shows the role indicator: "platform" on DijiOne Home and Central Admin, a module key inside an
+   * application. Omitted = no indicator (unchanged behaviour). */
+  roleContext?: RoleContext;
   /** Renders a hamburger button (≤767px only) that opens AppShell's mobile
    * nav drawer. Omitted where TopNav is used without a companion Sidebar. */
   onMenuClick?: () => void;
@@ -70,6 +75,7 @@ export function TopNav({
           Ask DijiOne
         </button>
         <NotificationsPanel />
+        {roleContext && <RoleIndicator context={roleContext} />}
         <UserMenu />
       </div>
     </header>

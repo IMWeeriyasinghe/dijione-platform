@@ -74,6 +74,7 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell
+      roleContext="birthday"
       eyebrow="by Dijital Team"
       title="DijiBirthday"
       topNavTitle="Birthday Workflow Automation"

@@ -28,6 +28,7 @@ class CurrentUserOut(BaseModel):
     full_name: str
     title: str | None
     platform_role: str
+    platform_role_name: str | None = None
     avatar_color: str | None
     module_roles: list[dict]
     platform_permissions: list[str] = []

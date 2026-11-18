@@ -14,6 +14,7 @@ from app.api.routes.config import get_or_create_config
 from app.api.routes.internal import _scan_run_to_dict
 from app.db.session import get_db
 from app.integrations.factory import get_employee_source
+from app.integrations.people_source.client import EmployeeSourceFetchError
 from app.models.scan_run import ScanRun
 from app.schemas.test_email_recipient import (
     TestEmailRecipientCreate,
@@ -22,6 +23,7 @@ from app.schemas.test_email_recipient import (
     TestEmailRecipientUpdate,
 )
 from app.services import attention_service
+from app.services import recipient_employee_search as recipient_search
 from app.services import test_email_recipient_service as recipients
 from app.services.audit_service import AuditService
 from app.services.detection_service import run_daily_scan
@@ -92,6 +94,36 @@ def list_test_email_recipients(
     _scope: BirthdayScope = Depends(require_birthday_permission("birthday.config.manage")),
 ) -> TestEmailRecipientListResponse:
     return TestEmailRecipientListResponse(items=recipients.list_recipients(db))
+
+
+@router.get("/test-email-recipients/employee-search")
+def search_recipient_employees(
+    q: str = "",
+    _env: None = Depends(require_non_production),
+    db: Session = Depends(get_db),
+    _scope: BirthdayScope = Depends(require_birthday_permission("birthday.config.manage")),
+) -> dict:
+    """Active employees (People domain / BambooHR) matching a name or email, to fill in a recipient.
+    Read only: selecting one does not add it, and the result grants nothing."""
+    try:
+        return {"items": recipient_search.search_employees(db, q)}
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except EmployeeSourceFetchError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The employee directory is unavailable right now.") from exc
+
+
+@router.get("/test-email-recipients/employee-matches")
+def recipient_employee_matches(
+    _env: None = Depends(require_non_production),
+    db: Session = Depends(get_db),
+    _scope: BirthdayScope = Depends(require_birthday_permission("birthday.config.manage")),
+) -> dict:
+    """Whether each allowlisted address belongs to a current active employee (informational)."""
+    try:
+        return {"available": True, "matches": recipient_search.employee_matches(db)}
+    except EmployeeSourceFetchError:
+        return {"available": False, "matches": {}}
 
 
 @router.post(
