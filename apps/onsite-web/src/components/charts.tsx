@@ -392,8 +392,10 @@ const SEGMENT_BG: Record<Segment["tone"], string> = {
 
 /** A single 100% bar split into labelled parts, with a legend that doubles
  *  as the accessible alternative (a list of label · count · share). */
-export function SegmentBar({ segments, unit, summary, empty = "Nothing to show for this selection." }: {
+export function SegmentBar({ segments, unit, summary, empty = "Nothing to show for this selection.", stacked = false }: {
   segments: Segment[]; unit: string; summary: string; empty?: string;
+  /** One legend row per segment — for narrow panels, where columns would overlap. */
+  stacked?: boolean;
 }) {
   const total = segments.reduce((n, s) => n + s.value, 0);
   if (!total) return <p className="text-sm text-dt-text-secondary">{empty}</p>;
@@ -405,7 +407,7 @@ export function SegmentBar({ segments, unit, summary, empty = "Nothing to show f
           <span key={s.key} className={cx("h-full", SEGMENT_BG[s.tone])} style={{ width: pct(s.value) }} title={`${s.label}: ${fmtNum(s.value)} ${unit} (${pct(s.value)})`} />
         ))}
       </div>
-      <ul className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2 xl:grid-cols-3" aria-label={summary}>
+      <ul className={cx("grid grid-cols-1 gap-x-4 gap-y-1 text-sm", !stacked && "sm:grid-cols-2 xl:grid-cols-3")} aria-label={summary}>
         {segments.map((s) => (
           <li key={s.key} className="flex min-w-0 items-center gap-2" title={s.help}>
             <span className={cx("size-2.5 shrink-0 rounded-sm", SEGMENT_BG[s.tone])} aria-hidden />

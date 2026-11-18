@@ -195,7 +195,7 @@ function BacklogPanel({ siteId, period, today, onPeriod }: { siteId: string; per
       {sum.isLoading ? <div className="xl:col-span-3"><SkeletonRows rows={3} /></div> : !sum.data ? <div className="xl:col-span-3"><ErrorState onRetry={() => sum.refetch()} /></div> : (
         <>
           <Panel title="Review status" subtitle={`${fmtNum(sum.data.outstanding_ids)} outstanding IDs · all mirrored history`}>
-            <SegmentBar unit="IDs" summary="Outstanding ZKBioTime IDs by review status" empty="No outstanding IDs."
+            <SegmentBar unit="IDs" summary="Outstanding ZKBioTime IDs by review status" empty="No outstanding IDs." stacked
               segments={(Object.keys(REVIEW_STATE) as ReviewState[]).map((k) => ({
                 key: k, label: REVIEW_STATE[k].label, value: sum.data!.review[k], help: REVIEW_STATE[k].help,
                 // Same tones as the review badges (Awaiting Review is amber everywhere).
@@ -258,7 +258,7 @@ function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog 
               { key: "range", header: "Period", help: "First to latest day with an unmapped punch. Sorts by the latest day.", sort: "last_unmapped", nowrap: true,
                 cell: (r) => <span className="tabular-nums" title={`${fmtShortDay(r.first_unmapped)} – ${fmtShortDay(r.last_unmapped)}`}>{fmtDaySpan(r.first_unmapped, r.last_unmapped)}</span> },
               { key: "status", header: "Review", nowrap: true, cell: (r) => <ReviewBadge state={reviewStateOf(r)} /> },
-              { key: "hint", header: "Hint", help: "Unverified: an EMP Number equals this ID. Never evidence and never applied automatically.", cell: (r) => <Hints r={r} compact /> },
+              { key: "hint", header: "Hint", minWidth: "xl", help: "Unverified: an EMP Number equals this ID. Never evidence and never applied automatically.", cell: (r) => <Hints r={r} compact /> },
               { key: "act", header: <span className="sr-only">Actions</span>, align: "right", nowrap: true, cell: (r) => <UnmappedActions r={r} canManage={canManage} open={open} /> },
               { key: "days", header: "Days", help: "Days with at least one unmapped punch.", sort: "unmapped_days", align: "right", minWidth: "2xl", nowrap: true, cell: (r) => fmtNum(r.unmapped_days) },
               { key: "seen", header: "All attendance", sort: "first_seen", minWidth: "2xl", nowrap: true,
