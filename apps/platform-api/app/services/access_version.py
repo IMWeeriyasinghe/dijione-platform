@@ -36,6 +36,7 @@ from app.models.access_group import (
     GroupModuleRole,
     UserGroupMembership,
 )
+from app.models.application_access import ApplicationAccessSuspension, ApplicationAdministrator
 from app.models.module import ApplicationModule
 from app.models.module_baseline import ModuleBaselineRole
 from app.models.role import Permission, Role, RolePermission
@@ -43,7 +44,10 @@ from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
 
 # User columns whose change alters access (or how access is derived).
-_USER_ACCESS_COLUMNS = {"is_active", "platform_role", "internal_employee", "identity_provider", "entra_object_id", "email"}
+_USER_ACCESS_COLUMNS = {
+    "is_active", "platform_role", "internal_employee", "identity_provider", "entra_object_id", "email",
+    "employee_record_status",  # decides eligibility: default access and appointments
+}
 # A change to any of these affects every user.
 _GLOBAL_MODELS = (ModuleBaselineRole, Role, RolePermission, Permission)
 _SESSION_KEY = "access_version_pending"
@@ -115,8 +119,12 @@ def affected_users(session: Session) -> tuple[set[int], bool]:
             role = obj.group_module_role
             groups.add(_group_of_role(role) if role is not None else _owner(connection, GroupModuleRole.access_group_id,
                                                                            GroupModuleRole.id, obj.group_module_role_id))
+        elif isinstance(obj, ApplicationAdministrator | ApplicationAccessSuspension):
+            users.add(obj.user_id)
+            users.update(_was(obj, "user_id") if not is_new else [])
         elif isinstance(obj, AccessGroup):
-            if obj in session.deleted or (not is_new and _changed(obj, {"status"})):
+            # group_type decides whether the group's grants are mandatory (SYSTEM: not suspendable).
+            if obj in session.deleted or (not is_new and _changed(obj, {"status", "group_type"})):
                 groups.add(obj.id)
         elif isinstance(obj, User):
             if not is_new and _changed(obj, _USER_ACCESS_COLUMNS):

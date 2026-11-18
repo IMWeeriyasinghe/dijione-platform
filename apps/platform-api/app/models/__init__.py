@@ -5,6 +5,7 @@ from app.models.access_group import (
     GroupModuleRole,
     UserGroupMembership,
 )
+from app.models.application_access import ApplicationAccessSuspension, ApplicationAdministrator
 from app.models.audit_log import AuditLog
 from app.models.client import Client, ClientExternalId, ClientStatus
 from app.models.module import ApplicationModule
@@ -18,6 +19,8 @@ from app.models.view_as_session import ViewAsSession
 
 __all__ = [
     "ModuleBaselineRole",
+    "ApplicationAdministrator",
+    "ApplicationAccessSuspension",
     "Base",
     "AuditLog",
     "Client",

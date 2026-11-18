@@ -485,7 +485,88 @@ ATWORK_ROLES: list[RoleDef] = [
     ),
 ]
 
+# --- Delegated application access administration -----------------------------
+# An Application Administrator is appointed per application (table
+# ``application_administrators``). The appointment, not an assignment, grants one of
+# the two administrator-only roles below. They carry no business permission, and
+# no assignment or group grant may use them (``APPOINTMENT_ONLY_ROLES``).
+
+
+@dataclass(frozen=True)
+class DelegationDef:
+    module_key: str
+    prefix: str
+    display_name: str
+    admin_role: str
+    owner_role: str
+    # Employee roles an appointment may authorise its holder to grant. External-user roles
+    # (TALENT_CLIENT, BIRTHDAY_SUPPLIER) and the administrator-only roles are never delegable.
+    delegable_roles: tuple[str, ...]
+
+    @property
+    def manage_permission(self) -> str:
+        return f"{self.prefix}.access.manage"
+
+    @property
+    def manage_admins_permission(self) -> str:
+        return f"{self.prefix}.access.manage_admins"
+
+
+DELEGATION: dict[str, DelegationDef] = {
+    d.module_key: d
+    for d in (
+        DelegationDef(MODULE_TALENT_FLOW, "talent", "DijiTalentFlow", "TALENT_ACCESS_ADMIN", "TALENT_ACCESS_OWNER",
+                      ("TA_MEMBER", "CUSTOMER_SUCCESS", "TA_MANAGER")),
+        DelegationDef(MODULE_BIRTHDAY, "birthday", "DIJI Birthday", "BIRTHDAY_ACCESS_ADMIN", "BIRTHDAY_ACCESS_OWNER",
+                      ("BIRTHDAY_USER", "BIRTHDAY_ADMIN")),
+        DelegationDef(MODULE_ONSITE, "onsite", "Diji On-site", "ONSITE_ACCESS_ADMIN", "ONSITE_ACCESS_OWNER",
+                      ("ONSITE_VIEWER", "ONSITE_ADMIN")),
+        DelegationDef(MODULE_ATWORK, "atwork", "DijiAtWork", "ATWORK_ACCESS_ADMIN", "ATWORK_ACCESS_OWNER",
+                      ("ATWORK_MANAGER",)),
+    )
+}
+
+ACCESS_PERMISSIONS: list[PermissionDef] = [
+    p
+    for d in DELEGATION.values()
+    for p in (
+        PermissionDef(
+            d.manage_permission, "Manage Application Access",
+            f"Grant, change and remove employees' access to {d.display_name} within the delegated authority.",
+            d.module_key, "Access Management",
+        ),
+        PermissionDef(
+            d.manage_admins_permission, "Appoint Application Administrators",
+            f"Appoint and remove other {d.display_name} access administrators within the holder's own authority.",
+            d.module_key, "Access Management",
+        ),
+    )
+]
+
+ACCESS_ROLES: list[RoleDef] = [
+    r
+    for d in DELEGATION.values()
+    for r in (
+        RoleDef(
+            d.admin_role, "Access Administrator",
+            f"Appointed by a Super Admin to manage employee access to {d.display_name}. No business permissions.",
+            d.module_key, (d.manage_permission,),
+        ),
+        RoleDef(
+            d.owner_role, "Access Administrator (can appoint)",
+            f"Access Administrator for {d.display_name} who may also appoint other administrators.",
+            d.module_key, (d.manage_permission, d.manage_admins_permission),
+        ),
+    )
+]
+
+# (module_key, role) pairs granted only through an appointment.
+APPOINTMENT_ONLY_ROLES: frozenset[tuple[str, str]] = frozenset(
+    (d.module_key, role) for d in DELEGATION.values() for role in (d.admin_role, d.owner_role)
+)
+
 ALL_PERMISSIONS: list[PermissionDef] = (
     PLATFORM_PERMISSIONS + TALENT_PERMISSIONS + BIRTHDAY_PERMISSIONS + ONSITE_PERMISSIONS + ATWORK_PERMISSIONS
+    + ACCESS_PERMISSIONS
 )
-ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES + ATWORK_ROLES
+ALL_ROLES: list[RoleDef] = PLATFORM_ROLES + TALENT_ROLES + BIRTHDAY_ROLES + ONSITE_ROLES + ATWORK_ROLES + ACCESS_ROLES

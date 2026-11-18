@@ -227,15 +227,21 @@ def upsert_module_assignment(
     )
 
 
+def _break_glass(reason: str | None) -> dict | None:
+    return {"break_glass_reason": reason} if reason else None
+
+
 @router.delete("/users/{user_id}/modules/{module_key}")
 def remove_module_assignment(
     user_id: int,
     module_key: str,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
     bearer_token: str = Depends(get_bearer_token),
     platform: PlatformClient = Depends(get_platform_client),
 ) -> dict:
     return call_platform_admin(
-        platform, "DELETE", f"/api/platform/admin/users/{user_id}/modules/{module_key}", bearer_token=bearer_token
+        platform, "DELETE", f"/api/platform/admin/users/{user_id}/modules/{module_key}", bearer_token=bearer_token,
+        params=_break_glass(break_glass_reason),
     )
 
 
@@ -373,11 +379,13 @@ def add_group_member(
 def remove_group_member(
     group_id: int,
     user_id: int,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
     bearer_token: str = Depends(get_bearer_token),
     platform: PlatformClient = Depends(get_platform_client),
 ) -> dict:
     return call_platform_admin(
-        platform, "DELETE", f"/api/platform/admin/groups/{group_id}/members/{user_id}", bearer_token=bearer_token
+        platform, "DELETE", f"/api/platform/admin/groups/{group_id}/members/{user_id}", bearer_token=bearer_token,
+        params=_break_glass(break_glass_reason),
     )
 
 
@@ -399,11 +407,13 @@ def upsert_group_module_assignment(
 def remove_group_module_assignment(
     group_id: int,
     module_key: str,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
     bearer_token: str = Depends(get_bearer_token),
     platform: PlatformClient = Depends(get_platform_client),
 ) -> dict:
     return call_platform_admin(
-        platform, "DELETE", f"/api/platform/admin/groups/{group_id}/modules/{module_key}", bearer_token=bearer_token
+        platform, "DELETE", f"/api/platform/admin/groups/{group_id}/modules/{module_key}", bearer_token=bearer_token,
+        params=_break_glass(break_glass_reason),
     )
 
 
@@ -417,3 +427,84 @@ def application_detail(
         platform, "GET", f"/api/platform/admin/applications/{module_key}", bearer_token=bearer_token
     )
     return detail
+
+
+# --- Delegated application access: administrators, suspensions, registry switch ----------------
+# Authorization is re-derived by Platform Core from the caller's own token (Super Admin for
+# appointments, manage_users for lifting a suspension, manage_modules for the registry).
+
+
+@router.get("/applications/{module_key}/administrators")
+def list_application_administrators(
+    module_key: str,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> list[dict]:
+    return call_platform_admin(
+        platform, "GET", f"/api/platform/admin/applications/{module_key}/administrators", bearer_token=bearer_token
+    )
+
+
+@router.put("/applications/{module_key}/administrators/{user_id}")
+def appoint_application_administrator(
+    module_key: str,
+    user_id: int,
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "PUT", f"/api/platform/admin/applications/{module_key}/administrators/{user_id}",
+        bearer_token=bearer_token, json=payload,
+    )
+
+
+@router.delete("/applications/{module_key}/administrators/{user_id}")
+def remove_application_administrator(
+    module_key: str,
+    user_id: int,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "DELETE", f"/api/platform/admin/applications/{module_key}/administrators/{user_id}",
+        bearer_token=bearer_token, params=_break_glass(break_glass_reason),
+    )
+
+
+@router.get("/applications/{module_key}/suspensions")
+def list_application_suspensions(
+    module_key: str,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> list[dict]:
+    return call_platform_admin(
+        platform, "GET", f"/api/platform/admin/applications/{module_key}/suspensions", bearer_token=bearer_token
+    )
+
+
+@router.delete("/applications/{module_key}/suspensions/{user_id}")
+def lift_application_suspension(
+    module_key: str,
+    user_id: int,
+    break_glass_reason: str | None = Query(default=None, max_length=500),
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "DELETE", f"/api/platform/admin/applications/{module_key}/suspensions/{user_id}",
+        bearer_token=bearer_token, params=_break_glass(break_glass_reason),
+    )
+
+
+@router.patch("/modules/{module_key}")
+def set_module_enabled(
+    module_key: str,
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> dict:
+    return call_platform_admin(
+        platform, "PATCH", f"/api/platform/admin/modules/{module_key}", bearer_token=bearer_token, json=payload
+    )

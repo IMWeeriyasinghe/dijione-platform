@@ -11,8 +11,17 @@ from tests.conftest import ABC_CLIENT_ID, assign_client_scope, auth_headers
 MODULE = "talent-flow"
 
 
+def _without_permissions(entries):
+    return [{k: v for k, v in e.items() if k != "permissions"} for e in entries]
+
+
 def _me(api_client, headers):
-    return api_client.get("/api/auth/me", headers=headers).json()["module_roles"]
+    """The role entries (permissions are checked separately against the token)."""
+    entries = api_client.get("/api/auth/me", headers=headers).json()["module_roles"]
+    token = _token_modules(headers)
+    for e in entries:
+        assert e["permissions"] == token[e["module_key"]]["permissions"]  # same as the token carries
+    return _without_permissions(entries)
 
 
 def _token_modules(headers):
@@ -41,7 +50,7 @@ def test_login_response_matches_me(api_client, db, two_tenant_world):
     resp = api_client.post("/api/auth/dev-login", json={"persona_key": "test-abc-client"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
     expected = [{"module_key": MODULE, "role": "TALENT_CLIENT", "client_id": ABC_CLIENT_ID, "enabled": True}]
-    assert resp.json()["user"]["module_roles"] == expected
+    assert _without_permissions(resp.json()["user"]["module_roles"]) == expected
     assert _me(api_client, headers) == expected
 
 

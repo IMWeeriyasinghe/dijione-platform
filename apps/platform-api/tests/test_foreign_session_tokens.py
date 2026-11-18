@@ -46,5 +46,5 @@ def test_token_for_another_actor_population_is_rejected(api_client, db, two_tena
 
 def test_ordinary_session_token_is_unaffected(api_client, db, two_tenant_world):
     admin = two_tenant_world["super_admin"]
-    headers = _token(admin.id, email=admin.email)
+    headers = _token(admin.id, email=admin.email, actor_type="staff")
     assert api_client.get("/api/platform/admin/users", headers=headers).status_code == 200

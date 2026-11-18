@@ -201,6 +201,45 @@ class DirectoryService:
         self.db.commit()
         return user
 
+    def onboard_for_application(self, *, actor: User, object_id: str, module_key: str) -> User:
+        """An application administrator adds an employee straight from the directory.
+
+        Narrower than ``create_from_directory``: eligibility is decided BEFORE anything is created
+        (an enabled internal member account AND a matched BambooHR employee record; NOT_FOUND or
+        UNKNOWN create nothing), and nothing is committed here, so the caller makes the grant in the
+        same transaction. An existing profile is returned as it is, never re-verified or edited:
+        verification and identity changes remain Central Admin's."""
+        person = self.directory.get(object_id)  # re-read server-side: nothing from the browser is trusted
+        if person is None:
+            raise DirectoryError("That directory account no longer exists.")
+        if not is_internal_member(person):
+            raise DirectoryError("Only enabled internal member accounts can be added (not guests or disabled accounts).")
+        record = self.records.check(email=person.email, employee_id=person.employee_id)
+        if record.status == UNKNOWN:
+            raise DirectoryError("The HR system could not be checked just now, so nobody was added. Try again later.")
+        if record.status != MATCHED:
+            raise DirectoryError(
+                "This person is not matched to an employee record in BambooHR, so they cannot be added here. "
+                "Ask Central Admin."
+            )
+        existing = self._existing(person)
+        if existing is not None:
+            return existing
+        user = User(
+            email=person.email.lower(), full_name=person.display_name, title=person.job_title,
+            platform_role=PlatformRole.PLATFORM_USER.value, identity_provider="ENTRA", is_active=True,
+        )
+        self.db.add(user)
+        self.db.flush()
+        self.audit.log(
+            actor_id=actor.id, action="user.created", entity_type="User", entity_id=user.id, subject_user_id=user.id,
+            new_state={"email": user.email, "full_name": user.full_name, "platform_role": user.platform_role,
+                       "is_active": True, "source": "APPLICATION_ONBOARDING"},
+            metadata={"channel": "APPLICATION", "module_key": module_key},
+        )
+        self._verify(actor, user, person)  # no clash is possible: _existing found none by id or address
+        return user
+
     def verify(self, *, actor: User, user: User) -> User:
         if user.entra_object_id:
             person = self.directory.get(user.entra_object_id)

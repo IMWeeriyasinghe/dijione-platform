@@ -209,9 +209,9 @@ def test_home_admin_and_me_agree_with_effective_access(api_client, db, baseline,
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_viewer] = lambda: Viewer(user=user)
     assert "atwork" in {m["key"] for m in api_client.get("/api/modules").json()}
-    assert {"module_key": "atwork", "role": "ATWORK_USER", "client_id": None, "enabled": True} in api_client.get(
-        "/api/auth/me"
-    ).json()["module_roles"]
+    assert {"module_key": "atwork", "role": "ATWORK_USER", "client_id": None, "enabled": True} in [
+        {k: v for k, v in e.items() if k != "permissions"} for e in api_client.get("/api/auth/me").json()["module_roles"]
+    ]
     app.dependency_overrides[get_current_user] = lambda: outsider
     app.dependency_overrides[get_viewer] = lambda: Viewer(user=outsider)
     assert "atwork" not in {m["key"] for m in api_client.get("/api/modules").json()}

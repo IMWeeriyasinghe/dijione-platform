@@ -16,6 +16,9 @@ from app.models.user import User, UserModuleRole
 from tests.conftest import auth_headers
 
 ACCESS = "atwork.access"
+# DijiAtWork's catalogue rows in a migrated database: (permissions, roles, role links), including the
+# delegated-access catalogue appended for every application (2 permissions, 2 roles, 3 links).
+ATWORK_CATALOG = (12 + 2, 2 + 2, 16 + 3)
 MANAGEMENT = "atwork.management.access"
 READ_OWN = "atwork.attendance.read_own"
 RECORD_OWN = "atwork.attendance.record_own"
@@ -149,7 +152,9 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     assert len(first["module"]) == 1
     assert first["module"][0][0] == "COMING_SOON"
     assert not first["module"][0][2]
-    assert (first["perms"], first["roles"], first["links"]) == (12, 2, 16)
+    # 12 business permissions, 2 roles, 16 links, plus the delegated-access catalogue appended for
+    # every application (2 permissions, 2 administrator-only roles, 3 links).
+    assert (first["perms"], first["roles"], first["links"]) == ATWORK_CATALOG
 
     # An administrator's later status is preserved when the migration re-runs.
     with engine.begin() as conn:
@@ -159,7 +164,7 @@ def test_migration_single_head_idempotent_and_never_activates(tmp_path):
     assert again.returncode == 0, again.stderr
     second = _snapshot(engine)
     assert not second["module"][0][1]
-    assert (second["perms"], second["roles"], second["links"]) == (12, 2, 16)
+    assert (second["perms"], second["roles"], second["links"]) == ATWORK_CATALOG
 
 
 def test_attendance_permissions_reach_existing_role_assignments(tmp_path):
@@ -175,7 +180,7 @@ def test_attendance_permissions_reach_existing_role_assignments(tmp_path):
     upgraded = _alembic(url, "upgrade", "head")
     assert upgraded.returncode == 0, upgraded.stderr
     snapshot = _snapshot(engine)
-    assert (snapshot["perms"], snapshot["roles"], snapshot["links"]) == (12, 2, 16)
+    assert (snapshot["perms"], snapshot["roles"], snapshot["links"]) == ATWORK_CATALOG
 
 
 def test_home_card_activates_in_dev_only_and_touches_only_atwork(tmp_path):

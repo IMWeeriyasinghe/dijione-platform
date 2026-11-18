@@ -197,6 +197,17 @@ def _build_stub_platform_app() -> FastAPI:
             "direct_user_count": 1, "group_count": 0,
         }
 
+    # Delegated access administration: echo what arrived so forwarding (method, path, body, query) is checked.
+    @stub.api_route("/api/platform/admin/applications/{module_key}/{kind}", methods=["GET"])
+    @stub.api_route("/api/platform/admin/applications/{module_key}/{kind}/{user_id}", methods=["PUT", "DELETE"])
+    @stub.api_route("/api/platform/admin/modules/{module_key}", methods=["PATCH"])
+    async def delegated_echo(request: Request, authorization: str | None = Header(default=None)):
+        _require_admin_token(authorization)
+        body = await request.body()
+        echo = {"method": request.method, "path": request.url.path, "query": dict(request.query_params),
+                "body": body.decode() or None}
+        return [echo] if request.method == "GET" else echo
+
     return stub
 
 

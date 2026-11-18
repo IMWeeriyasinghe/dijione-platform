@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
+    app_access,
     auth,
     auth_entra,
     health,
@@ -60,3 +61,4 @@ app.include_router(platform_admin.router)
 app.include_router(platform_directory.router)
 app.include_router(platform_internal.router)
 app.include_router(view_as.router)
+app.include_router(app_access.router)
