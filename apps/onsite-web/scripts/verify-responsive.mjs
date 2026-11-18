@@ -38,7 +38,9 @@ import os from "node:os";
 import path from "node:path";
 import puppeteer from "puppeteer";
 
-const WIDTHS = [320, 375, 768, 1024, 1280, 1440];
+// 1093 = a 1366 px laptop at 125 % browser zoom (CSS viewport 1366 / 1.25).
+const WIDTHS = [320, 375, 768, 1024, 1093, 1280, 1366, 1440, 1920];
+const COLLAPSED_WIDTHS = [1093, 1366, 1440];
 const HEIGHT = 900;
 const ROUTES = [
   "/", "/today", "/activity", "/employees", "/exceptions",
@@ -162,6 +164,54 @@ async function main() {
     if (!drilled || !dialogOpen) failures.push({ label: "readiness drill-down", width: w, fail: [drilled ? "dialog did not open" : "no investigate link"] });
     await page.keyboard.press("Escape");
   }
+
+  // Compact Unmapped IDs table: short values never wrap and actions stay on one line.
+  for (const w of [1093, 1366, 1440, 1920]) {
+    await page.setViewport({ width: w, height: HEIGHT });
+    await page.goto(o.base + "/admin/identity?tab=unmapped", { waitUntil: "domcontentloaded" });
+    await settle(page);
+    const wrap = await page.evaluate(() => {
+      const table = [...document.querySelectorAll("table")].find((t) => t.querySelector("caption")?.textContent === "Unmapped ZKBioTime IDs");
+      if (!table) return { missing: true };
+      const lineHeight = 24; // one text line incl. badge padding
+      const tall = [...table.querySelectorAll("td.whitespace-nowrap")]
+        .map((td) => [...td.children].map((c) => c.getBoundingClientRect().height))
+        .filter((hs) => hs.some((h) => h > lineHeight * 1.6)).length;
+      const acts = [...table.querySelectorAll("tbody tr td:last-child span.flex-nowrap")]
+        .filter((s) => s.getBoundingClientRect().height > 48).length;
+      return { missing: false, tall, acts };
+    });
+    if (wrap.missing) failures.push({ label: "unmapped table", width: w, fail: ["table not found"] });
+    else if (wrap.tall || wrap.acts) failures.push({ label: "unmapped table wraps", width: w, fail: [`${wrap.tall} wrapped value cells, ${wrap.acts} wrapped action groups`] });
+    await shot(`${w}_unmapped_compact`);
+  }
+
+  // Activity: all mapping states with the reconciled summary strip.
+  await page.setViewport({ width: 1366, height: HEIGHT });
+  await page.goto(o.base + "/activity", { waitUntil: "domcontentloaded" });
+  await settle(page);
+  const act = await page.evaluate(() => ({
+    strip: Boolean(document.querySelector('[aria-label="Recorded events by mapping status"]')),
+    unverified: document.body.innerText.includes("Not mapped to a team member"),
+  }));
+  if (!act.strip) failures.push({ label: "activity summary strip", width: 1366, fail: ["missing"] });
+  results.push({ label: "activity: unverified rows present", width: 1366, ok: act.unverified, unverified: act.unverified });
+  await shot("1366_activity_all");
+
+  // Collapsed navigation: the content takes the freed width, nothing overflows.
+  await page.evaluate(() => window.localStorage.setItem("onsite.nav.collapsed", "1"));
+  for (const w of COLLAPSED_WIDTHS) {
+    await page.setViewport({ width: w, height: HEIGHT });
+    for (const r of ["/", "/activity", "/employees", "/admin/identity?tab=unmapped"]) {
+      await page.goto(o.base + r, { waitUntil: "domcontentloaded" });
+      await settle(page);
+      await check(`collapsed ${r}`, w);
+      const rail = await page.evaluate(() => document.querySelector("aside[data-collapsed]")?.getBoundingClientRect().width ?? 0);
+      if (rail < 56 || rail > 72) failures.push({ label: `collapsed rail ${r}`, width: w, fail: [`rail width ${rail}`] });
+      await shot(`${w}_collapsed${r.replace(/[^a-z0-9]+/gi, "_")}`);
+    }
+  }
+  await page.evaluate(() => window.localStorage.removeItem("onsite.nav.collapsed"));
 
   // Period filter: the Overview refetches for a different period.
   await page.setViewport({ width: 1280, height: HEIGHT });

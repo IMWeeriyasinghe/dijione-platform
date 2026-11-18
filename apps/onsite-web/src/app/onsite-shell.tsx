@@ -71,6 +71,7 @@ export function OnsiteContent({ children }: { children: React.ReactNode }) {
       topNavTitle="On-site Attendance Operations"
       sections={buildSections(scope)}
       homeHref="/"
+      collapsible={{ storageKey: "onsite.nav.collapsed" }}
       footer={
         <VersionFooter
           appName="Diji On-site"

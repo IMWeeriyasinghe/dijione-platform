@@ -26,22 +26,41 @@ ownership period:
 | Term (UI label) | Meaning | Key? |
 |---|---|---|
 | **ZKBioTime ID** | Biometric code on the terminal (`emp_code`, verbatim) | Source key |
-| **BHR Employee ID** | BambooHR's stable record id (`bamboohr_id`) | **The identity key** |
-| **BambooHR Employee Number** | HR-maintained number; may be blank, shared or change | Reference only |
-| **Employee Name** | From the Workforce Directory (people-api) | Display |
-| **Mapping Status** | Verified / Verified · not in directory / Unmapped / Mapping conflict | Display |
+| **BHR ID** | BambooHR's internal record id (`bamboohr_id`) | **The identity key** |
+| **EMP Number** | The organisation's employee number in BambooHR; may be blank, shared or change | Reference only |
+| **Team Member Name** | From the Workforce Directory (people-api) | Display |
+| **Mapping Status** | Verified / Unmapped — needs review / Mapping conflict | Display |
 
 ## 2. What people see
 
+Every recorded event is in exactly one **mapping state for its own
+site-local day**: *Verified* (one verified mapping covers that day),
+*Unmapped — needs review* (none does) or *Mapping conflict* (more than one
+does; never attributed). "Needs review" = unmapped + conflict. A partly
+verified ID is verified on the days inside its period and unmapped outside.
+
 | Surface | Verified punches | Unmapped / conflicting punches |
 |---|---|---|
-| Overview, Today, Activity, Team Members, Exceptions, profiles, photos, search | Attributed to the verified employee. One row and one headcount per employee, even with several IDs. | **Not shown.** Not counted in identified KPIs. |
-| Excel exports | Included, with ZKBioTime ID(s), BHR Employee ID, EMP Number and Mapping Status columns | Excluded; the Summary sheet states "Unmapped punches excluded: N" |
-| Overview "Unmapped IDs" tile (Site Health / Identity readers) | — | Count of unmapped IDs and excluded punches |
+| **Activity** (`mapping` = All / Verified / Unmapped-needs review / Conflict; default All) | Attributed to the verified team member | **Shown by ZKBioTime ID only** — no name, BHR ID, EMP Number, photo or hint. Admins with `onsite.identity.read` get *Investigate in Identity Management* |
+| **Overview charts** (by hour, daily trend) | Green part of each bar | Amber (unmapped) and red (conflict) parts; bar height = all recorded events. Series filter: All / Verified / Needs review; the average describes the series shown |
+| Overview "Recorded events" KPI | Counted, with "N verified · M needs review" | Counted |
+| Today, Team Members, Exceptions, profiles, photos, the other Overview KPIs | Attributed. One row and one headcount per team member, even with several IDs. | **Not shown.** Employee-attributed only. |
+| Activity export, *Verified* | Attendance workbook (unchanged), with BHR ID, EMP Number and Mapping Status | Excluded; the Summary states "Unmapped punches excluded: N" |
+| Activity export, *All / Needs review / Conflict* | **"Recorded Activity" workbook** (explicitly labelled raw events, not attendance): one row per event with mapping status and whole-day punch sequence | Included by ZKBioTime ID only; Summary reconciles recorded = verified + unmapped + conflict |
+| Other Excel exports | Included | Excluded |
 | **Identity Management** (`/onsite/admin/identity`, admin only) | Mappings, history, conflicts | Unmapped IDs, per-day investigation, readiness |
 
+**First / last recorded punch.** Activity rows, their details and the hourly
+chart tooltips show whether a punch was the *first*, *last*, *intermediate*
+or *single* recorded punch of the identity's **complete** site-local day —
+all of a verified team member's ZKBioTime IDs that day, or the raw ID when
+unverified — regardless of page or filters. It is recorded order only, never
+check-in or check-out.
+
 Raw events are always kept and mirrored. Ingestion monitoring (Site Health,
-freshness) is separate from identified attendance.
+freshness) is separate from identified attendance. `/api/onsite/activity`
+without `mapping` keeps the verified employee-attributed selection (contract
+compatibility); the On-site web always sends `mapping`.
 
 ### 2.1 Identity Management overview (default tab)
 
@@ -54,7 +73,7 @@ mappings for the selected site and period, and units are never mixed:
 |---|---|
 | ZKBioTime IDs observed / verified (fully, partly) / unmapped | biometric IDs — **not** people |
 | Unmapped punches, verified coverage % | punches |
-| Verified team members | distinct BHR Employee IDs |
+| Verified team members | distinct BHR IDs |
 | Unresolved conflicts | conflict days + ambiguous reassignment days + overlapping mappings |
 
 A code-day counts as verified only when a mapping covers that exact day, so
@@ -91,9 +110,10 @@ managers can map or reject from it, read-only users see why they cannot.
 
 "Team Member(s)" replaces "Employee(s)" for people; "EMP Number" replaces
 "Employee Number"; "ZKBioTime ID" replaces "ZKBioTime Employee Code";
-"BHR Employee ID" is unchanged. Routes (`/onsite/employees`), API fields,
-database columns, permissions and audit-event names keep their technical
-identifiers.
+"BHR ID" replaces "BHR Employee ID" (2026-11-19, v0.8.0 — BambooHR's internal
+record id, e.g. BHR ID 297; distinct from the EMP Number, e.g. 161). Routes
+(`/onsite/employees`), API fields (`bamboohr_id`, `employee_number`), database
+columns, permissions and audit-event names keep their technical identifiers.
 
 ## 3. Permissions and audit
 
@@ -127,7 +147,7 @@ Emergency freeze: `ONSITE_IDENTITY_WRITES_ENABLED=false` blocks every change
    as **unmapped**. They are kept, but not shown to viewers.
 3. When the BambooHR record exists, open **Identity Management → Unmapped IDs**,
    find the ID, and choose **Map…**.
-4. Type a name, BHR Employee ID or Employee Number to search the directory.
+4. Type a name, BHR ID or EMP Number to search the directory.
    Nothing is pre-selected; pick the right person.
 5. Enter **Owned from**, the first day the ID belonged to this person, taken
    from the enrolment record. It is never assumed from the first punch.

@@ -52,6 +52,11 @@ export type Overview = {
     feed_state: FeedState | null;
     identified_employees?: number;
     identified_punches?: number;
+    /** All recorded events in the period, by mapping state (= the charts and Activity "All"). */
+    recorded_events?: number;
+    verified_events?: number;
+    unmapped_events?: number;
+    conflict_events?: number;
   };
   /** Ingestion & identity coverage — only for Site Health / Identity readers. */
   operational?: { active_codes: number; total_punches: number; unmapped_codes: number; unmapped_punches: number };
@@ -61,13 +66,29 @@ export type Overview = {
   agent_heartbeat_utc: string | null;
 };
 
-export type HourBucket = { hour: number; events: number; employees: number };
-export type TrendDay = { date: string; events: number; employees: number };
+/** Mapping state of an event for its OWN site-local day. */
+export type MappingState = "VERIFIED" | "UNMAPPED" | "CONFLICT";
+/** Activity / chart filter: unverified = unmapped + conflict ("needs review"). */
+export type MappingFilter = "all" | "verified" | "unverified" | "conflict";
+export type StateSplit = { verified_events: number; unmapped_events: number; conflict_events: number };
+type BySeqState = { verified: number; unmapped: number; conflict: number };
+
+/** ``events`` = ALL recorded events in the bucket (= verified + unmapped + conflict). */
+export type HourBucket = StateSplit & {
+  hour: number; events: number; employees: number;
+  /** Identities whose first / last recorded punch of the whole day fell in this hour (single = only one punch). */
+  first?: BySeqState; last?: BySeqState; single?: BySeqState;
+};
+export type TrendDay = StateSplit & { date: string; events: number; employees: number };
+
+export type PunchSequence = "FIRST" | "LAST" | "INTERMEDIATE" | "SINGLE";
+
+export type ActivitySummary = { recorded: number; verified: number; unverified: number; unmapped: number; conflict: number };
 
 export type EmployeeRef = {
   /** A ZKBioTime ID of this verified team member (legacy row key). */
   emp_code: string;
-  /** BHR Employee ID — the verified identity key. */
+  /** BHR ID — the verified identity key. */
   bamboohr_id?: string | null;
   /** EMP Number (HR reference only, never a matching key). */
   employee_number?: string | null;
@@ -94,6 +115,11 @@ export type ActivityEvent = EmployeeRef & {
   verify_type?: number | null;
   /** Review flags of this event's team-member day. */
   review_flags?: ReviewFlag[];
+  mapping_state?: MappingState;
+  /** Position in the identity's complete site-local day (recorded order — not check-in/out). */
+  punch_sequence?: PunchSequence;
+  punch_position?: number;
+  punches_in_day?: number;
 };
 
 export type DayActivity = {
@@ -119,7 +145,14 @@ export type DayActivity = {
 export type Paged<T> = { total: number; page: number; page_size: number; items: T[] };
 
 export type TodayResponse = Paged<DayActivity> & { date: string; departments: string[]; directory_available: boolean };
-export type ActivityResponse = Paged<ActivityEvent> & { directory_available: boolean };
+export type ActivityResponse = Paged<ActivityEvent> & {
+  directory_available: boolean;
+  mapping?: MappingFilter;
+  /** Same filters without the mapping filter: recorded = verified + unmapped + conflict. */
+  summary?: ActivitySummary;
+  /** Identity administrators may open unmapped IDs in Identity Management. */
+  can_investigate_identity?: boolean;
+};
 
 export type EmployeeRow = EmployeeRef & {
   in_directory: boolean;
@@ -182,7 +215,7 @@ export async function getEmployeePhoto(bamboohrId: string): Promise<string | nul
   return blob.size ? URL.createObjectURL(blob) : null;
 }
 
-/** Profile of a VERIFIED team member, addressed by BHR Employee ID. */
+/** Profile of a VERIFIED team member, addressed by BHR ID. */
 export const getEmployee = (bamboohrId: string, p: Params) =>
   request<EmployeeDetail>(`${ONSITE_API}/employees/by-id/${encodeURIComponent(bamboohrId)}${qs(p)}`);
 export const getExceptions = (p: Params) => request<ExceptionsResponse>(`${ONSITE_API}/exceptions${qs(p)}`);

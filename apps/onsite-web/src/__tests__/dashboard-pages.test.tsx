@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const scope = vi.hoisted(() => ({ value: { loading: false, scope: { role: "ONSITE_VIEWER", permissions: ["onsite.attendance.read", "onsite.dashboard.read", "onsite.exceptions.read"] } as { role: string; permissions: string[] } | null } }));
@@ -56,9 +56,9 @@ describe("Overview", () => {
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
     expect(await screen.findByText("Team members with activity")).toBeInTheDocument();
-    expect(screen.getByText("Activity events")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: /Activity events by hour, Today · Sun 1 Nov, DEV Site/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /08:00–08:59 \(Asia\/Colombo\): 5 events/ })).toBeInTheDocument();
+    expect(screen.getByText("Recorded events")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: /All recorded events by hour, Today · Sun 1 Nov, DEV Site/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /08:00–08:59 \(Asia\/Colombo\): 5 recorded/ })).toBeInTheDocument();
     expect(screen.getByText("Possible duplicate tap")).toBeInTheDocument();
     expect(await screen.findByText("Nimal P")).toBeInTheDocument();
     expect(screen.getAllByText("Feed stale").length).toBeGreaterThan(0);
@@ -68,7 +68,7 @@ describe("Overview", () => {
   it("drills into a day from the trend chart and re-queries", async () => {
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    fireEvent.click(await screen.findByRole("button", { name: /Sat 31 Oct 2026: 3 events/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Sat 31 Oct 2026: 3 recorded/ }));
     await waitFor(() => expect(api.getOverview).toHaveBeenCalledWith({ site_id: "dev-site", date: "2026-10-31" }));
   });
 
@@ -159,7 +159,7 @@ describe("Employees", () => {
     expect(await screen.findByText(/Support Engineer/)).toBeInTheDocument();
     // The profile is addressed by the verified BHR Employee ID, never by the ZKBioTime ID.
     expect(api.getEmployee).toHaveBeenCalledWith("7", expect.anything());
-    expect(screen.getByText(/BHR Employee ID 7/)).toBeInTheDocument();
+    expect(screen.getByText(/BHR ID 7/)).toBeInTheDocument();
     expect(screen.getByText(/EMP Number E-7/)).toBeInTheDocument();
   });
 });
@@ -173,8 +173,9 @@ describe("Activity", () => {
     const { default: Page } = await import("@/app/activity/page");
     renderPage(<Page />);
     expect(await screen.findByText("255")).toBeInTheDocument();
-    expect(screen.getByText("Verified")).toBeInTheDocument(); // Mapping Status badge
-    expect(screen.queryByText(/Unmatched|Unmapped/)).not.toBeInTheDocument(); // viewers never see unmapped IDs
+    const table = screen.getByRole("table", { name: "Recorded activity events" });
+    expect(within(table).getByText("Verified")).toBeInTheDocument(); // Mapping Status badge
+    expect(within(table).queryByText(/Unmatched|Unmapped/)).not.toBeInTheDocument();
     expect(screen.queryByText("IN")).not.toBeInTheDocument();
     expect(screen.queryByText("OUT")).not.toBeInTheDocument();
   });

@@ -171,13 +171,13 @@ describe("Chart drill-down", () => {
     api.getActivity.mockResolvedValue({ total: 0, page: 1, page_size: 10, directory_available: true, items: [] });
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    fireEvent.click(await screen.findByRole("button", { name: /Tue 3 Nov 2026: 3 events/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Tue 3 Nov 2026: 3 recorded/ }));
     await waitFor(() => expect(api.getOverview).toHaveBeenCalledWith({ site_id: "colombo", date: "2026-11-03" }));
     expect(api.getOverview).toHaveBeenCalledWith({ site_id: "colombo", date: "2026-11-02" }); // complete day → comparison
     expect(api.getHourly).toHaveBeenLastCalledWith({ site_id: "colombo", date: "2026-11-03" });
     expect(getTestUrl().searchParams.get("hour")).toBeNull(); // no stale hour from another period
     expect(screen.getByText(/Selected day:/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View all events" })).toHaveAttribute("href", "/activity?from=2026-11-03&to=2026-11-03");
+    expect(screen.getByRole("link", { name: "View all events" })).toHaveAttribute("href", "/activity?from=2026-11-03&to=2026-11-03&mapping=all");
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
     await waitFor(() => expect(getTestUrl().searchParams.get("from")).toBeNull());
   });
@@ -190,15 +190,16 @@ describe("Chart drill-down", () => {
       employment_status: "Active", identity_class: "MATCHED_ACTIVE", job_title: null, match_count: 1 }, summary: { activity_days: 0, events: 0, review_flags: 0 }, days: [], events: [], directory_available: true });
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    const bar = await screen.findByRole("button", { name: /11:00–11:59 \(Asia\/Colombo\): 3 events/ });
+    const bar = await screen.findByRole("button", { name: /11:00–11:59 \(Asia\/Colombo\): 3 recorded/ });
     fireEvent.click(bar);
     const sheet = await screen.findByRole("dialog", { name: /11:00–11:59:59/ });
     await waitFor(() => expect(api.getActivity).toHaveBeenCalledWith(expect.objectContaining({
-      date_from: "2026-11-03", date_to: "2026-11-03", hour: 11, page: 1, page_size: 10 })));
-    expect(within(sheet).getByText("Team members with activity")).toBeInTheDocument();
+      date_from: "2026-11-03", date_to: "2026-11-03", hour: 11, mapping: "all", page: 1, page_size: 10 })));
+    expect(within(sheet).getByText("Verified team members")).toBeInTheDocument();
     expect(within(sheet).getByText("2")).toBeInTheDocument();
     expect(within(sheet).getAllByText("Possible duplicate tap").length).toBeGreaterThan(0);
-    expect(within(sheet).getByRole("link", { name: /View in Activity/ })).toHaveAttribute("href", "/activity?from=2026-11-03&to=2026-11-03&hour=11&sort=time");
+    // The drill-down keeps the chart's mapping context all the way into Activity.
+    expect(within(sheet).getByRole("link", { name: /View in Activity/ })).toHaveAttribute("href", "/activity?from=2026-11-03&to=2026-11-03&hour=11&sort=time&mapping=all");
     expect(bar).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(within(sheet).getAllByRole("button", { name: /Open Person 101/ })[0]);

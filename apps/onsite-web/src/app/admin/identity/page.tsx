@@ -21,7 +21,7 @@ import {
   type Rejection, type ReviewState, type UnmappedRow,
 } from "@/lib/identity";
 import { hasPermission, PERM, useOnsiteScope } from "@/lib/onsite-scope";
-import { fmtDay, fmtNum, fmtPeriod, fmtShortDay, normalizePeriod, presetPeriod, type Period } from "@/lib/period";
+import { fmtDay, fmtDaySpan, fmtNum, fmtPeriod, fmtShortDay, normalizePeriod, presetPeriod, type Period } from "@/lib/period";
 import { CoverageDashboard } from "@/components/identity/CoverageDashboard";
 import { useUrlState } from "@/lib/url-state";
 
@@ -198,7 +198,8 @@ function BacklogPanel({ siteId, period, today, onPeriod }: { siteId: string; per
             <SegmentBar unit="IDs" summary="Outstanding ZKBioTime IDs by review status" empty="No outstanding IDs."
               segments={(Object.keys(REVIEW_STATE) as ReviewState[]).map((k) => ({
                 key: k, label: REVIEW_STATE[k].label, value: sum.data!.review[k], help: REVIEW_STATE[k].help,
-                tone: k === "REJECTED_ASSOCIATION" ? "neutral" : k === "PARTLY_VERIFIED" ? "warning" : "danger",
+                // Same tones as the review badges (Awaiting Review is amber everywhere).
+                tone: k === "REJECTED_ASSOCIATION" ? "neutral" : "warning",
               }))} />
           </Panel>
           <Panel title="Backlog age" subtitle={`Since the oldest unmapped punch day · as of ${fmtDay(sum.data.as_of, true)}`}>
@@ -251,14 +252,17 @@ function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog 
           <DataView<UnmappedRow> caption="Unmapped ZKBioTime IDs" rows={query.data.items} rowKey={(r) => `${r.site_id}:${r.zk_emp_code}`}
             sort={sortKey} onSort={(v) => { setSort(v); setPage(1); }} rowLabel={(r) => `ZKBioTime ID ${r.zk_emp_code}`}
             columns={[
-              { key: "id", header: ID_LABELS.zk, sort: "zk_emp_code", cell: (r) => <IdLink code={r.zk_emp_code} open={open} /> },
-              { key: "events", header: "Punches", help: "Unmapped punches of all punches recorded for this ID.", sort: "unmapped_events", align: "right", cell: (r) => <span className="tabular-nums">{fmtNum(r.unmapped_events)} <span className="block text-xs text-dt-text-secondary">of {fmtNum(r.event_count)}</span></span> },
-              { key: "days", header: "Days", help: "Days with at least one unmapped punch.", sort: "unmapped_days", align: "right", cell: (r) => fmtNum(r.unmapped_days) },
-              { key: "range", header: "Period", help: "First to latest day with an unmapped punch. Sorts by the latest day.", sort: "last_unmapped", cell: (r) => <span className="tabular-nums">{fmtShortDay(r.first_unmapped)} – {fmtShortDay(r.last_unmapped)}</span> },
-              { key: "status", header: "Review", cell: (r) => <ReviewBadge state={reviewStateOf(r)} /> },
-              { key: "seen", header: "All attendance", sort: "first_seen", minWidth: "xl", cell: (r) => <span className="tabular-nums">{fmtShortDay(r.first_seen)} – {fmtShortDay(r.last_seen)} · {fmtNum(r.activity_days)} days</span> },
-              { key: "hint", header: "Unverified hint", minWidth: "xl", cell: (r) => <Hints r={r} /> },
-              { key: "act", header: <span className="sr-only">Actions</span>, align: "right", cell: (r) => <UnmappedActions r={r} canManage={canManage} open={open} /> },
+              { key: "id", header: "ID", help: "ZKBioTime ID (the biometric device ID).", sort: "zk_emp_code", nowrap: true, cell: (r) => <IdLink code={r.zk_emp_code} open={open} /> },
+              { key: "events", header: "Punches", help: "Unmapped punches / all punches recorded for this ID.", sort: "unmapped_events", align: "right", nowrap: true,
+                cell: (r) => <span className="tabular-nums">{fmtNum(r.unmapped_events)}<span className="text-xs text-dt-text-secondary"> / {fmtNum(r.event_count)}</span></span> },
+              { key: "range", header: "Period", help: "First to latest day with an unmapped punch. Sorts by the latest day.", sort: "last_unmapped", nowrap: true,
+                cell: (r) => <span className="tabular-nums" title={`${fmtShortDay(r.first_unmapped)} – ${fmtShortDay(r.last_unmapped)}`}>{fmtDaySpan(r.first_unmapped, r.last_unmapped)}</span> },
+              { key: "status", header: "Review", nowrap: true, cell: (r) => <ReviewBadge state={reviewStateOf(r)} /> },
+              { key: "hint", header: "Hint", help: "Unverified: an EMP Number equals this ID. Never evidence and never applied automatically.", cell: (r) => <Hints r={r} compact /> },
+              { key: "act", header: <span className="sr-only">Actions</span>, align: "right", nowrap: true, cell: (r) => <UnmappedActions r={r} canManage={canManage} open={open} /> },
+              { key: "days", header: "Days", help: "Days with at least one unmapped punch.", sort: "unmapped_days", align: "right", minWidth: "2xl", nowrap: true, cell: (r) => fmtNum(r.unmapped_days) },
+              { key: "seen", header: "All attendance", sort: "first_seen", minWidth: "2xl", nowrap: true,
+                cell: (r) => <span className="tabular-nums">{fmtDaySpan(r.first_seen, r.last_seen)} · {fmtNum(r.activity_days)} days</span> },
             ]}
             card={(r) => (
               <div className="space-y-2">
@@ -277,8 +281,20 @@ function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog 
   );
 }
 
-function Hints({ r }: { r: UnmappedRow }) {
-  if (!r.hint_employee_number_matches.length) return <span className="text-xs text-dt-text-secondary">—</span>;
+function Hints({ r, compact = false }: { r: UnmappedRow; compact?: boolean }) {
+  const hints = r.hint_employee_number_matches;
+  if (!hints.length) return <span className="text-xs text-dt-text-secondary">—</span>;
+  if (compact) {
+    const all = hints.map((h) => h.display_name ?? h.bamboohr_id).join(", ");
+    return (
+      <span className="flex min-w-0 items-center gap-1" title={`Unverified: ${all}. An EMP Number equals this ID — not evidence, never applied automatically.`}>
+        <span className="max-w-40 truncate rounded border border-dashed border-dt-border px-1.5 py-0.5 text-xs text-dt-text-secondary">
+          Unverified: {hints[0].display_name ?? hints[0].bamboohr_id}
+        </span>
+        {hints.length > 1 && <span className="shrink-0 text-xs text-dt-text-secondary">+{hints.length - 1}</span>}
+      </span>
+    );
+  }
   return (
     <span className="flex flex-wrap gap-1" title="An EMP Number equals this ID. This is NOT evidence and is never applied automatically.">
       {r.hint_employee_number_matches.map((h) => (

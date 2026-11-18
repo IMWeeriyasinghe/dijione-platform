@@ -11,6 +11,7 @@ import Link from "next/link";
 import { BarChart3, ChevronRight } from "lucide-react";
 import type { ReviewFlag } from "@/lib/dashboard";
 import { DATA_QUALITY_FLAGS, FLAG_HELP, FLAG_LABEL } from "@/lib/flags";
+import { MAPPING_STATE } from "@/lib/format";
 import { fmtNum } from "@/lib/period";
 import { useMinWidth } from "@/lib/use-media";
 import { cx, focusRing, InfoTip } from "./kit";
@@ -251,6 +252,134 @@ export function StackedBarChart({ data, primaryLabel, secondaryLabel, measure, s
         ))}
       </div>
       <figcaption className="sr-only">{summary}. Total {fmtNum(total)} {measure}.</figcaption>
+    </figure>
+  );
+}
+
+/* ------------------------------------------- recorded activity by status */
+
+export type StatusSeries = "all" | "verified" | "unverified";
+export type StatusBar = {
+  key: string; label: string; tick: string;
+  verified: number; unmapped: number; conflict: number;
+  /** Extra tooltip lines (e.g. first/last recorded punches) — a separate dimension from status. */
+  notes?: string[];
+};
+
+const STATUS_ORDER = ["CONFLICT", "UNMAPPED", "VERIFIED"] as const;
+
+/** Visible value of a bar for the selected series. */
+export function seriesValue(d: StatusBar, series: StatusSeries): number {
+  return series === "verified" ? d.verified : series === "unverified" ? d.unmapped + d.conflict
+    : d.verified + d.unmapped + d.conflict;
+}
+
+/** Recorded events per bucket, stacked by identity status (verified /
+ *  unmapped / conflict) in the shared status colours, so the bar height is the
+ *  total recorded. Optional series filter, average line (from what is shown),
+ *  peak highlight, selection for drill-down and an accessible label per bar. */
+export function StatusBarChart({ data, series = "all", summary, onSelect, selected, average, highlight,
+  tickEvery = [1, 1], height = 176, empty, minBarPx }: {
+  data: StatusBar[]; series?: StatusSeries; summary: string; onSelect?: (key: string) => void;
+  selected?: string | null; average?: { value: number; label: string } | null; highlight?: Set<string>;
+  tickEvery?: [number, number]; height?: number; empty?: React.ReactNode; minBarPx?: number;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const compact = !useMinWidth(1024);
+  const shows = { VERIFIED: series !== "unverified", UNMAPPED: series !== "verified", CONFLICT: series !== "verified" };
+  const part = (d: StatusBar, s: (typeof STATUS_ORDER)[number]) =>
+    !shows[s] ? 0 : s === "VERIFIED" ? d.verified : s === "UNMAPPED" ? d.unmapped : d.conflict;
+  const values = data.map((d) => seriesValue(d, series));
+  const total = values.reduce((a, b) => a + b, 0);
+  const max = niceMax(Math.max(0, ...values, average?.value ?? 0));
+  const ticks = [max, max / 2, 0];
+  const legend = STATUS_ORDER.slice().reverse().filter((s) => shows[s]);
+  if (total === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-dt-surface-warm/50 px-4 text-center" style={{ height }}>
+        <BarChart3 className="size-6 text-dt-text-secondary/60" aria-hidden />
+        <div className="text-sm text-dt-text-secondary">{empty ?? "No events recorded in this period."}</div>
+      </div>
+    );
+  }
+  const tip = hover !== null ? data[hover] : null;
+  const describe = (d: StatusBar) =>
+    `${d.label}: ${fmtNum(d.verified + d.unmapped + d.conflict)} recorded — ${fmtNum(d.verified)} verified, ${fmtNum(d.unmapped)} unmapped, ${fmtNum(d.conflict)} conflict`
+    + (d.notes?.length ? `. ${d.notes.join(". ")}` : "");
+  return (
+    <figure className="min-w-0">
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-dt-text-secondary" aria-hidden>
+        {legend.map((s) => (
+          <span key={s} className="flex items-center gap-1"><span className={cx("size-2.5 rounded-sm", MAPPING_STATE[s].bar)} />{MAPPING_STATE[s].short}</span>
+        ))}
+        {average && <span className="flex items-center gap-1"><span className="w-3 border-t-2 border-dashed border-dt-info/70" />{average.label}</span>}
+      </div>
+      <div data-scroll-x className="dt-scrollbar overflow-x-auto pb-1">
+        <div style={minBarPx && compact ? { minWidth: data.length * minBarPx + 40 } : undefined}>
+          <div className="flex gap-2">
+            <div className="flex shrink-0 flex-col justify-between text-right text-[11px] tabular-nums text-dt-text-secondary" style={{ height }} aria-hidden>
+              {ticks.map((t) => <span key={t}>{fmtNum(Math.round(t))}</span>)}
+            </div>
+            <div className="relative min-w-0 flex-1" style={{ height }} onMouseLeave={() => setHover(null)}>
+              {ticks.map((t) => (
+                <span key={t} aria-hidden className="absolute inset-x-0 border-t border-dashed border-dt-border/80" style={{ bottom: `${(t / max) * 100}%` }} />
+              ))}
+              {average && (
+                <span aria-hidden className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-dashed border-dt-info/70"
+                  style={{ bottom: `${(average.value / max) * 100}%` }} />
+              )}
+              <div role="list" aria-label={summary} className="absolute inset-0 flex items-end gap-[2px] sm:gap-1">
+                {data.map((d, i) => {
+                  const sum = values[i];
+                  const inner = (
+                    <span className={cx("flex w-full flex-col justify-end overflow-hidden rounded-t-sm", highlight?.has(d.key) && "ring-1 ring-dt-red/60")}
+                      style={{ height: `${Math.max((sum / max) * 100, sum ? 2 : 1)}%` }}>
+                      {sum === 0 ? <span className="block h-full w-full bg-dt-border/70" /> : STATUS_ORDER.map((s) => {
+                        const v = part(d, s);
+                        return v ? <span key={s} className={cx("block w-full", MAPPING_STATE[s].bar)} style={{ flexGrow: v }} /> : null;
+                      })}
+                    </span>
+                  );
+                  const common = {
+                    onMouseEnter: () => setHover(i), onFocus: () => setHover(i), onBlur: () => setHover(null),
+                    className: cx("relative flex h-full min-w-0 flex-1 items-end rounded-sm", focusRing, selected === d.key && "bg-dt-red/5"),
+                  };
+                  return (
+                    <div role="listitem" key={d.key} className="flex h-full min-w-0 flex-1">
+                      {onSelect ? (
+                        <button type="button" aria-label={describe(d)} aria-pressed={selected === d.key} onClick={() => onSelect(d.key)} {...common}>{inner}</button>
+                      ) : <span tabIndex={0} aria-label={describe(d)} {...common}>{inner}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              {tip && (
+                <div role="tooltip" className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded-lg border border-dt-border bg-dt-surface px-2.5 py-1.5 text-xs shadow-lg"
+                  style={{ left: `${Math.min(85, Math.max(15, ((hover! + 0.5) / data.length) * 100))}%`, top: 0 }}>
+                  <div className="font-medium text-dt-text-primary">{tip.label}</div>
+                  <div className="text-dt-text-secondary"><span className="font-semibold tabular-nums text-dt-text-primary">{fmtNum(tip.verified + tip.unmapped + tip.conflict)}</span> recorded</div>
+                  {STATUS_ORDER.slice().reverse().map((s) => (
+                    <div key={s} className="text-dt-text-secondary">
+                      <span className={cx("font-semibold tabular-nums", MAPPING_STATE[s].text)}>
+                        {fmtNum(s === "VERIFIED" ? tip.verified : s === "UNMAPPED" ? tip.unmapped : tip.conflict)}
+                      </span> {MAPPING_STATE[s].short.toLowerCase()}
+                    </div>
+                  ))}
+                  {tip.notes?.map((n) => <div key={n} className="mt-0.5 text-dt-text-secondary">{n}</div>)}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="mt-1.5 flex gap-[2px] pl-8 text-[11px] text-dt-text-secondary sm:gap-1" aria-hidden>
+            {data.map((d, i) => (
+              <span key={d.key} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center">
+                <span className={cx(i % tickEvery[0] === 0 ? "inline" : "hidden", i % tickEvery[1] === 0 ? "sm:inline" : "sm:hidden")}>{d.tick}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <figcaption className="sr-only">{summary}. Total {fmtNum(total)} events shown.</figcaption>
     </figure>
   );
 }

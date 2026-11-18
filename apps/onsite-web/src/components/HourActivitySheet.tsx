@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ErrorState } from "@dijione/design-system";
 import { ArrowLeft, ChevronLeft, ChevronRight, Clock, ExternalLink, X } from "lucide-react";
-import { getActivity, type ActivityEvent } from "@/lib/dashboard";
+import { getActivity, type ActivityEvent, type MappingFilter } from "@/lib/dashboard";
 import { useDialogLayer } from "@/lib/dialog-stack";
 import { localTime } from "@/lib/flags";
 import { liveQuery } from "@/lib/live-refresh";
@@ -13,8 +13,9 @@ import { parsePageSize, rememberPageSize, storedPageSize } from "@/lib/page-size
 import { dayCount, fmtDay, fmtNum, isSingleDay, type Period } from "@/lib/period";
 import { hrefWith } from "@/lib/url-state";
 import { DataView, Facts } from "./DataView";
-import { FlagChips, MappingBadge } from "./FlagChips";
-import { buttonClass, cx, EmployeeRefCell, EmptyPanel, focusRing, Pager, SkeletonRows } from "./kit";
+import { ActivityWho, isVerifiedEvent } from "./ActivityRef";
+import { FlagChips, MappingStateBadge, SequenceMarker } from "./FlagChips";
+import { buttonClass, cx, EmptyPanel, focusRing, Pager, SkeletonRows } from "./kit";
 import { useSite } from "./SiteContext";
 
 const hh = (h: number) => String(h).padStart(2, "0");
@@ -23,9 +24,11 @@ const hh = (h: number) => String(h).padStart(2, "0");
  *  site-local hour [hh:00:00, hh+1:00:00) on every date of the period,
  *  fetched from the Activity API (server-side, paged). Opening an employee
  *  hands over to the shared team member profile. */
-export function HourActivitySheet({ period, hour, employees, onHour, onClose, onOpenEmployee }: {
+export function HourActivitySheet({ period, hour, employees, onHour, onClose, onOpenEmployee, mapping = "all" }: {
   period: Period; hour: number; employees: number | null; onHour: (h: number) => void;
   onClose: () => void; onOpenEmployee: (code: string) => void;
+  /** The chart's mapping series, carried into the drill-down and the Activity link. */
+  mapping?: MappingFilter;
 }) {
   const { site } = useSite();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -37,12 +40,13 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
     setLastHour(hour);
     setPage(1);
   }
-  const params = { site_id: site.site_id, date_from: period.from, date_to: period.to, hour, sort: "time", page, page_size: size };
+  const params = { site_id: site.site_id, date_from: period.from, date_to: period.to, hour, mapping, sort: "time", page, page_size: size };
   const query = useQuery({ queryKey: ["onsite-activity", params], queryFn: () => getActivity(params), ...liveQuery });
   const single = isSingleDay(period);
   const range = `${hh(hour)}:00–${hh(hour)}:59:59`;
   const when = single ? fmtDay(period.from, true) : `${fmtDay(period.from)} – ${fmtDay(period.to, true)}`;
-  const activityHref = hrefWith("/activity", { from: period.from, to: period.to, hour, sort: "time" });
+  const activityHref = hrefWith("/activity", { from: period.from, to: period.to, hour, sort: "time", mapping });
+  const sum = query.data?.summary;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-labelledby="hour-sheet-title">
@@ -70,8 +74,10 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
             </button>
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <Facts cols={2} items={[["Activity events", query.data ? fmtNum(query.data.total) : "…"],
-              ["Team members with activity", employees === null ? "—" : fmtNum(employees)]]} />
+            <Facts cols={sum ? 3 : 2} items={[
+              [mapping === "all" ? "Recorded events" : mapping === "verified" ? "Verified events" : "Needs-review events", query.data ? fmtNum(query.data.total) : "…"],
+              ...(sum ? [["Verified · needs review", `${fmtNum(sum.verified)} · ${fmtNum(sum.unverified)}`] as [string, string]] : []),
+              ["Verified team members", employees === null ? "—" : fmtNum(employees)]]} />
             <div className="flex flex-wrap items-center gap-1">
               <button type="button" aria-label="Previous hour" disabled={hour <= 0} onClick={() => onHour(hour - 1)}
                 className={cx(buttonClass("secondary"), "px-2 disabled:opacity-40")}><ChevronLeft className="size-4" aria-hidden /></button>
@@ -90,22 +96,25 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
             ) : (
               <>
                 <DataView<ActivityEvent> caption={`Recorded events, ${range}, ${when}`} rows={query.data.items}
-                  rowKey={(e) => e.event_id ?? `${e.emp_code}-${e.local_time}`} rowLabel={(e) => e.employee_name ?? e.emp_code}
-                  onRowClick={(e) => onOpenEmployee(e.bamboohr_id ?? "")}
+                  rowKey={(e) => e.event_id ?? `${e.emp_code}-${e.local_time}`}
+                  rowLabel={(e) => (isVerifiedEvent(e) ? e.employee_name ?? e.emp_code : `ZKBioTime ID ${e.emp_code}`)}
+                  onRowClick={(e) => { if (isVerifiedEvent(e) && e.bamboohr_id) onOpenEmployee(e.bamboohr_id); }}
                   columns={[
-                    { key: "emp", header: "Team Member", cell: (e) => <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" /> },
-                    { key: "time", header: "Recorded", cell: (e) => (
-                      <span className="whitespace-nowrap tabular-nums"><span className="font-medium">{localTime(e.local_time)}</span>
+                    { key: "emp", header: "Team Member / ID", cell: (e) => <ActivityWho e={e} /> },
+                    { key: "time", header: "Recorded", nowrap: true, cell: (e) => (
+                      <span className="tabular-nums"><span className="font-medium">{localTime(e.local_time)}</span>
                         {!single && <span className="ml-1 text-xs text-dt-text-secondary">{fmtDay(e.local_date)}</span>}</span>
                     ) },
+                    { key: "seq", header: "Punch in day", nowrap: true, help: "First / last recorded punch of the whole site-local day. Not check-in or check-out.",
+                      cell: (e) => <SequenceMarker seq={e.punch_sequence} /> },
                     { key: "term", header: "Terminal", cell: (e) => e.terminal ?? "—" },
-                    { key: "id", header: "Mapping Status", minWidth: "lg", cell: (e) => <MappingBadge status={e.mapping_status} cls={e.identity_class} /> },
-                    { key: "flags", header: "Review", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
+                    { key: "id", header: "Mapping Status", nowrap: true, cell: (e) => <MappingStateBadge state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} /> },
+                    { key: "flags", header: "Review", minWidth: "xl", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
                   ]}
                   card={(e) => (
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
-                        <EmployeeRefCell r={e} meta={e.department ?? undefined} size="sm" />
+                        <ActivityWho e={e} />
                         <span className="shrink-0 text-right tabular-nums">
                           <span className="block font-semibold text-dt-text-primary">{localTime(e.local_time)}</span>
                           {!single && <span className="block text-xs text-dt-text-secondary">{fmtDay(e.local_date)}</span>}
@@ -113,7 +122,8 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-dt-text-secondary">
                         <span>{e.terminal ?? "Unknown terminal"}</span>
-                        <MappingBadge status={e.mapping_status} cls={e.identity_class} />
+                        <MappingStateBadge state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} />
+                        <SequenceMarker seq={e.punch_sequence} />
                       </div>
                       {(e.review_flags ?? []).length > 0 && <FlagChips flags={e.review_flags ?? []} />}
                     </div>

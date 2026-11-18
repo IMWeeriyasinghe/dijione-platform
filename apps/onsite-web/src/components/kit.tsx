@@ -155,7 +155,7 @@ export function Initials({ name, code, size = "md", photo = false, alt, bhrId }:
   name: string | null | undefined; code: string; size?: "sm" | "md" | "lg";
   /** Request the profile photo (only when the API reports one may exist). */
   photo?: boolean;
-  /** BHR Employee ID of the VERIFIED team member — photos are only ever fetched by it. */
+  /** BHR ID of the VERIFIED team member — photos are only ever fetched by it. */
   bhrId?: string | null;
   /** Alt text when the photo stands alone; omit when the name is shown beside it. */
   alt?: string;
@@ -205,7 +205,7 @@ function EmployeePhoto({ bhrId, alt }: { bhrId: string; alt?: string }) {
 
 export function Person({ name, code, meta, size = "md", photo = false, bhrId }: {
   name: string | null | undefined; code: string; meta?: React.ReactNode; size?: "sm" | "md" | "lg"; photo?: boolean;
-  /** BHR Employee ID of the verified team member (shown, and the only photo key). */
+  /** BHR ID of the verified team member (shown, and the only photo key). */
   bhrId?: string | null;
 }) {
   return (
@@ -215,7 +215,7 @@ export function Person({ name, code, meta, size = "md", photo = false, bhrId }: 
         <span className="block break-words font-medium leading-snug text-dt-text-primary">{name ?? (bhrId ? "Name unavailable" : "Unverified ZKBioTime ID")}</span>
         <span className="block break-words text-xs leading-snug text-dt-text-secondary">
           <span title="ZKBioTime ID">ZK <span className="font-mono">{code}</span></span>
-          {bhrId && <> · <span title="BHR Employee ID">BHR <span className="font-mono">{bhrId}</span></span></>}
+          {bhrId && <> · <span title="BHR ID (BambooHR record ID)">BHR <span className="font-mono">{bhrId}</span></span></>}
           {meta ? <> · {meta}</> : null}
         </span>
       </span>
@@ -435,7 +435,7 @@ export function RowActions({ primary, more = [], label }: { primary?: RowAction;
     items[(i + items.length) % items.length]?.focus();
   };
   return (
-    <span className="flex flex-wrap items-center justify-end gap-1">
+    <span className="flex flex-nowrap items-center justify-end gap-1">
       {primary && (
         <button type="button" className={buttonClass("secondary")} aria-label={primary.ariaLabel} onClick={primary.onSelect}>{primary.label}</button>
       )}

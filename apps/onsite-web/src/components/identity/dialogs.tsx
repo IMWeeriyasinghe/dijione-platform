@@ -71,7 +71,7 @@ export function EmployeePicker({ value, onChange }: { value: DirectoryHit | null
   return (
     <div className="space-y-2">
       <TextField label="Search the BambooHR Workforce Directory" value={text} onChange={setText}
-        placeholder="Name, BHR Employee ID or EMP Number (2+ characters)" />
+        placeholder="Name, BHR ID or EMP Number (2+ characters)" />
       {q.length >= 2 && results.isLoading && <SkeletonRows rows={2} label="Searching…" />}
       {results.isError && <ErrorBox error={results.error} />}
       {results.data && (

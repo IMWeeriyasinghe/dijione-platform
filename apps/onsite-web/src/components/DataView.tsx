@@ -15,10 +15,12 @@ export type Column<T> = {
   className?: string;
   /** Explanation shown as an info tip next to the header (never inside the sort button). */
   help?: string;
-  /** Table column only from this breakpoint up. Below it the value is not
-   *  lost: it moves into the row's expandable details (cards always show
-   *  everything they render). */
-  minWidth?: "lg" | "xl";
+  /** Table column only from this viewport width up (xl 1280 px, 2xl 1536 px;
+   *  tables start at 1024 px). Below it the value is not lost: it moves into
+   *  the row's expandable details (cards always show everything they render). */
+  minWidth?: "lg" | "xl" | "2xl";
+  /** Keep short values (IDs, counts, dates, badges) and the header on one line. */
+  nowrap?: boolean;
 };
 
 /** Records as a sticky-header table from 1024 px up, and as cards below —
@@ -41,8 +43,9 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
   const [open, setOpen] = useState<string | null>(null);
   const desktop = useMinWidth(1024);
   const wide = useMinWidth(1280);
+  const wider = useMinWidth(1536);
   const toggle = (k: string) => setOpen(open === k ? null : k);
-  const shown = columns.filter((c) => c.minWidth !== "xl" || wide);
+  const shown = columns.filter((c) => (c.minWidth !== "xl" || wide) && (c.minWidth !== "2xl" || wider));
   const hidden = columns.filter((c) => !shown.includes(c));
   const rowDetail = hidden.length
     ? (r: T) => (
@@ -65,7 +68,7 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
                   <th key={c.key} scope="col"
                     aria-sort={c.sort && sort ? (sort === c.sort ? "ascending" : sort === `-${c.sort}` ? "descending" : "none") : undefined}
                     className={cx("px-2 py-2.5 text-left align-bottom xl:px-3 text-xs font-semibold uppercase leading-tight tracking-wide text-dt-text-secondary",
-                      c.align === "right" && "text-right")}>
+                      c.align === "right" && "text-right", c.nowrap && "whitespace-nowrap")}>
                     <span className={cx("inline-flex items-center gap-1", c.align === "right" && "flex-row-reverse")}>
                       {c.sort && onSort ? (
                         <SortButton label={c.header} field={c.sort} sort={sort} onSort={onSort} align={c.align} />
@@ -101,7 +104,8 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
                         </td>
                       )}
                       {shown.map((c, i) => (
-                        <td key={c.key} className={cx("px-2 py-2.5 align-middle break-words xl:px-3", c.align === "right" && "text-right tabular-nums", c.className)}>
+                        <td key={c.key} className={cx("px-2 py-2.5 align-middle xl:px-3", c.nowrap ? "whitespace-nowrap" : "wrap-break-word",
+                          c.align === "right" && "text-right tabular-nums", c.className)}>
                           {i === 0 && onRowClick ? (
                             <button type="button" onClick={(e) => { e.stopPropagation(); onRowClick(r); }}
                               aria-label={rowLabel ? `Open ${rowLabel(r)}` : undefined}

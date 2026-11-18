@@ -67,7 +67,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
             <div className="min-w-0 flex-1">
               <h2 id="employee-profile-title" className="truncate text-lg font-semibold text-dt-text-primary">{name ?? "Name unavailable"}</h2>
               <p className="text-sm text-dt-text-secondary">
-                <span className="font-mono">BHR Employee ID {code}</span>
+                <span className="font-mono">BHR ID {code}</span>
                 {data?.profile.employee_number && <> · <span className="font-mono">EMP Number {data.profile.employee_number}</span></>}
                 {data?.profile.department && <> · {data.profile.department}</>}
                 {data?.profile.job_title && <span className="hidden sm:inline"> · {data.profile.job_title}</span>}
