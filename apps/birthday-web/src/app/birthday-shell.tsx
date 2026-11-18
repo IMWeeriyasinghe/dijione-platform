@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AccessManagementPage, AppShell, AuthGate, EmptyState, VersionFooter } from "@dijione/design-system";
 import type { NavSection } from "@dijione/design-system";
 import { useBirthdayScope } from "@dijione/auth-client";
-import { CakeSlice, KeyRound, LayoutDashboard, ListOrdered, Mail, ShieldCheck, Truck } from "lucide-react";
+import { CakeSlice, KeyRound, LayoutDashboard, ListOrdered, Mail, Settings, ShieldCheck, Truck } from "lucide-react";
 import { getReleaseMetadata } from "@/lib/api";
 
 function BirthdayContent({ children }: { children: React.ReactNode }) {
@@ -61,11 +61,18 @@ function BirthdayContent({ children }: { children: React.ReactNode }) {
     // just "not yet true"), so the item stays hidden — briefly, in every
     // environment — until /api/meta has actually confirmed non-production,
     // rather than flashing visible in PROD during the loading state.
-    ...(scope.isAdmin && releaseMeta?.is_production === false
+    // Operational settings (go-live boundary + clean start) are needed in
+    // every environment, PROD included; Email Safety stays non-production.
+    ...(scope.isAdmin
       ? [
           {
             label: "Admin",
-            items: [{ label: "Email Safety", href: "/admin/email-safety", icon: ShieldCheck }],
+            items: [
+              { label: "Operational Settings", href: "/admin/settings", icon: Settings },
+              ...(releaseMeta?.is_production === false
+                ? [{ label: "Email Safety", href: "/admin/email-safety", icon: ShieldCheck }]
+                : []),
+            ],
           },
         ]
       : []),

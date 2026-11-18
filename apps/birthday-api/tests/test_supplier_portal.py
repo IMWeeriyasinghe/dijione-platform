@@ -6,7 +6,7 @@ manipulated order id."""
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from tests.conftest import headers_for, supplier_headers_for
 
@@ -266,6 +266,7 @@ def test_cancelled_order_shows_as_tombstone_not_404(api_client, db):
     supplier_a, _ = _make_suppliers(db)
     order = _make_sendable_order(db, supplier=supplier_a, employee_id="emp-portal-cancel-tombstone")
     order.status = "CANCELLED"
+    order.released_at = datetime.now(UTC)  # the supplier had received it
     db.commit()
 
     resp = api_client.get(

@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.constants import OrderIssueStatus, OrderStatus
+from app.core.constants import ExceptionReason, OrderIssueStatus, OrderStatus
 from app.models.birthday_order import BirthdayOrder
 from app.models.order_issue import OrderIssue
 from app.services.order_status_service import SUPPLIER_VISIBLE_STATUSES
@@ -270,6 +270,13 @@ class BirthdayOrderRepository:
         stmt = select(BirthdayOrder).where(
             BirthdayOrder.supplier_id == supplier_id,
             BirthdayOrder.status.in_(self._SUPPLIER_VISIBLE_STATUSES),
+            # A CANCELLED order is a tombstone only for orders the supplier
+            # actually received; one cancelled before release (e.g. the
+            # pre-launch clean start) was never theirs to see.
+            or_(
+                BirthdayOrder.status != OrderStatus.CANCELLED.value,
+                BirthdayOrder.released_at.is_not(None),
+            ),
         )
         if status_filter:
             wanted = [s.strip() for s in status_filter.split(",") if s.strip()]
@@ -324,6 +331,8 @@ class BirthdayOrderRepository:
         if order is None or order.supplier_id != supplier_id:
             return None
         if order.status not in self._SUPPLIER_VISIBLE_STATUSES:
+            return None
+        if order.status == OrderStatus.CANCELLED.value and order.released_at is None:
             return None
         return order
 
@@ -390,6 +399,12 @@ class BirthdayOrderRepository:
         stmt = (
             select(BirthdayOrder)
             .where(BirthdayOrder.birthday_date >= today, BirthdayOrder.birthday_date <= cutoff)
+            .where(
+                or_(
+                    BirthdayOrder.exception_reason.is_(None),
+                    BirthdayOrder.exception_reason != ExceptionReason.PRE_LAUNCH_EXCLUDED.value,
+                )
+            )
             .order_by(BirthdayOrder.birthday_date.asc())
         )
         return list(self.db.execute(stmt).scalars().all())

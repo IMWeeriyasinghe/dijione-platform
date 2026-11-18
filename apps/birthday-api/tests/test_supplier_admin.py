@@ -148,7 +148,8 @@ def test_create_supplier_user(api_client, db):
     assert resp.status_code == 201
     body = resp.json()
     assert body["email"] == "contact@usermgmt.example.com"
-    assert body["role"] == "SUPPLIER_ADMIN"
+    # One supplier operational role: a legacy SUPPLIER_ADMIN request is stored as SUPPLIER_USER.
+    assert body["role"] == "SUPPLIER_USER"
     assert body["status"] == "ACTIVE"
     assert body["entra_object_id"] is None
 

@@ -744,3 +744,42 @@ a DB downgrade.
 **PROD live send:** PROD holds genuine orders (54 at release time) and already has one
 `SENT/SUBMITTED` Graph send (2026-09-28). No send was triggered for this release; the next
 admin-released genuine order is the post-release live-send check.
+
+---
+
+## 22. V1 go-live: operational start, clean start, single supplier role (2026-11-18)
+
+Release line `release/birthday-v1` (cut from `9672d12`, the UAT/PROD baseline); merged back to `main`.
+Migration `b5e7c9d1f3a2` (additive; revises `ad84ec92abcb`).
+
+**Operational settings** (Birthday → Admin → Operational Settings, `birthday.config.manage`):
+- *Operational Start Date* (empty = no boundary) and *Supplier Lead Time (days)* (default 7, 0–60).
+- **First eligible birthday = start date + lead time.** Example: 25 Nov 2026 + 7 = **2 Dec 2026**.
+- The start date must be within 365 days of today (year-independent).
+- The global lead time is used **only** for this boundary. Each supplier's own lead time still decides
+  on-hold routing and verify-by dates exactly as before.
+
+**Daily scan:** never creates an order for a birthday occurrence before the boundary
+(`pre_launch_skipped` in the scan summary). Occurrences are full dates, so an employee whose 28 Nov
+2026 birthday is skipped is processed normally on 28 Nov 2027.
+
+**Clean start (one time, explicit):** saving settings never cancels anything. On the same page, the
+admin previews the impact and then confirms **Apply clean start**:
+- preview: first eligible birthday, total, breakdown by status, how many were already sent to the supplier;
+- apply: every open order with a birthday before the boundary (PENDING_VERIFICATION, REQUIRES_REVIEW,
+  REQUIRES_ATTENTION, ON_HOLD, SENT_TO_SUPPLIER, CHANGE_REQUESTED, CONFIRMED, PREPARING,
+  OUT_FOR_DELIVERY) → CANCELLED, `exception_reason = PRE_LAUNCH_EXCLUDED`, timeline event recorded;
+- **no supplier email**, nothing deleted, each order can be reopened individually;
+- single use (`clean_start_applied_at`); the confirm must echo the previewed boundary (409 otherwise);
+- a reopened order is never re-cancelled (the scan only stops *new* pre-launch orders).
+
+**Supplier Portal visibility:** a CANCELLED order is shown to the supplier only if it was actually
+released to them (`released_at` set). Never-sent orders excluded by the clean start stay invisible.
+
+**Supplier role:** one operational access level. The token always carried the single module role
+`BIRTHDAY_SUPPLIER`, so behaviour is unchanged. The internal UI no longer offers a role choice;
+the API stores `SUPPLIER_USER` for any legacy value; the migration normalised existing rows.
+
+**PROD at handover:** deployed with the start date **unset**. The business admin sets the agreed
+values and applies the clean start (expected ~59 orders: 45 pending verification, 7 requires
+attention, 6 on hold, 1 stale sent-to-supplier from 27 Sep).

@@ -23,7 +23,7 @@ def test_admin_run_detection_returns_scan_summary(api_client, db):
     body = resp.json()
     assert set(body.keys()) == {
         "run_id", "status", "employees_scanned", "orders_created", "orders_existing",
-        "exceptions", "ineligible_skipped", "errors",
+        "exceptions", "ineligible_skipped", "pre_launch_skipped", "errors",
     }
     assert body["status"] == "COMPLETED"
     assert isinstance(body["employees_scanned"], int)
