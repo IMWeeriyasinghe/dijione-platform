@@ -27,7 +27,8 @@ from app.core.constants import IdentityClass, MappingStatus, ReviewFlag
 from app.models.mirror import AttendanceEvent
 from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.site_repository import SiteRepository
-from app.services.attendance_summary import daily_activity, identity_fields
+from app.services import attendance_review_service as reviews
+from app.services.attendance_summary import daily_activity, daily_identity_rows, identity_fields, recorded_span
 from app.services.freshness_service import freshness
 from app.services.identity_resolution import MappingIndex, legacy_identity_class
 from app.services.time_derivation import site_today, to_site_local
@@ -289,9 +290,37 @@ def overview(db: Session, allowed, site_id: str, tz: str | None, day: date, dire
         "latest_received_utc": site_fresh.get("latest_received_utc"),
         "agent_heartbeat_utc": site_fresh.get("agent_heartbeat_utc"),
     }
+    # Earliest / Latest Recorded Fingerprint — single site-local day only.
+    out["extremes"] = extremes(db, allowed, site_id, tz, day, ident) if day == end else None
     if include_operational:
         out["operational"] = operational(db, allowed, site_id, day, end, ident.index)
     return out
+
+
+def extremes(db: Session, allowed, site_id: str, tz: str | None, day: date, ident: Identity) -> dict:
+    """The earliest and latest recorded fingerprint of one site-local day over
+    ALL recorded events (every mapping state), with every tie. Recorded at an
+    entry-side reader: never a confirmed arrival, exit or presence. An
+    unverified fingerprint carries only its raw ZKBioTime ID."""
+    lo, hi = AttendanceRepository(db).day_extremes(allowed_site_ids=allowed, site_id=site_id, day=day)
+
+    def entry(e: AttendanceEvent) -> dict:
+        r = ident.resolve(e.emp_code, e.site_local_date, site_id)
+        state = mapping_state(r)
+        verified = state == VERIFIED
+        return {"zk_emp_code": e.emp_code, "mapping_state": state, "local_time": e.punch_time_local,
+                "bamboohr_id": r.bamboohr_id if verified else None,
+                "employee_name": r.employee_name if verified else None,
+                "employee_number": r.employee_number if verified else None, "terminal": e.terminal_alias}
+
+    def block(events: list[AttendanceEvent]) -> dict | None:
+        if not events:
+            return None
+        entries = [entry(e) for e in events]
+        return {"local_time": events[0].punch_time_local, "punch_time_utc": events[0].punch_time_utc.isoformat(),
+                "tied": len(entries), "entries": entries}
+
+    return {"date": day.isoformat(), "time_zone": tz, "earliest": block(lo), "latest": block(hi)}
 
 
 def _state_counts(counter: dict, key) -> dict:
@@ -584,24 +613,30 @@ def punch_sequences(db: Session, allowed, site_id: str, index: MappingIndex,
             for p in index.periods_for_employee(ident, site_id):
                 if p.covers(d):
                     code_days.add((p.zk_emp_code, d))
-    ordered: dict[tuple, list[str]] = defaultdict(list)
+    ordered: dict[tuple, list[tuple[str, datetime, str]]] = defaultdict(list)
     wanted = set(keys.values())
     days = [d for _c, d in code_days]
-    for code, d, _utc, event_id in AttendanceRepository(db).day_punches(
+    for code, d, utc, event_id, local in AttendanceRepository(db).day_punches(
             allowed_site_ids=allowed, site_id=site_id, codes={c for c, _d in code_days},
             date_from=min(days), date_to=max(days)):
         if (code, d) not in code_days:
             continue
         key = _identity_key(index, site_id, code, d)
         if key in wanted:
-            ordered[key].append(event_id)
+            ordered[key].append((event_id, utc, local))
     out = {}
     for event_id, key in keys.items():
-        seq = ordered.get(key) or [event_id]
+        day = ordered.get(key) or []
+        seq = [e for e, _u, _l in day] or [event_id]
         pos = seq.index(event_id) if event_id in seq else 0
         n = len(seq)
         kind = SINGLE if n == 1 else FIRST if pos == 0 else LAST if pos == n - 1 else INTERMEDIATE
-        out[event_id] = {"punch_sequence": kind, "punch_position": pos + 1, "punches_in_day": n}
+        out[event_id] = {
+            "punch_sequence": kind, "punch_position": pos + 1, "punches_in_day": n,
+            # Whole identity-day bounds (v0.9): recorded fingerprints, never entry/exit.
+            "day_first_local": day[0][2] if day else None, "day_last_local": day[-1][2] if day else None,
+            "day_span_minutes": recorded_span(day[0][1], day[-1][1], len(day)) if day else None,
+        }
     return out
 
 
@@ -797,7 +832,10 @@ def employee_detail(db: Session, allowed, site_id: str, tz: str | None, bamboohr
 
 
 _FLAG_REASON = {
-    ReviewFlag.SINGLE_PUNCH.value: "Only one activity was recorded on this completed day.",
+    ReviewFlag.SINGLE_PUNCH.value: (
+        "Single Recorded Fingerprint: only one fingerprint was recorded on this completed day. "
+        "An observation for optional review — not a violation."
+    ),
     ReviewFlag.HIGH_PUNCH_COUNT.value: "An unusually high number of activities was recorded on this day.",
     ReviewFlag.POSSIBLE_DUPLICATE_TAP.value: "Two activities were recorded within 60 seconds of each other.",
     ReviewFlag.UNMATCHED_CODE.value: "The ZKBioTime ID has no verified BambooHR mapping for this day.",
@@ -814,7 +852,7 @@ _FLAG_REASON = {
 def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date, directory: DirectorySnapshot,
                *, flag: str | None, q: str | None, page: int, page_size: int, emp_code: str | None = None,
                department: str | None = None, identity_class: str | None = None, sort: str = "-date",
-               bamboohr_id: str | None = None) -> dict:
+               bamboohr_id: str | None = None, review_status: str | None = None) -> dict:
     ident = Identity(db, allowed, directory, site_id)
     rows = daily_activity(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
                           date_from=start, date_to=end, directory=directory, index=ident.index)
@@ -823,16 +861,87 @@ def exceptions(db: Session, allowed, site_id: str, tz: str | None, start: date, 
     for r in rows:
         if not r["flags"] or (flag and flag not in r["flags"]):
             continue
-        item = {**r, "reasons": [{"flag": f, "reason": _FLAG_REASON[f]} for f in r["flags"]]}
+        item = {**r, "identity_key": f"P:{r['bamboohr_id']}",
+                "reasons": [{"flag": f, "reason": _FLAG_REASON[f]} for f in r["flags"]]}
         if _match(item, q=q, emp_code=emp_code, department=department, identity_class=identity_class,
                   bamboohr_id=bamboohr_id):
             items.append(item)
+    reviews.attach(db, allowed, site_id, tz, ident.index, items, start, end)
+    items = [i for i in items if _review_status_hit(i, review_status)]
     items.sort(key=lambda r: (r["local_date"], r["first_activity_utc"]), reverse=True)
     _sort_rows(items, sort, EXCEPTION_SORTS)
     paged = _page(items, page, page_size)
     _with_terminals(db, allowed, site_id, start, end, paged["items"], True)
     return {**paged, "site_id": site_id, "date_from": start.isoformat(), "date_to": end.isoformat(),
             "counts": {f: counts.get(f, 0) for f in REVIEW_FLAGS}, "directory_available": ident.available}
+
+
+DAILY_SORTS = {
+    "date": lambda r: (r["local_date"], r["first_fingerprint_utc"]),
+    "identity": lambda r: ((r.get("employee_name") or "~").lower(), r["emp_code"], r["local_date"]),
+    "first": lambda r: (r["first_fingerprint_local"] or "")[11:],
+    "last": lambda r: (r["last_fingerprint_local"] or "")[11:],
+    "span": lambda r: (r["recorded_span_minutes"] is None, r["recorded_span_minutes"] or 0),
+    "punches": lambda r: r["punch_count"],
+}
+REVIEW_STATUS_FILTERS = ("not_reviewed", "OPEN", "SUBMITTED", "RESOLVED", "REOPENED", "NEEDS_REASSESSMENT")
+
+
+def _state_hit(row: dict, mapping: str) -> bool:
+    s = row["mapping_state"]
+    return (mapping == "all" or (mapping == "verified" and s == VERIFIED)
+            or (mapping == "unverified" and s != VERIFIED) or (mapping == "conflict" and s == CONFLICT))
+
+
+def _review_status_hit(row: dict, review_status: str | None) -> bool:
+    rv = row.get("review")
+    if not review_status:
+        return True
+    if review_status == "not_reviewed":
+        return rv is None
+    if review_status == "NEEDS_REASSESSMENT":
+        return bool(rv and rv["stale"]) or any(c["stale"] for c in row.get("earlier_code_cases") or [])
+    return bool(rv and rv["status"] == review_status)
+
+
+def daily_rows(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date,
+               directory: DirectorySnapshot, *, mapping: str = "all", q: str | None = None,
+               emp_code: str | None = None, bamboohr_id: str | None = None, terminal: str | None = None,
+               review_status: str | None = None, index: MappingIndex | None = None) -> tuple[list[dict], dict]:
+    """Daily fingerprint activity for every identity, filtered — and the summary
+    over the same filters WITHOUT the mapping filter (as on Activity), so the
+    per-state totals are identical on every tab."""
+    index = index or MappingIndex.load(db, allowed_site_ids=allowed, directory=directory)
+    rows = daily_identity_rows(db, allowed_site_ids=allowed, site_id=site_id, site_time_zone=tz,
+                               date_from=start, date_to=end, index=index)
+    # Name / BHR ID / EMP Number search and BHR ID can only match verified rows;
+    # the exact ZKBioTime ID matches in every state.
+    base = [r for r in rows if _search_hit(r, q) and (not emp_code or emp_code in r["zk_emp_codes"])
+            and (not bamboohr_id or r.get("bamboohr_id") == bamboohr_id)
+            and (not terminal or terminal in r["terminal_names"])]
+    reviews.attach(db, allowed, site_id, tz, index, base, start, end)
+    base = [r for r in base if _review_status_hit(r, review_status)]
+    summary = {"identity_days": len(base), "punches": sum(r["punch_count"] for r in base)}
+    for s in STATES:
+        part = [r for r in base if r["mapping_state"] == s]
+        summary[f"{s.lower()}_identity_days"] = len(part)
+        summary[f"{s.lower()}_punches"] = sum(r["punch_count"] for r in part)
+    summary["single_fingerprint_days"] = sum(1 for r in base if r["single"])
+    return [r for r in base if _state_hit(r, mapping)], summary
+
+
+def daily_view(db: Session, allowed, site_id: str, tz: str | None, start: date, end: date,
+               directory: DirectorySnapshot, *, mapping: str, q: str | None, emp_code: str | None,
+               bamboohr_id: str | None, terminal: str | None, review_status: str | None, sort: str, page: int,
+               page_size: int) -> dict:
+    rows, summary = daily_rows(db, allowed, site_id, tz, start, end, directory, mapping=mapping, q=q,
+                               emp_code=emp_code, bamboohr_id=bamboohr_id, terminal=terminal,
+                               review_status=review_status)
+    rows.sort(key=DAILY_SORTS["date"], reverse=True)  # newest day first, stable tie-break
+    _sort_rows(rows, sort, DAILY_SORTS)
+    return {**_page(rows, page, page_size), "site_id": site_id, "date_from": start.isoformat(),
+            "date_to": end.isoformat(), "time_zone": tz, "mapping": mapping, "summary": summary,
+            "directory_available": directory.available}
 
 
 IDENTITY_CLASSES = [c.value for c in IdentityClass]

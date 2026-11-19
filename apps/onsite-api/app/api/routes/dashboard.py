@@ -149,6 +149,33 @@ def activity(site_id: str | None = None, date_from: date | None = None, date_to:
                     headers={"Content-Disposition": f'attachment; filename="onsite-activity-{start}-{end}.csv"'})
 
 
+_REVIEW_STATUS = "^(" + "|".join(svc.REVIEW_STATUS_FILTERS) + ")$"
+_DAILY_SORT = "^-?(" + "|".join(svc.DAILY_SORTS) + ")$"
+
+
+@router.get("/activity/daily")
+def activity_daily(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
+                   mapping: str = Query("all", pattern=_MAPPING_PATTERN), q: str | None = None,
+                   emp_code: str | None = None, bamboohr_id: str | None = None, terminal: str | None = None,
+                   review_status: str | None = Query(None, pattern=_REVIEW_STATUS),
+                   sort: str = Query("-date", pattern=_DAILY_SORT),
+                   page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=200),
+                   scope: OnsiteScope = Depends(require_onsite_permission(Perm.ATTENDANCE_READ)),
+                   db: Session = Depends(get_db)):
+    """Daily fingerprint activity: one row per identity-day for EVERY identity
+    (verified team members, and raw unmapped / conflict ZKBioTime IDs), with
+    first / last recorded fingerprint, Recorded Span and punch count. Complete
+    days are aggregated first; filters, sorting and paging apply afterwards."""
+    site, tz, today_ = _site_and_day(db, scope, site_id, None)
+    start, end = svc.resolve_range(date_from, date_to, default_days=7, today=today_)
+    data = svc.daily_view(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(),
+                          mapping=mapping, q=q, emp_code=emp_code, bamboohr_id=bamboohr_id, terminal=terminal,
+                          review_status=review_status, sort=sort, page=page, page_size=page_size)
+    data["can_investigate_identity"] = scope.has(Perm.IDENTITY_READ)
+    data["can_manage_reviews"] = scope.has(Perm.EXCEPTIONS_MANAGE)
+    return data
+
+
 @router.get("/employees")
 def employees(site_id: str | None = None, date_from: date | None = None, date_to: date | None = None,
               q: str | None = None, department: str | None = None, employment_status: str | None = None,
@@ -237,10 +264,14 @@ def exceptions(site_id: str | None = None, date_from: date | None = None, date_t
                emp_code: str | None = None, department: str | None = None, bamboohr_id: str | None = None,
                identity_class: str | None = Query(None, pattern=_IDENTITY_PATTERN),
                sort: str = Query("-date", pattern="^-?(date|employee|flags|punch_count)$"),
+               review_status: str | None = Query(None, pattern=_REVIEW_STATUS),
                page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=200),
                scope: OnsiteScope = Depends(require_onsite_permission(Perm.EXCEPTIONS_READ)), db: Session = Depends(get_db)):
     site, tz, today_ = _site_and_day(db, scope, site_id, None)
     start, end = svc.resolve_range(date_from, date_to, default_days=7, today=today_)
-    return svc.exceptions(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), flag=flag, q=q,
-                          page=page, page_size=page_size, emp_code=emp_code, department=department,
-                          identity_class=identity_class, sort=sort, bamboohr_id=bamboohr_id)
+    data = svc.exceptions(db, scope.allowed_site_ids, site, tz, start, end, workforce_directory.load(), flag=flag,
+                          q=q, page=page, page_size=page_size, emp_code=emp_code, department=department,
+                          identity_class=identity_class, sort=sort, bamboohr_id=bamboohr_id,
+                          review_status=review_status)
+    data["can_manage_reviews"] = scope.has(Perm.EXCEPTIONS_MANAGE)
+    return data

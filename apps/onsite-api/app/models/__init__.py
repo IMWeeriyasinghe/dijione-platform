@@ -8,8 +8,9 @@ from app.models.mirror import (
     SourceSite,
     SyncState,
 )
+from app.models.review import AttendanceReview, AttendanceReviewEvent
 
 __all__ = [
-    "Base", "IdentityEvent", "IdentityMapping", "IdentityRejection",
+    "Base", "IdentityEvent", "IdentityMapping", "IdentityRejection", "AttendanceReview", "AttendanceReviewEvent",
     "AgentStatus", "AttendanceEvent", "OnsiteSyncRun", "SiteSettings", "SourceSite", "SyncState",
 ]

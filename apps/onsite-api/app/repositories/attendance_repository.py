@@ -217,17 +217,36 @@ class AttendanceRepository:
     def day_punches(
         self, *, allowed_site_ids: Collection[str], site_id: str, codes: Collection[str], date_from: date,
         date_to: date,
-    ) -> list[tuple[str, date, datetime, str]]:
-        """(emp_code, local_date, punch_time_utc, event_id) of whole site-local
-        days — the complete day, independent of any page or filter."""
+    ) -> list[tuple[str, date, datetime, str, str]]:
+        """(emp_code, local_date, punch_time_utc, event_id, punch_time_local) of
+        whole site-local days — the complete day, independent of any page or filter."""
         if site_id not in allowed_site_ids or not codes:
             return []
         return [tuple(r) for r in self.db.execute(
             select(AttendanceEvent.emp_code, AttendanceEvent.site_local_date, AttendanceEvent.punch_time_utc,
-                   AttendanceEvent.event_id)
+                   AttendanceEvent.event_id, AttendanceEvent.punch_time_local)
             .where(*self._range(site_id, date_from, date_to), AttendanceEvent.emp_code.in_(list(codes)))
             .order_by(AttendanceEvent.punch_time_utc, AttendanceEvent.event_id)
         ).all()]
+
+    def day_extremes(
+        self, *, allowed_site_ids: Collection[str], site_id: str, day: date,
+    ) -> tuple[list[AttendanceEvent], list[AttendanceEvent]]:
+        """Every event at the earliest and at the latest recorded instant of one
+        site-local day (ties included), over ALL recorded fingerprints."""
+        if site_id not in allowed_site_ids:
+            return [], []
+        where = self._range(site_id, day, day)
+        lo, hi = self.db.execute(select(func.min(AttendanceEvent.punch_time_utc),
+                                        func.max(AttendanceEvent.punch_time_utc)).where(*where)).one()
+        if lo is None:
+            return [], []
+
+        def at(instant: datetime) -> list[AttendanceEvent]:
+            return list(self.db.execute(select(AttendanceEvent).where(*where, AttendanceEvent.punch_time_utc == instant)
+                                        .order_by(AttendanceEvent.event_id)).scalars())
+
+        return at(lo), at(hi)
 
     def code_day_bounds(
         self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,

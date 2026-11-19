@@ -255,11 +255,11 @@ def _check(name: str, observed: dict) -> None:
             obs = observed["sheets"][sheet]
             if sheet in NEW_EXPORT_HEADERS:  # tabular report sheets
                 renamed = [LABEL_RENAMES.get(x, x) for x in exp["preamble_labels"]]
-                assert obs["preamble_labels"] == renamed, (name, sheet)
+                assert [x for x in obs["preamble_labels"] if x not in V090_ADDED_PREAMBLE] == renamed, (name, sheet)
                 assert obs["header"] == NEW_EXPORT_HEADERS[sheet], (name, sheet)
             else:  # measure sheets (Summary, Hourly Activity, 30-Day Trend): row labels only
                 want = {LABEL_RENAMES.get(x, x) for x in _labels(exp)} - REMOVED_MEASURES
-                got = _labels(obs) - ADDED_MEASURES
+                got = _labels(obs) - ADDED_MEASURES - V090_ADDED_PREAMBLE - V090_ADDED_MEASURES
                 assert got == want, (name, sheet, sorted(got ^ want))
     else:
         assert observed == expected, name
@@ -280,20 +280,43 @@ LABEL_RENAMES = {
     "Employee search": "Team member search", "Employees with activity": "Team members with activity",
     "Employee-days with activity": "Team-member days with activity", "Employees needing review": "Team members needing review",
     "Employees listed": "Team members listed", "Employees with review flags": "Team members with review flags",
-    "Single-activity employees": "Single-activity team members", "Employees": "Team Members",
+    # (then renamed again in v0.9: entry-only fingerprint terminology)
+    "Single-activity employees": "Single Recorded Fingerprint team members", "Employees": "Team Members",
     "Employee Activity Report": "Team Member Activity Report",
     "Employee Activity Report — Summary": "Team Member Activity Report — Summary",
     "Review flag: Inactive employee activity": "Review flag: Inactive team member activity",
+    # v0.9 entry-only fingerprint terminology (owner-approved 2026-11-19): the site has an
+    # entry-side reader and an anonymous push-to-exit button — no exit is ever recorded.
+    "Single-activity days": "Single Recorded Fingerprint days",
+    "Single-activity team members": "Single Recorded Fingerprint team members",
+    "Review flag: Single activity": "Review flag: Single Recorded Fingerprint",
 }
+# v0.9 metadata (report type, site time zone, UTC generation time, definitions) and
+# the Administrative review column-group band — additive preamble rows.
+V090_ADDED_PREAMBLE = {
+    "Report type", "Time zone", "Generated at (UTC)", "Definition: Recorded Span",
+    "Definition: Single Recorded Fingerprint", "Definition: Administrative review", "Recorded evidence",
+}
+# v0.9 Overview summary rows (recorded split + earliest/latest recorded fingerprint).
+V090_ADDED_MEASURES = {
+    "Recorded events (all mapping states)", "Verified events", "Unmapped events (needs review)",
+    "Mapping-conflict events", "Earliest Recorded Fingerprint", "Latest Recorded Fingerprint",
+    "Recorded events",
+}
+_V090_OBSERVED = ["First Recorded Fingerprint", "Last Recorded Fingerprint", "Punch Count", "Recorded Span (minutes)"]
+_V090_REVIEW = ["Classification", "Review Status", "Outcome", "Justification", "Explanation",
+                "Declared Departure (declaration)", "Declaration Source",
+                "Estimated Interval (minutes, reviewed estimate)", "Estimate Basis", "Duration Verified", "Reviewer",
+                "Reviewed At (UTC)", "Needs Reassessment"]
 SHEET_RENAMES = {"Employees": "Team Members"}
 # Terminology standard (2026-11-19): BambooHR's record id is "BHR ID"; "EMP Number" is the employee number.
 NEW_EXPORT_HEADERS = {
     "Attendance Report": ["Date", "Team Member Name", "BHR ID", "EMP Number", "ZKBioTime ID(s)",
-                          "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
-                          "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags"],
+                          "Department", "Employment Status", *_V090_OBSERVED, "Terminal(s)", "Mapping Status",
+                          "Review Flags"],
     "Exception Report": ["Date", "Team Member Name", "BHR ID", "EMP Number", "ZKBioTime ID(s)",
-                         "Department", "Employment Status", "First Activity", "Latest Activity", "Punch Count",
-                         "Activity Span (minutes)", "Terminal(s)", "Mapping Status", "Review Flags", "Review Reasons"],
+                         "Department", "Employment Status", *_V090_OBSERVED, "Terminal(s)", "Mapping Status",
+                         "Review Flags", "Review Reasons", *_V090_REVIEW],
     "Event Detail": ["Local Date", "Local Time", "ZKBioTime ID", "Team Member Name", "BHR ID",
                      "EMP Number", "Department", "Terminal", "Verify Type", "Mapping Status",
                      "Review Flags"],

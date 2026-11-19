@@ -27,7 +27,8 @@ def test_upgrade_downgrade_upgrade(tmp_path):
     idx = {i["name"]: i for i in insp.get_indexes("onsite_identity_mappings")}
     assert idx["ux_idmap_open_verified"]["unique"]
     with eng.connect() as c:
-        assert c.execute(sa.text("select version_num from alembic_version")).scalar() == "0002_onsite_identity"
+        assert c.execute(sa.text("select version_num from alembic_version")).scalar() == \
+            "0003_onsite_attendance_reviews"
     eng.dispose()
     _alembic(url, "downgrade", "base")
     eng = sa.create_engine(url)
@@ -48,7 +49,8 @@ def test_model_metadata_matches_migration(tmp_path):
     from app.db.base import Base
 
     insp = sa.inspect(eng)
-    for table in ("onsite_identity_mappings", "onsite_identity_rejections", "onsite_identity_events"):
+    for table in ("onsite_identity_mappings", "onsite_identity_rejections", "onsite_identity_events",
+                  "onsite_attendance_reviews", "onsite_attendance_review_events"):
         migrated = {c["name"] for c in insp.get_columns(table)}
         assert migrated == set(Base.metadata.tables[table].columns.keys()), table
     eng.dispose()
