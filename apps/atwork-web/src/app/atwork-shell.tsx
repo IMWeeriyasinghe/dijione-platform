@@ -69,6 +69,7 @@ export function AtworkContent({ children }: { children: React.ReactNode }) {
       topNavTitle="Work Check-in and Attendance"
       sections={buildSections(scope)}
       homeHref="/"
+      collapsible={{ storageKey: "atwork.nav.collapsed" }}
       footer={
         <VersionFooter
           appName="DijiAtWork"

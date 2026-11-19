@@ -32,7 +32,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.permissions import DELEGATION, DelegationDef
+from app.core.permissions import BASELINE_UNVERIFIED_PERMISSIONS, DELEGATION, DelegationDef
 from app.integrations.directory import DirectoryUnavailable, is_internal_member
 from app.models.access_group import AccessGroup, AccessGroupStatus, GroupModuleRole, UserGroupMembership
 from app.models.application_access import ApplicationAccessSuspension, ApplicationAdministrator
@@ -374,7 +374,8 @@ class DelegatedAccessService:
         role = self.admin._default_role(module.key)
         if role is None:
             return None
-        return (f"Every eligible employee has {self._role_name(module.key, role)} access to {module.name}. "
+        who = "active DijiOne user" if module.key in BASELINE_UNVERIFIED_PERMISSIONS else "eligible employee"
+        return (f"Every {who} has {self._role_name(module.key, role)} access to {module.name}. "
                 "It is managed centrally and cannot be removed here.")
 
     # --- the application's Access page (/api/access/{app}) ----------------------------

@@ -63,7 +63,8 @@ describe("Today", () => {
   it("hides attendance without the read permission", () => {
     scopeMock.value.scope = { role: "R", permissions: [] };
     render(<TodayPage />, { wrapper });
-    expect(screen.getByText("Attendance access required")).toBeInTheDocument();
+    expect(screen.getByText("Attendance is not set up for your account")).toBeInTheDocument();
+    expect(screen.getByText(/not linked to an employee record/)).toBeInTheDocument();
   });
   it("never shows success before the server confirms", async () => {
     mock(status({}));

@@ -14,11 +14,11 @@ export function Page({ children }: { children: React.ReactNode }) {
   return <div className="mx-auto w-full max-w-6xl">{children}</div>;
 }
 
-export function RequirePermission({ permission, title, children }: { permission: string | string[]; title: string; children: React.ReactNode }) {
+export function RequirePermission({ permission, title, description, children }: { permission: string | string[]; title: string; description?: string; children: React.ReactNode }) {
   const { scope } = useAtworkScope();
   const needed = Array.isArray(permission) ? permission : [permission];
   if (!needed.every((p) => hasPermission(scope, p))) {
-    return <EmptyState title={title} description="Your DijiAtWork role does not include this area." />;
+    return <EmptyState title={title} description={description ?? "Your DijiAtWork role does not include this area."} />;
   }
   return <>{children}</>;
 }
