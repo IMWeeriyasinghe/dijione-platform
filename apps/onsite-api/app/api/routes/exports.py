@@ -262,7 +262,7 @@ def export_overview(site_id: str | None = None, date_: date | None = Query(None,
         e = block["entries"][0]
         who = e["employee_name"] if e["mapping_state"] == "VERIFIED" else f"ZKBioTime ID {e['zk_emp_code']}"
         tied = f" (+{block['tied'] - 1} tied)" if block["tied"] > 1 else ""
-        return f"{block['local_time'][11:19]} — {who}{tied}"
+        return f"{block['local_time'][11:19]}, {who}{tied}"
 
     summary = Sheet("Summary", [Column("Measure", 44), Column("Value", 40)], [
         ["Date", day.isoformat()],

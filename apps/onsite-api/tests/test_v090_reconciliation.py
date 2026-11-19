@@ -210,10 +210,10 @@ def test_daily_export_detail_levels_groups_and_counts(mixed):
                            "Recorded Span", "Punches", "Single Recorded Fingerprint", "Terminal(s)"]
     assert header[13] == "Classification" and "Estimated Interval (minutes, reviewed estimate)" in header
     single = next(r for r in rows if r[1] == "ZKBioTime ID 102")
-    assert single[8] is None and single[9] == "—, Single Recorded Fingerprint" and single[11] == "Yes"
+    assert single[8] is None and single[9] == "—" and single[11] == "Yes"
     assert single[3] is None and single[2] is None  # conflict: never attributed
     summary = {r[0]: r[1] for r in wb["Summary"].iter_rows(values_only=True) if r[0]}
-    assert "— Administrative review (cases, not fingerprints) —" in summary
+    assert "Administrative review (cases, not fingerprints)" in summary
     assert summary["Fingerprints in Punch Detail"] == summary["Recorded fingerprints in this export"]
 
 
@@ -317,3 +317,31 @@ def test_review_summary_counts_not_mixed_with_fingerprints(mixed):
     states = Counter(r["mapping_state"] for r in daily["items"])
     assert daily["summary"]["verified_identity_days"] == states["VERIFIED"]
     assert "cases" not in " ".join(daily["summary"])
+
+
+# --- v0.9 closure ------------------------------------------------------------------------------
+
+
+def test_unmapped_filter_is_unmapped_only_in_daily_and_events(mixed):
+    daily = _j(mixed, f"/api/onsite/activity/daily?{R}&mapping=unmapped&page_size=200")
+    assert daily["items"] and {r["mapping_state"] for r in daily["items"]} == {"UNMAPPED"}
+    assert len(daily["items"]) == daily["summary"]["unmapped_identity_days"]
+    events = _j(mixed, f"/api/onsite/activity?{R}&mapping=unmapped&page_size=200")
+    assert {e["mapping_state"] for e in events["items"]} == {"UNMAPPED"}
+    assert events["total"] == events["summary"]["unmapped"] == daily["summary"]["unmapped_punches"]
+    wb = _wb(mixed, f"/api/onsite/activity/export?{R}&mapping=unmapped")
+    _h, rows = _table(wb["Recorded Events"], "Local Date")
+    assert len(rows) == events["total"]
+
+
+def test_report_text_uses_hyphens_and_dash_only_as_placeholder(mixed):
+    """Writing convention (owner, 2026-11-20): no em / en dashes in report descriptions,
+    definitions, labels or titles. "—" alone remains the placeholder for unavailable data."""
+    paths = [f"/api/onsite/activity/daily/export?{R}&detail=both", f"/api/onsite/activity/export?{R}&mapping=all",
+             f"/api/onsite/today/export?site_id=dev-site&date={DAY1}", f"/api/onsite/exceptions/export?{R}",
+             f"/api/onsite/dashboard/overview/export?site_id=dev-site&date={DAY1}", f"/api/onsite/employees/export?{R}"]
+    for path in paths:
+        for sheet, text in _strings(_wb(mixed, path)):
+            if text.strip() == "—":
+                continue
+            assert "—" not in text and "–" not in text, (path, sheet, text)

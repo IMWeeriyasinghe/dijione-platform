@@ -68,7 +68,7 @@ beforeEach(() => {
 
 const SUMMARY = { site_id: "colombo", as_of: "2026-11-14", outstanding_ids: 3, unmapped_punches: 20,
   review: { AWAITING_REVIEW: 1, REJECTED_ASSOCIATION: 1, PARTLY_VERIFIED: 1 },
-  aging: [{ label: "0–7 days", ids: 1, unmapped_punches: 5 }, { label: "8–30 days", ids: 2, unmapped_punches: 15 }],
+  aging: [{ label: "0-7 days", ids: 1, unmapped_punches: 5 }, { label: "8-30 days", ids: 2, unmapped_punches: 15 }],
   recency: [{ label: "Active in last 7 days", ids: 3, unmapped_punches: 20 }] };
 const CODE_DETAIL = { site_id: "colombo", zk_emp_code: "352", directory_available: true, mappings: [], rejections: [],
   hint_employee_number_matches: [], days: [{ local_date: "2026-11-13", events: 2, mapping_status: "UNMAPPED", bamboohr_id: null, employee_name: null, mapping_id: null }] };
@@ -134,7 +134,7 @@ describe("Identity Management", () => {
     fireEvent.change(screen.getByLabelText(/Verification evidence/), { target: { value: "IT enrolment sheet signed by HR" } });
     const box = await screen.findByRole("checkbox", { name: /Earlier punches stay unmapped/ });
     expect(screen.getByTestId("confirm-sentence")).toHaveTextContent(
-      "Map ZKBioTime ID 352 to Tom Example (BHR ID 1234, EMP Number 352) from 2026-11-01 (open-ended) — 4 earlier punch(es) stay unmapped.");
+      "Map ZKBioTime ID 352 to Tom Example (BHR ID 1234, EMP Number 352) from 2026-11-01 (open-ended). 4 earlier punch(es) stay unmapped.");
     const confirm = screen.getByRole("button", { name: "Confirm mapping" });
     expect(confirm).toBeDisabled();
     fireEvent.click(box);
@@ -326,7 +326,7 @@ describe("Identity Management — drill-down and review status", () => {
     expect(within(table).getByText("Awaiting Review")).toBeInTheDocument();
     expect(within(table).getByText("Rejected Association")).toBeInTheDocument();
     expect(within(table).getByText("Partly Verified")).toBeInTheDocument();
-    expect(await screen.findByRole("list", { name: "Outstanding IDs by age of their oldest unmapped punch day" })).toHaveTextContent("8–30 days");
+    expect(await screen.findByRole("list", { name: "Outstanding IDs by age of their oldest unmapped punch day" })).toHaveTextContent("8-30 days");
     expect(screen.getAllByRole("list", { name: /ZKBioTime IDs by verification/ })[0]).toHaveTextContent("Entirely unmapped");
   });
 

@@ -41,6 +41,29 @@ Admins assign On-site Admin. The authority is computed on every request (demotio
 once), is audited on the APPLICATION channel, and requires `DELEGATED_ACCESS_ENABLED` (true in DEV,
 false in UAT/PROD until enabled). An explicit appointment row always takes precedence.
 
+**Add Person from Microsoft Entra ID (v0.9 closure).** Admin → Access → Add person searches the
+organisation directory by name, email address or user principal name. Platform Core runs the search
+with its own managed identity (Microsoft Graph v1.0 `GET /users` with `$search`, `ConsistencyLevel:
+eventual`, application permission `User.Read.All`). Enabled internal member accounts only; the browser
+never calls Graph or sees a token. Each result shows the photo or initials, email / UPN, and one of:
+*Has On-site User*, *No access yet*, *New to DijiOne*, or *Not eligible* with the reason.
+- The **Entra Object ID is the identity key.** A DijiOne profile found only by a matching email address
+  that is not linked to the selected object id is never granted (Central Admin must verify it), so a
+  reused address cannot give access to the wrong person.
+- A directory entry alone is not eligibility: the person must be matched to a BambooHR employee record.
+- A new person is created from the directory and granted in one transaction (idempotent: adding them
+  again links the same profile). The confirmation shows the identity and role; the result shows the
+  access now held and the audit record.
+- Photos: `/api/access/{app}/people/{object_id}/photo` and `/users/{id}/photo` (access
+  administrators only, server-side cache, 404 renders initials). Attendance views keep their verified
+  BambooHR photos by BHR ID; unmapped and conflict IDs stay anonymous.
+
+**Charts and writing (v0.9 closure).** Data series use the official Dijital Team colours from the style
+guide as smooth gradients with no textures: Verified = Orange `#F1592A`, Unmapped = Yellow `#FCB040`,
+Mapping conflict = Red `#BF1E2E` (green is not used, so Verified never reads as a "success" outcome).
+User-facing text uses the ordinary hyphen; a long dash appears only as the placeholder for an
+unavailable value (for example Recorded Span of a single fingerprint).
+
 **Terminology (v0.9).** The office has an entry-side fingerprint reader and an anonymous push-to-exit
 button: no employee-specific exit is ever recorded. Screens and reports say *first / last recorded
 fingerprint*, *Earliest / Latest Recorded Fingerprint*, *Single Recorded Fingerprint* and *Recorded

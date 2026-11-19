@@ -390,7 +390,7 @@ export function Pager({ page, pageSize, total, onPage, onPageSize, noun = "resul
   return (
     <nav aria-label="Pagination" aria-busy={busy || undefined}
       className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-dt-text-secondary">
-      <span aria-live="polite">{total ? `${fmtNum(first)}–${fmtNum(last)} of ${fmtNum(total)} ${noun}${total === 1 ? "" : "s"}` : `0 ${noun}s`}</span>
+      <span aria-live="polite">{total ? `${fmtNum(first)}-${fmtNum(last)} of ${fmtNum(total)} ${noun}${total === 1 ? "" : "s"}` : `0 ${noun}s`}</span>
       <span className="flex flex-wrap items-center gap-2">
         {onPageSize && (
           <label className="flex items-center gap-1.5 whitespace-nowrap text-xs">

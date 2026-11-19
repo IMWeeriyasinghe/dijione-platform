@@ -385,7 +385,10 @@ def test_search_finds_eligible_people_and_matched_directory_employees(api_client
     assert api_client.get(f"/api/access/{TALENT}/people?q=a", headers=headers).status_code == 400
     found = api_client.get(f"/api/access/{TALENT}/people?q=nin", headers=headers).json()
     assert [(p["source"], p["entra_object_id"]) for p in found["people"]] == [("DIRECTORY", OID_NEW)]
-    assert api_client.get(f"/api/access/{TALENT}/people?q=sam", headers=headers).json()["people"] == []  # not in HR
+    # Not in HR: shown with the reason, never grantable (a directory entry alone is not eligibility).
+    sam = api_client.get(f"/api/access/{TALENT}/people?q=sam", headers=headers).json()["people"]
+    assert [(p["entra_object_id"], p["can_grant"]) for p in sam] == [(OID_NOHR, False)]
+    assert "BambooHR" in sam[0]["reason"]
     people = api_client.get(f"/api/access/{TALENT}/people?q=david", headers=headers).json()["people"]
     assert people[0]["user_id"] == world["david"].id and people[0]["can_grant"]
     outsider = api_client.get(f"/api/access/{TALENT}/people?q=outsider", headers=headers).json()["people"]

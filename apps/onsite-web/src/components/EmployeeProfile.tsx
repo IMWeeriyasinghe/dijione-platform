@@ -124,7 +124,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
           ) : (
             <>
               {!data.directory_available && (
-                <p className="mb-3 text-sm text-dt-burnt-orange">Team member details are unavailable right now — verified attendance is shown without the name.</p>
+                <p className="mb-3 text-sm text-dt-burnt-orange">Team member details are unavailable right now. Verified attendance is shown without the name.</p>
               )}
               {tab === "overview" && (
                 <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" className="space-y-4">

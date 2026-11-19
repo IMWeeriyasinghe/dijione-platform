@@ -317,7 +317,7 @@ def _transition(db: Session, case: AttendanceReview, *, action: str, expected_ve
         raise _err(status.HTTP_409_CONFLICT, f"'{action}' is not allowed while the case is {case.status}",
                    status=case.status, allowed_actions=list(ALLOWED_ACTIONS[case.status]))
     if case.version != expected_version:
-        raise _err(status.HTTP_409_CONFLICT, "This case was changed by another administrator — reload it",
+        raise _err(status.HTTP_409_CONFLICT, "This case was changed by another administrator. Reload it and try again.",
                    current_version=case.version)
     previous = _state(case)
     from_status = case.status
@@ -328,7 +328,7 @@ def _transition(db: Session, case: AttendanceReview, *, action: str, expected_ve
                      .execution_options(synchronize_session=False))
     if res.rowcount != 1:
         db.rollback()
-        raise _err(status.HTTP_409_CONFLICT, "This case was changed by another administrator — reload it")
+        raise _err(status.HTTP_409_CONFLICT, "This case was changed by another administrator. Reload it and try again.")
     db.expire(case)
     db.refresh(case)
     new = _state(case)
@@ -348,7 +348,7 @@ def open_case(db: Session, allowed, site_id: str, tz: str | None, index: Mapping
     if zk_emp_code:
         if state_of(index.resolve(site_id, zk_emp_code, day)) == VERIFIED:
             raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                       "This ZKBioTime ID is verified for that day — open the case for the team member instead")
+                       "This ZKBioTime ID is verified for that day. Open the case for the team member instead.")
         key = f"C:{zk_emp_code}"
     else:
         key = f"P:{bamboohr_id}"
@@ -401,7 +401,7 @@ def submit(db: Session, allowed, case: AttendanceReview, tz: str | None, index: 
         first, last = current["_first"], current["_last"]
         if first is None:
             raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                       "No recorded fingerprints for this identity on this day — a departure cannot be declared")
+                       "No recorded fingerprints for this identity on this day, so a departure cannot be declared.")
         local_iso, utc = declared_departure(declared_departure_local, case.local_date, tz)
         if utc < last:
             raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -418,7 +418,7 @@ def submit(db: Session, allowed, case: AttendanceReview, tz: str | None, index: 
             "estimate_basis": (f"First recorded fingerprint {_hhmm(current['facts']['first_local'])} → declared "
                                f"departure {local_iso[11:16]} ({tz or 'UTC'}); source: "
                                f"{SOURCE_LABEL.get(declaration_source, declaration_source)}; recorded by "
-                               f"{actor.full_name}. Reviewed declaration — not a confirmed duration."),
+                               f"{actor.full_name}. Reviewed declaration, not a confirmed duration."),
         })
     return _transition(db, case, action="submit", expected_version=expected_version, actor=actor, values=values,
                        facts=current["facts"], note=None)
@@ -430,8 +430,8 @@ def resolve(db: Session, allowed, case: AttendanceReview, tz: str | None, index:
     current = day_facts(db, allowed, case.site_id, tz, index, case.local_date, case.identity_key)
     if case.status == "SUBMITTED" and evaluate(case, current)["stale"]:
         raise _err(status.HTTP_409_CONFLICT,
-                   "Recorded fingerprints or the identity mapping changed since the justification was submitted — "
-                   "review the current facts and resubmit first", status=case.status, allowed_actions=["submit"])
+                   "Recorded fingerprints or the identity mapping changed since the justification was submitted. "
+                   "Review the current facts and resubmit first.", status=case.status, allowed_actions=["submit"])
     values = {"status": "RESOLVED", "outcome": outcome, "decision_note": note, "resolved_by_user_id": actor.id,
               "resolved_by_name": actor.full_name, "resolved_at": datetime.now(UTC)}
     return _transition(db, case, action="resolve", expected_version=expected_version, actor=actor, values=values,

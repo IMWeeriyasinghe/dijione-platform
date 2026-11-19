@@ -33,7 +33,7 @@ const SORTS = [
   { value: "-latest_activity", label: "Last recorded fingerprint (latest)" },
   { value: "-punch_count", label: "Fingerprints (most)" },
   { value: "-span", label: "Recorded Span (longest)" },
-  { value: "employee", label: "Team member (A–Z)" },
+  { value: "employee", label: "Team member (A-Z)" },
   { value: "-flags", label: "Review flags (most)" },
 ];
 
@@ -61,7 +61,7 @@ function TodayView() {
   return (
     <div className="space-y-4">
       <PageTop title="Today"
-        description={<>First and last recorded fingerprint, Recorded Span and fingerprint count per verified team member, for one site-local day{site.time_zone ? ` (${site.time_zone})` : ""}. Recorded at the entry-side reader — not a confirmed exit, presence or hours worked.</>}
+        description={<>First and last recorded fingerprint, Recorded Span and fingerprint count per verified team member, for one site-local day{site.time_zone ? ` (${site.time_zone})` : ""}. Recorded at the entry-side reader. Not a confirmed exit, presence or hours worked.</>}
         actions={<ExportReportButton departments={site.departments ?? []} terminals={site.terminals} context={{
           report: "verified", siteId: site.site_id, today: site.today, from: s.date, to: s.date, q: s.q, emp: s.emp, dept: s.dept }} />}>
         <div className="flex flex-wrap items-center gap-2">
@@ -107,7 +107,7 @@ function TodayView() {
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable — verified attendance is shown without names.</p>}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable. Verified attendance is shown without names.</p>}
             <DataView caption={`Team member activity on ${s.date}`} rows={query.data.items} rowKey={(r) => r.emp_code}
               rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.bamboohr_id ?? "", page: s.page })}
               sort={s.sort} onSort={(v) => set({ sort: v })}

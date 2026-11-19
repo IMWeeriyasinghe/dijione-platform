@@ -30,7 +30,7 @@ function Ingestion({ c }: { c: Coverage }) {
       Latest event received {when(c.ingestion.latest_received_utc)} · last successful sync {when(c.ingestion.last_successful_sync_at)}.{" "}
       {healthy
         ? <>Punches from unmapped ZKBioTime IDs are stored safely; the remaining step is identity verification and mapping by the administration team.</>
-        : <>This is a feed/synchronisation matter, separate from the mapping backlog — see Site Health. Stored punches are not affected.</>}
+        : <>This is a feed/synchronisation matter, separate from the mapping backlog. See Site Health. Stored punches are not affected.</>}
     </InlineAlert>
   );
 }
@@ -73,7 +73,7 @@ function TopUnmapped({ c, onMap, onInvestigate, canManage }: {
           <span className="text-xs tabular-nums text-dt-text-secondary">{i + 1}.</span>
           <button type="button" onClick={() => onInvestigate(x.zk_emp_code)} title="Investigate this ZKBioTime ID"
             className={cx("truncate rounded text-left font-mono font-medium text-dt-burnt-orange hover:underline", focusRing)}>{x.zk_emp_code}</button>
-          <span className="relative h-5 overflow-hidden rounded bg-dt-surface-warm" title={`${fmtNum(x.unmapped_punches)} unmapped punches on ${x.unmapped_days} day(s), ${x.first_unmapped} – ${x.last_unmapped}`}>
+          <span className="relative h-5 overflow-hidden rounded bg-dt-surface-warm" title={`${fmtNum(x.unmapped_punches)} unmapped punches on ${x.unmapped_days} day(s), ${x.first_unmapped} - ${x.last_unmapped}`}>
             <span className="absolute inset-y-0 left-0 rounded bg-dt-amber/80" style={{ width: `${(x.unmapped_punches / max) * 100}%` }} />
             <span className="relative px-2 text-xs leading-5 tabular-nums">
               {fmtNum(x.unmapped_punches)} punches · {x.unmapped_days} day(s){x.mapped_now ? " · partly verified" : ""}

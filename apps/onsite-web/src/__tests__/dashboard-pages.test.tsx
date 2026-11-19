@@ -59,7 +59,7 @@ describe("Overview", () => {
     expect(await screen.findByText("Team members with activity")).toBeInTheDocument();
     expect(screen.getByText("Recorded events")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: /All recorded events by hour, Today · Sun 1 Nov, DEV Site/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /08:00–08:59 \(Asia\/Colombo\): 5 recorded/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /08:00-08:59 \(Asia\/Colombo\): 5 recorded/ })).toBeInTheDocument();
     expect(screen.getByText("Possible duplicate tap")).toBeInTheDocument();
     expect(await screen.findByText("Nimal P")).toBeInTheDocument();
     expect(screen.getAllByText("Feed stale").length).toBeGreaterThan(0);

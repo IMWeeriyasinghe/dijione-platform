@@ -52,7 +52,7 @@ function IdentityManagement() {
   return (
     <div className="space-y-4">
       <PageTop title="Identity Management"
-        description="Verified links between ZKBioTime IDs and BambooHR team members. Attendance is attributed only inside an administrator-verified ownership period — never by matching numbers or names."
+        description="Verified links between ZKBioTime IDs and BambooHR team members. Attendance is attributed only inside an administrator-verified ownership period, never by matching numbers or names."
         actions={canManage ? <Button onClick={() => setDialog({ kind: "map" })}>Map ZKBioTime ID</Button> : undefined}>
         <SiteSelect />
       </PageTop>
@@ -141,7 +141,7 @@ function ReadinessTab({ siteId, canManage, open }: { siteId: string; canManage: 
           tone="neutral" />
       </div>
       <p className="text-sm text-dt-text-secondary">
-        Last {r.window_days} site days ({fmtDay(r.date_from, true)} – {fmtDay(r.date_to, true)}): {fmtNum(r.identified_punches)} of {fmtNum(r.total_punches)} punches attributed ·{" "}
+        Last {r.window_days} site days ({fmtDay(r.date_from, true)} - {fmtDay(r.date_to, true)}): {fmtNum(r.identified_punches)} of {fmtNum(r.total_punches)} punches attributed ·{" "}
         {fmtNum(r.active_codes)} active IDs · {fmtNum(r.unmapped_punches)} unmapped punches · {fmtNum(r.verified_mappings)} verified mappings ·{" "}
         {r.mappings_without_evidence} without evidence · directory {r.directory_available ? "available" : "unavailable"}.
       </p>
@@ -256,7 +256,7 @@ function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog 
               { key: "events", header: "Punches", help: "Unmapped punches / all punches recorded for this ID.", sort: "unmapped_events", align: "right", nowrap: true,
                 cell: (r) => <span className="tabular-nums">{fmtNum(r.unmapped_events)}<span className="text-xs text-dt-text-secondary"> / {fmtNum(r.event_count)}</span></span> },
               { key: "range", header: "Period", help: "First to latest day with an unmapped punch. Sorts by the latest day.", sort: "last_unmapped", nowrap: true,
-                cell: (r) => <span className="tabular-nums" title={`${fmtShortDay(r.first_unmapped)} – ${fmtShortDay(r.last_unmapped)}`}>{fmtDaySpan(r.first_unmapped, r.last_unmapped)}</span> },
+                cell: (r) => <span className="tabular-nums" title={`${fmtShortDay(r.first_unmapped)} - ${fmtShortDay(r.last_unmapped)}`}>{fmtDaySpan(r.first_unmapped, r.last_unmapped)}</span> },
               { key: "status", header: "Review", nowrap: true, cell: (r) => <ReviewBadge state={reviewStateOf(r)} /> },
               { key: "hint", header: "Hint", minWidth: "xl", help: "Unverified: an EMP Number equals this ID. Never evidence and never applied automatically.", cell: (r) => <Hints r={r} compact /> },
               { key: "act", header: <span className="sr-only">Actions</span>, align: "right", nowrap: true, cell: (r) => <UnmappedActions r={r} canManage={canManage} open={open} /> },
@@ -268,7 +268,7 @@ function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2"><IdLink code={r.zk_emp_code} open={open} /><ReviewBadge state={reviewStateOf(r)} /></div>
                 <Facts cols={3} items={[["Unmapped punches", `${fmtNum(r.unmapped_events)} of ${fmtNum(r.event_count)}`], ["Unmapped days", fmtNum(r.unmapped_days)],
-                  ["Unmapped period", `${fmtShortDay(r.first_unmapped)} – ${fmtShortDay(r.last_unmapped)}`], ["All attendance", `${fmtShortDay(r.first_seen)} – ${fmtShortDay(r.last_seen)}`]]} />
+                  ["Unmapped period", `${fmtShortDay(r.first_unmapped)} - ${fmtShortDay(r.last_unmapped)}`], ["All attendance", `${fmtShortDay(r.first_seen)} - ${fmtShortDay(r.last_seen)}`]]} />
                 <Hints r={r} />
                 <UnmappedActions r={r} canManage={canManage} open={open} />
               </div>
@@ -287,7 +287,7 @@ function Hints({ r, compact = false }: { r: UnmappedRow; compact?: boolean }) {
   if (compact) {
     const all = hints.map((h) => h.display_name ?? h.bamboohr_id).join(", ");
     return (
-      <span className="flex min-w-0 items-center gap-1" title={`Unverified: ${all}. An EMP Number equals this ID — not evidence, never applied automatically.`}>
+      <span className="flex min-w-0 items-center gap-1" title={`Unverified: ${all}. An EMP Number equals this ID. That is not evidence and is never applied automatically.`}>
         <span className="max-w-40 truncate rounded border border-dashed border-dt-border px-1.5 py-0.5 text-xs text-dt-text-secondary">
           Unverified: {hints[0].display_name ?? hints[0].bamboohr_id}
         </span>
@@ -352,14 +352,14 @@ function MappingsTab({ siteId, status, q, set, canManage, open }: {
               ) },
               { key: "num", header: ID_LABELS.number, minWidth: "xl", cell: (m) => <span className="font-mono">{m.employee_number ?? "—"}</span> },
               { key: "status", header: ID_LABELS.mapping, cell: (m) => <MappingStatusBadge m={m} /> },
-              { key: "period", header: "Ownership period", cell: (m) => <span className="tabular-nums">{fmtShortDay(m.valid_from)} – {m.valid_to ? fmtShortDay(m.valid_to) : "open"}</span> },
+              { key: "period", header: "Ownership period", cell: (m) => <span className="tabular-nums">{fmtShortDay(m.valid_from)} - {m.valid_to ? fmtShortDay(m.valid_to) : "open"}</span> },
               { key: "by", header: "Verified", minWidth: "xl", cell: (m) => <span className="text-xs">user {m.verified_by_user_id} · {m.verified_at ? new Date(m.verified_at).toLocaleDateString() : "—"} · {m.source}</span> },
               { key: "act", header: <span className="sr-only">Actions</span>, align: "right", cell: (m) => <MappingActions m={m} canManage={canManage} open={open} /> },
             ]}
             card={(m) => (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2"><span className="min-w-0"><IdLink code={m.zk_emp_code} open={open} /> → {m.employee_name ?? "—"}</span><MappingStatusBadge m={m} /></div>
-                <Facts cols={3} items={[[ID_LABELS.bhr, m.bamboohr_id], [ID_LABELS.number, m.employee_number ?? "—"], ["Period", `${m.valid_from} – ${m.valid_to ?? "open"}`]]} />
+                <Facts cols={3} items={[[ID_LABELS.bhr, m.bamboohr_id], [ID_LABELS.number, m.employee_number ?? "—"], ["Period", `${m.valid_from} - ${m.valid_to ?? "open"}`]]} />
                 <MappingActions m={m} canManage={canManage} open={open} />
               </div>
             )} />
@@ -395,7 +395,7 @@ function ConflictsTab({ siteId, timeZone, canManage, open }: { siteId: string; t
   if (q.isLoading) return <SkeletonRows />;
   if (!q.data) return <ErrorState onRetry={() => q.refetch()} />;
   const c = q.data;
-  const period = (m: Mapping) => `${m.employee_name ?? m.bamboohr_id} ${m.valid_from} – ${m.valid_to ?? "open"}`;
+  const period = (m: Mapping) => `${m.employee_name ?? m.bamboohr_id} ${m.valid_from} - ${m.valid_to ?? "open"}`;
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <Panel title="Ambiguous reassignment days" subtitle="Days deliberately left unmapped when an ID changed hands">
@@ -421,14 +421,14 @@ function ConflictsTab({ siteId, timeZone, canManage, open }: { siteId: string; t
       <Panel title="Active rejections" subtitle="Pairings recorded as NOT the same person">
         {c.active_rejections.length ? <ul className="space-y-1 text-sm">{c.active_rejections.map((r) => (
           <li key={r.id} className="flex flex-wrap items-center justify-between gap-2">
-            <span><IdLink code={r.zk_emp_code} open={open} /> ≠ {ID_LABELS.bhr} {r.bamboohr_id} ({r.applies_from ?? "all history"} – {r.applies_to ?? "open"}) · {r.reason}</span>
+            <span><IdLink code={r.zk_emp_code} open={open} /> ≠ {ID_LABELS.bhr} {r.bamboohr_id} ({r.applies_from ?? "all history"} - {r.applies_to ?? "open"}) · {r.reason}</span>
             {canManage && <button type="button" className={buttonClass("ghost")} onClick={() => open({ kind: "withdraw", rejection: r })}>Withdraw…</button>}
           </li>
         ))}</ul> : <p className="text-sm text-dt-text-secondary">None.</p>}
       </Panel>
       <Panel title="Recent changes" subtitle="Audit history of identity changes">
         <ol className="max-h-72 space-y-1 overflow-y-auto text-sm">{c.recent_events.map((e) => (
-          <li key={e.id}>{e.at ? new Date(e.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", ...(timeZone ? { timeZone } : {}) }) : "—"} · <span className="font-medium">{e.action}</span> · {e.entity_type.toLowerCase()} #{e.entity_id} · user {e.actor_user_id}{e.note ? ` — ${e.note}` : ""}</li>
+          <li key={e.id}>{e.at ? new Date(e.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", ...(timeZone ? { timeZone } : {}) }) : "—"} · <span className="font-medium">{e.action}</span> · {e.entity_type.toLowerCase()} #{e.entity_id} · user {e.actor_user_id}{e.note ? `: ${e.note}` : ""}</li>
         ))}</ol>
       </Panel>
     </div>
@@ -464,7 +464,7 @@ function ImportTab() {
               <tbody>{rows.map((r) => (
                 <tr key={r.line} className="border-t border-dt-border align-top">
                   <td>{r.line}</td><td className="font-mono">{r.zk_emp_code ?? "—"}</td><td className="font-mono">{r.bamboohr_id ?? "—"}</td>
-                  <td>{r.employee_name ?? "—"}</td><td>{r.valid_from ?? "—"} – {r.valid_to ?? "open"}</td>
+                  <td>{r.employee_name ?? "—"}</td><td>{r.valid_from ?? "—"} - {r.valid_to ?? "open"}</td>
                   <td>{r.errors.length ? <span className="text-dt-danger">{r.errors.join(", ")}</span>
                     : r.warnings.length ? <span className="text-dt-warning">{r.warnings.map((w) => WARNING_LABEL[w.code] ?? w.code).join("; ")}</span>
                     : <span className="text-dt-success">OK</span>}</td>
@@ -483,7 +483,7 @@ function ImportTab() {
               </Button>
             </div>
           ) : <p className="mt-3 text-sm text-dt-danger">Fix every error and run the dry run again. Nothing can be applied while errors remain.</p>}
-          {apply.error && <InlineAlert tone="danger">{errorDetail(apply.error).message ?? errorDetail(apply.error).error} — nothing was saved.</InlineAlert>}
+          {apply.error && <InlineAlert tone="danger">{errorDetail(apply.error).message ?? errorDetail(apply.error).error}. Nothing was saved.</InlineAlert>}
           {applied?.applied && <InlineAlert tone="info">Applied batch {applied.batch_id}: {applied.mappings?.length ?? 0} mapping(s) created and audited.</InlineAlert>}
         </Panel>
       )}

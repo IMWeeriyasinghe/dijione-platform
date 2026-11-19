@@ -8,7 +8,7 @@ import type { DeclarationSource, ExceptionType, JustificationReason, Outcome, Re
 export const STATUS_LABEL: Record<ReviewStatus, string> = {
   OPEN: "Under review",
   SUBMITTED: "Justification submitted",
-  RESOLVED: "Resolved — duration not verified",
+  RESOLVED: "Resolved (duration not verified)",
   REOPENED: "Reopened",
 };
 export const STATUS_TONE: Record<ReviewStatus, "neutral" | "warning" | "success"> = {

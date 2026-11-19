@@ -117,7 +117,7 @@ function EmployeesView() {
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable — verified attendance is shown without names.</p>}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable. Verified attendance is shown without names.</p>}
             <DataView caption={`Team Members, ${periodLabel}`} rows={query.data.items} rowKey={(r) => r.bamboohr_id ?? r.emp_code}
               rowLabel={(r) => r.employee_name ?? r.emp_code} onRowClick={(r) => set({ open: r.bamboohr_id ?? "", page: s.page })}
               sort={s.sort} onSort={(v) => set({ sort: v })}

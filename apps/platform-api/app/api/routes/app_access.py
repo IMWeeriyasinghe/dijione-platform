@@ -7,7 +7,7 @@ against the database on every request. When ``DELEGATED_ACCESS_ENABLED`` is off 
 answers 404; access already granted or suspended keeps applying.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -67,6 +67,26 @@ def search_people(
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     return _handle(lambda: DelegatedAccessService(db).search_people(user, module_key, q))
+
+
+def _photo(photo) -> Response:
+    if photo is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No photo available")
+    return Response(photo.content, media_type=photo.content_type,
+                    headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/people/{object_id}/photo")
+def directory_photo(module_key: str, object_id: str, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)) -> Response:
+    """Entra profile photo of a directory search result (application access administrators only)."""
+    return _handle(lambda: _photo(DelegatedAccessService(db).directory_photo(user, module_key, object_id)))
+
+
+@router.get("/users/{user_id}/photo")
+def user_photo(module_key: str, user_id: int, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)) -> Response:
+    return _handle(lambda: _photo(DelegatedAccessService(db).user_photo(user, module_key, user_id)))
 
 
 @router.get("/users/{user_id}", response_model=AppUserOut)

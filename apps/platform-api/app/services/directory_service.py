@@ -227,6 +227,14 @@ class DirectoryService:
             )
         existing = self._existing(person)
         if existing is not None:
+            # The Entra Object ID is the authoritative identity key. A profile found only by a
+            # matching address is NOT the same person unless it is already linked to this object
+            # id: a reused or shared address must never grant access to someone else.
+            if existing.entra_object_id != person.object_id:
+                raise DirectoryError(
+                    "A DijiOne profile with this email address is not linked to this directory account, so "
+                    "access cannot be granted here. Ask Central Admin to verify the profile."
+                )
             return existing
         user = User(
             email=person.email.lower(), full_name=person.display_name, title=person.job_title,

@@ -18,7 +18,7 @@ export function UnverifiedRef({ e }: { e: ActivityEvent }) {
           ZKBioTime ID <span className="font-mono">{e.emp_code}</span>
         </span>
         <span className="block text-xs text-dt-text-secondary">
-          {e.mapping_state === "CONFLICT" ? "Mapping conflict — not attributed" : "Not mapped to a team member"}
+          {e.mapping_state === "CONFLICT" ? "Mapping conflict, not attributed" : "Not mapped to a team member"}
         </span>
       </span>
     </span>

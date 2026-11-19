@@ -254,15 +254,21 @@ def _check(name: str, observed: dict) -> None:
             sheet = SHEET_RENAMES.get(old_sheet, old_sheet)
             obs = observed["sheets"][sheet]
             if sheet in NEW_EXPORT_HEADERS:  # tabular report sheets
-                renamed = [LABEL_RENAMES.get(x, x) for x in exp["preamble_labels"]]
+                renamed = [_renamed(x) for x in exp["preamble_labels"]]
                 assert [x for x in obs["preamble_labels"] if x not in V090_ADDED_PREAMBLE] == renamed, (name, sheet)
                 assert obs["header"] == NEW_EXPORT_HEADERS[sheet], (name, sheet)
             else:  # measure sheets (Summary, Hourly Activity, 30-Day Trend): row labels only
-                want = {LABEL_RENAMES.get(x, x) for x in _labels(exp)} - REMOVED_MEASURES
+                want = {_renamed(x) for x in _labels(exp)} - REMOVED_MEASURES
                 got = _labels(obs) - ADDED_MEASURES - V090_ADDED_PREAMBLE - V090_ADDED_MEASURES
                 assert got == want, (name, sheet, sorted(got ^ want))
     else:
         assert observed == expected, name
+
+
+def _renamed(label: str) -> str:
+    """Reviewed renames, then the v0.9 closure writing convention (owner, 2026-11-20): no em / en
+    dashes in report text, so a "Report — Sheet" title became "Report: Sheet"."""
+    return LABEL_RENAMES.get(label, label).replace(" — ", ": ")
 
 
 def _labels(sheet: dict) -> set[str]:

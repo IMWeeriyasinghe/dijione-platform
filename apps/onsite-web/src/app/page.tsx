@@ -24,11 +24,11 @@ import { dayCount, fmtDay, fmtNum, fmtPeriod, fmtShortDay, isSingleDay, type Per
 import { hrefWith, useUrlState } from "@/lib/url-state";
 
 const HELP = {
-  employees: "Distinct verified team members (by BHR ID — several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
+  employees: "Distinct verified team members (by BHR ID; several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
   events: "Every attendance event recorded in the period, whatever its mapping status. Verified events are attributed to a team member; unmapped and conflicting events are shown by ZKBioTime ID only. Verified + needs review = recorded.",
   review: "Distinct verified team members with at least one review flag in the period. A flag is a prompt to look, not a confirmed issue.",
-  single: "Distinct verified team members with a completed day on which only one fingerprint was recorded. A neutral observation for optional review — not a violation.",
-  extreme: "Earliest / latest recorded fingerprint of the site-local day over all recorded fingerprints (every mapping status), at the entry-side reader — not a confirmed presence or exit.",
+  single: "Distinct verified team members with a completed day on which only one fingerprint was recorded. A neutral observation for optional review, not a violation.",
+  extreme: "Earliest / latest recorded fingerprint of the site-local day over all recorded fingerprints (every mapping status), at the entry-side reader. Not a confirmed presence or exit.",
   unmapped: "ZKBioTime IDs with activity in the period but no verified BambooHR mapping, and their punches. Shown in Activity by ID only; not attributed to anyone until an administrator verifies them.",
   feed: "Whether DijiOne's mirror of Diji On-site Attendance is current. Open Site Health for the details.",
 };
@@ -114,7 +114,7 @@ function OverviewView() {
     const note = sequenceNote(h, series);
     return { key: String(h.hour), tick: hh, verified: h.verified_events ?? h.events, unmapped: h.unmapped_events ?? 0,
       conflict: h.conflict_events ?? 0,
-      label: `${hh}:00–${hh}:59${site.time_zone ? ` (${site.time_zone})` : ""}${single ? "" : ", all days"}`,
+      label: `${hh}:00-${hh}:59${site.time_zone ? ` (${site.time_zone})` : ""}${single ? "" : ", all days"}`,
       notes: [`${fmtNum(h.employees)} verified team members`, ...(note ? [note] : [])] };
   });
   const peakMax = Math.max(0, ...hourBars.map((b) => seriesValue(b, series)));
@@ -183,7 +183,7 @@ function OverviewView() {
           </button>
         ) : undefined}>
           No activity has been recorded yet today (site time). This is not an absence record
-          {site.last_activity_date ? <> — the latest recorded activity was on {fmtDay(site.last_activity_date)}.</> : "."}
+          {site.last_activity_date ? <>. The latest recorded activity was on {fmtDay(site.last_activity_date)}.</> : "."}
         </InlineAlert>
       )}
 
@@ -223,13 +223,13 @@ function OverviewView() {
           href={hasPermission(scope, PERM.HEALTH) ? "/admin/health" : undefined} hrefLabel="Open Site Health" />
       </div>
       {!o.directory_available && (
-        <InlineAlert>Team member details are unavailable right now — verified attendance is shown without names.</InlineAlert>
+        <InlineAlert>Team member details are unavailable right now. Verified attendance is shown without names.</InlineAlert>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
         <Segmented size="sm" label="Chart activity" value={series} onChange={(v) => set({ series: v, hour: "" })}
           options={SERIES.map((x) => ({ value: x.value, label: x.label }))} />
-        <InfoTip label="About the activity charts" text="Bars are stacked by identity status for each fingerprint's own site-local day: teal solid = verified, amber dotted = unmapped (needs review), burgundy hatched = mapping conflict. Bar height is the fingerprints shown. Tooltips add the hours of each team member's or ZKBioTime ID's first and last recorded fingerprint of the whole day — recorded order at the entry-side reader, not a confirmed exit." />
+        <InfoTip label="About the activity charts" text="Bars are stacked by identity status for each fingerprint's own site-local day: orange = verified, yellow = unmapped (needs review), red = mapping conflict. Bar height is the fingerprints shown, and each tooltip gives the exact counts. Tooltips also give the hours of each team member's or ZKBioTime ID's first and last recorded fingerprint of the whole day. That is recorded order at the entry-side reader, not a confirmed exit." />
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Panel title="Activity by hour of day" subtitle={`${SERIES.find((x) => x.value === series)!.label} events per site-local hour · ${periodLabel} · ${site.name}`}

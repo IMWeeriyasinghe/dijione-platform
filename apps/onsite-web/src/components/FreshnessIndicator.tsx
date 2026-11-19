@@ -79,7 +79,7 @@ export function FreshnessIndicator({ siteId, queries }: { siteId: string; querie
         {received && <span className="hidden sm:inline">Latest event received {ago(received, now)}</span>}
         {heartbeat && <span className="hidden lg:inline">Agent heartbeat {ago(heartbeat, now)}</span>}
         {delayed && <span className="font-medium text-dt-burnt-orange">Data may be delayed</span>}
-        {refreshFailed && <span className="font-medium text-dt-danger">Refresh failed — showing the last loaded data</span>}
+        {refreshFailed && <span className="font-medium text-dt-danger">Refresh failed. Showing the last loaded data.</span>}
         <button type="button" onClick={() => all.forEach((q) => q.refetch())} disabled={fetching} aria-label="Refresh now"
           className={cx("ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 font-medium text-dt-burnt-orange hover:bg-dt-surface-warm disabled:opacity-60", focusRing)}>
           <RefreshCw className={cx("size-3.5", fetching && "motion-safe:animate-spin")} aria-hidden />

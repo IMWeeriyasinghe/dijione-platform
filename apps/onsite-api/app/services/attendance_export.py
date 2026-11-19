@@ -148,9 +148,9 @@ _ATTENDANCE_COLUMNS = [
 ]
 
 # --- administrative review columns (Decision 5) -----------------------------
-REVIEW_NOTE = "Reviewed declarations — not biometric records. A resolved case is not a verified duration."
+REVIEW_NOTE = "Reviewed declarations, not biometric records. A resolved case is not a verified duration."
 STATUS_LABEL = {"OPEN": "Under review", "SUBMITTED": "Justification submitted",
-                "RESOLVED": "Resolved — duration not verified", "REOPENED": "Reopened"}
+                "RESOLVED": "Resolved (duration not verified)", "REOPENED": "Reopened"}
 TYPE_LABEL = {"SINGLE_RECORDED_FINGERPRINT": "Single Recorded Fingerprint",
               "DEPARTURE_TIME_QUERY": "Departure time query", "DISPUTED_SPAN": "Disputed Recorded Span",
               "DEVICE_ISSUE": "Device issue", "IDENTITY_ISSUE": "Identity issue", "OTHER": "Other"}
@@ -240,15 +240,16 @@ def event_sheet(events: list[dict]) -> Sheet:
 # --- recorded activity (raw events of every mapping state) --------------------
 
 RECORDED_TITLE = {
-    "all": "Recorded Activity — all mapping states",
-    "unverified": "Recorded Activity — unmapped / needs review only",
-    "conflict": "Recorded Activity — mapping conflicts only",
+    "all": "Recorded Activity: all mapping states",
+    "unverified": "Recorded Activity: unmapped and needs review only",
+    "unmapped": "Recorded Activity: unmapped only",
+    "conflict": "Recorded Activity: mapping conflicts only",
 }
 MAPPING_FILTER_LABEL = {
     "all": "All activity", "verified": "Verified", "unverified": "Unmapped / needs review",
-    "conflict": "Mapping conflict",
+    "unmapped": "Unmapped", "conflict": "Mapping conflict",
 }
-STATE_LABEL = {"VERIFIED": "Verified", "UNMAPPED": "Unmapped — needs review", "CONFLICT": "Mapping conflict"}
+STATE_LABEL = {"VERIFIED": "Verified", "UNMAPPED": "Unmapped (needs review)", "CONFLICT": "Mapping conflict"}
 SEQUENCE_LABEL = {"FIRST": "First recorded fingerprint", "LAST": "Last recorded fingerprint",
                   "INTERMEDIATE": "Intermediate", "SINGLE": "Single Recorded Fingerprint"}
 
@@ -295,11 +296,11 @@ def recorded_summary_sheet(counts: dict, start: date, end: date, mapping: str, e
 
 DAILY_TITLE = "Daily Fingerprint Activity Summary"
 EVIDENCE_GROUP = "Recorded evidence"
-SCOPE_NOTE = ("Recorded fingerprints from an entry-side reader — not working, paid or on-site hours. The final "
+SCOPE_NOTE = ("Recorded fingerprints from an entry-side reader. Not working, paid or on-site hours. The final "
               "fingerprint of a day is not an exit.")
 DEFINITIONS = [
     ("Definition: Recorded Span", "Time between the first and last recorded fingerprint of an identity-day. A "
-     "measured interval between observations — not a confirmed exit, presence or working hours. Blank for a "
+     "measured interval between observations, not a confirmed exit, presence or working hours. Blank for a "
      "Single Recorded Fingerprint (unavailable, never 0)."),
     ("Definition: Single Recorded Fingerprint", "Only one fingerprint was recorded that day: a neutral observation "
      "for optional review, not a violation."),
@@ -308,11 +309,11 @@ DEFINITIONS = [
     ("Definition: Identity", "Verified = a team member (all of their ZKBioTime IDs that day). Unmapped and Mapping "
      "conflict rows show the raw ZKBioTime ID only and are never attributed to a person."),
 ]
-DAILY_STATE_LABEL = {"VERIFIED": "Verified", "UNMAPPED": "Unmapped — needs review", "CONFLICT": "Mapping conflict"}
+DAILY_STATE_LABEL = {"VERIFIED": "Verified", "UNMAPPED": "Unmapped (needs review)", "CONFLICT": "Mapping conflict"}
 
 
 def _span_text(minutes: int | None) -> str:
-    return "—, Single Recorded Fingerprint" if minutes is None else f"{minutes // 60}h {minutes % 60:02d}m"
+    return "—" if minutes is None else f"{minutes // 60}h {minutes % 60:02d}m"
 
 
 def daily_summary_sheet(rows: list[dict]) -> Sheet:
@@ -364,7 +365,7 @@ def daily_report_summary(summary: dict, rows: list[dict], start: date, end: date
         ["Report scope", SCOPE_NOTE],
         ["Mapping status filter", MAPPING_FILTER_LABEL.get(mapping, mapping)],
         ["Detail level", {"summary": "Summary", "detailed": "Detailed", "both": "Summary and detail"}[detail]],
-        ["— Recorded evidence (source fingerprints) —", ""],
+        ["Recorded evidence (source fingerprints)", ""],
         ["Identity-days in this export", len(rows)],
         ["Recorded fingerprints in this export", sum(r["punch_count"] for r in rows)],
         ["Identity-days, all mapping states (same filters)", summary["identity_days"]],
@@ -377,7 +378,7 @@ def daily_report_summary(summary: dict, rows: list[dict], start: date, end: date
     if exported_events is not None:
         lines.append(["Fingerprints in Punch Detail", exported_events])
     lines += [
-        ["— Administrative review (cases, not fingerprints) —", ""],
+        ["Administrative review (cases, not fingerprints)", ""],
         *[[f"Cases: {STATUS_LABEL[s]}", cases.get(s, 0)] for s in ("OPEN", "SUBMITTED", "RESOLVED", "REOPENED")],
         ["Cases needing reassessment", stale],
         ["Identity-days without a case", sum(1 for r in rows if not r.get("review"))],

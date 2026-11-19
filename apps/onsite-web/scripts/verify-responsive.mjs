@@ -239,7 +239,8 @@ async function main() {
       single: document.body.innerText.includes("Single Recorded Fingerprint"),
       raw: /ZKBioTime ID \d/.test(document.body.innerText),
     }));
-    if (!daily.cards || !daily.single || !daily.raw) failures.push({ label: "daily summary", width: w, fail: [JSON.stringify(daily)] });
+    // The Single Recorded Fingerprint chip is in the Review column (from 1536 px) and in cards / row details.
+    if (!daily.cards || (w < 1024 && !daily.single) || !daily.raw) failures.push({ label: "daily summary", width: w, fail: [JSON.stringify(daily)] });
     await shot(`${w}_activity_daily`);
     const opened = await clickByText(page, "button", "Review…");
     await settle(page);
@@ -279,6 +280,67 @@ async function main() {
   if (!access.nav) failures.push({ label: "access nav", width: 1366, fail: ["Access link missing for On-site Admin"] });
   if (access.order.slice(0, 4).join(",") !== "Identity Management,Sites,Access,Site Health") failures.push({ label: "admin nav order", width: 1366, fail: [access.order.join(",")] });
   await shot("1366_admin_access");
+
+  // ---- v0.9 closure ------------------------------------------------------
+  // Add Person: directory search dialog, results with avatar/initials, confirmation step.
+  for (const w of [1366, 375]) {
+    await page.setViewport({ width: w, height: HEIGHT });
+    await page.goto(o.base + "/admin/access", { waitUntil: "domcontentloaded" });
+    await settle(page);
+    if (!(await clickByText(page, "button", "Add person"))) { failures.push({ label: "add person", width: w, fail: ["button missing"] }); continue; }
+    await settle(page);
+    const input = await page.$('input[id="access-search"]');
+    if (!input) { failures.push({ label: "add person", width: w, fail: ["search input missing"] }); continue; }
+    await input.type("ta", { delay: 30 });
+    await new Promise((r) => setTimeout(r, 900));
+    await settle(page);
+    const res = await page.evaluate(() => ({
+      label: /Search Microsoft Entra ID/.test(document.body.innerText),
+      results: document.querySelectorAll('ul[aria-label="Directory search results"] li').length,
+    }));
+    if (!res.label || !res.results) failures.push({ label: "add person search", width: w, fail: [JSON.stringify(res)] });
+    await check("dialog: add person", w);
+    await shot(`${w}_add_person_results`);
+    const selected = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('ul[aria-label="Directory search results"] button')].find((x) => !x.disabled);
+      if (b) b.click();
+      return Boolean(b);
+    });
+    await settle(page);
+    if (selected) { await check("dialog: confirm access", w); await shot(`${w}_add_person_confirm`); }
+    await page.keyboard.press("Escape");
+  }
+
+  // Charts: smooth brand gradients only, never textures / patterns.
+  await page.setViewport({ width: 1440, height: HEIGHT });
+  await page.goto(o.base + "/?from=2026-11-18&to=2026-11-18", { waitUntil: "domcontentloaded" });
+  await settle(page);
+  const textures = await page.evaluate(() => [...document.querySelectorAll('[class*="onsite-bar-"]')]
+    .map((el) => getComputedStyle(el).backgroundImage).filter((b) => /repeating|radial/.test(b)).length);
+  if (textures) failures.push({ label: "chart textures", width: 1440, fail: [`${textures} textured elements`] });
+  await shot("1440_overview_charts_brand");
+  await page.goto(o.base + "/admin/identity?tab=overview", { waitUntil: "domcontentloaded" });
+  await settle(page);
+  await shot("1440_identity_charts_brand");
+
+  // Activity summary cards filter the Daily summary and keep the other filters.
+  await page.goto(o.base + "/activity?term=Main%20Door", { waitUntil: "domcontentloaded" });
+  await settle(page);
+  for (const [card, mapping] of [["Unmapped", "unmapped"], ["Mapping conflict", "conflict"], ["Verified", "verified"]]) {
+    await page.evaluate((c) => [...document.querySelectorAll('[aria-label="Identity-days by mapping status"] button')]
+      .find((b) => b.getAttribute("aria-label").startsWith(c))?.click(), card);
+    await settle(page);
+    const st = await page.evaluate(() => ({
+      url: location.search,
+      pressed: [...document.querySelectorAll('[aria-label="Identity-days by mapping status"] button[aria-pressed="true"]')].map((b) => b.getAttribute("aria-label").split(":")[0]),
+      badges: [...document.querySelectorAll('table[aria-label], table')].length,
+    }));
+    if (!st.url.includes(`mapping=${mapping}`) || !st.url.includes("term=") || st.pressed[0] !== card) {
+      failures.push({ label: `summary card ${card}`, width: 1440, fail: [JSON.stringify(st)] });
+    }
+    results.push({ label: `summary card ${card}`, width: 1440, ok: true, ...st });
+    await shot(`1440_activity_card_${mapping}`);
+  }
 
   // Activity: all mapping states with the reconciled summary strip.
   await page.setViewport({ width: 1366, height: HEIGHT });

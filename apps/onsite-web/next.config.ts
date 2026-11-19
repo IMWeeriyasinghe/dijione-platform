@@ -23,6 +23,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/api/auth/:path*", destination: `${PLATFORM_API_URL}/api/auth/:path*`, basePath: false },
       { source: "/api/notifications/:path*", destination: `${PLATFORM_API_URL}/api/notifications/:path*`, basePath: false },
+      // Admin → Access (delegated access administration, incl. Add Person directory search and photos).
+      // Behind the DijiOne gateway the shell routes this too; this keeps a standalone onsite-web working.
+      { source: "/api/access/:path*", destination: `${PLATFORM_API_URL}/api/access/:path*`, basePath: false },
       { source: "/api/onsite/:path*", destination: `${ONSITE_API_URL}/api/onsite/:path*`, basePath: false },
     ];
   },

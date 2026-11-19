@@ -71,7 +71,7 @@ export type Overview = {
 /** Mapping state of an event for its OWN site-local day. */
 export type MappingState = "VERIFIED" | "UNMAPPED" | "CONFLICT";
 /** Activity / chart filter: unverified = unmapped + conflict ("needs review"). */
-export type MappingFilter = "all" | "verified" | "unverified" | "conflict";
+export type MappingFilter = "all" | "verified" | "unverified" | "unmapped" | "conflict";
 export type StateSplit = { verified_events: number; unmapped_events: number; conflict_events: number };
 type BySeqState = { verified: number; unmapped: number; conflict: number };
 
