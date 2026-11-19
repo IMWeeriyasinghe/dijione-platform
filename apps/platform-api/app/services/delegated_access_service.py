@@ -25,6 +25,7 @@ employee access, SYSTEM groups) is never removed. See AuthorizationService for t
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from sqlalchemy import func, or_, select
@@ -32,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.permissions import DELEGATION, DelegationDef
-from app.integrations.directory import DirectoryUnavailable
+from app.integrations.directory import DirectoryUnavailable, is_internal_member
 from app.models.access_group import AccessGroup, AccessGroupStatus, GroupModuleRole, UserGroupMembership
 from app.models.application_access import ApplicationAccessSuspension, ApplicationAdministrator
 from app.models.audit_log import AuditLog
@@ -490,6 +491,11 @@ class DelegatedAccessService:
         administrator of the application may ask; the object id is validated by the provider; Graph
         tokens never reach the browser; results are cached (``photo_for``)."""
         self._require_admin(actor, module_key)
+        # Only the photo of an enabled internal member account (the same population Add Person
+        # searches), re-read server-side: never an arbitrary guest or disabled account.
+        person = DirectoryService(self.db).directory.get(object_id)
+        if person is None or not is_internal_member(person):
+            return None
         return photo_for(object_id)
 
     def user_photo(self, actor: User, module_key: str, user_id: int):
@@ -507,7 +513,11 @@ class DelegatedAccessService:
             select(AuditLog).where(AuditLog.subject_user_id == user_id).order_by(AuditLog.id.desc()).limit(20)
         ).scalars().all()
         for row in rows:
-            if f'"module_key": "{module_key}"' in (row.event_metadata or ""):
+            try:
+                meta = json.loads(row.event_metadata or "{}")
+            except ValueError:
+                continue
+            if isinstance(meta, dict) and meta.get("module_key") == module_key:
                 return RecordedChangeOut(audit_id=row.id, action=row.action, actor_name=self._name(row.actor_id),
                                          at=row.created_at)
         return None

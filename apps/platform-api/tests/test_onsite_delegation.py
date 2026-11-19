@@ -279,6 +279,15 @@ def test_photos_only_through_the_access_routes_of_an_administrator(api_client, d
     assert api_client.get(f"{ACCESS}/people/not-a-guid/photo", headers=ann).status_code == 404
     assert api_client.get(f"{ACCESS}/people/{OID_NEW}/photo", headers=ben).status_code == 403  # not an admin
     assert api_client.get(f"{ACCESS}/people/{OID_NEW}/photo").status_code == 401
+    # Only enabled internal member accounts: never a guest (or an id the directory does not know).
+    from app.integrations.directory import DirectoryUser, Photo
+    guest = "22222222-0000-4000-8000-000000000004"
+    directory.users.append(DirectoryUser(object_id=guest, display_name="Guest", email="guest@other.example",
+                                         user_principal_name="guest_other#EXT#@example.com", job_title=None,
+                                         department=None, account_enabled=True, user_type="Guest"))
+    directory.photos[guest] = Photo(content=b"\xff\xd8guest", content_type="image/jpeg")
+    assert api_client.get(f"{ACCESS}/people/{guest}/photo", headers=ann).status_code == 404
+    assert api_client.get(f"{ACCESS}/people/22222222-0000-4000-8000-00000000000f/photo", headers=ann).status_code == 404
     directory.unavailable = True
     assert api_client.get("/api/access/onsite/people/22222222-0000-4000-8000-000000000009/photo",
                           headers=ann).status_code == 503
