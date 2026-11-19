@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # freezes Identity Management writes (forward-only recovery).
     onsite_legacy_contract: bool = True
     onsite_identity_writes_enabled: bool = True
+    # v0.9 attendance review writes (open/submit/resolve/reopen). false = 503,
+    # reads keep working (forward-only recovery switch, like identity writes).
+    onsite_review_writes_enabled: bool = True
     workforce_cache_ttl_seconds: int = 600
 
     @property

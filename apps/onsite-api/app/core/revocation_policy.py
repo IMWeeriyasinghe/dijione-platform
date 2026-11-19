@@ -15,9 +15,20 @@ See ``auth_client_py.revocation``.
 from auth_client_py.revocation import EXEMPT, READ, SENSITIVE
 
 ROUTE_POLICY: dict[str, str] = {
-    # --- SENSITIVE (37)
+    # --- SENSITIVE (46)
     "GET /api/onsite/activity": SENSITIVE,
+    "GET /api/onsite/activity/daily": SENSITIVE,
+    "GET /api/onsite/activity/daily/export": SENSITIVE,
     "GET /api/onsite/activity/export": SENSITIVE,
+    # v0.9 attendance review cases: reads expose identity-day facts; writes are
+    # administrative decisions (On-site Admin only).
+    "GET /api/onsite/reviews": SENSITIVE,
+    "POST /api/onsite/reviews": SENSITIVE,
+    "GET /api/onsite/reviews/day": SENSITIVE,
+    "GET /api/onsite/reviews/{case_id}": SENSITIVE,
+    "POST /api/onsite/reviews/{case_id}/reopen": SENSITIVE,
+    "POST /api/onsite/reviews/{case_id}/resolve": SENSITIVE,
+    "POST /api/onsite/reviews/{case_id}/submit": SENSITIVE,
     "GET /api/onsite/admin/health": SENSITIVE,
     "GET /api/onsite/admin/identity-match": SENSITIVE,
     "GET /api/onsite/admin/identity/codes/{zk_emp_code}": SENSITIVE,

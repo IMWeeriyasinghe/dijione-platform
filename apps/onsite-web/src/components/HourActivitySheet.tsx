@@ -105,7 +105,7 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
                       <span className="tabular-nums"><span className="font-medium">{localTime(e.local_time)}</span>
                         {!single && <span className="ml-1 text-xs text-dt-text-secondary">{fmtDay(e.local_date)}</span>}</span>
                     ) },
-                    { key: "seq", header: "Punch in day", nowrap: true, help: "First / last recorded punch of the whole site-local day. Not check-in or check-out.",
+                    { key: "seq", header: "Punch in day", nowrap: true, help: "First / last recorded fingerprint of the whole site-local day. Recorded order only — the last fingerprint is not an exit.",
                       cell: (e) => <SequenceMarker seq={e.punch_sequence} /> },
                     { key: "term", header: "Terminal", cell: (e) => e.terminal ?? "—" },
                     { key: "id", header: "Mapping Status", nowrap: true, cell: (e) => <MappingStateBadge state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} /> },

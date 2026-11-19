@@ -177,7 +177,7 @@ describe("Chart drill-down", () => {
     expect(api.getHourly).toHaveBeenLastCalledWith({ site_id: "colombo", date: "2026-11-03" });
     expect(getTestUrl().searchParams.get("hour")).toBeNull(); // no stale hour from another period
     expect(screen.getByText(/Selected day:/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View all events" })).toHaveAttribute("href", "/activity?from=2026-11-03&to=2026-11-03&mapping=all");
+    expect(screen.getByRole("link", { name: "View all events" })).toHaveAttribute("href", "/activity?view=events&from=2026-11-03&to=2026-11-03&mapping=all");
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
     await waitFor(() => expect(getTestUrl().searchParams.get("from")).toBeNull());
   });

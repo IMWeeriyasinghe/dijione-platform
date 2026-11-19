@@ -84,3 +84,35 @@ body {
   background: var(--dt-border);
   border-radius: 999px;
 }
+
+/* Diji On-site data-series palette (v0.9, owner request): onsite-local chart
+   tokens only — semantic badge tones and other apps are unchanged. Blue/teal is
+   used here strictly as a data-series colour. Each state also has a non-colour
+   cue (verified: solid, unmapped: dots, conflict: diagonal hatch). */
+:root {
+  --onsite-verified-a: #2c6e7a;
+  --onsite-verified-b: #3f8f9c;
+  --onsite-unmapped-a: #c98a1e;
+  --onsite-unmapped-b: #e3ad48;
+  --onsite-conflict-a: #6e1f2f;
+  --onsite-conflict-b: #8e3446;
+}
+.onsite-bar-verified {
+  background-image: linear-gradient(180deg, var(--onsite-verified-b), var(--onsite-verified-a));
+}
+.onsite-bar-unmapped {
+  background-image:
+    radial-gradient(rgb(255 255 255 / 0.45) 1px, transparent 1.3px),
+    linear-gradient(180deg, var(--onsite-unmapped-b), var(--onsite-unmapped-a));
+  background-size: 5px 5px, auto;
+}
+.onsite-bar-conflict {
+  background-image:
+    repeating-linear-gradient(135deg, rgb(255 255 255 / 0.32) 0 2px, transparent 2px 6px),
+    linear-gradient(180deg, var(--onsite-conflict-b), var(--onsite-conflict-a));
+}
+/* Tiny non-zero segments stay visible; exact counts are in the tooltip. */
+.onsite-seg-min {
+  min-height: 2px;
+  min-width: 2px;
+}

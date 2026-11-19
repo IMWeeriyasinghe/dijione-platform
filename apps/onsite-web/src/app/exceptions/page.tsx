@@ -1,21 +1,24 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ErrorState } from "@dijione/design-system";
 import { CheckCircle2, ExternalLink, SearchX } from "lucide-react";
 import { DataView, Facts } from "@/components/DataView";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
-import { ExportButton } from "@/components/ExportButton";
+import { AttendanceReviewDialog, type ReviewTarget } from "@/components/AttendanceReviewDialog";
+import { ExportReportButton } from "@/components/ReportExportDialog";
+import { ToneBadge } from "@/components/ToneBadge";
 import { DepartmentSelect, IdentitySelect, PeriodControl, SearchField, SelectField, SiteSelect } from "@/components/FilterBar";
 import { FlagChips } from "@/components/FlagChips";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { buttonClass, cx, EmployeeRefCell, EmptyPanel, FilterPanel, focusRing, Pager, PageTop, SkeletonRows, type Chip } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { getExceptions, VIEWER_REVIEW_FLAGS, type ExceptionItem, type ReviewFlag } from "@/lib/dashboard";
-import { addDays, DATA_QUALITY_FLAGS, FLAG_HELP, FLAG_LABEL, formatSpan, localTime } from "@/lib/flags";
-import { IDENTITY_LABEL } from "@/lib/format";
+import { addDays, DATA_QUALITY_FLAGS, FLAG_HELP, FLAG_LABEL, localTime } from "@/lib/flags";
+import { formatRecordedSpan, IDENTITY_LABEL } from "@/lib/format";
+import { REVIEW_STATUS_FILTERS, STATUS_LABEL, STATUS_TONE } from "@/lib/reviews";
 import { liveQuery } from "@/lib/live-refresh";
 import { fmtDay, fmtNum, fmtPeriod } from "@/lib/period";
 import type { IdentityClass } from "@/lib/types";
@@ -33,11 +36,13 @@ const SORTS = [
 
 function ExceptionsView() {
   const { site } = useSite();
-  const [s, set] = useUrlState({ from: addDays(site.today, -6), to: site.today, flag: "", q: "", emp: "", dept: "", id: "", sort: "-date", page: "1", size: storedPageSize("exceptions"), open: "" });
+  const [s, set] = useUrlState({ from: addDays(site.today, -6), to: site.today, flag: "", q: "", emp: "", dept: "", id: "", review: "", sort: "-date", page: "1", size: storedPageSize("exceptions"), open: "" });
   const page = Math.max(1, Number(s.page) || 1);
   const pageSize = parsePageSize(s.size);
+  const [reviewing, setReviewing] = useState<ReviewTarget | null>(null);
   const filters = { site_id: site.site_id, date_from: s.from, date_to: s.to, flag: s.flag || undefined, q: s.q || undefined,
-    emp_code: s.emp.trim() || undefined, department: s.dept || undefined, identity_class: s.id || undefined };
+    emp_code: s.emp.trim() || undefined, department: s.dept || undefined, identity_class: s.id || undefined,
+    review_status: s.review || undefined };
   const params = { ...filters, sort: s.sort, page, page_size: pageSize };
   const query = useQuery({ queryKey: ["onsite-exceptions", params], queryFn: () => getExceptions(params), ...liveQuery });
   const counts = query.data?.counts;
@@ -50,13 +55,29 @@ function ExceptionsView() {
     s.dept && { key: "dept", label: s.dept, onClear: () => set({ dept: "" }) },
     s.id && { key: "id", label: IDENTITY_LABEL[s.id as IdentityClass] ?? s.id, onClear: () => set({ id: "" }) },
     s.flag && { key: "flag", label: FLAG_LABEL[s.flag as ReviewFlag], onClear: () => set({ flag: "" }) },
+    s.review && { key: "review", label: `Review: ${REVIEW_STATUS_FILTERS.find((o) => o.value === s.review)?.label ?? s.review}`, onClear: () => set({ review: "" }) },
   ].filter(Boolean) as Chip[];
-  const clearAll = () => set({ q: "", emp: "", dept: "", id: "", flag: "" });
+  const clearAll = () => set({ q: "", emp: "", dept: "", id: "", flag: "", review: "" });
+  const canManage = Boolean(query.data?.can_manage_reviews);
+  const openReview = (item: ExceptionItem) => setReviewing({ siteId: site.site_id, date: item.local_date, bamboohrId: item.bamboohr_id,
+    label: item.employee_name ?? `BHR ID ${item.bamboohr_id}`, single: item.flags.includes("SINGLE_PUNCH") });
+  const reviewCell = (item: ExceptionItem) => {
+    const rv = item.review;
+    return (
+      <span className="flex flex-wrap items-center gap-1">
+        {rv ? <ToneBadge tone={STATUS_TONE[rv.status]}>{STATUS_LABEL[rv.status]}</ToneBadge> : <span className="text-xs text-dt-text-secondary">Not reviewed</span>}
+        {rv?.stale && <ToneBadge tone="warning">Needs reassessment</ToneBadge>}
+        <button type="button" className={cx(buttonClass("ghost"), focusRing)} onClick={() => openReview(item)}>
+          {canManage ? "Review…" : "View case"}
+        </button>
+      </span>
+    );
+  };
 
   const actions = (item: ExceptionItem) => (
     <div className="flex flex-wrap gap-2">
       <button type="button" className={buttonClass("secondary")} onClick={() => set({ open: item.bamboohr_id ?? "", page: s.page })}>Open team member profile</button>
-      <Link href={hrefWith("/activity", { emp: item.emp_code, from: item.local_date, to: item.local_date })} className={buttonClass("ghost")}>
+      <Link href={hrefWith("/activity", { view: "events", emp: item.emp_code, from: item.local_date, to: item.local_date })} className={buttonClass("ghost")}>
         View supporting events <ExternalLink className="size-3.5" aria-hidden />
       </Link>
     </div>
@@ -72,8 +93,9 @@ function ExceptionsView() {
   return (
     <div className="space-y-4">
       <PageTop title="Exceptions"
-        description="Team-member days that may need a closer look. Flags are prompts for review only — they are not confirmed policy breaches, and nothing is changed automatically."
-        actions={<ExportButton path="exceptions" params={filters} />}>
+        description="Team-member days that may need a closer look. Flags are prompts for review only — they are not confirmed policy breaches. A review case is an administrative record: fingerprint records are never changed, and a resolved case is not a verified duration."
+        actions={<ExportReportButton departments={site.departments ?? []} terminals={site.terminals} context={{
+          report: "exceptions", siteId: site.site_id, today: site.today, from: s.from, to: s.to, q: s.q, emp: s.emp, dept: s.dept, flag: s.flag }} />}>
         <div className="flex flex-wrap items-center gap-2">
           <SiteSelect />
           <PeriodControl value={{ from: s.from, to: s.to }} today={site.today} onChange={(p) => set({ from: p.from, to: p.to })} />
@@ -95,6 +117,8 @@ function ExceptionsView() {
         <SearchField label="ZKBioTime ID" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact ID" />
         <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} />
         <IdentitySelect value={s.id} onChange={(v) => set({ id: v })} />
+        <SelectField label="Review status" value={s.review} onChange={(v) => set({ review: v })}
+          options={REVIEW_STATUS_FILTERS.map((o) => ({ value: o.value, label: o.label }))} />
         <SelectField label="Sort by" value={s.sort} onChange={(v) => set({ sort: v })} options={SORTS} />
       </FilterPanel>
 
@@ -119,9 +143,10 @@ function ExceptionsView() {
                 { key: "date", header: "Date", sort: "date", cell: (i) => <span className="font-medium">{fmtDay(i.local_date, true)}</span> },
                 { key: "emp", header: "Team Member", sort: "employee", cell: (i) => <EmployeeRefCell r={i} meta={i.department ?? undefined} size="sm" /> },
                 { key: "flags", header: "Review flags", sort: "flags", cell: (i) => <FlagChips flags={i.flags} /> },
-                { key: "times", header: "First · Latest", minWidth: "lg", cell: (i) => <span className="tabular-nums">{localTime(i.first_activity_local)} · {localTime(i.latest_activity_local)}</span> },
-                { key: "count", header: "Events", sort: "punch_count", align: "right", cell: (i) => i.punch_count },
-                { key: "terms", header: "Terminals", minWidth: "xl", cell: (i) => i.terminal_names.join(", ") || "—" },
+                { key: "times", header: "First · Last recorded fingerprint", minWidth: "lg", cell: (i) => <span className="tabular-nums">{localTime(i.first_activity_local)} · {i.punch_count === 1 ? "—" : localTime(i.latest_activity_local)}</span> },
+                { key: "count", header: "Fingerprints", sort: "punch_count", align: "right", cell: (i) => i.punch_count },
+                { key: "review", header: "Review", minWidth: "xl", cell: reviewCell },
+                { key: "terms", header: "Terminals", minWidth: "2xl", cell: (i) => i.terminal_names.join(", ") || "—" },
               ]}
               card={(i) => (
                 <div className="space-y-2">
@@ -130,14 +155,15 @@ function ExceptionsView() {
                     <span className="shrink-0 text-xs font-medium text-dt-text-primary">{fmtDay(i.local_date)}</span>
                   </div>
                   <FlagChips flags={i.flags} />
-                  <Facts cols={3} items={[["First", localTime(i.first_activity_local)], ["Latest", localTime(i.latest_activity_local)], ["Events", String(i.punch_count)]]} />
+                  <Facts cols={3} items={[["First recorded fingerprint", localTime(i.first_activity_local)], ["Last recorded fingerprint", i.punch_count === 1 ? "—" : localTime(i.latest_activity_local)], ["Fingerprints", String(i.punch_count)]]} />
+                  {reviewCell(i)}
                 </div>
               )}
               detail={(i) => (
                 <div className="space-y-3">
                   {reasons(i)}
-                  <Facts cols={4} items={[["First", localTime(i.first_activity_local)], ["Latest", localTime(i.latest_activity_local)],
-                    ["Activity span", formatSpan(i.span_minutes)], ["Terminals", i.terminal_names.join(", ") || "—"]]} />
+                  <Facts cols={4} items={[["First recorded fingerprint", localTime(i.first_activity_local)], ["Last recorded fingerprint", i.punch_count === 1 ? "—" : localTime(i.latest_activity_local)],
+                    ["Recorded Span", formatRecordedSpan(i.recorded_span_minutes ?? (i.punch_count > 1 ? i.span_minutes : null))], ["Terminals", i.terminal_names.join(", ") || "—"]]} />
                   {actions(i)}
                 </div>
               )} />
@@ -145,6 +171,7 @@ function ExceptionsView() {
           </>
         )}
       {s.open && <EmployeeProfile code={s.open} to={s.to} onClose={() => set({ open: "", page: s.page })} />}
+      {reviewing && <AttendanceReviewDialog target={reviewing} onClose={() => setReviewing(null)} />}
     </div>
   );
 }

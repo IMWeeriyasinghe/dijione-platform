@@ -8,14 +8,14 @@ import { Activity, AlertTriangle, ChevronRight, Clock, Fingerprint, Radio, Users
 import { BreakdownList, seriesValue, StatusBarChart, type StatusBar, type StatusSeries } from "@/components/charts";
 import { PeriodControl, SiteSelect } from "@/components/FilterBar";
 import { MappingBadge } from "@/components/FlagChips";
-import { ExportButton } from "@/components/ExportButton";
+import { ExportReportButton } from "@/components/ReportExportDialog";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { buttonClass, EmployeeRefCell, InfoTip, InlineAlert, KpiCard, PageTop, Panel, Segmented, Skeleton } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { SyncNowButton } from "@/components/SyncNowButton";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
 import { HourActivitySheet } from "@/components/HourActivitySheet";
-import { getHourly, getOverview, getRecent, getTrend, type HourBucket, type Overview } from "@/lib/dashboard";
+import { getHourly, getOverview, getRecent, getTrend, type ExtremeBlock, type HourBucket, type Overview } from "@/lib/dashboard";
 import { addDays, localTime } from "@/lib/flags";
 import { FEED_LABEL, MAPPING_STATE } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
@@ -27,7 +27,8 @@ const HELP = {
   employees: "Distinct verified team members (by BHR ID — several ZKBioTime IDs of one person count once) with at least one recorded activity in the period. Not a measure of presence or absence.",
   events: "Every attendance event recorded in the period, whatever its mapping status. Verified events are attributed to a team member; unmapped and conflicting events are shown by ZKBioTime ID only. Verified + needs review = recorded.",
   review: "Distinct verified team members with at least one review flag in the period. A flag is a prompt to look, not a confirmed issue.",
-  single: "Distinct verified team members with a completed day on which only one activity was recorded.",
+  single: "Distinct verified team members with a completed day on which only one fingerprint was recorded. A neutral observation for optional review — not a violation.",
+  extreme: "Earliest / latest recorded fingerprint of the site-local day over all recorded fingerprints (every mapping status), at the entry-side reader — not a confirmed presence or exit.",
   unmapped: "ZKBioTime IDs with activity in the period but no verified BambooHR mapping, and their punches. Shown in Activity by ID only; not attributed to anyone until an administrator verifies them.",
   feed: "Whether DijiOne's mirror of Diji On-site Attendance is current. Open Site Health for the details.",
 };
@@ -45,7 +46,34 @@ function sequenceNote(h: HourBucket, series: StatusSeries): string | null {
     !x ? 0 : series === "verified" ? x.verified : series === "unverified" ? x.unmapped + x.conflict : x.verified + x.unmapped + x.conflict;
   const first = pick(h.first), last = pick(h.last), single = pick(h.single);
   if (!first && !last && !single) return null;
-  return `First recorded punch of the day: ${fmtNum(first)} · last: ${fmtNum(last)} · single: ${fmtNum(single)}`;
+  return `First recorded fingerprint of the day: ${fmtNum(first)} · last: ${fmtNum(last)} · single: ${fmtNum(single)}`;
+}
+
+/** Earliest / Latest Recorded Fingerprint (single site-local day, all mapping states, ties). */
+function ExtremeCard({ kind, block, single, today, hrefFor }: {
+  kind: "earliest" | "latest"; block: ExtremeBlock | null | undefined; single: boolean; today: boolean;
+  hrefFor: (mapping: string, extra?: Record<string, string>) => string;
+}) {
+  const label = kind === "earliest" ? "Earliest Recorded Fingerprint" : "Latest Recorded Fingerprint";
+  if (!single) {
+    return <KpiCard label={label} value={<span className="text-base text-dt-text-secondary">Select a single day</span>} icon={Clock} help={HELP.extreme} />;
+  }
+  if (!block) {
+    return <KpiCard label={label} value={<span className="text-base text-dt-text-secondary">None recorded</span>} icon={Clock} help={HELP.extreme} />;
+  }
+  const e = block.entries[0];
+  const verified = e.mapping_state === "VERIFIED";
+  const who = verified ? e.employee_name ?? `BHR ID ${e.bamboohr_id}` : `ZKBioTime ID ${e.zk_emp_code}`;
+  return (
+    <KpiCard label={label} value={localTime(block.local_time)} icon={Clock} help={HELP.extreme}
+      sub={<span className="block">
+        <span className={MAPPING_STATE[e.mapping_state].text}>{who}</span>
+        {block.tied > 1 && <span> · +{block.tied - 1} tied</span>}
+        {today && <span className="block text-xs">May change as fingerprints are recorded</span>}
+      </span>}
+      href={hrefFor(verified ? "verified" : "all", { view: "events", ...(verified ? { q: e.bamboohr_id ?? "" } : { emp: e.zk_emp_code }) })}
+      hrefLabel="Open in Activity" />
+  );
 }
 
 function OverviewView() {
@@ -118,9 +146,9 @@ function OverviewView() {
         description={<>Recorded activity at <span className="font-medium text-dt-text-primary">{site.name}</span>, in site-local time{site.time_zone ? ` (${site.time_zone})` : ""}.</>}
         actions={
           <>
-            {single
-              ? <ExportButton path="dashboard/overview" params={{ site_id: site.site_id, date: period.from }} label="Export day summary" />
-              : <ExportButton path="activity" params={{ site_id: site.site_id, date_from: period.from, date_to: period.to }} label="Export activity" />}
+            <ExportReportButton terminals={site.terminals} departments={site.departments ?? []} context={{
+              report: single ? "overview" : "daily", siteId: site.site_id, today: site.today, from: period.from, to: period.to,
+              mapping: series }} />
             {hasPermission(scope, PERM.SYNC) && <SyncNowButton onDone={() => queryClient.invalidateQueries()} />}
           </>
         }
@@ -137,7 +165,7 @@ function OverviewView() {
           <span>Selected day: <span className="font-semibold text-dt-text-primary">{fmtDay(period.from, true)}</span>
             <span className="text-dt-text-secondary"> · every widget below shows this day</span></span>
           <span className="flex flex-wrap gap-2">
-            <Link href={hrefWith("/activity", { from: period.from, to: period.from, mapping: series })} className={buttonClass("secondary")}>View all events</Link>
+            <Link href={hrefWith("/activity", { view: "events", from: period.from, to: period.from, mapping: series })} className={buttonClass("secondary")}>View all events</Link>
             <button type="button" className={buttonClass("ghost")} onClick={() => setPeriod({ from: site.today, to: site.today })}>Clear selection</button>
           </span>
         </div>
@@ -159,7 +187,7 @@ function OverviewView() {
         </InlineAlert>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         <KpiCard label="Team members with activity" value={fmtNum(k.employees_with_activity)} icon={Users} tone="brand" help={HELP.employees}
           delta={delta((x) => x.kpis.employees_with_activity)}
           href={single ? hrefWith("/today", { date: period.from }) : hrefWith("/employees", { from: period.from, to: period.to })}
@@ -176,8 +204,10 @@ function OverviewView() {
           href={activityHref("all")} hrefLabel="Open Activity" />
         <KpiCard label="Needing review" value={fmtNum(k.employees_needing_review)} icon={AlertTriangle} tone={k.employees_needing_review ? "attention" : "default"}
           help={HELP.review} delta={delta((x) => x.kpis.employees_needing_review)} href={ex()} hrefLabel="Open Exceptions" />
-        <KpiCard label="Single activity" value={fmtNum(k.single_punch_employees)} icon={UserX} help={HELP.single}
+        <KpiCard label="Single Recorded Fingerprint" value={fmtNum(k.single_punch_employees)} icon={UserX} help={HELP.single}
           delta={delta((x) => x.kpis.single_punch_employees)} href={ex("SINGLE_PUNCH")} />
+        <ExtremeCard kind="earliest" block={o.extremes?.earliest} single={single} today={period.from === site.today} hrefFor={activityHref} />
+        <ExtremeCard kind="latest" block={o.extremes?.latest} single={single} today={period.from === site.today} hrefFor={activityHref} />
         {o.operational ? (
           <KpiCard label="Unmapped IDs" value={fmtNum(o.operational.unmapped_codes)} icon={Fingerprint}
             tone={o.operational.unmapped_codes ? "attention" : "default"} help={HELP.unmapped}
@@ -199,7 +229,7 @@ function OverviewView() {
       <div className="flex flex-wrap items-center gap-2">
         <Segmented size="sm" label="Chart activity" value={series} onChange={(v) => set({ series: v, hour: "" })}
           options={SERIES.map((x) => ({ value: x.value, label: x.label }))} />
-        <InfoTip label="About the activity charts" text="Bars are stacked by identity status for each event's own site-local day: green verified, amber unmapped (needs review), red mapping conflict. Bar height is the events shown. Tooltips add the hours of each team member's or ZKBioTime ID's first and last recorded punch of the whole day — recorded order only, not check-in or check-out." />
+        <InfoTip label="About the activity charts" text="Bars are stacked by identity status for each fingerprint's own site-local day: teal solid = verified, amber dotted = unmapped (needs review), burgundy hatched = mapping conflict. Bar height is the fingerprints shown. Tooltips add the hours of each team member's or ZKBioTime ID's first and last recorded fingerprint of the whole day — recorded order at the entry-side reader, not a confirmed exit." />
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Panel title="Activity by hour of day" subtitle={`${SERIES.find((x) => x.value === series)!.label} events per site-local hour · ${periodLabel} · ${site.name}`}
@@ -241,7 +271,7 @@ function OverviewView() {
           action={<Link href="/activity" className="inline-flex min-h-9 items-center gap-0.5 text-xs font-medium text-dt-burnt-orange">All activity <ChevronRight className="size-3" aria-hidden /></Link>}
           bodyClassName="p-0">
           <div className="flex flex-wrap gap-2 border-b border-dt-border/70 px-4 py-2">
-            <Link className="inline-flex min-h-9 items-center rounded-full border border-dt-border px-3 text-xs hover:bg-dt-surface-warm" href={hrefWith("/activity", { from: site.today, to: site.today })}>Today’s activity</Link>
+            <Link className="inline-flex min-h-9 items-center rounded-full border border-dt-border px-3 text-xs hover:bg-dt-surface-warm" href={hrefWith("/activity", { view: "events", from: site.today, to: site.today })}>Today’s activity</Link>
             {hasPermission(scope, PERM.IDENTITY) && (
               <Link className="inline-flex min-h-9 items-center rounded-full border border-dt-border px-3 text-xs hover:bg-dt-surface-warm" href="/admin/identity?tab=unmapped">Unmapped IDs</Link>
             )}
@@ -287,8 +317,8 @@ function OverviewSkeleton() {
     <div className="space-y-4" role="status" aria-label="Loading attendance overview">
       <Skeleton className="h-8 w-64" />
       <Skeleton className="h-10 w-full max-w-xl" />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
-        {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-28" />)}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+        {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-28" />)}
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><Skeleton className="h-64" /><Skeleton className="h-64" /></div>
       <span className="sr-only">Loading attendance overview…</span>

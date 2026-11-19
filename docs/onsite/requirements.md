@@ -30,8 +30,22 @@ Internal DijiOne staff holding an On-site role:
 
 | Role | Access |
 |---|---|
-| `ONSITE_VIEWER` | Dashboard, today's activity, history, items needing review |
-| `ONSITE_ADMIN` | Everything above, plus site health, Identity Management (`onsite.identity.read` / `onsite.identity.manage`), "Sync now", site enablement |
+| `ONSITE_VIEWER` — displayed as **On-site User** (v0.9) | Dashboard, Today, Activity (daily summary and events), Team Members, Exceptions, reports, and **read-only** attendance review cases |
+| `ONSITE_ADMIN` — **On-site Admin** | Everything above, plus attendance review decisions (`onsite.exceptions.manage`: open / justify / resolve / reopen), site health, Identity Management (`onsite.identity.read` / `onsite.identity.manage`), "Sync now", site enablement, and granting / changing / revoking **On-site User** access (implied delegated access — see below) |
+
+**Delegation (owner decision 2026-11-19).** Every On-site Admin (direct or group grant, eligible
+employee, not suspended) is an implied access administrator of Diji On-site who may grant, change and
+revoke **On-site User** only, from Admin → Access. They cannot grant On-site Admin, change another
+administrator, a platform administrator or themselves, or appoint administrators; Platform / Super
+Admins assign On-site Admin. The authority is computed on every request (demotion takes effect at
+once), is audited on the APPLICATION channel, and requires `DELEGATED_ACCESS_ENABLED` (true in DEV,
+false in UAT/PROD until enabled). An explicit appointment row always takes precedence.
+
+**Terminology (v0.9).** The office has an entry-side fingerprint reader and an anonymous push-to-exit
+button: no employee-specific exit is ever recorded. Screens and reports say *first / last recorded
+fingerprint*, *Earliest / Latest Recorded Fingerprint*, *Single Recorded Fingerprint* and *Recorded
+Span* — never arrival, departure, exit, presence or hours worked for observed data. See
+[attendance-reviews.md](attendance-reviews.md).
 
 Sites are visible only after an `ONSITE_ADMIN` explicitly enables them
 (fail closed). No client-facing or employee self-service access in V1.

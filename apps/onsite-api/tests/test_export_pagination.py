@@ -146,7 +146,7 @@ def test_exceptions_exports_all_pages(big):
     assert total == FINANCE and len(sizes) == 6
     rows, meta = _xlsx_rows(big, f"/api/onsite/exceptions/export?{q}", "Exception Report")
     assert len(rows) == FINANCE and _codes(rows) == sorted(i["emp_code"] for i in items)
-    assert meta["Review / exception type"] == "Single activity"
+    assert meta["Review / exception type"] == "Single Recorded Fingerprint"
 
 
 def test_page_params_cannot_change_the_export(big):

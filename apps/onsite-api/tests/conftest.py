@@ -28,7 +28,7 @@ from app.services import workforce_directory  # noqa: E402
 
 VIEWER = ["onsite.dashboard.read", "onsite.attendance.read", "onsite.exceptions.read"]
 ADMIN = VIEWER + ["onsite.health.read", "onsite.identity.read", "onsite.identity.manage", "onsite.sync.request",
-                  "onsite.sites.manage"]
+                  "onsite.sites.manage", "onsite.exceptions.manage"]
 PERMS = {"ONSITE_VIEWER": VIEWER, "ONSITE_ADMIN": ADMIN}
 
 # Mirrors the shape of people-api's Workforce Directory DTO for the codes in

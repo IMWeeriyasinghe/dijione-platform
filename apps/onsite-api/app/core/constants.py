@@ -9,6 +9,8 @@ class Perm(StrEnum):
     DASHBOARD_READ = "onsite.dashboard.read"
     ATTENDANCE_READ = "onsite.attendance.read"
     EXCEPTIONS_READ = "onsite.exceptions.read"
+    # v0.9: open / justify / resolve / reopen attendance review cases (On-site Admin only).
+    EXCEPTIONS_MANAGE = "onsite.exceptions.manage"
     HEALTH_READ = "onsite.health.read"
     IDENTITY_READ = "onsite.identity.read"
     IDENTITY_MANAGE = "onsite.identity.manage"

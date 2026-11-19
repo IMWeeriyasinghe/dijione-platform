@@ -6,7 +6,7 @@ import { ErrorState } from "@dijione/design-system";
 import { SearchX, Users } from "lucide-react";
 import { DataView, Facts } from "@/components/DataView";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
-import { ExportButton } from "@/components/ExportButton";
+import { ExportReportButton } from "@/components/ReportExportDialog";
 import { DepartmentSelect, IdentitySelect, PeriodControl, SearchField, SelectField, SiteSelect } from "@/components/FilterBar";
 import { MappingBadge } from "@/components/FlagChips";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
@@ -84,7 +84,8 @@ function EmployeesView() {
     <div className="space-y-4">
       <PageTop title="Team Members"
         description="Recorded attendance per verified team member. A ZKBioTime ID counts only inside its administrator-verified mapping period; several IDs of one person are one row."
-        actions={<ExportButton path="employees" params={filters} />}>
+        actions={<ExportReportButton departments={site.departments ?? []} terminals={site.terminals} context={{
+          report: "team", siteId: site.site_id, today: site.today, from: s.from, to: s.to, q: s.q, emp: s.emp, dept: s.dept }} />}>
         <div className="flex flex-wrap items-center gap-2">
           <SiteSelect />
           <PeriodControl value={{ from: s.from, to: s.to }} today={site.today} onChange={(p) => set({ from: p.from, to: p.to })} />

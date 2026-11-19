@@ -20,6 +20,8 @@ export const PERM = {
   SYNC: "onsite.sync.request",
   SITES: "onsite.sites.manage",
   DASHBOARD: "onsite.dashboard.read",
+  /** Open / justify / resolve / reopen attendance review cases (On-site Admin only). */
+  REVIEW_MANAGE: "onsite.exceptions.manage",
   /** Appointed access administrators: Admin → Access. */
   ACCESS_MANAGE: "onsite.access.manage",
 } as const;

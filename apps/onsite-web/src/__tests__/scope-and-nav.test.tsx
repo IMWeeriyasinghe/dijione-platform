@@ -31,7 +31,12 @@ describe("navigation follows permissions, not role names", () => {
   });
   it("admin also sees the admin section", () => {
     expect(labels({ role: "ONSITE_ADMIN", permissions: ADMIN })).toEqual([
-      "Overview", "Today", "Activity", "Team Members", "Exceptions", "Site Health", "Identity Management", "Sites",
+      "Overview", "Today", "Activity", "Team Members", "Exceptions", "Identity Management", "Sites", "Site Health",
+    ]);
+  });
+  it("orders Admin as Identity Management, Sites, Access, Site Health (v0.9)", () => {
+    expect(labels({ role: "ONSITE_ADMIN", permissions: [...ADMIN, PERM.ACCESS_MANAGE] }).slice(-4)).toEqual([
+      "Identity Management", "Sites", "Access", "Site Health",
     ]);
   });
   it("each admin page needs its own permission", () => {

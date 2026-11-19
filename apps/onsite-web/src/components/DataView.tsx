@@ -56,12 +56,15 @@ export function DataView<T>({ rows, rowKey, columns, card, detail, onRowClick, s
       )
     : detail;
 
+  // v0.9: the table flows with the page — horizontal scroll only, no nested
+  // vertical scroller (a fixed-height inner box left a blank band below the
+  // pager and hid rows behind a second scrollbar).
   if (desktop) return (
       <div className="overflow-hidden rounded-xl border border-dt-border bg-dt-surface">
-        <div data-scroll-x className="dt-scrollbar max-h-[70vh] overflow-auto">
+        <div data-scroll-x className="dt-scrollbar overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <caption className="sr-only">{caption}</caption>
-            <thead className="sticky top-0 z-10 bg-dt-surface-warm">
+            <thead className="bg-dt-surface-warm">
               <tr className="border-b border-dt-border">
                 {rowDetail && <th scope="col" className="w-10"><span className="sr-only">Details</span></th>}
                 {shown.map((c) => (

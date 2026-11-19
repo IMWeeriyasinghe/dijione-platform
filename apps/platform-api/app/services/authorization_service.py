@@ -232,13 +232,44 @@ class AuthorizationService:
             bucket(module_key).grants.append(ResolvedGrant(role=role, source_type="BASELINE", mandated=True))
 
         if self.is_eligible_employee(user):
+            appointed: set[str] = set()
             for appointment in self.appointments(user):
+                appointed.add(appointment.module_key)
                 role = self.appointment_role(appointment)
                 if role is None or appointment.module_key in disabled or appointment.module_key in suspended:
                     continue
                 bucket(appointment.module_key).grants.append(ResolvedGrant(role=role, source_type="APPOINTMENT"))
+            # Implied appointments (DelegationDef.implied_by): computed from this request's ordinary
+            # grants, so removing the implying role removes the authority immediately.
+            for module_key, b in out.items():
+                definition = DELEGATION.get(module_key)
+                if (definition is None or module_key in appointed or module_key in disabled
+                        or module_key in suspended):
+                    continue
+                if self.implied_grantable_roles(definition, b.grants):
+                    b.grants.append(ResolvedGrant(role=definition.admin_role, source_type="APPOINTMENT"))
 
         return {k: v for k, v in out.items() if v.grants}
+
+    @staticmethod
+    def implied_grantable_roles(definition, grants: list[ResolvedGrant]) -> list[str]:
+        """Roles an implied appointment may grant, from ordinary DIRECT / GROUP grants only
+        (never a baseline or another appointment). Empty = no implied appointment."""
+        held = {g.role for g in grants if g.source_type in ("DIRECT", "GROUP")}
+        roles: set[str] = set()
+        for implying_role, grantable in definition.implied_by:
+            if implying_role in held:
+                roles |= set(grantable)
+        return [r for r in definition.delegable_roles if r in roles]
+
+    def implied_appointment_roles(self, user: User, module_key: str) -> list[str]:
+        """Grantable roles of this person's implied appointment for one application ([] = none).
+        Requires an eligible employee, an enabled application and no suspension there (a
+        suspended or disabled application contributes no ordinary grants)."""
+        definition = DELEGATION.get(module_key)
+        if definition is None or not definition.implied_by or not self.is_eligible_employee(user):
+            return []
+        return self.implied_grantable_roles(definition, self._contributions(user, module_key).grants)
 
     def _contributions(self, user: User, module_key: str) -> _Contributions:
         return self._all_contributions(user).get(module_key, _Contributions())

@@ -55,16 +55,18 @@ export type StatusTone = "success" | "warning" | "danger";
 export const MAPPING_STATE: Record<"VERIFIED" | "UNMAPPED" | "CONFLICT", {
   label: string; short: string; tone: StatusTone; bar: string; text: string; help: string;
 }> = {
+  // Chart bars use the onsite-local data palette (globals.css: teal/blue · amber ·
+  // burgundy gradients plus a non-colour pattern); badges keep semantic tones.
   VERIFIED: {
-    label: "Verified", short: "Verified", tone: "success", bar: "bg-dt-success", text: "text-dt-success",
+    label: "Verified", short: "Verified", tone: "success", bar: "onsite-bar-verified", text: "text-dt-success",
     help: "A verified ZKBioTime ID mapping covers this day, so the event is attributed to that team member.",
   },
   UNMAPPED: {
-    label: "Unmapped — needs review", short: "Unmapped", tone: "warning", bar: "bg-dt-amber", text: "text-dt-warning",
+    label: "Unmapped — needs review", short: "Unmapped", tone: "warning", bar: "onsite-bar-unmapped", text: "text-dt-warning",
     help: "No verified mapping covers this ZKBioTime ID on this day. The event is stored and shown by ID only — never as a team member.",
   },
   CONFLICT: {
-    label: "Mapping conflict", short: "Conflict", tone: "danger", bar: "bg-dt-danger/80", text: "text-dt-danger",
+    label: "Mapping conflict", short: "Conflict", tone: "danger", bar: "onsite-bar-conflict", text: "text-dt-danger",
     help: "More than one mapping covers this ZKBioTime ID on this day. It is never attributed until an administrator resolves it.",
   },
 };
@@ -77,11 +79,25 @@ export const MAPPING_FILTER_OPTIONS = [
 ] as const;
 
 export const SEQUENCE_LABEL: Record<"FIRST" | "LAST" | "INTERMEDIATE" | "SINGLE", string> = {
-  FIRST: "First recorded",
-  LAST: "Last recorded",
+  FIRST: "First recorded fingerprint",
+  LAST: "Last recorded fingerprint",
   INTERMEDIATE: "Intermediate",
-  SINGLE: "Single activity",
+  SINGLE: "Single Recorded Fingerprint",
 };
+
+/** Entry-side reader + anonymous push-to-exit button: no exit is ever recorded. */
+export const FINGERPRINT_DISCLAIMER =
+  "Recorded at the entry-side fingerprint reader — not a confirmed exit, presence or hours worked.";
+export const RECORDED_SPAN_HELP =
+  "Time between the first and last recorded fingerprint. A measured interval between observations — not a confirmed exit, presence or hours worked. Unavailable for a Single Recorded Fingerprint.";
+
+/** Recorded Span text: "—" when unavailable (a single fingerprint), never 0h. */
+export function formatRecordedSpan(minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined) return "—";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
+}
 
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";

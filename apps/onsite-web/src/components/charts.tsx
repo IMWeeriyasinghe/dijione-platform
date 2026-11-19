@@ -336,7 +336,7 @@ export function StatusBarChart({ data, series = "all", summary, onSelect, select
                       style={{ height: `${Math.max((sum / max) * 100, sum ? 2 : 1)}%` }}>
                       {sum === 0 ? <span className="block h-full w-full bg-dt-border/70" /> : STATUS_ORDER.map((s) => {
                         const v = part(d, s);
-                        return v ? <span key={s} className={cx("block w-full", MAPPING_STATE[s].bar)} style={{ flexGrow: v }} /> : null;
+                        return v ? <span key={s} data-state={s} className={cx("onsite-seg-min block w-full", MAPPING_STATE[s].bar)} style={{ flexGrow: v }} /> : null;
                       })}
                     </span>
                   );

@@ -77,11 +77,27 @@ class FeatureDisabled(NotFoundError):
     """Delegated access administration is switched off in this environment."""
 
 
+@dataclass(frozen=True)
+class ImpliedAppointment:
+    """An unsaved, request-scoped appointment implied by an ordinary role grant
+    (``DelegationDef.implied_by``). Never persisted, never appoints administrators,
+    no client authority; recomputed on every request so demotion takes effect at once."""
+
+    user_id: int
+    module_key: str
+    grantable_roles: list
+    client_authority: list | None = None
+    can_appoint_admins: bool = False
+    appointed_by_user_id: int | None = None
+    created_at: object = None
+    implied: bool = True
+
+
 @dataclass
 class _Ctx:
     module: ApplicationModule
     definition: DelegationDef
-    appointment: ApplicationAdministrator
+    appointment: ApplicationAdministrator | ImpliedAppointment
 
 
 class DelegatedAccessService:
@@ -121,13 +137,25 @@ class DelegatedAccessService:
             )
         ).scalars().first()
 
-    def _active_appointment(self, actor: User, module_key: str) -> ApplicationAdministrator | None:
+    def _active_appointment(
+        self, actor: User, module_key: str
+    ) -> ApplicationAdministrator | ImpliedAppointment | None:
+        """The caller's appointment for this application: a saved appointment row (always
+        preferred), else an implied one (``DelegationDef.implied_by``), else None."""
+        if not self.authz.is_eligible_employee(actor) or self._suspension(actor.id, module_key) is not None:
+            return None
         appointment = self.appointment(actor.id, module_key)
-        if appointment is None or not self.authz.is_eligible_employee(actor):
-            return None
-        if self._suspension(actor.id, module_key) is not None:
-            return None
-        return appointment
+        if appointment is not None:
+            return appointment
+        roles = self.authz.implied_appointment_roles(actor, module_key)
+        return ImpliedAppointment(user_id=actor.id, module_key=module_key, grantable_roles=roles) if roles else None
+
+    def _holds_implying_role(self, definition: DelegationDef, user: User) -> bool:
+        implying = {role for role, _grantable in definition.implied_by}
+        if not implying:
+            return False
+        grants = self.authz.effective_module_roles(user).get(definition.module_key, [])
+        return any(g.role in implying for g in grants)
 
     def _require_admin(self, actor: User, module_key: str) -> _Ctx:
         self.require_feature()
@@ -213,6 +241,9 @@ class DelegatedAccessService:
             return "This account is protected; its access is managed in Central Admin."
         if self.appointment(target.id, ctx.module.key) is not None:
             return "Access administrators of this application are managed by a Super Admin."
+        if self._holds_implying_role(ctx.definition, target):
+            # e.g. an On-site Admin: an administrator role, assigned only by Platform / Super Admins.
+            return "Administrators of this application are managed by a Platform or Super Admin."
         if granting and not target.is_active:
             return "This account is inactive."
         if granting and not self.authz.is_eligible_employee(target):

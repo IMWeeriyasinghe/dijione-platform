@@ -61,6 +61,8 @@ export type Overview = {
   /** Ingestion & identity coverage — only for Site Health / Identity readers. */
   operational?: { active_codes: number; total_punches: number; unmapped_codes: number; unmapped_punches: number };
   review_breakdown: Record<ReviewFlag, number>;
+  /** Earliest / Latest Recorded Fingerprint (single site-local day only; null for a range). */
+  extremes?: Extremes | null;
   last_successful_sync_at: string | null;
   latest_received_utc: string | null;
   agent_heartbeat_utc: string | null;
@@ -120,6 +122,10 @@ export type ActivityEvent = EmployeeRef & {
   punch_sequence?: PunchSequence;
   punch_position?: number;
   punches_in_day?: number;
+  /** Whole identity-day bounds (recorded fingerprints — never entry/exit). */
+  day_first_local?: string | null;
+  day_last_local?: string | null;
+  day_span_minutes?: number | null;
 };
 
 export type DayActivity = {
@@ -136,11 +142,103 @@ export type DayActivity = {
   first_activity_local: string | null;
   latest_activity_local: string | null;
   punch_count: number;
+  /** Legacy (0 for a single fingerprint). Display ``recorded_span_minutes``. */
   span_minutes: number;
+  /** Recorded Span: last − first recorded fingerprint; null = Single Recorded Fingerprint. */
+  recorded_span_minutes?: number | null;
   terminal_names: string[];
   identity_class: IdentityClass | null;
   flags: ReviewFlag[];
+  identity_key?: string;
+  review?: ReviewSummary | null;
+  earlier_code_cases?: ReviewSummary[];
 };
+
+/* ------------------------------------------------- v0.9 attendance reviews */
+
+export const EXCEPTION_TYPES = ["SINGLE_RECORDED_FINGERPRINT", "DEPARTURE_TIME_QUERY", "DISPUTED_SPAN", "DEVICE_ISSUE", "IDENTITY_ISSUE", "OTHER"] as const;
+export type ExceptionType = (typeof EXCEPTION_TYPES)[number];
+export type ReviewStatus = "OPEN" | "SUBMITTED" | "RESOLVED" | "REOPENED";
+export const JUSTIFICATION_REASONS = ["FORGOT_TO_RECORD", "DEVICE_FAULT", "ASSIGNED_OFF_SITE", "APPROVED_LEAVE_OR_DUTY", "OTHER"] as const;
+export type JustificationReason = (typeof JUSTIFICATION_REASONS)[number];
+export const DECLARATION_SOURCES = ["TEAM_MEMBER_STATEMENT", "MANAGER_CONFIRMATION", "SECURITY_OR_VISITOR_LOG", "OTHER"] as const;
+export type DeclarationSource = (typeof DECLARATION_SOURCES)[number];
+export const OUTCOMES = ["JUSTIFIED", "NO_FURTHER_ACTION", "NOT_JUSTIFIED"] as const;
+export type Outcome = (typeof OUTCOMES)[number];
+export type ReassessReason = "FINGERPRINTS_CHANGED" | "IDENTITY_CHANGED" | "ESTIMATE_BASIS_INVALID";
+
+export type ReviewSummary = {
+  id: number; status: ReviewStatus; exception_type: ExceptionType; justification_reason: JustificationReason | null;
+  outcome: Outcome | null; estimated_minutes: number | null; declared_departure_local: string | null;
+  reviewer: string | null; reviewed_at: string; version: number; duration_verified: false;
+  stale: boolean; reassess_reasons: ReassessReason[]; identity_changed: boolean;
+};
+
+export type DayFacts = {
+  punch_count: number; first_utc: string | null; last_utc: string | null; first_local: string | null; last_local: string | null;
+  recorded_span_minutes: number | null; events_hash: string;
+  mapping: { state: string; zk_emp_codes: string[]; mapping_ids: number[] };
+};
+export type DayPunch = { position: number; of: number; local_time: string; zk_emp_code: string; terminal: string | null; sequence: PunchSequence };
+
+export type ReviewCase = {
+  id: number; site_id: string; local_date: string; identity_kind: "PERSON" | "CODE"; identity_key: string;
+  bamboohr_id: string | null; zk_emp_code: string | null;
+  identity_snapshot: { kind: string; mapping_state: string; zk_emp_codes: string[]; mapping_ids: number[] };
+  exception_type: ExceptionType; status: ReviewStatus; version: number; allowed_actions: ("submit" | "resolve" | "reopen")[];
+  justification_reason: JustificationReason | null; explanation: string | null; declared_departure_local: string | null;
+  declaration_source: DeclarationSource | null; evidence_reference: string | null; estimated_minutes: number | null;
+  estimate_basis: string | null; outcome: Outcome | null; decision_note: string | null; duration_verified: false;
+  facts_snapshot: DayFacts; opened_by_name: string | null; opened_at: string | null; submitted_by_name: string | null;
+  submitted_at: string | null; resolved_by_name: string | null; resolved_at: string | null; reopened_by_name: string | null;
+  reopened_at: string | null; reopen_reason: string | null;
+  stale?: boolean; reassess_reasons?: ReassessReason[]; identity_changed?: boolean;
+};
+export type ReviewHistory = { action: string; from_status: ReviewStatus | null; to_status: ReviewStatus; version: number; actor_name: string | null; at: string; note: string | null };
+export type ReviewDetail = {
+  case: ReviewCase | null; history: ReviewHistory[]; current_facts: DayFacts; punches: DayPunch[]; can_manage: boolean; created?: boolean;
+};
+
+export const getReviewDay = (p: { site_id: string; date: string; bamboohr_id?: string; zk_emp_code?: string }) =>
+  request<ReviewDetail>(`${ONSITE_API}/reviews/day${qs(p)}`);
+const post = <T,>(path: string, body: unknown) =>
+  request<T>(`${ONSITE_API}${path}`, { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
+export const openReview = (body: { site_id: string; local_date: string; bamboohr_id?: string; zk_emp_code?: string; exception_type: ExceptionType; note?: string }) =>
+  post<ReviewDetail>("/reviews", body);
+export const submitReview = (id: number, body: {
+  expected_version: number; justification_reason: JustificationReason; explanation: string;
+  declared_departure_local?: string | null; declaration_source?: DeclarationSource | null; evidence_reference?: string | null;
+}) => post<ReviewDetail>(`/reviews/${id}/submit`, body);
+export const resolveReview = (id: number, body: { expected_version: number; outcome: Outcome; decision_note: string }) =>
+  post<ReviewDetail>(`/reviews/${id}/resolve`, body);
+export const reopenReview = (id: number, body: { expected_version: number; reason: string }) =>
+  post<ReviewDetail>(`/reviews/${id}/reopen`, body);
+
+/* ------------------------------------------------- v0.9 daily fingerprint activity */
+
+export type DailyRow = {
+  site_id: string; local_date: string; time_zone: string | null; identity_key: string; identity_kind: "PERSON" | "CODE";
+  mapping_state: MappingState; emp_code: string; zk_emp_codes: string[]; bamboohr_id: string | null;
+  employee_number: string | null; employee_name: string | null; department: string | null; employment_status: string | null;
+  has_photo: boolean; mapping_status: MappingStatus;
+  first_fingerprint_local: string | null; last_fingerprint_local: string | null; punch_count: number;
+  recorded_span_minutes: number | null; single: boolean; terminal_names: string[];
+  review: ReviewSummary | null; earlier_code_cases?: ReviewSummary[];
+};
+export type DailySummary = {
+  identity_days: number; punches: number; single_fingerprint_days: number;
+  verified_identity_days: number; unmapped_identity_days: number; conflict_identity_days: number;
+  verified_punches: number; unmapped_punches: number; conflict_punches: number;
+};
+export type DailyResponse = Paged<DailyRow> & {
+  date_from: string; date_to: string; time_zone: string | null; mapping: MappingFilter; summary: DailySummary;
+  directory_available: boolean; can_investigate_identity?: boolean; can_manage_reviews?: boolean;
+};
+
+export type ExtremeEntry = { zk_emp_code: string; mapping_state: MappingState; local_time: string; bamboohr_id: string | null;
+  employee_name: string | null; employee_number: string | null; terminal: string | null };
+export type ExtremeBlock = { local_time: string; punch_time_utc: string; tied: number; entries: ExtremeEntry[] };
+export type Extremes = { date: string; time_zone: string | null; earliest: ExtremeBlock | null; latest: ExtremeBlock | null };
 
 export type Paged<T> = { total: number; page: number; page_size: number; items: T[] };
 
@@ -192,7 +290,8 @@ export type EmployeeDetail = {
 };
 
 export type ExceptionItem = DayActivity & { reasons: { flag: ReviewFlag; reason: string }[] };
-export type ExceptionsResponse = Paged<ExceptionItem> & { counts: Record<ReviewFlag, number>; directory_available: boolean };
+export type ExceptionsResponse = Paged<ExceptionItem> & { counts: Record<ReviewFlag, number>; directory_available: boolean; can_manage_reviews?: boolean };
+export const getDailyActivity = (p: Params) => request<DailyResponse>(`${ONSITE_API}/activity/daily${qs(p)}`);
 
 type Params = Record<string, string | number | boolean | undefined | null>;
 
@@ -220,7 +319,7 @@ export const getEmployee = (bamboohrId: string, p: Params) =>
   request<EmployeeDetail>(`${ONSITE_API}/employees/by-id/${encodeURIComponent(bamboohrId)}${qs(p)}`);
 export const getExceptions = (p: Params) => request<ExceptionsResponse>(`${ONSITE_API}/exceptions${qs(p)}`);
 
-export type ExportPath = "today" | "activity" | "employees" | "exceptions" | "dashboard/overview";
+export type ExportPath = "today" | "activity" | "activity/daily" | "employees" | "exceptions" | "dashboard/overview";
 
 /** Downloads a server-generated .xlsx with the caller's bearer token (a plain
  *  link would not send it). The server re-applies scope and every filter. */
