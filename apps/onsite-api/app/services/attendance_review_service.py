@@ -172,12 +172,12 @@ def declared_departure(value: str, day: date, tz: str | None) -> tuple[str, date
                    "Declared departure must be on the same site-local date; next-day declarations are not supported")
     zone = ZoneInfo(tz) if tz else UTC
     a, b = local.replace(tzinfo=zone, fold=0), local.replace(tzinfo=zone, fold=1)
-    if a.utcoffset() != b.utcoffset():
-        raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                   "That local time occurs twice on this date (clock change); choose an unambiguous time")
-    if a.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != local:
+    if a.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != local:  # spring-forward gap
         raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY,
                    "That local time does not exist on this date (clock change); choose another time")
+    if a.utcoffset() != b.utcoffset():  # fall-back fold
+        raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                   "That local time occurs twice on this date (clock change); choose an unambiguous time")
     return a.isoformat(), a.astimezone(UTC).replace(tzinfo=None)
 
 
