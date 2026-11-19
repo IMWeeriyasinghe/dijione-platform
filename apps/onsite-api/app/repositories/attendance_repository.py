@@ -237,16 +237,15 @@ class AttendanceRepository:
         if site_id not in allowed_site_ids:
             return [], []
         where = self._range(site_id, day, day)
-        lo, hi = self.db.execute(select(func.min(AttendanceEvent.punch_time_utc),
-                                        func.max(AttendanceEvent.punch_time_utc)).where(*where)).one()
-        if lo is None:
-            return [], []
 
-        def at(instant: datetime) -> list[AttendanceEvent]:
-            return list(self.db.execute(select(AttendanceEvent).where(*where, AttendanceEvent.punch_time_utc == instant)
+        # Compared in SQL against the aggregate itself (no value round-trip through Python, so
+        # the stored timestamp representation can never make the earliest/latest event "vanish").
+        def at(agg) -> list[AttendanceEvent]:
+            bound = select(agg(AttendanceEvent.punch_time_utc)).where(*where).scalar_subquery()
+            return list(self.db.execute(select(AttendanceEvent).where(*where, AttendanceEvent.punch_time_utc == bound)
                                         .order_by(AttendanceEvent.event_id)).scalars())
 
-        return at(lo), at(hi)
+        return at(func.min), at(func.max)
 
     def code_day_bounds(
         self, *, allowed_site_ids: Collection[str], site_id: str, date_from: date, date_to: date,

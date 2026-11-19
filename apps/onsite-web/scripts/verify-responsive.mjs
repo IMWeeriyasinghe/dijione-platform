@@ -239,7 +239,8 @@ async function main() {
       single: document.body.innerText.includes("Single Recorded Fingerprint"),
       raw: /ZKBioTime ID \d/.test(document.body.innerText),
     }));
-    if (!daily.cards || !daily.single || !daily.raw) failures.push({ label: "daily summary", width: w, fail: [JSON.stringify(daily)] });
+    // The Single Recorded Fingerprint chip is in the Review column (from 1536 px) and in cards / row details.
+    if (!daily.cards || (w < 1024 && !daily.single) || !daily.raw) failures.push({ label: "daily summary", width: w, fail: [JSON.stringify(daily)] });
     await shot(`${w}_activity_daily`);
     const opened = await clickByText(page, "button", "Review…");
     await settle(page);

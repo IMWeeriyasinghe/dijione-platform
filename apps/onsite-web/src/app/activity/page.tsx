@@ -239,7 +239,7 @@ function ActivityView() {
                 { key: "id", header: "Mapping Status", nowrap: true, cell: (e) => <MappingStateBadge state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} /> },
                 { key: "seq", header: "Punch in day", minWidth: "xl", help: "First and last recorded fingerprint of the whole site-local day for this team member (or ZKBioTime ID). Recorded order only. The last fingerprint is not an exit.",
                   cell: (e) => <SequenceMarker seq={e.punch_sequence} position={e.punch_position} total={e.punches_in_day} /> },
-                { key: "flags", header: "Review", minWidth: "xl", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
+                { key: "flags", header: "Review", minWidth: "2xl", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
                 { key: "raw", header: "Raw state", minWidth: "2xl", nowrap: true, cell: (e) => <span className="font-mono text-xs">{e.punch_state_raw ?? "—"}</span> },
               ]}
               card={(e) => (
