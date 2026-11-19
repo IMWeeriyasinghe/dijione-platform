@@ -61,6 +61,10 @@ export type AppUser = {
   administrator: AppointmentInfo | null;
   manageable: boolean;
   managed_reason: string | null;
+  /** A profile photo may be requested through this application's access routes. */
+  has_photo?: boolean;
+  /** The audit record of the change (set on responses to a grant / onboard / revoke). */
+  recorded_change?: { audit_id: number; action: string; actor_name: string | null; at: string } | null;
 };
 
 export type AppUsers = { users: AppUser[]; default_access_note: string | null };
@@ -73,6 +77,8 @@ export type AccessPerson = {
   job_title: string | null;
   department: string | null;
   source: "DIJIONE" | "DIRECTORY";
+  user_principal_name?: string | null;
+  has_photo?: boolean;
   has_access: boolean;
   role_name: string | null;
   can_grant: boolean;

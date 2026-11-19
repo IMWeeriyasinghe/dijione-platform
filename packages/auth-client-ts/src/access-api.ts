@@ -35,6 +35,9 @@ export function accessApi(moduleKey: string) {
     revoke: (userId: number, reason: string) =>
       request<AppUser>(`${base}/users/${userId}/revoke`, { method: "POST", ...json({ reason }) }),
     liftSuspension: (userId: number) => request<AppUser>(`${base}/users/${userId}/suspension`, { method: "DELETE" }),
+    /** Photo paths (Graph, proxied by Platform Core for access administrators; 404 = initials). */
+    directoryPhotoPath: (entraObjectId: string) => `${base}/people/${encodeURIComponent(entraObjectId)}/photo`,
+    userPhotoPath: (userId: number) => `${base}/users/${userId}/photo`,
     admins: () => request<ApplicationAdministrator[]>(`${base}/admins`),
     appoint: (userId: number, body: AppointIn) =>
       request<ApplicationAdministrator>(`${base}/admins/${userId}`, { method: "PUT", ...json(body) }),

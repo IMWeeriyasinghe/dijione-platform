@@ -85,10 +85,29 @@ describe("AccessManagementPage", () => {
     api.onboard.mockResolvedValue(person(9, "Nina"));
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /Add person/ }));
-    fireEvent.change(screen.getByLabelText("Search employees"), { target: { value: "nin" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Select" }, { timeout: 2000 }));
-    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    fireEvent.change(screen.getByLabelText("Search Microsoft Entra ID"), { target: { value: "nin" } });
+    expect(await screen.findByText("New to DijiOne", {}, { timeout: 2000 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Select Nina" }));
+    expect(screen.getByText(/profile is created from Microsoft Entra ID/)).toBeInTheDocument(); // confirmation step
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and grant access" }));
     await waitFor(() => expect(api.onboard).toHaveBeenCalledWith("oid-1", { role: "ATWORK_MANAGER" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Access now/); // the resulting state is shown
+  });
+
+  it("shows ineligible directory people with the reason and never lets them be selected", async () => {
+    api.people.mockResolvedValue({
+      directory_available: true,
+      people: [{ user_id: null, entra_object_id: "oid-2", full_name: "Nolan", email: "nolan@example.com",
+        user_principal_name: "nolan.u@example.com", job_title: null, department: null, source: "DIRECTORY",
+        has_access: false, role_name: null, can_grant: false,
+        reason: "Not matched to a BambooHR employee record, so access cannot be granted here." }],
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Add person/ }));
+    fireEvent.change(screen.getByLabelText("Search Microsoft Entra ID"), { target: { value: "nol" } });
+    expect(await screen.findByText(/Not matched to a BambooHR/, {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(screen.getByText(/nolan\.u@example\.com/)).toBeInTheDocument(); // UPN shown when it differs
+    expect(screen.getByRole("button", { name: "Select Nolan (not available)" })).toBeDisabled();
   });
 
   it("previews a removal, including what is suspended and what stays, then removes with a reason", async () => {

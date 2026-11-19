@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, UserPlus, Users } from "lucide-react";
-import { ApiError, accessApi } from "@dijione/auth-client";
+import { ApiError, accessApi, useAuthorizedImage } from "@dijione/auth-client";
 import type {
   AccessClientScopeIn,
   AccessMe,
@@ -88,6 +88,24 @@ export function explain(error: unknown, fallback: string): string {
 
 // --- People ----------------------------------------------------------------------------------
 
+/** Profile photo (Microsoft Entra, proxied by Platform Core for access administrators) or
+ * initials. The browser never calls Microsoft Graph and never sees a Graph token. */
+export function PersonAvatar({ name, photoPath, size = 36 }: { name: string; photoPath?: string | null; size?: number }) {
+  const url = useAuthorizedImage(photoPath ?? null);
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const initials = words.length ? (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase() : "?";
+  return (
+    <span
+      className="relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-dt-cream text-xs font-semibold text-dt-burnt-orange"
+      style={{ width: size, height: size }}
+      aria-hidden
+    >
+      {initials}
+      {url && <img src={url} alt="" className="absolute inset-0 size-full object-cover" />}
+    </span>
+  );
+}
+
 function PeopleTab({ moduleKey, me }: { moduleKey: string; me: AccessMe }) {
   const api = useMemo(() => accessApi(moduleKey), [moduleKey]);
   const users = useQuery({ queryKey: ["access", moduleKey, "users"], queryFn: api.users });
@@ -137,8 +155,13 @@ function PeopleTab({ moduleKey, me }: { moduleKey: string; me: AccessMe }) {
                 {users.data.users.map((u) => (
                   <Tr key={u.user_id}>
                     <Td>
-                      <div className="font-medium text-dt-text-primary">{u.full_name}</div>
-                      <div className="text-xs text-dt-text-secondary">{u.email}</div>
+                      <div className="flex items-center gap-3">
+                        <PersonAvatar name={u.full_name} photoPath={u.has_photo ? api.userPhotoPath(u.user_id) : null} />
+                        <div className="min-w-0">
+                          <div className="font-medium text-dt-text-primary">{u.full_name}</div>
+                          <div className="break-all text-xs text-dt-text-secondary">{u.email}</div>
+                        </div>
+                      </div>
                     </Td>
                     <Td>{u.has_access ? u.role_name : <span className="text-dt-text-secondary">No access</span>}</Td>
                     <Td>
@@ -182,7 +205,8 @@ function PeopleTab({ moduleKey, me }: { moduleKey: string; me: AccessMe }) {
         <GrantDialog
           moduleKey={moduleKey}
           me={me}
-          person={{ name: editing.full_name, userId: editing.user_id }}
+          person={{ name: editing.full_name, userId: editing.user_id, email: editing.email,
+            photoPath: editing.has_photo ? api.userPhotoPath(editing.user_id) : null }}
           current={editing.sources.find((s) => s.type === "DIRECT")}
           onClose={() => setEditing(null)}
           onDone={refresh}
@@ -311,47 +335,70 @@ function AddPersonDialog({
     enabled: query.length >= 2,
   });
   const [chosen, setChosen] = useState<AccessPerson | null>(null);
+  const photoPath = (p: AccessPerson) =>
+    !p.has_photo ? null : p.user_id != null ? api.userPhotoPath(p.user_id) : p.entra_object_id ? api.directoryPhotoPath(p.entra_object_id) : null;
   if (chosen) {
     return (
       <GrantDialog
         moduleKey={moduleKey}
         me={me}
-        person={{ name: chosen.full_name, userId: chosen.user_id, entraObjectId: chosen.entra_object_id }}
+        person={{ name: chosen.full_name, userId: chosen.user_id, entraObjectId: chosen.entra_object_id, email: chosen.email,
+          upn: chosen.user_principal_name, title: chosen.job_title, photoPath: photoPath(chosen),
+          note: chosen.source === "DIRECTORY" ? "New to DijiOne: the profile is created from Microsoft Entra ID when you grant access." : null }}
+        onBack={() => setChosen(null)}
         onClose={onClose}
         onDone={onDone}
       />
     );
   }
+  const results = people.data?.people ?? [];
   return (
     <Modal open onClose={onClose} title="Add person">
-      <FormField label="Search employees" htmlFor="access-search" hint="Name or email, at least 2 characters">
-        <Input id="access-search" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+      <FormField label="Search Microsoft Entra ID" htmlFor="access-search"
+        hint="Name, email address or user principal name, at least 2 characters">
+        <Input id="access-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} autoFocus autoComplete="off"
+          aria-controls="access-results" />
       </FormField>
-      <div className="mt-3 space-y-2" aria-live="polite">
-        {people.isFetching && <p className="text-sm text-dt-text-secondary">Searching…</p>}
+      <div className="mt-3 space-y-2" aria-live="polite" aria-busy={people.isFetching}>
+        {people.isFetching && <p className="text-sm text-dt-text-secondary">Searching the directory…</p>}
         {people.isError && <p role="alert" className="text-sm text-dt-danger">{explain(people.error, "Search failed.")}</p>}
         {people.data && !people.data.directory_available && (
-          <p className="text-xs text-dt-warning">The directory could not be searched; only people already in DijiOne are shown.</p>
+          <p className="text-xs text-dt-warning">Microsoft Entra ID could not be searched just now; only people already in DijiOne are shown.</p>
         )}
-        {people.data?.people.length === 0 && <p className="text-sm text-dt-text-secondary">No eligible employees found.</p>}
-        {people.data?.people.map((p) => (
-          <div key={p.user_id ?? p.entra_object_id} className="flex items-center justify-between gap-3 rounded-xl border border-dt-border p-3">
-            <div className="min-w-0">
-              <div className="truncate font-medium text-dt-text-primary">{p.full_name}</div>
-              <div className="truncate text-xs text-dt-text-secondary">
-                {p.email}
-                {p.job_title && ` · ${p.job_title}`}
-                {p.source === "DIRECTORY" && " · new to DijiOne"}
-                {p.has_access && ` · has ${p.role_name}`}
-              </div>
-              {!p.can_grant && p.reason && <div className="text-xs text-dt-text-secondary">{p.reason}</div>}
-            </div>
-            <Button size="sm" variant="secondary" disabled={!p.can_grant} onClick={() => setChosen(p)}>
-              Select
-            </Button>
-          </div>
-        ))}
+        {people.data && results.length === 0 && !people.isFetching && (
+          <p className="text-sm text-dt-text-secondary">Nobody matches “{query}”.</p>
+        )}
+        {query.length < 2 && <p className="text-sm text-dt-text-secondary">Start typing to search the organisation directory.</p>}
       </div>
+      {results.length > 0 && (
+        <ul id="access-results" className="mt-2 max-h-[55vh] space-y-2 overflow-y-auto pr-1" aria-label="Directory search results">
+          {results.map((p) => {
+            const upn = p.user_principal_name && p.user_principal_name.toLowerCase() !== p.email.toLowerCase() ? p.user_principal_name : null;
+            const status = p.has_access ? `Has ${p.role_name}` : p.can_grant ? (p.source === "DIRECTORY" ? "New to DijiOne" : "No access yet") : "Not eligible";
+            return (
+              <li key={p.user_id ?? p.entra_object_id}
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-dt-border p-3 sm:flex-nowrap">
+                <PersonAvatar name={p.full_name} photoPath={photoPath(p)} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-dt-text-primary">{p.full_name}</div>
+                  <div className="break-all text-xs text-dt-text-secondary">{p.email}{upn && <> · {upn}</>}</div>
+                  {p.job_title && <div className="text-xs text-dt-text-secondary">{p.job_title}{p.department ? ` · ${p.department}` : ""}</div>}
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2 py-0.5 text-xs ${p.has_access ? "border-dt-orange/40 bg-dt-orange/10 text-dt-burnt-orange" : p.can_grant ? "border-dt-border bg-dt-surface-warm text-dt-text-secondary" : "border-dt-border text-dt-text-secondary"}`}>
+                      {status}
+                    </span>
+                    {!p.can_grant && p.reason && <span className="text-xs text-dt-text-secondary">{p.reason}</span>}
+                  </div>
+                </div>
+                <Button size="sm" variant="secondary" disabled={!p.can_grant} onClick={() => setChosen(p)}
+                  aria-label={`Select ${p.full_name}${p.can_grant ? "" : " (not available)"}`}>
+                  Select
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Modal>
   );
 }
@@ -361,13 +408,18 @@ function GrantDialog({
   me,
   person,
   current,
+  onBack,
   onClose,
   onDone,
 }: {
   moduleKey: string;
   me: AccessMe;
-  person: { name: string; userId: number | null; entraObjectId?: string | null };
+  person: {
+    name: string; userId: number | null; entraObjectId?: string | null; email?: string | null; upn?: string | null;
+    title?: string | null; photoPath?: string | null; note?: string | null;
+  };
   current?: AccessSource;
+  onBack?: () => void;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -384,12 +436,43 @@ function GrantDialog({
       const body = { role, ...(me.supports_client_scope ? { client_scope: scope } : {}) };
       return person.userId != null ? api.grant(person.userId, body) : api.onboard(person.entraObjectId!, body);
     },
-    onSuccess: () => {
-      onDone();
-      onClose();
-    },
+    onSuccess: () => onDone(),
   });
   const scopeMissing = me.supports_client_scope && !scope.all_clients && scope.client_ids.length === 0;
+  const upn = person.upn && person.upn.toLowerCase() !== (person.email ?? "").toLowerCase() ? person.upn : null;
+  const identity = (
+    <div className="flex items-center gap-3 rounded-xl border border-dt-border bg-dt-surface-warm p-3">
+      <PersonAvatar name={person.name} photoPath={person.photoPath} size={44} />
+      <div className="min-w-0 text-sm">
+        <div className="font-medium text-dt-text-primary">{person.name}</div>
+        {person.email && <div className="break-all text-xs text-dt-text-secondary">{person.email}{upn && <> · {upn}</>}</div>}
+        {person.title && <div className="text-xs text-dt-text-secondary">{person.title}</div>}
+      </div>
+    </div>
+  );
+  if (save.data) {
+    const r = save.data;
+    return (
+      <Modal open onClose={onClose} title="Access granted">
+        <div className="space-y-4" role="status">
+          {identity}
+          <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+            <div><dt className="text-xs text-dt-text-secondary">Access now</dt><dd className="font-medium">{r.has_access ? r.role_name : "No access"}</dd></div>
+            <div><dt className="text-xs text-dt-text-secondary">From</dt><dd><Sources sources={r.sources} suspended={Boolean(r.suspension)} /></dd></div>
+            {r.recorded_change && (
+              <div className="sm:col-span-2">
+                <dt className="text-xs text-dt-text-secondary">Audit record</dt>
+                <dd>#{r.recorded_change.audit_id} · {r.recorded_change.action} by {r.recorded_change.actor_name ?? "you"} ·{" "}
+                  {new Date(r.recorded_change.at).toLocaleString()}</dd>
+              </div>
+            )}
+          </dl>
+          <p className="text-xs text-dt-text-secondary">The change applies at the person's next sign-in or session refresh.</p>
+          <div className="flex justify-end"><Button onClick={onClose}>Done</Button></div>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal open onClose={onClose} title={`Access for ${person.name}`}>
       <form
@@ -399,6 +482,8 @@ function GrantDialog({
           save.mutate();
         }}
       >
+        {identity}
+        {person.note && <p className="text-xs text-dt-text-secondary">{person.note}</p>}
         <FormField label="Role" htmlFor="access-role">
           <Select id="access-role" value={role} onChange={(e) => setRole(e.target.value)}>
             {me.grantable_roles.map((r) => (
@@ -412,12 +497,17 @@ function GrantDialog({
           <ClientScopePicker authority={me.client_authority} value={scope} onChange={setScope} />
         )}
         {save.isError && <p role="alert" className="text-sm text-dt-danger">{explain(save.error, "Could not save.")}</p>}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          {onBack && (
+            <Button type="button" variant="ghost" onClick={onBack}>
+              Back to search
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" loading={save.isPending} disabled={!role || scopeMissing}>
-            Save access
+            {person.userId == null ? "Confirm and grant access" : "Save access"}
           </Button>
         </div>
       </form>
