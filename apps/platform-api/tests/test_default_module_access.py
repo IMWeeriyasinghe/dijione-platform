@@ -1,4 +1,5 @@
-"""Default employee access: derived for eligible internal employees, never stored."""
+"""Default DijiAtWork access: derived for every active DijiOne user, never stored. Only an
+eligible employee also gets the attendance permissions; anyone else holds atwork.access alone."""
 
 import pytest
 
@@ -17,6 +18,8 @@ from tests.test_atwork_registration import MANAGER_PERMS, USER_PERMS, _register_
 
 TENANT = "tenant-1"
 USERS_URL = "/api/platform/admin/users"
+ACCESS_ONLY = frozenset({"atwork.access"})
+ATTENDANCE = USER_PERMS - ACCESS_ONLY
 
 
 @pytest.fixture(autouse=True)
@@ -58,7 +61,7 @@ def atwork(db, user):
 
 def test_existing_employee_gets_default_access_at_sign_in(db, baseline):
     user = existing(db)
-    assert atwork(db, user) == frozenset()
+    assert atwork(db, user) == ACCESS_ONLY  # active platform user: the app, before any match
     assert atwork(db, sign_in(db)) == USER_PERMS
 
 
@@ -98,22 +101,22 @@ def test_guest_and_foreign_identities_are_denied(db, baseline, over):
     user = User(email=email, full_name="x", is_active=True, entra_object_id="oid-emp", identity_provider="ENTRA")
     db.add(user)
     db.commit()
-    assert atwork(db, resolve_entra_user(db, claims)) == frozenset()
+    assert atwork(db, resolve_entra_user(db, claims)) & ATTENDANCE == frozenset()
 
 
-def test_empty_domain_list_fails_closed(db, baseline, monkeypatch):
+def test_empty_domain_list_fails_closed_for_attendance(db, baseline, monkeypatch):
     monkeypatch.setenv("ENTRA_INTERNAL_EMAIL_DOMAINS", "")
     get_settings.cache_clear()
     user = existing(db)
     user.entra_object_id = "oid-emp"
     db.commit()
-    assert atwork(db, sign_in(db)) == frozenset()
+    assert atwork(db, sign_in(db)) == ACCESS_ONLY
 
 
-def test_losing_eligibility_at_next_sign_in_removes_access(db, baseline):
+def test_losing_eligibility_at_next_sign_in_removes_attendance_actions(db, baseline):
     existing(db)
     sign_in(db)
-    assert atwork(db, sign_in(db, idp="live.com")) == frozenset()
+    assert atwork(db, sign_in(db, idp="live.com")) == ACCESS_ONLY
 
 
 def test_inactive_user_has_no_default_access(db, baseline):
@@ -124,11 +127,20 @@ def test_inactive_user_has_no_default_access(db, baseline):
     assert atwork(db, user) == frozenset()
 
 
-def test_dev_persona_is_not_eligible(db, baseline):
+def test_dev_persona_is_not_an_attendance_identity(db, baseline):
     user = User(email="p@dijital.example", full_name="p", persona_key="p1", internal_employee=True)
     db.add(user)
     db.commit()
-    assert atwork(db, user) == frozenset()
+    assert atwork(db, user) == ACCESS_ONLY
+
+
+def test_existing_administrator_gets_default_access_and_no_admin_permissions(db, baseline):
+    admin = User(email="adm@dijital.example", full_name="adm", is_active=True, platform_role="SUPER_ADMIN")
+    db.add(admin)
+    db.commit()
+    roles = AuthorizationService(db).effective_module_roles(admin)
+    assert [(g.role, g.source_type) for g in roles["atwork"]] == [("ATWORK_USER", "BASELINE")]
+    assert atwork(db, admin) == ACCESS_ONLY
 
 
 def test_disabled_policy_and_disabled_module_grant_nothing(db, baseline):
@@ -205,6 +217,9 @@ def test_home_admin_and_me_agree_with_effective_access(api_client, db, baseline,
     effective = api_client.get(f"{USERS_URL}/{user.id}/effective-access", headers=admin).json()
     module = next(m for m in effective["modules"] if m["module_key"] == "atwork")
     assert set(module["permissions"]) == USER_PERMS and [s["type"] for s in module["sources"]] == ["BASELINE"]
+    outsider_access = api_client.get(f"{USERS_URL}/{outsider.id}/effective-access", headers=admin).json()
+    module = next(m for m in outsider_access["modules"] if m["module_key"] == "atwork")
+    assert set(module["permissions"]) == ACCESS_ONLY
 
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_viewer] = lambda: Viewer(user=user)
@@ -214,7 +229,7 @@ def test_home_admin_and_me_agree_with_effective_access(api_client, db, baseline,
     ).json()["module_roles"]
     app.dependency_overrides[get_current_user] = lambda: outsider
     app.dependency_overrides[get_viewer] = lambda: Viewer(user=outsider)
-    assert "atwork" not in {m["key"] for m in api_client.get("/api/modules").json()}
+    assert "atwork" in {m["key"] for m in api_client.get("/api/modules").json()}  # access only
 
 
 def test_missing_membership_claim_is_not_proof(db, baseline):
@@ -223,7 +238,7 @@ def test_missing_membership_claim_is_not_proof(db, baseline):
     db.commit()
     claims = tok()
     del claims["acct"]
-    assert atwork(db, resolve_entra_user(db, claims)) == frozenset()
+    assert atwork(db, resolve_entra_user(db, claims)) == ACCESS_ONLY
 
 
 def test_a_higher_role_keeps_the_standard_role_alongside_it(api_client, db, baseline, two_tenant_world):

@@ -18,6 +18,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.permissions import BASELINE_UNVERIFIED_PERMISSIONS
 from app.models.access_group import (
     AccessGroup,
     AccessGroupStatus,
@@ -180,16 +181,21 @@ class AuthorizationService:
         return []
 
     def baseline_roles(self, user: User) -> dict[str, str]:
-        """Module roles every eligible employee holds. Always on: no assignment, disabled row or
-        group change removes them while the person stays eligible. Additive with any higher role."""
-        if not self.is_eligible_employee(user):
+        """Default module roles. Always on: no assignment, disabled row or group change removes
+        them while the conditions hold. Additive with any higher role. An eligible employee holds
+        every enabled default; any other active user holds the defaults of applications listed in
+        ``BASELINE_UNVERIFIED_PERMISSIONS`` (DijiAtWork), limited there to those permissions
+        (``effective_permissions``)."""
+        if not user.is_active:
             return {}
         rows = self.db.execute(
             select(ModuleBaselineRole.module_key, ModuleBaselineRole.role)
             .join(ApplicationModule, ApplicationModule.key == ModuleBaselineRole.module_key)
             .where(ModuleBaselineRole.enabled.is_(True), ApplicationModule.enabled.is_(True))
         ).all()
-        return {module_key: role for module_key, role in rows}
+        if self.is_eligible_employee(user):
+            return {module_key: role for module_key, role in rows}
+        return {module_key: role for module_key, role in rows if module_key in BASELINE_UNVERIFIED_PERMISSIONS}
 
     def effective_client_scope(
         self, user: User, module_key: str
@@ -287,8 +293,11 @@ class AuthorizationService:
         """Union of permissions across every distinct role contributing to
         ``module_key`` for this user (direct + group)."""
         grants = self.effective_module_roles(user).get(module_key, [])
-        roles = {g.role for g in grants}
+        limited = None if self.is_eligible_employee(user) else BASELINE_UNVERIFIED_PERMISSIONS.get(module_key)
+        full_roles = {g.role for g in grants if limited is None or g.source_type != "BASELINE"}
         permissions: set[str] = set()
-        for role in roles:
+        for role in full_roles:
             permissions |= self._permissions_for(module_key, role)
+        for role in {g.role for g in grants if g.source_type == "BASELINE"} - full_roles:
+            permissions |= self._permissions_for(module_key, role) & limited
         return frozenset(permissions)
