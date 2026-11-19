@@ -11,11 +11,12 @@ from app.models.module_baseline import ModuleBaselineRole
 from app.models.user import User, UserModuleRole
 from app.services.authorization_service import AuthorizationService
 from app.services.claims_service import build_claims
-from app.services.entra_service import EntraLoginRefusedError, resolve_entra_user
+from app.services.entra_service import resolve_entra_user
 from tests.conftest import auth_headers, internal_headers
 from tests.test_atwork_registration import MANAGER_PERMS, USER_PERMS, _register_module
 
 TENANT = "tenant-1"
+ISS = f"https://login.microsoftonline.com/{TENANT}/v2.0"
 USERS_URL = "/api/platform/admin/users"
 
 
@@ -38,7 +39,7 @@ def baseline(db):
 
 
 def tok(name="emp", **over):
-    return {"oid": f"oid-{name}", "email": f"{name}@dijital.example", "name": name, "tid": TENANT, "acct": 0, **over}
+    return {"oid": f"oid-{name}", "email": f"{name}@dijital.example", "name": name, "tid": TENANT, "iss": ISS, "acct": 0, **over}
 
 
 def existing(db, name="emp", active=True):
@@ -62,13 +63,7 @@ def test_existing_employee_gets_default_access_at_sign_in(db, baseline):
     assert atwork(db, sign_in(db)) == USER_PERMS
 
 
-def test_activated_new_employee_gets_default_access(db, baseline):
-    with pytest.raises(EntraLoginRefusedError):
-        sign_in(db, "new")
-    user = db.query(User).filter_by(email="new@dijital.example").one()
-    assert atwork(db, user) == frozenset()
-    user.is_active = True
-    db.commit()
+def test_new_employee_gets_default_access_at_first_sign_in(db, baseline):
     assert atwork(db, sign_in(db, "new")) == USER_PERMS
 
 

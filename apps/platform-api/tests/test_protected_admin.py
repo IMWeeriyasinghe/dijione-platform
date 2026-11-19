@@ -15,6 +15,7 @@ from app.services.protected_admin import ProtectedAdminError
 from tests.conftest import auth_headers
 
 EMAIL = "protected.admin@example.com"
+ISS = "https://login.microsoftonline.com/tenant-1/v2.0"
 URL = "/api/platform/admin/users"
 
 
@@ -155,7 +156,7 @@ def test_sign_in_restores_the_required_state_and_records_the_identity(db, protec
     monkeypatch.setenv("ENTRA_INTERNAL_EMAIL_DOMAINS", "example.com")
     get_settings.cache_clear()
     try:
-        user = resolve_entra_user(db, {"oid": "oid-p", "email": EMAIL, "name": "P", "tid": "tenant-1", "acct": 0})
+        user = resolve_entra_user(db, {"oid": "oid-p", "email": EMAIL, "name": "P", "tid": "tenant-1", "iss": ISS, "acct": 0})
     finally:
         get_settings.cache_clear()
     assert user.platform_role == "SUPER_ADMIN" and user.is_active is True

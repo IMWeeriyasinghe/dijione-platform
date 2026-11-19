@@ -175,7 +175,7 @@ def exchange_code(payload: EntraTokenExchangeIn, db: Session = Depends(get_db)) 
     except (InvalidTokenError, httpx.HTTPError) as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Invalid Entra id_token: {exc}") from exc
 
-    # --- resolve / provision the DijiOne user (first-login policy C) ---
+    # --- resolve / provision the DijiOne user (automatic onboarding of proven internal Members) ---
     try:
         user = resolve_entra_user(db, claims)
     except EntraLoginRefusedError as exc:

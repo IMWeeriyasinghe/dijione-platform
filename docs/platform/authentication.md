@@ -122,11 +122,41 @@ Flow (`apps/platform-api/app/api/routes/auth_entra.py`,
    already uses) and navigates to `/`. `GET /api/auth/logout` returns the
    Entra front-channel logout URL.
 
-**First-login policy (option C).** No existing `User` for the Entra `oid` →
-match on email → else **auto-create `is_active=False`**; login is then
-refused (403 "ask an admin to activate") until a platform admin activates the
-account and assigns access in the Admin Center. Pre-provision the demo users'
-email so they are active immediately.
+**First-login policy (automatic onboarding, 2026-11).** No existing `User` for the
+Entra `oid` → match on email (only for a proven internal Member, and only an account
+never linked to another Entra identity) → else create one:
+
+- **Proven internal Member** (`is_internal_employee`: `tid` is our tenant; `idp` is our
+  tenant, or, when Microsoft omits `idp`, the validated `iss` is; the optional `acct`
+  claim is present and `0`; no `#ext#`; an internal-domain address — never the domain
+  alone) → created **active as a Platform User**, nothing else granted, and the session
+  is issued. Audited as `user.created` (`source=ENTRA_SIGN_IN`, event
+  `entra-signin-created:<oid>`) and `user.activated` (`AUTOMATIC_FIRST_SIGN_IN`).
+  Idempotent: one row per `oid` (unique), one audit each, also under a concurrent first
+  sign-in. The `acct` optional claim is configured on the DEV, UAT and PROD
+  registrations; a token without it is treated as unproven.
+- **Anyone else** (Guest, another tenant or identity provider, missing `acct`) →
+  created inactive and refused (403) until an administrator decides.
+- **An existing inactive account** is activated automatically only if it is a pending
+  self-sign-in row: the provenance audit above exists, it never signed in, and nobody
+  ever activated or deactivated it. Rows created by the earlier policy carry no
+  provenance audit and stay inactive (fail closed); an administrator activates them.
+
+**DijiOne access is not DijiAtWork access.** Sign-in makes the person a Platform User.
+The mandatory DijiAtWork `ATWORK_USER` baseline additionally needs a matching employee
+record (BambooHR `MATCHED`, or transitional `LEGACY`; see
+`AuthorizationService.is_eligible_employee`). A first sign-in waits at most 5 s for an
+HR snapshot that is already loading (one background load, never repeated calls); if it
+is not ready the status stays `UNKNOWN`, the person signs in without DijiAtWork, and the
+next sign-in or employee-record reconciliation makes the entitlement effective without
+any manual assignment. Internal service accounts (`NOT_FOUND`) sign in but never get
+attendance access.
+
+**Disabled accounts.** A disabled Entra account cannot complete a fresh Microsoft
+sign-in, so it never reaches this code. That does not end what was issued earlier: an
+existing DijiOne session continues until it expires or is revoked. To cut access
+immediately, deactivate the user in DijiOne (`is_active=false` raises the access
+version, which revokes existing session tokens on their next use).
 
 **Entra app registration** (one, single-tenant): Web platform, redirect URI
 `= ENTRA_REDIRECT_URI` (`https://<host>/api/auth/callback`), delegated

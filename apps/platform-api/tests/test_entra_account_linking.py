@@ -8,6 +8,7 @@ from app.services.claims_service import build_claims
 from app.services.entra_service import EntraIdentityConflictError, EntraLoginRefusedError, resolve_entra_user
 
 TENANT = "tenant-1"
+ISS = f"https://login.microsoftonline.com/{TENANT}/v2.0"
 EMAIL = "person@dijital.example"
 
 
@@ -21,7 +22,7 @@ def _settings(monkeypatch):
 
 
 def member(oid="oid-1", email=EMAIL, **over):
-    return {"oid": oid, "email": email, "name": "P", "tid": TENANT, "acct": 0, **over}
+    return {"oid": oid, "email": email, "name": "P", "tid": TENANT, "iss": ISS, "acct": 0, **over}
 
 
 def account(db, oid=None, email=EMAIL):
@@ -95,11 +96,9 @@ def test_conflict_is_refused_as_a_login_failure_with_a_generic_message(db):
     assert EMAIL not in str(raised.value)
 
 
-def test_new_member_is_created_inactive_and_refused_until_activated(db):
-    with pytest.raises(EntraLoginRefusedError):
-        resolve_entra_user(db, member(oid="oid-new", email="new@dijital.example"))
-    user = db.query(User).filter_by(entra_object_id="oid-new").one()
-    assert not user.is_active and user.internal_employee
+def test_new_member_is_created_active_as_a_platform_user(db):
+    user = resolve_entra_user(db, member(oid="oid-new", email="new@dijital.example"))
+    assert user.is_active and user.internal_employee and user.platform_role == "PLATFORM_USER"
 
 
 def test_new_guest_is_created_inactive_and_never_internal(db):

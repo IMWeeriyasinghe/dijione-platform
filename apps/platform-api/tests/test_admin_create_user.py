@@ -10,6 +10,7 @@ from app.services.entra_service import EntraIdentityConflictError, resolve_entra
 from tests.conftest import auth_headers
 
 TENANT = "tenant-1"
+ISS = f"https://login.microsoftonline.com/{TENANT}/v2.0"
 URL = "/api/platform/admin/users"
 NEW = {"email": "New.Hire@Dijital.Example", "full_name": " New Hire "}
 
@@ -52,7 +53,7 @@ def test_added_user_can_be_granted_access_then_signs_in(api_client, db, admin):
         headers=admin,
     ).status_code == 200
 
-    claims = {"oid": "oid-new", "email": "new.hire@dijital.example", "name": "New Hire", "tid": TENANT, "acct": 0}
+    claims = {"oid": "oid-new", "email": "new.hire@dijital.example", "name": "New Hire", "tid": TENANT, "iss": ISS, "acct": 0}
     signed_in = resolve_entra_user(db, claims)
     assert signed_in.id == user_id
     assert signed_in.entra_object_id == "oid-new"
@@ -61,7 +62,7 @@ def test_added_user_can_be_granted_access_then_signs_in(api_client, db, admin):
 
 def test_guest_identity_cannot_claim_an_added_user(api_client, db, admin):
     api_client.post(URL, json=NEW, headers=admin)
-    guest = {"oid": "oid-guest", "email": "new.hire@dijital.example", "name": "G", "tid": TENANT, "acct": 1}
+    guest = {"oid": "oid-guest", "email": "new.hire@dijital.example", "name": "G", "tid": TENANT, "iss": ISS, "acct": 1}
     with pytest.raises(EntraIdentityConflictError):
         resolve_entra_user(db, guest)
 
