@@ -1,0 +1,3 @@
+# Generated PDF copies; rebuild with: node docs/end-user/tools/build-pdf.mjs
+pdf/
+*.print.html

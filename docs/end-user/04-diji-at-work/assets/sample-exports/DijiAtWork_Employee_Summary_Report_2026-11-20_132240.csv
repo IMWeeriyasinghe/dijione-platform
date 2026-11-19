@@ -1,0 +1,5 @@
+﻿Employee,User ID,Sessions,Gross hours,Break hours,Net hours,Unverified hours (not included),Report,Reporting period from,Reporting period to,Export generated at,Time zone
+Ayesha Silva,3,5,40.29,3.58,36.71,0.0,Employee Summary Report,2026-11-16,2026-11-20,2026-11-20T13:22:40+05:30,Asia/Colombo
+Kasun Jayasinghe,2,4,26.58,2.25,24.33,28.54,Employee Summary Report,2026-11-16,2026-11-20,2026-11-20T13:22:40+05:30,Asia/Colombo
+Nimali Fernando,1,7,40.06,2.42,37.65,0.0,Employee Summary Report,2026-11-16,2026-11-20,2026-11-20T13:22:40+05:30,Asia/Colombo
+Ravi Senanayake,4,4,31.79,2.63,29.17,0.0,Employee Summary Report,2026-11-16,2026-11-20,2026-11-20T13:22:40+05:30,Asia/Colombo
