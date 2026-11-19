@@ -107,7 +107,8 @@ class Identity:
 #   CONFLICT  — more than one mapping covers that day (never attributed)
 # "Needs review" (filter value ``unverified``) = UNMAPPED + CONFLICT.
 VERIFIED, UNMAPPED, CONFLICT = "VERIFIED", "UNMAPPED", "CONFLICT"
-MAPPING_FILTERS = ("all", "verified", "unverified", "conflict")
+# "unmapped" (v0.9 closure) = no verified mapping and not a conflict: unverified minus conflict.
+MAPPING_FILTERS = ("all", "verified", "unverified", "unmapped", "conflict")
 STATES = (VERIFIED, UNMAPPED, CONFLICT)
 
 
@@ -525,6 +526,10 @@ def _mapping_plan(db: Session, allowed, site_id: str, start: date, end: date, di
         if restrict is not None:
             return None
         select_kw = {"code_windows": conflicts}
+    elif mapping == "unmapped":  # NOT verified and NOT conflict
+        if restrict is not None:
+            return None
+        select_kw = {"exclude_code_windows": [*verified, *conflicts]}
     else:  # unverified = unmapped + conflict = NOT verified
         if restrict is not None:
             return None
@@ -834,7 +839,7 @@ def employee_detail(db: Session, allowed, site_id: str, tz: str | None, bamboohr
 _FLAG_REASON = {
     ReviewFlag.SINGLE_PUNCH.value: (
         "Single Recorded Fingerprint: only one fingerprint was recorded on this completed day. "
-        "An observation for optional review — not a violation."
+        "An observation for optional review, not a violation."
     ),
     ReviewFlag.HIGH_PUNCH_COUNT.value: "An unusually high number of activities was recorded on this day.",
     ReviewFlag.POSSIBLE_DUPLICATE_TAP.value: "Two activities were recorded within 60 seconds of each other.",
@@ -890,7 +895,8 @@ REVIEW_STATUS_FILTERS = ("not_reviewed", "OPEN", "SUBMITTED", "RESOLVED", "REOPE
 def _state_hit(row: dict, mapping: str) -> bool:
     s = row["mapping_state"]
     return (mapping == "all" or (mapping == "verified" and s == VERIFIED)
-            or (mapping == "unverified" and s != VERIFIED) or (mapping == "conflict" and s == CONFLICT))
+            or (mapping == "unverified" and s != VERIFIED) or (mapping == "unmapped" and s == UNMAPPED)
+            or (mapping == "conflict" and s == CONFLICT))
 
 
 def _review_status_hit(row: dict, review_status: str | None) -> bool:

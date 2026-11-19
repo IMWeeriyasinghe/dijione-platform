@@ -82,7 +82,7 @@ def _write_sheet(ws, sheet: Sheet, meta: ReportMeta, table_index: int) -> None:
     ws["A1"].font = Font(size=10, bold=True, color=BRAND["muted"])
     ws["A2"] = "Diji On-site"
     ws["A2"].font = Font(size=12, bold=True, color=BRAND["primary"])
-    ws["A3"] = meta.title if table_index == 1 else f"{meta.title} — {sheet.title}"
+    ws["A3"] = meta.title if table_index == 1 else f"{meta.title}: {sheet.title}"
     ws["A3"].font = Font(size=16, bold=True, color=BRAND["text"])
 
     row = 5

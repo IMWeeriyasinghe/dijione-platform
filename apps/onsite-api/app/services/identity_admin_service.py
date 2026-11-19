@@ -569,8 +569,8 @@ def unmapped_report(db: Session, actor: Actor, directory: DirectorySnapshot, *, 
     return rows
 
 
-AGING_BUCKETS = ((7, "0–7 days"), (30, "8–30 days"), (90, "31–90 days"), (None, "Over 90 days"))
-RECENCY_BUCKETS = ((7, "Active in last 7 days"), (30, "Active 8–30 days ago"), (None, "No activity for 30+ days"))
+AGING_BUCKETS = ((7, "0-7 days"), (30, "8-30 days"), (90, "31-90 days"), (None, "Over 90 days"))
+RECENCY_BUCKETS = ((7, "Active in last 7 days"), (30, "Active 8-30 days ago"), (None, "No activity for 30+ days"))
 
 
 def _bucket(age: int, buckets) -> str:
@@ -786,7 +786,7 @@ def readiness(db: Session, actor: Actor, directory: DirectorySnapshot, *, site_i
         "mappings_without_evidence": repo.count_mappings_without_evidence(allowed_site_ids=(site,)),
         "import_batches": [_event_out(e) for e in imports],
         "directory_available": directory.available, "directory_synced_at": directory_synced_at,
-        "decision": "NOT_AUTOMATIC — the production threshold is approved separately by the owner.",
+        "decision": "NOT_AUTOMATIC. The production threshold is approved separately by the owner.",
     }
 
 

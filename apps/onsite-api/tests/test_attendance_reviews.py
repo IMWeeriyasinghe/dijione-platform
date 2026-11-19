@@ -253,7 +253,7 @@ def test_open_is_idempotent(rv, db):
 def test_open_requires_fingerprints_and_correct_key(rv):
     assert _open(rv, bid="1", day="2026-10-20").status_code == 422  # nothing recorded
     resp = _open(rv, code="101")  # 101 is verified that day -> must use the team member
-    assert resp.status_code == 422 and "open the case for the team member" in resp.text
+    assert resp.status_code == 422 and "Open the case for the team member" in resp.text
     assert _post(rv, BASE, {"site_id": "dev-site", "local_date": DAY1, "exception_type": "OTHER",
                             "bamboohr_id": "1", "zk_emp_code": "101"}).status_code == 422
     assert _open(rv, bid="1", site="nope").status_code == 404

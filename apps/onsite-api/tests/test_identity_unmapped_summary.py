@@ -28,7 +28,7 @@ def test_counts_ids_by_review_state_aging_and_recency(api_client, db, directory,
     assert s["as_of"] == "2026-10-20" and s["outstanding_ids"] == 7 and s["unmapped_punches"] == 10
     assert s["review"] == {"AWAITING_REVIEW": 7, "REJECTED_ASSOCIATION": 0, "PARTLY_VERIFIED": 0}
     aging = {b["label"]: (b["ids"], b["unmapped_punches"]) for b in s["aging"]}
-    assert aging == {"0–7 days": (7, 10), "8–30 days": (0, 0), "31–90 days": (0, 0), "Over 90 days": (0, 0)}
+    assert aging == {"0-7 days": (7, 10), "8-30 days": (0, 0), "31-90 days": (0, 0), "Over 90 days": (0, 0)}
     recency = {b["label"]: b["ids"] for b in s["recency"]}
     assert recency["Active in last 7 days"] == 7
 
