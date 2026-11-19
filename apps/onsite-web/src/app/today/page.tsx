@@ -6,15 +6,15 @@ import { ErrorState } from "@dijione/design-system";
 import { CalendarDays, SearchX } from "lucide-react";
 import { DataView, Facts } from "@/components/DataView";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
-import { ExportButton } from "@/components/ExportButton";
+import { ExportReportButton } from "@/components/ReportExportDialog";
 import { DayControl, DepartmentSelect, IdentitySelect, SearchField, SelectField, SiteSelect } from "@/components/FilterBar";
 import { FlagChips } from "@/components/FlagChips";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
 import { buttonClass, EmployeeRefCell, EmptyPanel, FilterPanel, Pager, PageTop, Segmented, SkeletonRows, type Chip } from "@/components/kit";
 import { SiteProvider, useSite } from "@/components/SiteContext";
-import { getToday, VIEWER_REVIEW_FLAGS, type ReviewFlag } from "@/lib/dashboard";
-import { FLAG_LABEL, formatSpan, localTime } from "@/lib/flags";
-import { IDENTITY_LABEL } from "@/lib/format";
+import { getToday, VIEWER_REVIEW_FLAGS, type DayActivity, type ReviewFlag } from "@/lib/dashboard";
+import { FLAG_LABEL, localTime } from "@/lib/flags";
+import { formatRecordedSpan, IDENTITY_LABEL, RECORDED_SPAN_HELP } from "@/lib/format";
 import { liveQuery } from "@/lib/live-refresh";
 import { fmtDay, fmtNum } from "@/lib/period";
 import type { IdentityClass } from "@/lib/types";
@@ -22,11 +22,17 @@ import { parsePageSize, storedPageSize } from "@/lib/page-size";
 import { usePaging } from "@/lib/paging";
 import { useUrlState } from "@/lib/url-state";
 
+/** Recorded Span from the shared server calculation; a single fingerprint is unavailable ("—"), never 0h. */
+function recordedSpan(r: DayActivity): string {
+  const v = r.recorded_span_minutes !== undefined ? r.recorded_span_minutes : r.punch_count > 1 ? r.span_minutes : null;
+  return formatRecordedSpan(v);
+}
+
 const SORTS = [
-  { value: "first_activity", label: "First activity (earliest)" },
-  { value: "-latest_activity", label: "Latest activity (latest)" },
-  { value: "-punch_count", label: "Events (most)" },
-  { value: "-span", label: "Activity span (longest)" },
+  { value: "first_activity", label: "First recorded fingerprint (earliest)" },
+  { value: "-latest_activity", label: "Last recorded fingerprint (latest)" },
+  { value: "-punch_count", label: "Fingerprints (most)" },
+  { value: "-span", label: "Recorded Span (longest)" },
   { value: "employee", label: "Team member (A–Z)" },
   { value: "-flags", label: "Review flags (most)" },
 ];
@@ -55,8 +61,9 @@ function TodayView() {
   return (
     <div className="space-y-4">
       <PageTop title="Today"
-        description={<>First and latest recorded activity and event count per team member, for one site-local day{site.time_zone ? ` (${site.time_zone})` : ""}.</>}
-        actions={<ExportButton path="today" params={filters} />}>
+        description={<>First and last recorded fingerprint, Recorded Span and fingerprint count per verified team member, for one site-local day{site.time_zone ? ` (${site.time_zone})` : ""}. Recorded at the entry-side reader — not a confirmed exit, presence or hours worked.</>}
+        actions={<ExportReportButton departments={site.departments ?? []} terminals={site.terminals} context={{
+          report: "verified", siteId: site.site_id, today: site.today, from: s.date, to: s.date, q: s.q, emp: s.emp, dept: s.dept }} />}>
         <div className="flex flex-wrap items-center gap-2">
           <SiteSelect />
           <DayControl value={s.date} today={site.today} latest={site.last_activity_date} onChange={(d) => set({ date: d })} />
@@ -106,10 +113,10 @@ function TodayView() {
               sort={s.sort} onSort={(v) => set({ sort: v })}
               columns={[
                 { key: "emp", header: "Team Member", sort: "employee", cell: (r) => <EmployeeRefCell r={r} meta={r.department ?? undefined} /> },
-                { key: "first", header: "First", sort: "first_activity", cell: (r) => <span className="tabular-nums">{localTime(r.first_activity_local)}</span> },
-                { key: "latest", header: "Latest", sort: "latest_activity", cell: (r) => <span className="tabular-nums">{localTime(r.latest_activity_local)}</span> },
+                { key: "first", header: "First recorded fingerprint", sort: "first_activity", cell: (r) => <span className="tabular-nums">{localTime(r.first_activity_local)}</span> },
+                { key: "latest", header: "Last recorded fingerprint", sort: "latest_activity", cell: (r) => <span className="tabular-nums">{r.punch_count === 1 ? "—" : localTime(r.latest_activity_local)}</span> },
                 { key: "count", header: "Events", sort: "punch_count", align: "right", cell: (r) => r.punch_count },
-                { key: "span", header: "Activity span", help: "First to latest recorded activity. Not worked hours.", sort: "span", minWidth: "lg", cell: (r) => formatSpan(r.span_minutes) },
+                { key: "span", header: "Recorded Span", help: RECORDED_SPAN_HELP, sort: "span", minWidth: "lg", cell: (r) => recordedSpan(r) },
                 { key: "terms", header: "Terminals", minWidth: "xl", cell: (r) => r.terminal_names.join(", ") || "—" },
                 { key: "flags", header: "Review", sort: "flags", cell: (r) => <FlagChips flags={r.flags} /> },
               ]}
@@ -119,7 +126,7 @@ function TodayView() {
                     <EmployeeRefCell r={r} meta={r.department ?? undefined} />
                     <span className="shrink-0 rounded-full bg-dt-surface-warm px-2 py-0.5 text-xs font-medium tabular-nums text-dt-text-primary">{r.punch_count} events</span>
                   </div>
-                  <Facts cols={3} items={[["First", localTime(r.first_activity_local)], ["Latest", localTime(r.latest_activity_local)], ["Span", formatSpan(r.span_minutes)]]} />
+                  <Facts cols={3} items={[["First recorded fingerprint", localTime(r.first_activity_local)], ["Last recorded fingerprint", r.punch_count === 1 ? "—" : localTime(r.latest_activity_local)], ["Recorded Span", recordedSpan(r)]]} />
                   {r.flags.length > 0 && <FlagChips flags={r.flags} />}
                 </div>
               )} />

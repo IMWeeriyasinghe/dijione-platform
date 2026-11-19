@@ -192,7 +192,7 @@ export function EmployeeProfile({ code, to, onClose }: { code: string; to: strin
                                   {d.punch_count} events · first {localTime(d.first_activity_local)} · latest {localTime(d.latest_activity_local)}
                                 </p>
                               </div>
-                              <Link href={hrefWith("/activity", { emp: code, from: d.local_date, to: d.local_date })}
+                              <Link href={hrefWith("/activity", { view: "events", emp: code, from: d.local_date, to: d.local_date })}
                                 className={cx("inline-flex min-h-9 items-center gap-1 text-sm font-medium text-dt-burnt-orange", focusRing)}>
                                 View events <ExternalLink className="size-3.5" aria-hidden />
                               </Link>
@@ -244,7 +244,7 @@ function Summary({ days, events, flags }: { days: DayActivity[]; events: number;
 function DayDetail({ day, date, code }: { day: DayActivity | null; date: string; code: string }) {
   return (
     <Panel title={fmtDay(date, true)} subtitle={day ? `${day.punch_count} recorded events` : "No activity recorded on this day"}
-      action={day ? <Link href={hrefWith("/activity", { emp: code, from: date, to: date })} className="inline-flex min-h-9 items-center text-xs font-medium text-dt-burnt-orange">Open in Activity</Link> : undefined}>
+      action={day ? <Link href={hrefWith("/activity", { view: "events", emp: code, from: date, to: date })} className="inline-flex min-h-9 items-center text-xs font-medium text-dt-burnt-orange">Open in Activity</Link> : undefined}>
       {day ? (
         <div className="space-y-3">
           <Facts cols={4} items={[["First", localTime(day.first_activity_local)], ["Latest", localTime(day.latest_activity_local)],

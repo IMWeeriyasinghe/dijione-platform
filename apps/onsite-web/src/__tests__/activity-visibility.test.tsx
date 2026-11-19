@@ -47,7 +47,7 @@ beforeEach(() => {
   api.getSitesInfo.mockResolvedValue([SITE]);
   api.getActivity.mockResolvedValue({ total: 3, page: 1, page_size: 10, directory_available: true, mapping: "all", summary: SUMMARY,
     can_investigate_identity: false, items: [VERIFIED, UNMAPPED, CONFLICT] });
-  setTestUrl("/activity");
+  setTestUrl("/activity?view=events"); // v0.9: the Daily summary is the default view
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -74,8 +74,8 @@ describe("Activity across mapping states", () => {
     expect(within(table).getByText("Mapping conflict")).toBeInTheDocument();
     expect(within(table).getByText("Mapping conflict — not attributed")).toBeInTheDocument();
     // Whole-day sequence markers, never check-in / check-out.
-    expect(within(table).getByText("First recorded")).toBeInTheDocument();
-    expect(within(table).getByText("Single activity")).toBeInTheDocument();
+    expect(within(table).getByText("First recorded fingerprint")).toBeInTheDocument();
+    expect(within(table).getByText("Single Recorded Fingerprint")).toBeInTheDocument();
     expect(within(table).queryByText(/^(check[- ]?in|check[- ]?out|in|out)$/i)).not.toBeInTheDocument();
   });
 
@@ -97,11 +97,14 @@ describe("Activity across mapping states", () => {
     const { default: Page } = await import("@/app/activity/page");
     renderPage(<Page />);
     await screen.findByRole("table", { name: "Recorded activity events" });
-    expect(screen.getByRole("button", { name: /Export to Excel \(recorded events\)/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Export report…" }));
+    expect(screen.getByLabelText("Report type")).toHaveValue("recorded");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.click(within(screen.getByRole("group", { name: "Mapping status" })).getByRole("button", { name: "Verified" }));
     await waitFor(() => expect(api.getActivity).toHaveBeenLastCalledWith(expect.objectContaining({ mapping: "verified", page: 1 })));
-    const exportButton = await screen.findByRole("button", { name: /Export to Excel \(verified attendance\)/ });
-    fireEvent.click(exportButton);
+    fireEvent.click(await screen.findByRole("button", { name: "Export report…" }));
+    expect(screen.getByLabelText("Report type")).toHaveValue("verified");
+    fireEvent.click(screen.getByRole("button", { name: /Export to Excel/ }));
     await waitFor(() => expect(api.downloadExport).toHaveBeenCalledWith("activity", expect.objectContaining({ mapping: "verified" })));
   });
 });
@@ -132,7 +135,7 @@ describe("Overview charts include all recorded activity", () => {
     expect(await screen.findByText("Recorded events")).toBeInTheDocument();
     expect(screen.getByText(/15 verified/)).toBeInTheDocument();
     const bar = screen.getByRole("button", { name: /08:00–08:59 \(Asia\/Colombo\): 40 recorded — 15 verified, 24 unmapped, 1 conflict/ });
-    expect(bar.getAttribute("aria-label")).toMatch(/First recorded punch of the day: 13 · last: 0 · single: 4/);
+    expect(bar.getAttribute("aria-label")).toMatch(/First recorded fingerprint of the day: 13 · last: 0 · single: 4/);
     fireEvent.focus(bar);
     expect(screen.getAllByRole("tooltip").some((t) => /40 recorded.*15 verified.*24 unmapped.*1 conflict/.test(t.textContent ?? ""))).toBe(true);
     // The average describes the shown series: (30 + 40) / 2 recorded events per day.

@@ -66,7 +66,7 @@ export function SequenceMarker({ seq, position, total }: { seq?: PunchSequence; 
   const of = position && total ? ` (${position} of ${total})` : "";
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-dt-text-secondary"
-      title={`${SEQUENCE_LABEL[seq]} punch of the whole site-local day${of}. Recorded order only — not check-in or check-out.`}>
+      title={`${SEQUENCE_LABEL[seq]} of the whole site-local day${of}. Recorded order only — the last fingerprint is not an exit.`}>
       <span aria-hidden className="font-mono text-dt-text-primary">{glyph}</span>
       {SEQUENCE_LABEL[seq]}{of && <span className="tabular-nums">{of}</span>}
     </span>

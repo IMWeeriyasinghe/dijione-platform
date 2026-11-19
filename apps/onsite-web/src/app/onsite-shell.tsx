@@ -31,11 +31,12 @@ export function buildSections(scope: OnsiteScope | null): NavSection[] {
     },
   ];
   // Each admin page appears only with the permission onsite-api checks for it.
+  // Order (v0.9): the daily administrative tasks first, Site Health last.
   const admin = [
-    hasPermission(scope, PERM.HEALTH) && { label: "Site Health", href: "/admin/health", icon: HeartPulse },
     hasPermission(scope, PERM.IDENTITY) && { label: "Identity Management", href: "/admin/identity", icon: Fingerprint },
     hasPermission(scope, PERM.SITES) && { label: "Sites", href: "/admin/sites", icon: MapPin },
     hasPermission(scope, PERM.ACCESS_MANAGE) && access,
+    hasPermission(scope, PERM.HEALTH) && { label: "Site Health", href: "/admin/health", icon: HeartPulse },
   ].filter((i) => i !== false);
   if (admin.length) sections.push({ label: "Admin", items: admin });
   return sections;

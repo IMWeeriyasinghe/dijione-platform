@@ -8,7 +8,8 @@ import { Activity, SearchX } from "lucide-react";
 import { ActivityWho } from "@/components/ActivityRef";
 import { DataView, Facts } from "@/components/DataView";
 import { EmployeeProfile } from "@/components/EmployeeProfile";
-import { ExportButton } from "@/components/ExportButton";
+import { ExportReportButton } from "@/components/ReportExportDialog";
+import { DailyView } from "./DailyView";
 import { DepartmentSelect, IdentitySelect, PeriodControl, SearchField, SelectField, SiteSelect } from "@/components/FilterBar";
 import { FlagChips, MappingStateBadge, SequenceMarker } from "@/components/FlagChips";
 import { FreshnessIndicator } from "@/components/FreshnessIndicator";
@@ -16,7 +17,8 @@ import { buttonClass, cx, EmptyPanel, FilterPanel, focusRing, InfoTip, Pager, Pa
 import { SiteProvider, useSite } from "@/components/SiteContext";
 import { getActivity, VIEWER_REVIEW_FLAGS, type ActivityEvent, type ActivitySummary, type MappingFilter, type ReviewFlag } from "@/lib/dashboard";
 import { addDays, FLAG_LABEL, localTime } from "@/lib/flags";
-import { IDENTITY_LABEL, MAPPING_FILTER_OPTIONS, MAPPING_STATE, SEQUENCE_LABEL } from "@/lib/format";
+import { formatRecordedSpan, ID_LABELS, IDENTITY_LABEL, MAPPING_FILTER_OPTIONS, MAPPING_STATE, SEQUENCE_LABEL } from "@/lib/format";
+import { REVIEW_STATUS_FILTERS } from "@/lib/reviews";
 import { liveQuery } from "@/lib/live-refresh";
 import { fmtDay, fmtNum, fmtPeriod, fmtShortDay } from "@/lib/period";
 import type { IdentityClass } from "@/lib/types";
@@ -58,17 +60,22 @@ function SummaryStrip({ s, value, onChange }: { s: ActivitySummary; value: strin
 
 function ActivityView() {
   const { site } = useSite();
-  const [s, set] = useUrlState({ from: addDays(site.today, -6), to: site.today, q: "", emp: "", dept: "", term: "", id: "", flag: "", hour: "", mapping: "all", sort: "-time", page: "1", size: storedPageSize("activity"), open: "" });
+  const [s, set] = useUrlState({ view: "daily", from: addDays(site.today, -6), to: site.today, q: "", emp: "", dept: "", term: "", id: "", flag: "", hour: "", mapping: "all", review: "", sort: "-time", dsort: "-date", page: "1", size: storedPageSize("activity"), open: "" });
   const page = Math.max(1, Number(s.page) || 1);
   const pageSize = parsePageSize(s.size);
+  // Chart / hour drill-downs always land on individual events.
+  const daily = s.view !== "events" && s.hour === "";
   const mapping = (MAPPINGS.includes(s.mapping) ? s.mapping : "all") as MappingFilter;
   const filters = { site_id: site.site_id, date_from: s.from, date_to: s.to, q: s.q || undefined, emp_code: s.emp.trim() || undefined,
     department: s.dept || undefined, terminal: s.term || undefined, identity_class: s.id || undefined, flag: s.flag || undefined,
     hour: s.hour !== "" ? Number(s.hour) : undefined, mapping };
-  const query = useQuery({ queryKey: ["onsite-activity", filters, s.sort, page, pageSize], queryFn: () => getActivity({ ...filters, sort: s.sort, page, page_size: pageSize }), ...liveQuery });
+  const dailyFilters = { site_id: site.site_id, date_from: s.from, date_to: s.to, mapping, q: s.q || undefined,
+    emp_code: s.emp.trim() || undefined, terminal: s.term || undefined, review_status: s.review || undefined };
+  const query = useQuery({ queryKey: ["onsite-activity", filters, s.sort, page, pageSize], queryFn: () => getActivity({ ...filters, sort: s.sort, page, page_size: pageSize }),
+    enabled: !daily, ...liveQuery });
   const canInvestigate = Boolean(query.data?.can_investigate_identity);
 
-  const paging = usePaging("activity", s, set, query.data?.total);
+  const paging = usePaging("activity", s, set, daily ? undefined : query.data?.total);
   const chips: Chip[] = [
     s.q && { key: "q", label: `Search: ${s.q}`, onClear: () => set({ q: "" }) },
     s.emp && { key: "emp", label: `ZKBioTime ID: ${s.emp}`, onClear: () => set({ emp: "" }) },
@@ -78,29 +85,52 @@ function ActivityView() {
     s.flag && { key: "flag", label: `Day flagged: ${FLAG_LABEL[s.flag as ReviewFlag]}`, onClear: () => set({ flag: "" }) },
     s.hour !== "" && { key: "hour", label: `Hour: ${hourLabel(Number(s.hour))}${site.time_zone ? ` (${site.time_zone})` : ""}`, onClear: () => set({ hour: "" }) },
     mapping !== "all" && { key: "mapping", label: MAPPING_FILTER_OPTIONS.find((o) => o.value === mapping)!.label, onClear: () => set({ mapping: "all" }) },
+    daily && s.review && { key: "review", label: `Review: ${REVIEW_STATUS_FILTERS.find((o) => o.value === s.review)?.label ?? s.review}`, onClear: () => set({ review: "" }) },
   ].filter(Boolean) as Chip[];
-  const clearAll = () => set({ q: "", emp: "", dept: "", term: "", id: "", flag: "", hour: "", mapping: "all" });
+  const clearAll = () => set({ q: "", emp: "", dept: "", term: "", id: "", flag: "", hour: "", mapping: "all", review: "" });
   const verifiedOnlyFilters = Boolean(s.q || s.dept || s.id || (s.flag && s.flag !== "TZ_INCONSISTENT"));
 
   const detail = (e: ActivityEvent) => {
     const verified = !e.mapping_state || e.mapping_state === "VERIFIED";
+    const technical: [string, React.ReactNode][] = [
+      ["Time zone check", e.tz_consistent === false ? "Inconsistent with site time zone" : e.tz_consistent ? "Consistent" : "—"],
+      ...(e.event_id ? [["Event ID", <span key="i" className="font-mono text-xs">{e.event_id}</span>] as [string, React.ReactNode]] : []),
+      ...(e.source_epoch !== undefined ? [["Source epoch", String(e.source_epoch)] as [string, React.ReactNode]] : []),
+      ...(e.verify_type !== undefined ? [["Verify type", e.verify_type ?? "—"] as [string, React.ReactNode]] : []),
+    ];
+    const group = (title: string, items: [React.ReactNode, React.ReactNode][]) => (
+      <section aria-label={title} className="space-y-1">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-dt-text-secondary">{title}</h4>
+        <Facts cols={4} items={items} />
+      </section>
+    );
     return (
       <div className="space-y-3">
-        <Facts cols={4} items={[
+        {group("Fingerprint record", [
           ["Site-local time", `${fmtDay(e.local_date, true)} ${localTime(e.local_time)}`],
+          ["Sequence in the day", e.punch_sequence
+            ? `${SEQUENCE_LABEL[e.punch_sequence]} (${e.punch_position} of ${e.punches_in_day})` : "—"],
+          ["Day: first / last recorded fingerprint", e.day_first_local
+            ? `${localTime(e.day_first_local)} / ${e.punches_in_day === 1 ? "—" : localTime(e.day_last_local)}` : "—"],
+          ["Recorded Span (day)", e.day_span_minutes === null || e.day_span_minutes === undefined
+            ? "—, Single Recorded Fingerprint" : formatRecordedSpan(e.day_span_minutes)],
+        ])}
+        {group("Identity", [
+          [verified ? "Team member" : "Identity", verified ? (e.employee_name ?? "—") : "Not attributed (raw ID only)"],
+          ...(verified ? [[ID_LABELS.bhr, e.bamboohr_id ?? "—"], [ID_LABELS.number, e.employee_number ?? "—"]] as [string, React.ReactNode][] : []),
           ["ZKBioTime ID", <span key="z" className="font-mono">{e.emp_code}</span>],
           ["Mapping status", <MappingStateBadge key="m" state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} />],
-          ["Punch in the day", e.punch_sequence
-            ? `${SEQUENCE_LABEL[e.punch_sequence]} (${e.punch_position} of ${e.punches_in_day})` : "—"],
+        ])}
+        {group("Device & source", [
           ["Terminal", e.terminal ?? "—"],
           ["Area", e.area ?? "—"],
-          ["Raw device state", <span key="r" className="font-mono" title="Recorded as-is by the terminal; not interpreted as check-in/out">{e.punch_state_raw ?? "—"}</span>],
-          ["Time zone check", e.tz_consistent === false ? "Inconsistent with site time zone" : e.tz_consistent ? "Consistent" : "—"],
-          ...(e.event_id ? [["Event ID", <span key="i" className="font-mono text-xs">{e.event_id}</span>] as [string, React.ReactNode]] : []),
-          ...(e.source_epoch !== undefined ? [["Source epoch", String(e.source_epoch)] as [string, React.ReactNode]] : []),
-          ...(e.verify_type !== undefined ? [["Verify type", e.verify_type ?? "—"] as [string, React.ReactNode]] : []),
-        ]} />
-        <p className="text-xs text-dt-text-secondary">First / last are the first and last recorded punches of this {verified ? "team member's" : "ZKBioTime ID's"} whole site-local day. They are not check-in or check-out.</p>
+          ["Raw device state", <span key="r" className="font-mono" title="Recorded as-is by the terminal; not interpreted">{e.punch_state_raw ?? "—"}</span>],
+        ])}
+        <details className="text-sm">
+          <summary className={cx("cursor-pointer rounded text-xs font-medium text-dt-burnt-orange", focusRing)}>Technical details</summary>
+          <div className="mt-2"><Facts cols={4} items={technical} /></div>
+        </details>
+        <p className="text-xs text-dt-text-secondary">First and last are the first and last recorded fingerprints of this {verified ? "team member's" : "ZKBioTime ID's"} whole site-local day at the entry-side reader. The last recorded fingerprint is not an exit, and the raw device state is limited device data that is not interpreted.</p>
         <div className="flex flex-wrap gap-2">
           {verified && e.bamboohr_id && (
             <button type="button" className={buttonClass("secondary")} onClick={() => set({ open: e.bamboohr_id ?? "", page: s.page })}>Open team member profile</button>
@@ -121,9 +151,10 @@ function ActivityView() {
   return (
     <div className="space-y-4">
       <PageTop title="Activity"
-        description="Every recorded attendance event, newest first, in site-local time — verified and unverified. Unverified events show their ZKBioTime ID only and are never attributed to a team member. The raw device state is not interpreted as check-in or check-out."
-        actions={<ExportButton path="activity" params={filters}
-          label={mapping === "verified" ? "Export to Excel (verified attendance)" : "Export to Excel (recorded events)"} />}>
+        description="Every recorded fingerprint in site-local time — verified and unverified — as a daily summary per identity or as individual events. Unverified fingerprints show their ZKBioTime ID only and are never attributed to a team member. Recorded at the entry-side reader: not a confirmed exit, presence or hours worked."
+        actions={<ExportReportButton terminals={site.terminals} departments={site.departments ?? []} context={{
+          report: daily ? "daily" : mapping === "verified" ? "verified" : "recorded", siteId: site.site_id, today: site.today,
+          from: s.from, to: s.to, q: s.q, emp: s.emp, mapping, dept: s.dept, term: s.term, flag: s.flag, review: s.review }} />}>
         <div className="flex flex-wrap items-center gap-2">
           <SiteSelect />
           <PeriodControl value={{ from: s.from, to: s.to }} today={site.today} onChange={(p) => set({ from: p.from, to: p.to })} />
@@ -132,28 +163,37 @@ function ActivityView() {
       </PageTop>
 
       <div className="flex flex-wrap items-center gap-2">
+        <Segmented label="View" value={daily ? "daily" : "events"} onChange={(v) => set({ view: v, page: "1" })}
+          options={[{ value: "daily", label: "Daily summary" }, { value: "events", label: "Events" }]} />
         <Segmented label="Mapping status" value={mapping} onChange={(v) => set({ mapping: v, page: "1" })}
           options={MAPPING_FILTER_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} />
         <InfoTip label="About mapping status" text="Each event is classified by the mapping valid on its own site-local day. Verified events are attributed to a team member; unmapped and conflicting events are shown by ZKBioTime ID only. A conflict is never attributed." />
       </div>
 
-      {query.data?.summary && <SummaryStrip s={query.data.summary} value={mapping} onChange={(v) => set({ mapping: v, page: "1" })} />}
+      {!daily && query.data?.summary && <SummaryStrip s={query.data.summary} value={mapping} onChange={(v) => set({ mapping: v, page: "1" })} />}
 
       <FilterPanel chips={chips} onClearAll={clearAll}
-        summary={query.data ? <span className="text-xs text-dt-text-secondary">{fmtNum(query.data.total)} events</span> : undefined}>
+        summary={!daily && query.data ? <span className="text-xs text-dt-text-secondary">{fmtNum(query.data.total)} events</span> : undefined}>
         <SearchField label="Search name, BHR ID or EMP Number" value={s.q} onChange={(v) => set({ q: v })}
           placeholder="Verified team members only" />
         <SearchField label="ZKBioTime ID" value={s.emp} onChange={(v) => set({ emp: v })} placeholder="Exact ID, any status" />
-        <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} />
         <SelectField label="Terminal" value={s.term} onChange={(v) => set({ term: v })}
           options={[{ value: "", label: "All terminals" }, ...site.terminals.map((t) => ({ value: t, label: t }))]} />
-        <IdentitySelect value={s.id} onChange={(v) => set({ id: v })} label="Verified team member status" anyLabel="Any" />
-        <SelectField label="Hour of day" value={s.hour} onChange={(v) => set({ hour: v })}
-          options={[{ value: "", label: "Any hour" }, ...Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }))]} />
-        <SelectField label="Order" value={s.sort} onChange={(v) => set({ sort: v })}
-          options={[{ value: "-time", label: "Newest first" }, { value: "time", label: "Oldest first" }]} />
-        <SelectField label="Day review flag" value={s.flag} onChange={(v) => set({ flag: v })}
-          options={[{ value: "", label: "Any" }, ...VIEWER_REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
+        {daily ? (
+          <SelectField label="Review status" value={s.review} onChange={(v) => set({ review: v })}
+            options={REVIEW_STATUS_FILTERS.map((o) => ({ value: o.value, label: o.label }))} />
+        ) : (
+          <>
+            <DepartmentSelect value={s.dept} onChange={(v) => set({ dept: v })} />
+            <IdentitySelect value={s.id} onChange={(v) => set({ id: v })} label="Verified team member status" anyLabel="Any" />
+            <SelectField label="Hour of day" value={s.hour} onChange={(v) => set({ hour: v })}
+              options={[{ value: "", label: "Any hour" }, ...Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }))]} />
+            <SelectField label="Order" value={s.sort} onChange={(v) => set({ sort: v })}
+              options={[{ value: "-time", label: "Newest first" }, { value: "time", label: "Oldest first" }]} />
+            <SelectField label="Day review flag" value={s.flag} onChange={(v) => set({ flag: v })}
+              options={[{ value: "", label: "Any" }, ...VIEWER_REVIEW_FLAGS.map((f) => ({ value: f, label: FLAG_LABEL[f] }))]} />
+          </>
+        )}
       </FilterPanel>
       {verifiedOnlyFilters && mapping !== "verified" && (
         <p className="text-xs text-dt-text-secondary">Name, BHR ID, EMP Number, department, team member status and day review filters only match verified events.</p>
@@ -161,10 +201,15 @@ function ActivityView() {
 
       <p className="text-sm text-dt-text-secondary">
         {fmtPeriod({ from: s.from, to: s.to }, site.today)}
-        {query.data && <> · <span className="font-semibold text-dt-text-primary">{fmtNum(query.data.total)}</span> {mapping === "all" ? "recorded events" : `${MAPPING_FILTER_OPTIONS.find((o) => o.value === mapping)!.label.toLowerCase()} events`}</>}
+        {!daily && query.data && <> · <span className="font-semibold text-dt-text-primary">{fmtNum(query.data.total)}</span> {mapping === "all" ? "recorded events" : `${MAPPING_FILTER_OPTIONS.find((o) => o.value === mapping)!.label.toLowerCase()} events`}</>}
       </p>
 
-      {query.isLoading ? <SkeletonRows label="Loading activity…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
+      {daily ? (
+        <DailyView filters={dailyFilters} sort={s.dsort} onSort={(v) => set({ dsort: v })} page={page} pageSize={pageSize}
+          onPage={paging.onPage} onPageSize={paging.onPageSize} today={site.today}
+          onEvents={(r) => set({ view: "events", from: r.local_date, to: r.local_date, page: "1",
+            ...(r.mapping_state === "VERIFIED" ? { q: r.bamboohr_id ?? "", emp: "", mapping: "verified" } : { emp: r.emp_code, q: "", mapping: "all" }) })} />
+      ) : query.isLoading ?<SkeletonRows label="Loading activity…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
         query.data.total === 0 ? (
           chips.length ? (
             <EmptyPanel icon={SearchX} title="No events match these filters" description="Try removing a filter, choosing All activity or widening the period."
@@ -191,7 +236,7 @@ function ActivityView() {
                 { key: "emp", header: "Team Member / ID", cell: (e) => <Who e={e} /> },
                 { key: "term", header: "Terminal", cell: (e) => <span className="text-dt-text-primary">{e.terminal ?? "—"}{e.area && <span className="block text-xs text-dt-text-secondary">{e.area}</span>}</span> },
                 { key: "id", header: "Mapping Status", nowrap: true, cell: (e) => <MappingStateBadge state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} /> },
-                { key: "seq", header: "Punch in day", minWidth: "xl", help: "First and last recorded punch of the whole site-local day for this team member (or ZKBioTime ID). Not check-in or check-out.",
+                { key: "seq", header: "Punch in day", minWidth: "xl", help: "First and last recorded fingerprint of the whole site-local day for this team member (or ZKBioTime ID). Recorded order only — the last fingerprint is not an exit.",
                   cell: (e) => <SequenceMarker seq={e.punch_sequence} position={e.punch_position} total={e.punches_in_day} /> },
                 { key: "flags", header: "Review", minWidth: "xl", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
                 { key: "raw", header: "Raw state", minWidth: "2xl", nowrap: true, cell: (e) => <span className="font-mono text-xs">{e.punch_state_raw ?? "—"}</span> },

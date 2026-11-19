@@ -100,7 +100,7 @@ describe("Overview", () => {
     await screen.findByText("Team members with activity");
     expect(screen.getByRole("link", { name: /Team members with activity/ })).toHaveAttribute("href", "/today?date=2026-11-03");
     expect(screen.getByRole("link", { name: /Needing review/ })).toHaveAttribute("href", "/exceptions?from=2026-11-03&to=2026-11-03");
-    expect(screen.getByRole("link", { name: /^Single activity.*View records/ })).toHaveAttribute("href", expect.stringContaining("flag=SINGLE_PUNCH"));
+    expect(screen.getByRole("link", { name: /^Single Recorded Fingerprint.*View records/ })).toHaveAttribute("href", expect.stringContaining("flag=SINGLE_PUNCH"));
     // Unverified IDs are never part of viewer attendance: no unmapped/conflict category is offered.
     expect(screen.queryByRole("link", { name: /Unmapped ZKBioTime ID|Unmatched code/ })).not.toBeInTheDocument();
     // Feed → Site Health only for users who may open it.
@@ -134,9 +134,9 @@ describe("Exceptions drill-down", () => {
     const { default: Page } = await import("@/app/exceptions/page");
     renderPage(<Page />);
     await waitFor(() => expect(api.getExceptions).toHaveBeenCalledWith(expect.objectContaining({ flag: "SINGLE_PUNCH", date_from: "2026-11-03", date_to: "2026-11-03" })));
-    expect(await screen.findByRole("button", { name: /^Single activity\s*3/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /Remove filter: Single activity/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Remove filter: Single activity/ }));
+    expect(await screen.findByRole("button", { name: /^Single Recorded Fingerprint\s*3/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Remove filter: Single Recorded Fingerprint/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Remove filter: Single Recorded Fingerprint/ }));
     await waitFor(() => expect(getTestUrl().searchParams.get("flag")).toBeNull());
   });
 });
@@ -213,7 +213,7 @@ describe("Employee profile", () => {
     fireEvent.click(await within(dialog).findByRole("tab", { name: /Review flags/ }));
     expect(within(dialog).getByText(/not confirmed policy breaches/)).toBeInTheDocument();
     expect(within(dialog).getByText(/within 60 seconds/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("link", { name: /View events/ })).toHaveAttribute("href", "/activity?emp=0107&from=2026-11-03&to=2026-11-03");
+    expect(within(dialog).getByRole("link", { name: /View events/ })).toHaveAttribute("href", "/activity?view=events&emp=0107&from=2026-11-03&to=2026-11-03");
   });
 
   it("moves focus in, closes on Escape and clears the URL", async () => {

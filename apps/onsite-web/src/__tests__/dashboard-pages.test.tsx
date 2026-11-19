@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setTestUrl } from "@/test-navigation";
 
 const scope = vi.hoisted(() => ({ value: { loading: false, scope: { role: "ONSITE_VIEWER", permissions: ["onsite.attendance.read", "onsite.dashboard.read", "onsite.exceptions.read"] } as { role: string; permissions: string[] } | null } }));
 vi.mock("@/lib/onsite-scope", async (orig) => {
@@ -138,7 +139,7 @@ describe("Exceptions", () => {
     expect(await screen.findByText("Possible duplicate tap:")).toBeInTheDocument();
     expect(screen.getAllByText(/within 60 seconds/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /View supporting events/ })).toHaveAttribute("href", expect.stringContaining("emp=0107"));
-    fireEvent.click(screen.getByRole("button", { name: /^Single activity\s*2/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Single Recorded Fingerprint\s*2/ }));
     await waitFor(() => expect(api.getExceptions).toHaveBeenLastCalledWith(expect.objectContaining({ flag: "SINGLE_PUNCH" })));
   });
 });
@@ -170,6 +171,7 @@ describe("Activity", () => {
       items: [{ emp_code: "101", bamboohr_id: "1", mapping_status: "MAPPED", employee_name: "Nimal P", department: null,
         identity_class: "MATCHED_ACTIVE", local_time: "2026-10-13T08:39:00+05:30",
         local_date: "2026-10-13", terminal: "Main Door", area: null, punch_state_raw: "255", tz_consistent: true }] });
+    setTestUrl("/activity?view=events");
     const { default: Page } = await import("@/app/activity/page");
     renderPage(<Page />);
     expect(await screen.findByText("255")).toBeInTheDocument();
@@ -195,11 +197,15 @@ describe("Excel export", () => {
     fireEvent.change(screen.getByLabelText("ZKBioTime ID"), { target: { value: "0107" } });
     // search input is debounced: wait until the filter reaches the query
     await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ emp_code: "0107" })));
+    fireEvent.click(screen.getByRole("button", { name: "Export report…" }));
+    // Prefilled from the page: Verified Attendance for the selected day, same filters.
+    expect(screen.getByLabelText("Report type")).toHaveValue("verified");
     fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
     await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(1));
     const [path, params] = api.downloadExport.mock.calls[0];
-    expect(path).toBe("today");
-    expect(params).toMatchObject({ site_id: "dev-site", date: "2026-11-01", department: "Finance", emp_code: "0107" });
+    expect(path).toBe("activity");
+    expect(params).toMatchObject({ site_id: "dev-site", date_from: "2026-11-01", date_to: "2026-11-01", department: "Finance",
+      emp_code: "0107", mapping: "verified" });
     expect(params).not.toHaveProperty("page");
     expect(params).not.toHaveProperty("sort");
   });
@@ -214,12 +220,14 @@ describe("Excel export", () => {
     fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Finance" } });
     fireEvent.click(await screen.findByRole("button", { name: "Next page" }));
     await waitFor(() => expect(api.getToday).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, department: "Finance" })));
+    fireEvent.click(screen.getByRole("button", { name: "Export report…" }));
     fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
     await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(1));
-    const onPage2 = api.downloadExport.mock.calls[0][1];
-    expect(onPage2).toEqual({ site_id: "dev-site", date: "2026-11-01", department: "Finance" });
+    const onPage2 = Object.fromEntries(Object.entries(api.downloadExport.mock.calls[0][1]).filter(([, v]) => v !== undefined));
+    expect(onPage2).toEqual({ site_id: "dev-site", date_from: "2026-11-01", date_to: "2026-11-01", department: "Finance", mapping: "verified" });
     for (const k of ["page", "page_size", "sort"]) expect(onPage2).not.toHaveProperty(k);
-    fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Bench" } });
+    fireEvent.change(screen.getAllByLabelText("Department")[0], { target: { value: "Bench" } });
+    fireEvent.click(screen.getByRole("button", { name: "Export report…" }));
     fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
     await waitFor(() => expect(api.downloadExport).toHaveBeenCalledTimes(2));
     expect(api.downloadExport.mock.calls[1][1]).toMatchObject({ department: "Bench" });
@@ -230,7 +238,8 @@ describe("Excel export", () => {
     api.downloadExport.mockRejectedValue(new Error("This export would contain 60,000 rows, above the limit of 50,000. Narrow the date range or add filters and try again."));
     const { default: Page } = await import("@/app/activity/page");
     renderPage(<Page />);
-    fireEvent.click(await screen.findByRole("button", { name: /export to excel/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Export report…" }));
+    fireEvent.click(screen.getByRole("button", { name: /export to excel/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Narrow the date range/);
   });
 
@@ -242,11 +251,12 @@ describe("Excel export", () => {
     for (const mod of ["today", "activity", "employees", "exceptions"]) {
       const { default: Page } = await import(`@/app/${mod}/page`);
       const { unmount } = renderPage(<Page />);
-      expect(await screen.findByRole("button", { name: /export to excel/i })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Export report…" })).toBeInTheDocument();
       unmount();
     }
     const { default: Overview } = await import("@/app/page");
     renderPage(<Overview />);
-    expect(await screen.findByRole("button", { name: /export day summary/i })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Export report…" }));
+    expect(screen.getByLabelText("Report type")).toHaveValue("overview");
   });
 });
