@@ -1,8 +1,6 @@
-"""Automatic first-time Entra onboarding (DijiOne sign-in) and, separately, the mandatory
-DijiAtWork employee baseline that still depends on a matching employee record."""
+"""Automatic first-time Entra onboarding (DijiOne sign-in). The mandatory employee baseline that
+still depends on a matching employee record is tested in test_default_module_access.py."""
 
-import threading
-import time
 
 import pytest
 from sqlalchemy import select
@@ -11,15 +9,10 @@ from app.api.routes.auth import issue_user_session
 from app.core.config import get_settings
 from app.integrations.people import EmployeeRecord, EmployeeRecordChecker, set_employee_record_checker
 from app.models.audit_log import AuditLog
-from app.models.module_baseline import ModuleBaselineRole
 from app.models.user import User, UserModuleRole
 from app.models.user_module_client_scope import UserModuleClientScope
-from app.services import entra_service
 from app.services.authorization_service import AuthorizationService
-from app.services.directory_service import DirectoryService
 from app.services.entra_service import EntraLoginRefusedError, resolve_entra_user
-from tests.conftest import internal_headers
-from tests.test_atwork_registration import USER_PERMS, _register_module
 
 TENANT = "tenant-1"
 ISS = f"https://login.microsoftonline.com/{TENANT}/v2.0"
@@ -32,13 +25,6 @@ def _settings(monkeypatch):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
-
-
-@pytest.fixture()
-def baseline(db):
-    _register_module(db)
-    db.add(ModuleBaselineRole(module_key="atwork", role="ATWORK_USER", enabled=True))
-    db.commit()
 
 
 def member(name="new", **over):
@@ -186,7 +172,7 @@ def test_idp_absent_with_our_issuer_is_accepted(db):
     assert resolve_entra_user(db, member("i", idp=None)).is_active
 
 
-def test_onboarding_grants_nothing_else(db, baseline):
+def test_onboarding_grants_nothing_else(db):
     set_employee_record_checker(_Records())  # not an employee: no default access either
     user = resolve_entra_user(db, member())
     assert user.platform_role == "PLATFORM_USER"
@@ -194,72 +180,3 @@ def test_onboarding_grants_nothing_else(db, baseline):
     assert db.query(UserModuleClientScope).count() == 0
     assert AuthorizationService(db).effective_module_roles(user) == {}
     assert AuthorizationService(db).platform_permissions(user) == frozenset()
-
-
-# --- 2. Mandatory DijiAtWork baseline (separate from sign-in) ------------------------------------
-
-def test_matched_new_employee_gets_atwork_and_nothing_else(db, baseline, api_client):
-    set_employee_record_checker(_Records({"new@dijital.example"}))
-    user = resolve_entra_user(db, member())
-    assert user.employee_record_status == "MATCHED"
-    roles = AuthorizationService(db).effective_module_roles(user)
-    assert set(roles) == {"atwork"} and [g.role for g in roles["atwork"]] == ["ATWORK_USER"]
-    assert AuthorizationService(db).effective_permissions(user, "atwork") == USER_PERMS
-    headers = {"Authorization": f"Bearer {issue_user_session(user, db)}"}
-    assert "atwork" in {m["key"] for m in api_client.get("/api/modules", headers=headers).json()}  # DijiOne Home
-    live = api_client.get(f"/api/platform/internal/users/{user.id}/modules/atwork/permissions",
-                          headers=internal_headers())  # what atwork-api checks on every request
-    assert live.status_code == 200 and set(live.json()["permissions"]) == USER_PERMS
-
-
-def test_internal_service_account_signs_in_without_attendance_access(db, baseline):
-    set_employee_record_checker(_Records())
-    svc = resolve_entra_user(db, member("svc"))
-    assert svc.is_active and svc.employee_record_status == "NOT_FOUND"
-    assert AuthorizationService(db).effective_permissions(svc, "atwork") == frozenset()
-
-
-class _SlowSnapshot(EmployeeRecordChecker):
-    """A real checker whose people-api source answers after ``delay`` seconds, counting calls."""
-
-    def __init__(self, delay, emails):
-        class _Source:
-            calls = 0
-
-            def active_employees(src):
-                src.calls += 1
-                time.sleep(delay)
-                return [{"work_email": e, "employee_number": "7", "employment_status": "Active"} for e in emails]
-
-            def active_workforce(src):
-                return []
-        self.source = _Source()
-        super().__init__(source=self.source)
-
-
-def test_first_sign_in_waits_for_a_loading_hr_snapshot(db, baseline):
-    checker = _SlowSnapshot(0.3, ["new@dijital.example"])
-    set_employee_record_checker(checker)
-    user = resolve_entra_user(db, member())
-    assert user.employee_record_status == "MATCHED"
-    assert AuthorizationService(db).effective_permissions(user, "atwork") == USER_PERMS
-    assert checker.source.calls == 1
-
-
-def test_slow_hr_source_never_blocks_sign_in_and_reconciliation_completes_entitlement(db, baseline, monkeypatch):
-    monkeypatch.setattr(entra_service, "FIRST_SIGNIN_HR_WAIT_SECONDS", 0.2)
-    checker = _SlowSnapshot(1.0, ["new@dijital.example"])
-    set_employee_record_checker(checker)
-    started = time.monotonic()
-    user = resolve_entra_user(db, member())
-    assert time.monotonic() - started < 0.9  # bounded wait, the load continues in the background
-    assert user.is_active and user.employee_record_status == "UNKNOWN"
-    assert AuthorizationService(db).effective_permissions(user, "atwork") == frozenset()  # not yet eligible
-    for t in threading.enumerate():
-        if t.name == "employee-records-warm":
-            t.join(3)
-    assert checker.source.calls == 1  # the sign-in started one background load, never more
-    DirectoryService(db).reconcile_employee_records(actor=None)  # no manual assignment
-    db.refresh(user)
-    assert user.employee_record_status == "MATCHED"
-    assert AuthorizationService(db).effective_permissions(user, "atwork") == USER_PERMS
