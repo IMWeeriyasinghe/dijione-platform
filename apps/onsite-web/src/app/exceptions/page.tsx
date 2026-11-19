@@ -145,7 +145,7 @@ function ExceptionsView() {
                 { key: "flags", header: "Review flags", sort: "flags", cell: (i) => <FlagChips flags={i.flags} /> },
                 { key: "times", header: "First · Last recorded fingerprint", minWidth: "lg", cell: (i) => <span className="tabular-nums">{localTime(i.first_activity_local)} · {i.punch_count === 1 ? "—" : localTime(i.latest_activity_local)}</span> },
                 { key: "count", header: "Fingerprints", sort: "punch_count", align: "right", cell: (i) => i.punch_count },
-                { key: "review", header: "Review", cell: reviewCell },
+                { key: "review", header: "Review", minWidth: "xl", cell: reviewCell },
                 { key: "terms", header: "Terminals", minWidth: "2xl", cell: (i) => i.terminal_names.join(", ") || "—" },
               ]}
               card={(i) => (

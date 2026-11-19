@@ -137,14 +137,14 @@ export function DailyView({ filters, sort, onSort, page, pageSize, onPage, onPag
             rowLabel={(r) => `${identityLabel(r)} on ${r.local_date}`} sort={sort} onSort={onSort}
             columns={[
               { key: "identity", header: "Identity", sort: "identity", cell: (r) => <Identity r={r} /> },
-              { key: "status", header: "Status", nowrap: true, cell: (r) => <MappingStateBadge state={r.mapping_state} /> },
-              { key: "date", header: "Date", sort: "date", nowrap: true, cell: (r) => r.local_date === today ? "Today" : fmtDay(r.local_date) },
-              { key: "first", header: "First Recorded Fingerprint", sort: "first", nowrap: true, cell: (r) => <span className="tabular-nums">{localTime(r.first_fingerprint_local)}</span> },
-              { key: "last", header: "Last Recorded Fingerprint", sort: "last", nowrap: true, cell: (r) => <span className="tabular-nums">{r.single ? "—" : localTime(r.last_fingerprint_local)}</span> },
-              { key: "span", header: "Recorded Span", sort: "span", nowrap: true, help: RECORDED_SPAN_HELP, cell: (r) => <Span r={r} /> },
+              { key: "status", header: "Status", minWidth: "2xl", cell: (r) => <MappingStateBadge state={r.mapping_state} /> },
+              { key: "date", header: "Date", sort: "date", cell: (r) => r.local_date === today ? "Today" : fmtDay(r.local_date) },
+              { key: "first", header: "First Recorded Fingerprint", sort: "first", cell: (r) => <span className="tabular-nums">{localTime(r.first_fingerprint_local)}</span> },
+              { key: "last", header: "Last Recorded Fingerprint", sort: "last", cell: (r) => <span className="tabular-nums">{r.single ? "—" : localTime(r.last_fingerprint_local)}</span> },
+              { key: "span", header: "Recorded Span", sort: "span", help: RECORDED_SPAN_HELP, cell: (r) => <Span r={r} /> },
               { key: "punches", header: "Punches", sort: "punches", align: "right", nowrap: true, cell: (r) => fmtNum(r.punch_count) },
-              { key: "review", header: "Review", minWidth: "xl", cell: (r) => <Review r={r} /> },
-              { key: "act", header: <span className="sr-only">Actions</span>, nowrap: true, cell: reviewButton },
+              { key: "review", header: "Review", minWidth: "2xl", cell: (r) => <Review r={r} /> },
+              { key: "act", header: <span className="sr-only">Actions</span>, nowrap: true, minWidth: "xl", cell: reviewButton },
             ]}
             card={(r) => (
               <div className="space-y-2">
@@ -167,7 +167,10 @@ export function DailyView({ filters, sort, onSort, page, pageSize, onPage, onPag
               <div className="space-y-2">
                 <DayPunches r={r} siteId={filters.site_id} />
                 <p className="text-xs text-dt-text-secondary">Recorded at the entry-side reader. The last recorded fingerprint is not an exit; Recorded Span is not time on premises or hours worked.</p>
-                <button type="button" className={buttonClass("ghost")} onClick={() => onEvents(r)}>Show these events in the Events view</button>
+                <div className="flex flex-wrap gap-2">
+                  {reviewButton(r)}
+                  <button type="button" className={buttonClass("ghost")} onClick={() => onEvents(r)}>Show these events in the Events view</button>
+                </div>
               </div>
             )} />
           <Pager page={page} pageSize={pageSize} total={d.total} onPage={onPage} onPageSize={onPageSize} busy={query.isFetching} noun="identity-day" />

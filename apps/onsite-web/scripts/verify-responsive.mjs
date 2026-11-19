@@ -43,7 +43,7 @@ const WIDTHS = [320, 375, 768, 1024, 1093, 1280, 1366, 1440, 1920];
 const COLLAPSED_WIDTHS = [1093, 1366, 1440];
 const HEIGHT = 900;
 const ROUTES = [
-  "/", "/today", "/activity", "/employees", "/exceptions",
+  "/", "/today", "/activity", "/activity?view=events", "/employees", "/exceptions", "/admin/access",
   "/admin/identity?tab=overview", "/admin/identity?tab=readiness", "/admin/identity?tab=unmapped",
   "/admin/identity?tab=mappings&status=", "/admin/identity?tab=conflicts", "/admin/identity?tab=import",
   "/admin/health", "/admin/sites",
@@ -186,9 +186,103 @@ async function main() {
     await shot(`${w}_unmapped_compact`);
   }
 
+  // ---- v0.9 -------------------------------------------------------------
+  // Blank space below Activity: no nested vertical scroller around the data,
+  // and the gap between the pager and the end of the page stays within padding.
+  const blank = () => {
+    const nested = [...document.querySelectorAll("main *")].filter((el) => {
+      if (el.closest('[role="dialog"], [aria-modal="true"]')) return false;
+      const s = getComputedStyle(el);
+      return (s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 2 && el.clientHeight > 40;
+    }).map((el) => String(el.className).slice(0, 60));
+    const pager = [...document.querySelectorAll("nav, div")].filter((el) => /Next page|Previous page/.test(el.innerHTML) && el.querySelector("button"))
+      .map((el) => el.getBoundingClientRect().bottom + window.scrollY).sort((a, b) => b - a)[0];
+    const doc = document.documentElement.scrollHeight;
+    const gap = pager ? Math.round(doc - pager) : null;
+    return { nested, gap, doc, vh: window.innerHeight };
+  };
+  for (const [w, h] of [[1366, 768], [1440, 900], [1920, 1080]]) {
+    await page.setViewport({ width: w, height: h });
+    for (const r of ["/activity?view=events&size=10", "/activity?view=events&size=50", "/activity?view=events&size=100",
+      "/activity?size=10", "/activity?size=50", "/activity?size=100"]) {
+      await page.goto(o.base + r, { waitUntil: "domcontentloaded" });
+      await settle(page);
+      const b = await page.evaluate(blank);
+      const fail = [];
+      if (b.nested.length) fail.push(`nested vertical scroller: ${b.nested.join(" | ")}`);
+      if (b.doc > b.vh && (b.gap === null || b.gap > 160)) fail.push(`gap below pager ${b.gap}px`);
+      results.push({ label: `blank-space ${r}`, width: w, height: h, ...b, ok: !fail.length });
+      if (fail.length) failures.push({ label: `blank-space ${r}`, width: w, fail });
+      if (r.endsWith("size=100")) await shot(`${w}x${h}_blank_${r.includes("events") ? "events" : "daily"}_100`);
+    }
+  }
+  // Expanded details keep the page flowing (no inner scroller after expansion).
+  await page.setViewport({ width: 1366, height: 768 });
+  await page.goto(o.base + "/activity?view=events&size=50", { waitUntil: "domcontentloaded" });
+  await settle(page);
+  await page.evaluate(() => document.querySelector('[aria-label^="Show details for"]')?.click());
+  await settle(page);
+  const expanded = await page.evaluate(blank);
+  if (expanded.nested.length) failures.push({ label: "blank-space expanded details", width: 1366, fail: expanded.nested });
+  const groups = await page.evaluate(() => ["Fingerprint record", "Identity", "Device & source"].every((t) => document.querySelector(`section[aria-label="${t}"]`))
+    && [...document.querySelectorAll("summary")].some((s) => s.textContent === "Technical details"));
+  if (!groups) failures.push({ label: "activity detail groups", width: 1366, fail: ["grouped details missing"] });
+  await shot("1366_activity_details_grouped");
+
+  // Daily summary, extremes, export dialog, review dialog, Access page, forbidden wording.
+  for (const w of [1366, 375]) {
+    await page.setViewport({ width: w, height: HEIGHT });
+    await page.goto(o.base + "/activity", { waitUntil: "domcontentloaded" });
+    await settle(page);
+    const daily = await page.evaluate(() => ({
+      cards: Boolean(document.querySelector('[aria-label="Identity-days by mapping status"]')),
+      single: document.body.innerText.includes("Single Recorded Fingerprint"),
+      raw: /ZKBioTime ID \d/.test(document.body.innerText),
+    }));
+    if (!daily.cards || !daily.single || !daily.raw) failures.push({ label: "daily summary", width: w, fail: [JSON.stringify(daily)] });
+    await shot(`${w}_activity_daily`);
+    const opened = await clickByText(page, "button", "Review…");
+    await settle(page);
+    const dlg = await page.evaluate(() => ({ title: /Attendance review/i.test(document.body.innerText),
+      evidence: /Recorded evidence \(current\)/i.test(document.body.innerText) }));
+    if (!opened || !dlg.title || !dlg.evidence) failures.push({ label: "review dialog", width: w, fail: [JSON.stringify({ opened, ...dlg })] });
+    await check("dialog: attendance review", w);
+    await shot(`${w}_dialog_review`);
+    await page.keyboard.press("Escape");
+    await settle(page);
+    const exp = await clickByText(page, "button", "Export report…");
+    await settle(page);
+    const expOk = await page.evaluate(() => Boolean(document.querySelector('select[aria-label="Report type"]')));
+    if (!exp || !expOk) failures.push({ label: "export dialog", width: w, fail: ["not opened"] });
+    await check("dialog: export report", w);
+    await shot(`${w}_dialog_export`);
+    await page.keyboard.press("Escape");
+    await page.goto(o.base + "/?from=2026-11-18&to=2026-11-18", { waitUntil: "domcontentloaded" });
+    await settle(page);
+    const ext = await page.evaluate(() => /Earliest Recorded Fingerprint/i.test(document.body.innerText) && /Latest Recorded Fingerprint/i.test(document.body.innerText));
+    if (!ext) failures.push({ label: "extremes cards", width: w, fail: ["missing"] });
+    await shot(`${w}_overview_extremes`);
+  }
+  for (const r of ["/", "/today", "/activity", "/activity?view=events", "/exceptions", "/employees"]) {
+    await page.goto(o.base + r, { waitUntil: "domcontentloaded" });
+    await settle(page);
+    const bad = await page.evaluate(() => (document.body.innerText.match(/First Arrival|Last Departure|Check-?out|Clock out|Exit time|Working hours/gi) || []));
+    if (bad.length) failures.push({ label: `forbidden wording ${r}`, width: 375, fail: bad });
+  }
+  await page.setViewport({ width: 1366, height: HEIGHT });
+  await page.goto(o.base + "/admin/access", { waitUntil: "domcontentloaded" });
+  await settle(page);
+  const access = await page.evaluate(() => ({
+    nav: [...document.querySelectorAll("a")].some((a) => a.textContent.trim() === "Access"),
+    order: [...document.querySelectorAll("a")].map((a) => a.textContent.trim()).filter((t) => ["Identity Management", "Sites", "Access", "Site Health"].includes(t)),
+  }));
+  if (!access.nav) failures.push({ label: "access nav", width: 1366, fail: ["Access link missing for On-site Admin"] });
+  if (access.order.slice(0, 4).join(",") !== "Identity Management,Sites,Access,Site Health") failures.push({ label: "admin nav order", width: 1366, fail: [access.order.join(",")] });
+  await shot("1366_admin_access");
+
   // Activity: all mapping states with the reconciled summary strip.
   await page.setViewport({ width: 1366, height: HEIGHT });
-  await page.goto(o.base + "/activity", { waitUntil: "domcontentloaded" });
+  await page.goto(o.base + "/activity?view=events", { waitUntil: "domcontentloaded" });
   await settle(page);
   const act = await page.evaluate(() => ({
     strip: Boolean(document.querySelector('[aria-label="Recorded events by mapping status"]')),

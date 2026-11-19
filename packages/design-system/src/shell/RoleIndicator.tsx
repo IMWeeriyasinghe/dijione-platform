@@ -81,7 +81,7 @@ export function RoleIndicator({ context }: { context: RoleContext }) {
         aria-expanded={open}
         aria-controls={panelId}
         aria-label={`Your role: ${s.primary}${s.extra ? ` and ${s.extra} more` : ""}. Show access summary`}
-        className="flex max-w-[11rem] items-center gap-1 rounded-full border border-dt-border bg-dt-surface-warm px-2.5 py-1 text-xs font-medium text-dt-text-primary transition hover:border-dt-burnt-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange sm:max-w-[16rem]"
+        className="flex max-w-[7.5rem] items-center gap-1 rounded-full border border-dt-border bg-dt-surface-warm px-2.5 py-1 text-xs font-medium text-dt-text-primary transition hover:border-dt-burnt-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange sm:max-w-[16rem]"
       >
         <span className="truncate">{s.primary}</span>
         {s.extra > 0 && <span className="shrink-0 rounded-full bg-dt-cream px-1.5 text-dt-burnt-orange">+{s.extra}</span>}
