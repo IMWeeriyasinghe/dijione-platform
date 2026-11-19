@@ -70,9 +70,9 @@ describe("Activity across mapping states", () => {
     expect(within(table).getByText("Verified Person")).toBeInTheDocument();
     expect(within(table).getByText("352")).toBeInTheDocument();
     expect(within(table).getByText("Not mapped to a team member")).toBeInTheDocument();
-    expect(within(table).getByText("Unmapped — needs review")).toBeInTheDocument();
+    expect(within(table).getByText("Unmapped (needs review)")).toBeInTheDocument();
     expect(within(table).getByText("Mapping conflict")).toBeInTheDocument();
-    expect(within(table).getByText("Mapping conflict — not attributed")).toBeInTheDocument();
+    expect(within(table).getByText("Mapping conflict, not attributed")).toBeInTheDocument();
     // Whole-day sequence markers, never check-in / check-out.
     expect(within(table).getByText("First recorded fingerprint")).toBeInTheDocument();
     expect(within(table).getByText("Single Recorded Fingerprint")).toBeInTheDocument();
@@ -134,7 +134,7 @@ describe("Overview charts include all recorded activity", () => {
     renderPage(<Page />);
     expect(await screen.findByText("Recorded events")).toBeInTheDocument();
     expect(screen.getByText(/15 verified/)).toBeInTheDocument();
-    const bar = screen.getByRole("button", { name: /08:00–08:59 \(Asia\/Colombo\): 40 recorded — 15 verified, 24 unmapped, 1 conflict/ });
+    const bar = screen.getByRole("button", { name: /08:00-08:59 \(Asia\/Colombo\): 40 recorded: 15 verified, 24 unmapped, 1 conflict/ });
     expect(bar.getAttribute("aria-label")).toMatch(/First recorded fingerprint of the day: 13 · last: 0 · single: 4/);
     fireEvent.focus(bar);
     expect(screen.getAllByRole("tooltip").some((t) => /40 recorded.*15 verified.*24 unmapped.*1 conflict/.test(t.textContent ?? ""))).toBe(true);

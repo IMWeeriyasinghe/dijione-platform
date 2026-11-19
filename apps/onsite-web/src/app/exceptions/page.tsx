@@ -30,7 +30,7 @@ const SORTS = [
   { value: "-date", label: "Newest day first" },
   { value: "date", label: "Oldest day first" },
   { value: "-flags", label: "Most flags first" },
-  { value: "employee", label: "Team member (A–Z)" },
+  { value: "employee", label: "Team member (A-Z)" },
   { value: "-punch_count", label: "Most events first" },
 ];
 
@@ -93,7 +93,7 @@ function ExceptionsView() {
   return (
     <div className="space-y-4">
       <PageTop title="Exceptions"
-        description="Team-member days that may need a closer look. Flags are prompts for review only — they are not confirmed policy breaches. A review case is an administrative record: fingerprint records are never changed, and a resolved case is not a verified duration."
+        description="Team-member days that may need a closer look. Flags are prompts for review only. They are not confirmed policy breaches. A review case is an administrative record: fingerprint records are never changed, and a resolved case is not a verified duration."
         actions={<ExportReportButton departments={site.departments ?? []} terminals={site.terminals} context={{
           report: "exceptions", siteId: site.site_id, today: site.today, from: s.from, to: s.to, q: s.q, emp: s.emp, dept: s.dept, flag: s.flag }} />}>
         <div className="flex flex-wrap items-center gap-2">

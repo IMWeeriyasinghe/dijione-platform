@@ -36,7 +36,7 @@ function ErrorBox({ error }: { error: unknown }) {
   return (
     <InlineAlert tone="danger">
       {d.message ?? d.error ?? "The change was not saved."}
-      {d.conflicts?.length ? <> Conflicting period(s): {d.conflicts.map((m) => `${m.zk_emp_code} → ${m.employee_name ?? m.bamboohr_id} (${m.valid_from} – ${m.valid_to ?? "open"})`).join("; ")}.</> : null}
+      {d.conflicts?.length ? <> Conflicting period(s): {d.conflicts.map((m) => `${m.zk_emp_code} → ${m.employee_name ?? m.bamboohr_id} (${m.valid_from} - ${m.valid_to ?? "open"})`).join("; ")}.</> : null}
       {d.rejections?.length ? <> A rejection covers this period.</> : null}
     </InlineAlert>
   );
@@ -195,7 +195,7 @@ export function MapDialog({ siteId, code: initialCode, onClose }: { siteId: stri
             Map {ID_LABELS.zk} <span className="font-mono">{code || "—"}</span> to {emp.display_name ?? "—"} ({ID_LABELS.bhr}{" "}
             <span className="font-mono">{emp.bamboohr_id}</span>, {ID_LABELS.number} <span className="font-mono">{emp.employee_number ?? "—"}</span>)
             {" "}from {from}{to ? ` until ${to}` : " (open-ended)"}
-            {prior?.events ? ` — ${prior.events} earlier punch(es) stay unmapped.` : "."}
+            {prior?.events ? `. ${prior.events} earlier punch(es) stay unmapped.` : "."}
           </p>
         )}
         <ErrorBox error={save.error} />
@@ -251,7 +251,7 @@ export function CorrectDialog({ mapping, onClose }: { mapping: Mapping; onClose:
     <Modal open onClose={onClose} title={`Correct mapping of ${ID_LABELS.zk} ${mapping.zk_emp_code}`}>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <InlineAlert tone="warning">
-          This withdraws the attribution of {mapping.valid_from} – {mapping.valid_to ?? "open"} from {mapping.employee_name ?? mapping.bamboohr_id}.
+          This withdraws the attribution of {mapping.valid_from} - {mapping.valid_to ?? "open"} from {mapping.employee_name ?? mapping.bamboohr_id}.
           Only that period changes; the record is kept in history as superseded.
         </InlineAlert>
         <TextField label="Reason" rows={2} value={reason} onChange={setReason} required />
@@ -322,7 +322,7 @@ export function ReassignDialog({ mapping, onClose }: { mapping: Mapping; onClose
         <TextField label="Verification evidence for the new owner" rows={2} value={evidence} onChange={setEvidence} required />
         {sameDay && (
           <fieldset className="space-y-1 rounded-lg border border-dt-amber/50 bg-dt-amber/10 p-3 text-sm">
-            <legend className="px-1 font-medium">{sameDay.events} punch(es) on {d} cannot be split automatically — choose:</legend>
+            <legend className="px-1 font-medium">{sameDay.events} punch(es) on {d} cannot be split automatically. Choose:</legend>
             {sameDay.options.map((o) => (
               <label key={o} className="flex items-center gap-2"><input type="radio" name="handling" checked={handling === o} onChange={() => setHandling(o)} />{HANDLING[o] ?? o}</label>
             ))}
@@ -391,11 +391,11 @@ export function HistoryDialog({ mappingId, onClose }: { mappingId: number; onClo
     <Modal open onClose={onClose} title={`Mapping #${mappingId} history`}>
       {!q.data ? <SkeletonRows rows={3} /> : (
         <div className="space-y-3 text-sm">
-          <p>{ID_LABELS.zk} <span className="font-mono">{q.data.zk_emp_code}</span> → {q.data.employee_name ?? "—"} ({ID_LABELS.bhr} <span className="font-mono">{q.data.bamboohr_id}</span>), {q.data.valid_from} – {q.data.valid_to ?? "open"} · <ToneBadge tone={q.data.status === "VERIFIED" ? "success" : "neutral"}>{q.data.status}</ToneBadge></p>
+          <p>{ID_LABELS.zk} <span className="font-mono">{q.data.zk_emp_code}</span> → {q.data.employee_name ?? "—"} ({ID_LABELS.bhr} <span className="font-mono">{q.data.bamboohr_id}</span>), {q.data.valid_from} - {q.data.valid_to ?? "open"} · <ToneBadge tone={q.data.status === "VERIFIED" ? "success" : "neutral"}>{q.data.status}</ToneBadge></p>
           <p className="text-dt-text-secondary">Evidence: {q.data.evidence}</p>
           <ol className="space-y-2 border-l-2 border-dt-border pl-3">
             {q.data.history.map((h) => (
-              <li key={h.id}><span className="font-medium">{h.action}</span> · user {h.actor_user_id} · {h.at ? new Date(h.at).toLocaleString() : "—"}{h.note ? ` — ${h.note}` : ""}</li>
+              <li key={h.id}><span className="font-medium">{h.action}</span> · user {h.actor_user_id} · {h.at ? new Date(h.at).toLocaleString() : "—"}{h.note ? `: ${h.note}` : ""}</li>
             ))}
           </ol>
         </div>
@@ -426,7 +426,7 @@ export function CodeDialog({ siteId, code, onClose, canManage = false, onMap, on
             <h3 className="font-medium">Ownership periods</h3>
             {q.data.mappings.length ? (
               <ul className="list-disc pl-5">{q.data.mappings.map((m) => (
-                <li key={m.id}>{m.employee_name ?? m.bamboohr_id} ({ID_LABELS.bhr} {m.bamboohr_id}) · {m.valid_from} – {m.valid_to ?? "open"} · {m.status === "VERIFIED" ? "Verified" : "Superseded"}</li>
+                <li key={m.id}>{m.employee_name ?? m.bamboohr_id} ({ID_LABELS.bhr} {m.bamboohr_id}) · {m.valid_from} - {m.valid_to ?? "open"} · {m.status === "VERIFIED" ? "Verified" : "Superseded"}</li>
               ))}</ul>
             ) : <p className="text-dt-text-secondary">Never verified.</p>}
           </section>
@@ -434,12 +434,12 @@ export function CodeDialog({ siteId, code, onClose, canManage = false, onMap, on
             <section>
               <h3 className="font-medium">Rejected associations</h3>
               <ul className="list-disc pl-5">{q.data.rejections.map((r) => (
-                <li key={r.id}>Not {ID_LABELS.bhr} {r.bamboohr_id} ({r.applies_from ?? "all history"} – {r.applies_to ?? "open"}) · {r.status === "ACTIVE" ? r.reason : "withdrawn"}</li>
+                <li key={r.id}>Not {ID_LABELS.bhr} {r.bamboohr_id} ({r.applies_from ?? "all history"} - {r.applies_to ?? "open"}) · {r.status === "ACTIVE" ? r.reason : "withdrawn"}</li>
               ))}</ul>
             </section>
           )}
           {q.data.hint_employee_number_matches.length > 0 && (
-            <p className="text-dt-text-secondary">Unverified hint (EMP Number equals this ID — not evidence): {q.data.hint_employee_number_matches.map((h) => h.display_name ?? h.bamboohr_id).join(", ")}</p>
+            <p className="text-dt-text-secondary">Unverified hint (EMP Number equals this ID, not evidence): {q.data.hint_employee_number_matches.map((h) => h.display_name ?? h.bamboohr_id).join(", ")}</p>
           )}
           <section>
             <h3 className="font-medium">Activity by day</h3>

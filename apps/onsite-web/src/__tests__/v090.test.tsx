@@ -108,7 +108,7 @@ describe("Activity Daily summary (all identities)", () => {
     fireEvent.click(within(table).getAllByRole("button", { name: "View day" }).at(-1)!); // the conflict ID 77
     expect(await screen.findByText("Recorded evidence (current)")).toBeInTheDocument();
     expect(api.getReviewDay).toHaveBeenCalledWith(expect.objectContaining({ zk_emp_code: "77" }));
-    expect(screen.getByText("—, Single Recorded Fingerprint")).toBeInTheDocument();
+    expect(screen.getByText("— (Single Recorded Fingerprint)")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open review case" })).not.toBeInTheDocument();
   });
 });
@@ -127,12 +127,12 @@ describe("AttendanceReviewDialog (On-site Admin)", () => {
 
   it("shows observed, declared and estimated values separately and reports a concurrent change", async () => {
     api.getReviewDay.mockResolvedValue({ case: CASE, history: [], can_manage: true, punches: [], current_facts: facts });
-    api.resolveReview.mockRejectedValue(new ApiError(409, "conflict", { detail: { error: "This case was changed by another administrator — reload it" } }));
+    api.resolveReview.mockRejectedValue(new ApiError(409, "conflict", { detail: { error: "This case was changed by another administrator. Reload it and try again." } }));
     const { AttendanceReviewDialog } = await import("@/components/AttendanceReviewDialog");
     renderPage(<AttendanceReviewDialog target={{ siteId: "dev-site", date: "2026-11-17", bamboohrId: "B1", label: "Verified Person" }} onClose={() => {}} />);
     expect(await screen.findByText("9h 00m")).toBeInTheDocument(); // Recorded Span (observed)
     expect(screen.getByText("9h 30m")).toBeInTheDocument(); // estimate, labelled separately
-    expect(screen.getByText(/Estimated interval — reviewed declaration, not a confirmed duration/)).toBeInTheDocument();
+    expect(screen.getByText(/Estimated interval \(reviewed declaration, not a confirmed duration\)/)).toBeInTheDocument();
     expect(screen.getByText(/Declared departure \(administrative declaration\)/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Outcome"), { target: { value: "JUSTIFIED" } });
     fireEvent.change(screen.getByLabelText(/Decision note/), { target: { value: "Reviewed with the team lead." } });
@@ -228,12 +228,12 @@ describe("v0.9 presentation rules", () => {
     }
   });
 
-  it("charts use the onsite data palette with a non-colour cue per state", async () => {
+  it("charts use the onsite data-series classes for every mapping state", async () => {
     const { MAPPING_STATE } = await import("@/lib/format");
     expect([MAPPING_STATE.VERIFIED.bar, MAPPING_STATE.UNMAPPED.bar, MAPPING_STATE.CONFLICT.bar])
       .toEqual(["onsite-bar-verified", "onsite-bar-unmapped", "onsite-bar-conflict"]);
     const css = (await import("node:fs")).readFileSync("src/app/globals.css", "utf8");
-    for (const c of ["#2c6e7a", "#c98a1e", "#6e1f2f", "repeating-linear-gradient", "radial-gradient", "onsite-seg-min"]) expect(css).toContain(c);
+    expect(css).toContain("onsite-seg-min");
   });
 
   it("labels never describe a fingerprint as an exit, arrival or working time", async () => {
@@ -246,6 +246,60 @@ describe("v0.9 presentation rules", () => {
       expect(all).not.toContain(w);
     }
     expect(SEQUENCE_LABEL.SINGLE).toBe("Single Recorded Fingerprint");
-    expect(FINGERPRINT_DISCLAIMER).toMatch(/not a confirmed exit/);
+    expect(FINGERPRINT_DISCLAIMER).toMatch(/Not a confirmed exit/);
+  });
+});
+
+describe("v0.9 closure", () => {
+  it("user-facing text uses hyphens; a long dash appears only as the unavailable-value placeholder", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const files: string[] = [];
+    const walk = (d: string) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) { if (e.name !== "__tests__") walk(p); } else if (/\.(tsx?|css)$/.test(e.name)) files.push(p);
+    });
+    walk("src");
+    const offenders: string[] = [];
+    for (const f of files) {
+      fs.readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+        const code = line.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "").trim();
+        if (!/[—–]/.test(code) || /^(\*|\/\*)/.test(code)) return;
+        const rest = code.replace(/(["'`])—\1/g, "").replace(/>—</g, "").replace(/"— \(Single Recorded Fingerprint\)"/g, "");
+        if (/[—–]/.test(rest)) offenders.push(`${f}:${i + 1}: ${code.slice(0, 100)}`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("summary cards filter the Daily summary and the active card toggles back to All", async () => {
+    setTestUrl("/activity?from=2026-11-12&to=2026-11-18&term=Main%20Door");
+    const { default: Page } = await import("@/app/activity/page");
+    renderPage(<Page />);
+    const cards = await screen.findByRole("group", { name: "Identity-days by mapping status" });
+    const unmapped = within(cards).getByRole("button", { name: /^Unmapped: 1 identity-days/ });
+    expect(within(cards).getByRole("button", { name: /^Identity-days: 3/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(unmapped);
+    await waitFor(() => expect(api.getDailyActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mapping: "unmapped", page: 1, terminal: "Main Door", date_from: "2026-11-12" })));
+    const active = within(screen.getByRole("group", { name: "Identity-days by mapping status" }))
+      .getByRole("button", { name: /^Unmapped/ });
+    expect(active).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(screen.getByRole("group", { name: "Identity-days by mapping status" })).getByRole("button", { name: /^Verified/ }));
+    await waitFor(() => expect(api.getDailyActivity).toHaveBeenLastCalledWith(expect.objectContaining({ mapping: "verified" })));
+    fireEvent.click(within(screen.getByRole("group", { name: "Identity-days by mapping status" })).getByRole("button", { name: /^Verified/ }));
+    // Clicking the active card returns to All (served from the cache of the first "all" query).
+    await waitFor(() => expect(within(screen.getByRole("group", { name: "Identity-days by mapping status" }))
+      .getByRole("button", { name: /^Identity-days/ })).toHaveAttribute("aria-pressed", "true"));
+    fireEvent.click(within(screen.getByRole("group", { name: "Identity-days by mapping status" })).getByRole("button", { name: /^Mapping conflict/ }));
+    await waitFor(() => expect(api.getDailyActivity).toHaveBeenLastCalledWith(expect.objectContaining({ mapping: "conflict" })));
+  });
+
+  it("charts use only smooth brand gradients, never textures or patterns", async () => {
+    const css = (await import("node:fs")).readFileSync("src/app/globals.css", "utf8");
+    for (const c of ["#f1592a", "#fcb040", "#bf1e2e"]) expect(css.toLowerCase()).toContain(c);
+    expect(css).not.toMatch(/repeating-linear-gradient|radial-gradient|background-size:\s*\d+px/);
+    const { MAPPING_STATE } = await import("@/lib/format");
+    expect(MAPPING_STATE.VERIFIED.tone).toBe("brand"); // never the green "success" tone
   });
 });

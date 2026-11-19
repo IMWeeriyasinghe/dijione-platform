@@ -88,7 +88,7 @@ describe("Server-side pagination", () => {
     api.getEmployees.mockResolvedValue(EMP(506, [row("101", false)]));
     const { default: Page } = await import("@/app/employees/page");
     renderPage(<Page />);
-    expect(await screen.findByText("1–10 of 506 team members")).toBeInTheDocument();
+    expect(await screen.findByText("1-10 of 506 team members")).toBeInTheDocument();
     expect(api.getEmployees).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 10 }));
     expect(screen.getByLabelText("Rows per page")).toHaveValue("10");
     expect([...screen.getByLabelText("Rows per page").querySelectorAll("option")].map((o) => o.textContent)).toEqual(["10", "20", "50", "100"]);
@@ -190,9 +190,9 @@ describe("Chart drill-down", () => {
       employment_status: "Active", identity_class: "MATCHED_ACTIVE", job_title: null, match_count: 1 }, summary: { activity_days: 0, events: 0, review_flags: 0 }, days: [], events: [], directory_available: true });
     const { default: Page } = await import("@/app/page");
     renderPage(<Page />);
-    const bar = await screen.findByRole("button", { name: /11:00–11:59 \(Asia\/Colombo\): 3 recorded/ });
+    const bar = await screen.findByRole("button", { name: /11:00-11:59 \(Asia\/Colombo\): 3 recorded/ });
     fireEvent.click(bar);
-    const sheet = await screen.findByRole("dialog", { name: /11:00–11:59:59/ });
+    const sheet = await screen.findByRole("dialog", { name: /11:00-11:59:59/ });
     await waitFor(() => expect(api.getActivity).toHaveBeenCalledWith(expect.objectContaining({
       date_from: "2026-11-03", date_to: "2026-11-03", hour: 11, mapping: "all", page: 1, page_size: 10 })));
     expect(within(sheet).getByText("Verified team members")).toBeInTheDocument();
@@ -206,7 +206,7 @@ describe("Chart drill-down", () => {
     const profile = await screen.findByRole("dialog", { name: "Person 101" });
     fireEvent.keyDown(document, { key: "Escape" }); // closes only the top-most panel
     await waitFor(() => expect(profile).not.toBeInTheDocument());
-    expect(screen.getByRole("dialog", { name: /11:00–11:59:59/ })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /11:00-11:59:59/ })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(getTestUrl().searchParams.get("from")).toBe("2026-11-03"); // date selection preserved
@@ -231,6 +231,6 @@ describe("Chart drill-down", () => {
     const { default: Page } = await import("@/app/activity/page");
     renderPage(<Page />);
     await waitFor(() => expect(api.getActivity).toHaveBeenCalledWith(expect.objectContaining({ hour: 11, sort: "time", page_size: 10 })));
-    expect(await screen.findByRole("button", { name: /Remove filter: Hour: 11:00–11:59 \(Asia\/Colombo\)/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Remove filter: Hour: 11:00-11:59 \(Asia\/Colombo\)/ })).toBeInTheDocument();
   });
 });

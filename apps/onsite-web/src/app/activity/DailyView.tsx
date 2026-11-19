@@ -30,7 +30,7 @@ function Identity({ r }: { r: DailyRow }) {
     return (
       <span className="min-w-0">
         <span className="block font-mono font-medium text-dt-text-primary">ZKBioTime ID {r.emp_code}</span>
-        <span className="block text-xs text-dt-text-secondary">{r.mapping_state === "CONFLICT" ? "Never attributed until resolved" : "Raw ID — not attributed to a person"}</span>
+        <span className="block text-xs text-dt-text-secondary">{r.mapping_state === "CONFLICT" ? "Never attributed until resolved" : "Raw ID, not attributed to a person"}</span>
       </span>
     );
   }
@@ -85,31 +85,43 @@ function DayPunches({ r, siteId }: { r: DailyRow; siteId: string }) {
   );
 }
 
-function SummaryCards({ s }: { s: DailySummary }) {
-  const items = [
-    { label: "Identity-days", value: s.identity_days, sub: `${fmtNum(s.punches)} recorded fingerprints` },
-    { label: "Verified", value: s.verified_identity_days, sub: `${fmtNum(s.verified_punches)} fingerprints`, bar: MAPPING_STATE.VERIFIED.bar },
-    { label: "Unmapped", value: s.unmapped_identity_days, sub: `${fmtNum(s.unmapped_punches)} fingerprints`, bar: MAPPING_STATE.UNMAPPED.bar },
-    { label: "Mapping conflict", value: s.conflict_identity_days, sub: `${fmtNum(s.conflict_punches)} fingerprints`, bar: MAPPING_STATE.CONFLICT.bar },
+/** Identity-day counts per mapping status. Each card filters the Daily summary to that
+ *  status (the summary always counts the filters without the mapping filter, so the four
+ *  totals never change while switching). Clicking the active status returns to All. */
+function SummaryCards({ s, value, onChange }: { s: DailySummary; value: MappingFilter; onChange: (v: MappingFilter) => void }) {
+  const items: { key: MappingFilter; label: string; value: number; sub: string; bar?: string }[] = [
+    { key: "all", label: "Identity-days", value: s.identity_days, sub: `${fmtNum(s.punches)} recorded fingerprints` },
+    { key: "verified", label: "Verified", value: s.verified_identity_days, sub: `${fmtNum(s.verified_punches)} fingerprints`, bar: MAPPING_STATE.VERIFIED.bar },
+    { key: "unmapped", label: "Unmapped", value: s.unmapped_identity_days, sub: `${fmtNum(s.unmapped_punches)} fingerprints`, bar: MAPPING_STATE.UNMAPPED.bar },
+    { key: "conflict", label: "Mapping conflict", value: s.conflict_identity_days, sub: `${fmtNum(s.conflict_punches)} fingerprints`, bar: MAPPING_STATE.CONFLICT.bar },
   ];
   return (
     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" role="group" aria-label="Identity-days by mapping status">
-      {items.map((i) => (
-        <div key={i.label} className="rounded-xl border border-dt-border bg-dt-surface p-3">
-          <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-dt-text-secondary">
-            {i.bar && <span aria-hidden className={cx("size-2.5 rounded-sm", i.bar)} />}{i.label}
-          </span>
-          <span className="mt-1 block text-2xl font-semibold tabular-nums">{fmtNum(i.value)}</span>
-          <span className="block text-xs text-dt-text-secondary">{i.sub}</span>
-        </div>
-      ))}
+      {items.map((i) => {
+        const active = value === i.key;
+        return (
+          <button key={i.key} type="button" aria-pressed={active}
+            aria-label={`${i.label}: ${fmtNum(i.value)} identity-days, ${i.sub}. ${active && i.key !== "all" ? "Showing only these. Select again to show all." : `Show ${i.key === "all" ? "all identity-days" : `only ${i.label.toLowerCase()} identity-days`}.`}`}
+            onClick={() => onChange(active && i.key !== "all" ? "all" : i.key)}
+            className={cx("rounded-xl border bg-dt-surface p-3 text-left transition-colors hover:border-dt-orange/60 hover:bg-dt-surface-warm/60",
+              focusRing, active ? "border-dt-burnt-orange ring-1 ring-dt-burnt-orange/40" : "border-dt-border")}>
+            <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-dt-text-secondary">
+              {i.bar && <span aria-hidden className={cx("size-2.5 rounded-sm", i.bar)} />}{i.label}
+            </span>
+            <span className="mt-1 block text-2xl font-semibold tabular-nums text-dt-text-primary">{fmtNum(i.value)}</span>
+            <span className="block text-xs text-dt-text-secondary">{i.sub}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-export function DailyView({ filters, sort, onSort, page, pageSize, onPage, onPageSize, onEvents, today }: {
+export function DailyView({ filters, sort, onSort, page, pageSize, onPage, onPageSize, onEvents, today, onMapping }: {
   filters: DailyFilters; sort: string; onSort: (s: string) => void; page: number; pageSize: number;
   onPage: (p: number) => void; onPageSize: (n: number) => void; onEvents: (r: DailyRow) => void; today: string;
+  /** Selects a mapping status (and returns to page 1), keeping every other filter. */
+  onMapping: (v: MappingFilter) => void;
 }) {
   const query = useQuery({ queryKey: ["onsite-activity-daily", filters, sort, page, pageSize],
     queryFn: () => getDailyActivity({ ...filters, sort, page, page_size: pageSize }), ...liveQuery });
@@ -128,7 +140,7 @@ export function DailyView({ filters, sort, onSort, page, pageSize, onPage, onPag
   const d = query.data;
   return (
     <div className="space-y-3">
-      <SummaryCards s={d.summary} />
+      <SummaryCards s={d.summary} value={filters.mapping} onChange={onMapping} />
       {d.total === 0 ? (
         <EmptyPanel icon={CalendarSearch} title="No recorded fingerprints match" description="Try another period, mapping status or filter." />
       ) : (

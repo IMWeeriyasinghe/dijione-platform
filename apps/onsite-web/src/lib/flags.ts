@@ -35,7 +35,7 @@ export function addDays(isoDate: string, days: number): string {
 /** What each flag means — the same neutral wording onsite-api uses for the
  *  Exceptions "reasons". A flag is a prompt to look, never a policy breach. */
 export const FLAG_HELP: Record<ReviewFlag, string> = {
-  SINGLE_PUNCH: "Single Recorded Fingerprint: only one fingerprint was recorded on this completed day. An observation for optional review — not a violation.",
+  SINGLE_PUNCH: "Single Recorded Fingerprint: only one fingerprint was recorded on this completed day. An observation for optional review, not a violation.",
   POSSIBLE_DUPLICATE_TAP: "Two activities were recorded within 60 seconds of each other.",
   UNMATCHED_CODE: "The ZKBioTime ID has no verified BambooHR mapping for this day.",
   AMBIGUOUS_CODE: "More than one verified mapping covers this ZKBioTime ID on this day.",

@@ -220,7 +220,7 @@ export const REVIEW_STATE: Record<ReviewState, { label: string; tone: "warning" 
   },
   REJECTED_ASSOCIATION: {
     label: "Rejected Association", tone: "neutral",
-    help: "A proposed team member was recorded as NOT this ID's owner. The ID itself still has no verified owner — continue the investigation.",
+    help: "A proposed team member was recorded as NOT this ID's owner. The ID itself still has no verified owner. Continue the investigation.",
   },
   PARTLY_VERIFIED: {
     label: "Partly Verified", tone: "warning",

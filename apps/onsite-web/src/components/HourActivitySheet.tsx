@@ -43,8 +43,8 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
   const params = { site_id: site.site_id, date_from: period.from, date_to: period.to, hour, mapping, sort: "time", page, page_size: size };
   const query = useQuery({ queryKey: ["onsite-activity", params], queryFn: () => getActivity(params), ...liveQuery });
   const single = isSingleDay(period);
-  const range = `${hh(hour)}:00–${hh(hour)}:59:59`;
-  const when = single ? fmtDay(period.from, true) : `${fmtDay(period.from)} – ${fmtDay(period.to, true)}`;
+  const range = `${hh(hour)}:00-${hh(hour)}:59:59`;
+  const when = single ? fmtDay(period.from, true) : `${fmtDay(period.from)} - ${fmtDay(period.to, true)}`;
   const activityHref = hrefWith("/activity", { from: period.from, to: period.to, hour, sort: "time", mapping });
   const sum = query.data?.summary;
 
@@ -65,7 +65,7 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
               </h2>
               <p className="text-sm text-dt-text-secondary">{site.name} · {when}</p>
               {!single && (
-                <p className="mt-1 text-xs text-dt-burnt-orange">Combined across {dayCount(period)} days — this hour on every date in the period.</p>
+                <p className="mt-1 text-xs text-dt-burnt-orange">Combined across {dayCount(period)} days: this hour on every date in the period.</p>
               )}
             </div>
             <button type="button" onClick={onClose} aria-label="Close"
@@ -105,7 +105,7 @@ export function HourActivitySheet({ period, hour, employees, onHour, onClose, on
                       <span className="tabular-nums"><span className="font-medium">{localTime(e.local_time)}</span>
                         {!single && <span className="ml-1 text-xs text-dt-text-secondary">{fmtDay(e.local_date)}</span>}</span>
                     ) },
-                    { key: "seq", header: "Punch in day", nowrap: true, help: "First / last recorded fingerprint of the whole site-local day. Recorded order only — the last fingerprint is not an exit.",
+                    { key: "seq", header: "Punch in day", nowrap: true, help: "First / last recorded fingerprint of the whole site-local day. Recorded order only. The last fingerprint is not an exit.",
                       cell: (e) => <SequenceMarker seq={e.punch_sequence} /> },
                     { key: "term", header: "Terminal", cell: (e) => e.terminal ?? "—" },
                     { key: "id", header: "Mapping Status", nowrap: true, cell: (e) => <MappingStateBadge state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} /> },

@@ -3,6 +3,8 @@ const TONE_CLASSES = {
   warning: "bg-dt-amber/10 text-dt-burnt-orange border-dt-amber/40",
   danger: "bg-dt-danger/10 text-dt-danger border-dt-danger/30",
   neutral: "bg-dt-surface-warm text-dt-text-secondary border-dt-border",
+  // Brand orange (official #F1592A): identity "Verified" without implying a successful outcome.
+  brand: "bg-dt-orange/10 text-dt-burnt-orange border-dt-orange/40",
 } as const;
 
 export type Tone = keyof typeof TONE_CLASSES;

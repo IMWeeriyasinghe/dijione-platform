@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "@dijione/design-system";
 import { ToneBadge } from "@/components/ToneBadge";
-import { cx, Field, fieldClass, InlineAlert, SkeletonRows } from "@/components/kit";
+import { cx, Field, fieldClass, Initials, InlineAlert, SkeletonRows } from "@/components/kit";
 import {
   DECLARATION_SOURCES, EXCEPTION_TYPES, getReviewDay, JUSTIFICATION_REASONS, openReview, OUTCOMES, reopenReview,
   resolveReview, submitReview,
@@ -65,7 +65,7 @@ function FactsBlock({ facts, title }: { facts: DayFacts; title: string }) {
         <div><dt className="text-xs text-dt-text-secondary">First recorded fingerprint</dt><dd>{localTime(facts.first_local)}</dd></div>
         <div><dt className="text-xs text-dt-text-secondary">Last recorded fingerprint</dt><dd>{localTime(facts.last_local)}</dd></div>
         <div><dt className="text-xs text-dt-text-secondary" title={RECORDED_SPAN_HELP}>Recorded Span</dt>
-          <dd>{facts.recorded_span_minutes === null ? "—, Single Recorded Fingerprint" : formatRecordedSpan(facts.recorded_span_minutes)}</dd></div>
+          <dd>{facts.recorded_span_minutes === null ? "— (Single Recorded Fingerprint)" : formatRecordedSpan(facts.recorded_span_minutes)}</dd></div>
         <div><dt className="text-xs text-dt-text-secondary">Punches</dt><dd className="tabular-nums">{facts.punch_count}</dd></div>
       </dl>
     </div>
@@ -115,8 +115,17 @@ export function AttendanceReviewDialog({ target, onClose }: { target: ReviewTarg
   const facts = d?.current_facts;
 
   return (
-    <Modal open onClose={onClose} title={`Attendance review — ${target.label}, ${fmtDay(target.date, true)}`}>
+    <Modal open onClose={onClose} title={`Attendance review: ${target.label}, ${fmtDay(target.date, true)}`}>
       <div className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
+        {/* Verified team members get their photo (by BHR ID only); raw IDs stay anonymous. */}
+        <div className="flex items-center gap-3">
+          <Initials name={target.bamboohrId ? target.label : null} code={target.bamboohrId ?? target.zkEmpCode ?? "id"} size="md"
+            photo={Boolean(target.bamboohrId)} bhrId={target.bamboohrId ?? null} />
+          <div className="min-w-0 text-sm">
+            <p className="truncate font-medium text-dt-text-primary">{target.label}</p>
+            <p className="text-xs text-dt-text-secondary">{target.bamboohrId ? `BHR ID ${target.bamboohrId}` : "Raw ZKBioTime ID, not attributed to a person"}</p>
+          </div>
+        </div>
         <p className="text-xs text-dt-text-secondary">{FINGERPRINT_DISCLAIMER} A review is an administrative record: it never changes fingerprint records or identity mappings, and a resolved case is not a verified duration.</p>
         {day.isLoading || !d ? <SkeletonRows rows={3} label="Loading review…" /> : (
           <>
@@ -140,7 +149,7 @@ export function AttendanceReviewDialog({ target, onClose }: { target: ReviewTarg
                 </div>
                 {c.stale && (
                   <InlineAlert tone="warning">
-                    {(c.reassess_reasons ?? []).map((r) => REASSESS_LABEL[r]).join("; ")}. Nothing was changed automatically — compare the facts below and resubmit or reopen.
+                    {(c.reassess_reasons ?? []).map((r) => REASSESS_LABEL[r]).join("; ")}. Nothing was changed automatically. Compare the facts below and resubmit or reopen.
                   </InlineAlert>
                 )}
                 {c.stale && <FactsBlock facts={c.facts_snapshot} title="Recorded evidence when last reviewed" />}
@@ -149,7 +158,7 @@ export function AttendanceReviewDialog({ target, onClose }: { target: ReviewTarg
                   {c.explanation && <div className="sm:col-span-2"><dt className="text-xs text-dt-text-secondary">Explanation</dt><dd className="whitespace-pre-wrap">{c.explanation}</dd></div>}
                   {c.declared_departure_local && <div><dt className="text-xs text-dt-text-secondary">Declared departure (administrative declaration)</dt>
                     <dd>{localTime(c.declared_departure_local)} · {c.declaration_source ? SOURCE_LABEL[c.declaration_source] : ""}</dd></div>}
-                  {c.estimated_minutes !== null && <div><dt className="text-xs text-dt-text-secondary">Estimated interval — reviewed declaration, not a confirmed duration</dt>
+                  {c.estimated_minutes !== null && <div><dt className="text-xs text-dt-text-secondary">Estimated interval (reviewed declaration, not a confirmed duration)</dt>
                     <dd>{formatRecordedSpan(c.estimated_minutes)}</dd></div>}
                   {c.estimate_basis && <div className="sm:col-span-2"><dt className="text-xs text-dt-text-secondary">Estimate basis</dt><dd>{c.estimate_basis}</dd></div>}
                   {c.outcome && <div><dt className="text-xs text-dt-text-secondary">Outcome</dt><dd>{OUTCOME_LABEL[c.outcome]} · Duration not verified</dd></div>}
@@ -160,7 +169,7 @@ export function AttendanceReviewDialog({ target, onClose }: { target: ReviewTarg
                   <summary className="cursor-pointer text-dt-burnt-orange">History ({d.history.length})</summary>
                   <ol className="mt-2 space-y-1 text-xs text-dt-text-secondary">
                     {d.history.map((h) => (
-                      <li key={`${h.version}-${h.at}`}>{new Date(h.at).toLocaleString()} — {h.action.toLowerCase()} by {h.actor_name ?? "an administrator"}
+                      <li key={`${h.version}-${h.at}`}>{new Date(h.at).toLocaleString()}: {h.action.toLowerCase()} by {h.actor_name ?? "an administrator"}
                         {" "}({h.from_status ? `${STATUS_LABEL[h.from_status]} → ` : ""}{STATUS_LABEL[h.to_status]}){h.note ? `: ${h.note}` : ""}</li>
                     ))}
                   </ol>
@@ -218,7 +227,7 @@ export function AttendanceReviewDialog({ target, onClose }: { target: ReviewTarg
                     e.preventDefault();
                     act.mutate(() => resolveReview(c.id, { expected_version: c.version, outcome: outcome as Outcome, decision_note: note }));
                   }}>
-                    <p className="text-sm font-semibold">Resolve (administrative decision — duration not verified)</p>
+                    <p className="text-sm font-semibold">Resolve (administrative decision, duration not verified)</p>
                     <Select label="Outcome" value={outcome} onChange={setOutcome}
                       options={[{ value: "", label: "Choose…" }, ...OUTCOMES.map((o) => ({ value: o, label: OUTCOME_LABEL[o] }))]} />
                     <Text label={`Decision note (at least ${MIN_TEXT} characters)`} value={note} onChange={setNote} rows={2} />

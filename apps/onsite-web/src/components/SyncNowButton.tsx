@@ -21,8 +21,8 @@ export function SyncNowButton({ onDone }: { onDone: () => void }) {
         const run = await getSyncRun(runId);
         if (run.status !== "QUEUED" && run.status !== "RUNNING") {
           setMessage(run.status === "SUCCEEDED"
-            ? `Sync complete — ${run.events_inserted} new event(s), ${run.events_existing} already mirrored.`
-            : run.source_unavailable ? "Source unavailable — the mirror was left unchanged." : "Sync failed — the mirror was left unchanged.");
+            ? `Sync complete: ${run.events_inserted} new event(s), ${run.events_existing} already mirrored.`
+            : run.source_unavailable ? "Source unavailable. The mirror was left unchanged." : "Sync failed. The mirror was left unchanged.");
           setRunId(null);
           onDone();
         }
@@ -43,7 +43,7 @@ export function SyncNowButton({ onDone }: { onDone: () => void }) {
           setMessage(null);
           const accepted = await requestSync();
           setRunId(accepted.run_id);
-          if (!accepted.started) setMessage("A sync is already running — following it.");
+          if (!accepted.started) setMessage("A sync is already running. Following it.");
         }}
       >
         Sync now

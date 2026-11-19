@@ -34,7 +34,7 @@ export function IdentityBadge({ cls }: { cls: IdentityClass | null }) {
 export function MappingBadge({ status, cls }: { status?: MappingStatus | null; cls?: IdentityClass | null }) {
   if (status === "MAPPED" || (!status && cls)) {
     if (cls && cls !== "MATCHED_ACTIVE") return <IdentityBadge cls={cls} />;
-    return <ToneBadge tone="success">{MAPPING_LABEL.MAPPED}</ToneBadge>;
+    return <ToneBadge tone={MAPPING_STATE.VERIFIED.tone}>{MAPPING_LABEL.MAPPED}</ToneBadge>;
   }
   if (!status) return <ToneBadge tone="neutral">Details unavailable</ToneBadge>;
   const tone = status === "MAPPING_CONFLICT" ? MAPPING_STATE.CONFLICT.tone
@@ -66,7 +66,7 @@ export function SequenceMarker({ seq, position, total }: { seq?: PunchSequence; 
   const of = position && total ? ` (${position} of ${total})` : "";
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-dt-text-secondary"
-      title={`${SEQUENCE_LABEL[seq]} of the whole site-local day${of}. Recorded order only — the last fingerprint is not an exit.`}>
+      title={`${SEQUENCE_LABEL[seq]} of the whole site-local day${of}. Recorded order only. The last fingerprint is not an exit.`}>
       <span aria-hidden className="font-mono text-dt-text-primary">{glyph}</span>
       {SEQUENCE_LABEL[seq]}{of && <span className="tabular-nums">{of}</span>}
     </span>

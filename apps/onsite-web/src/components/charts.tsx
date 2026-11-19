@@ -200,8 +200,8 @@ export function StackedBarChart({ data, primaryLabel, secondaryLabel, measure, s
   return (
     <figure className="min-w-0">
       <div className="mb-2 flex flex-wrap gap-3 text-xs text-dt-text-secondary" aria-hidden>
-        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-dt-success" />{primaryLabel}</span>
-        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-dt-amber" />{secondaryLabel}</span>
+        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm onsite-bar-verified" />{primaryLabel}</span>
+        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm onsite-bar-unmapped" />{secondaryLabel}</span>
       </div>
       <div className="flex gap-2">
         <div className="flex shrink-0 flex-col justify-between text-right text-[11px] tabular-nums text-dt-text-secondary" style={{ height }} aria-hidden>
@@ -217,8 +217,8 @@ export function StackedBarChart({ data, primaryLabel, secondaryLabel, measure, s
               const text = `${d.label}: ${fmtNum(d.primary)} ${primaryLabel.toLowerCase()}, ${fmtNum(d.secondary)} ${secondaryLabel.toLowerCase()} (${fmtNum(sum)} ${measure})`;
               const inner = (
                 <span className="flex w-full flex-col justify-end" style={{ height: `${Math.max((sum / max) * 100, sum ? 2 : 1)}%` }}>
-                  <span className={cx("block w-full rounded-t-sm", d.secondary ? "bg-dt-amber" : "")} style={{ flexGrow: d.secondary }} />
-                  <span className={cx("block w-full", d.primary ? "bg-dt-success" : "", !sum && "bg-dt-border/70")} style={{ flexGrow: d.primary || (sum ? 0 : 1) }} />
+                  <span className={cx("block w-full rounded-t-sm", d.secondary ? "onsite-bar-unmapped onsite-seg-min" : "")} style={{ flexGrow: d.secondary }} />
+                  <span className={cx("block w-full", d.primary ? "onsite-bar-verified onsite-seg-min" : "", !sum && "bg-dt-border/70")} style={{ flexGrow: d.primary || (sum ? 0 : 1) }} />
                 </span>
               );
               const common = {
@@ -304,7 +304,7 @@ export function StatusBarChart({ data, series = "all", summary, onSelect, select
   }
   const tip = hover !== null ? data[hover] : null;
   const describe = (d: StatusBar) =>
-    `${d.label}: ${fmtNum(d.verified + d.unmapped + d.conflict)} recorded — ${fmtNum(d.verified)} verified, ${fmtNum(d.unmapped)} unmapped, ${fmtNum(d.conflict)} conflict`
+    `${d.label}: ${fmtNum(d.verified + d.unmapped + d.conflict)} recorded: ${fmtNum(d.verified)} verified, ${fmtNum(d.unmapped)} unmapped, ${fmtNum(d.conflict)} conflict`
     + (d.notes?.length ? `. ${d.notes.join(". ")}` : "");
   return (
     <figure className="min-w-0">
@@ -387,7 +387,9 @@ export function StatusBarChart({ data, series = "all", summary, onSelect, select
 export type Segment = { key: string; label: string; value: number; tone: "success" | "warning" | "danger" | "neutral" | "brand"; help?: string };
 
 const SEGMENT_BG: Record<Segment["tone"], string> = {
-  success: "bg-dt-success", warning: "bg-dt-amber", danger: "bg-dt-danger/80", neutral: "bg-dt-info/50", brand: "bg-dt-orange",
+  // Brand data-series palette (globals.css): verified-like = orange, attention = yellow, conflict = red.
+  success: "onsite-bar-verified", warning: "onsite-bar-unmapped", danger: "onsite-bar-conflict", neutral: "bg-dt-info/50",
+  brand: "onsite-bar-verified",
 };
 
 /** A single 100% bar split into labelled parts, with a legend that doubles

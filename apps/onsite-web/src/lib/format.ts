@@ -46,7 +46,7 @@ export const ID_LABELS = {
 
 /* ------------------------------------------------- identity status (shared) */
 
-export type StatusTone = "success" | "warning" | "danger";
+export type StatusTone = "brand" | "warning" | "danger";
 
 /** One identity-status vocabulary and colour set for Overview, Activity and
  *  Identity Management. Verified = green, unmapped / needs review = amber,
@@ -58,12 +58,12 @@ export const MAPPING_STATE: Record<"VERIFIED" | "UNMAPPED" | "CONFLICT", {
   // Chart bars use the onsite-local data palette (globals.css: teal/blue · amber ·
   // burgundy gradients plus a non-colour pattern); badges keep semantic tones.
   VERIFIED: {
-    label: "Verified", short: "Verified", tone: "success", bar: "onsite-bar-verified", text: "text-dt-success",
+    label: "Verified", short: "Verified", tone: "brand", bar: "onsite-bar-verified", text: "text-dt-burnt-orange",
     help: "A verified ZKBioTime ID mapping covers this day, so the event is attributed to that team member.",
   },
   UNMAPPED: {
-    label: "Unmapped — needs review", short: "Unmapped", tone: "warning", bar: "onsite-bar-unmapped", text: "text-dt-warning",
-    help: "No verified mapping covers this ZKBioTime ID on this day. The event is stored and shown by ID only — never as a team member.",
+    label: "Unmapped (needs review)", short: "Unmapped", tone: "warning", bar: "onsite-bar-unmapped", text: "text-dt-warning",
+    help: "No verified mapping covers this ZKBioTime ID on this day. The event is stored and shown by ID only, never as a team member.",
   },
   CONFLICT: {
     label: "Mapping conflict", short: "Conflict", tone: "danger", bar: "onsite-bar-conflict", text: "text-dt-danger",
@@ -74,7 +74,8 @@ export const MAPPING_STATE: Record<"VERIFIED" | "UNMAPPED" | "CONFLICT", {
 export const MAPPING_FILTER_OPTIONS = [
   { value: "all", label: "All activity" },
   { value: "verified", label: "Verified" },
-  { value: "unverified", label: "Unmapped / needs review" },
+  { value: "unverified", label: "Needs review" },
+  { value: "unmapped", label: "Unmapped" },
   { value: "conflict", label: "Mapping conflict" },
 ] as const;
 
@@ -87,9 +88,9 @@ export const SEQUENCE_LABEL: Record<"FIRST" | "LAST" | "INTERMEDIATE" | "SINGLE"
 
 /** Entry-side reader + anonymous push-to-exit button: no exit is ever recorded. */
 export const FINGERPRINT_DISCLAIMER =
-  "Recorded at the entry-side fingerprint reader — not a confirmed exit, presence or hours worked.";
+  "Recorded at the entry-side fingerprint reader. Not a confirmed exit, presence or hours worked.";
 export const RECORDED_SPAN_HELP =
-  "Time between the first and last recorded fingerprint. A measured interval between observations — not a confirmed exit, presence or hours worked. Unavailable for a Single Recorded Fingerprint.";
+  "Time between the first and last recorded fingerprint. A measured interval between observations, not a confirmed exit, presence or hours worked. Unavailable for a Single Recorded Fingerprint.";
 
 /** Recorded Span text: "—" when unavailable (a single fingerprint), never 0h. */
 export function formatRecordedSpan(minutes: number | null | undefined): string {

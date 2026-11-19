@@ -64,7 +64,7 @@ describe("FreshnessIndicator", () => {
     api.getFreshness.mockResolvedValue(fresh("FRESH", 10_000));
     const failed = { ...page, isError: true, refetch: vi.fn() };
     wrap(<FreshnessIndicator siteId="s1" queries={[failed]} />);
-    expect(await screen.findByText(/Refresh failed — showing the last loaded data/)).toBeInTheDocument();
+    expect(await screen.findByText(/Refresh failed\. Showing the last loaded data/)).toBeInTheDocument();
     await screen.findByText(/^Last synced/);
     fireEvent.click(screen.getByRole("button", { name: "Refresh now" }));
     expect(failed.refetch).toHaveBeenCalled();

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Diji On-site — by Dijital Team",
+  title: "Diji On-site by Dijital Team",
   description: "On-site Attendance Operations.",
 };
 

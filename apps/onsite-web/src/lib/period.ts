@@ -85,8 +85,8 @@ export function fmtDaySpan(from: string, to: string): string {
   if (from === to) return fmtShortDay(from);
   const [fy, fm, fd] = from.split("-").map(Number);
   const [ty, tm] = to.split("-").map(Number);
-  if (fy === ty && fm === tm && fd) return `${fd}–${fmtShortDay(to)}`;
-  return `${fmtShortDay(from)} – ${fmtShortDay(to)}`;
+  if (fy === ty && fm === tm && fd) return `${fd}-${fmtShortDay(to)}`;
+  return `${fmtShortDay(from)} - ${fmtShortDay(to)}`;
 }
 
 export function fmtPeriod(p: Period, today?: string): string {
@@ -96,7 +96,7 @@ export function fmtPeriod(p: Period, today?: string): string {
     if (today && p.from === addDays(today, -1)) return `Yesterday · ${label}`;
     return label;
   }
-  return `${fmtShortDay(p.from)} – ${fmtShortDay(p.to)} ${p.to.slice(0, 4)} (${dayCount(p)} days)`;
+  return `${fmtShortDay(p.from)} - ${fmtShortDay(p.to)} ${p.to.slice(0, 4)} (${dayCount(p)} days)`;
 }
 
 /** Every ISO date from `from` to `to` inclusive. */

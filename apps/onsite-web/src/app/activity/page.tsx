@@ -113,7 +113,7 @@ function ActivityView() {
           ["Day: first / last recorded fingerprint", e.day_first_local
             ? `${localTime(e.day_first_local)} / ${e.punches_in_day === 1 ? "—" : localTime(e.day_last_local)}` : "—"],
           ["Recorded Span (day)", e.day_span_minutes === null || e.day_span_minutes === undefined
-            ? "—, Single Recorded Fingerprint" : formatRecordedSpan(e.day_span_minutes)],
+            ? "— (Single Recorded Fingerprint)" : formatRecordedSpan(e.day_span_minutes)],
         ])}
         {group("Identity", [
           [verified ? "Team member" : "Identity", verified ? (e.employee_name ?? "—") : "Not attributed (raw ID only)"],
@@ -151,7 +151,7 @@ function ActivityView() {
   return (
     <div className="space-y-4">
       <PageTop title="Activity"
-        description="Every recorded fingerprint in site-local time — verified and unverified — as a daily summary per identity or as individual events. Unverified fingerprints show their ZKBioTime ID only and are never attributed to a team member. Recorded at the entry-side reader: not a confirmed exit, presence or hours worked."
+        description="Every recorded fingerprint in site-local time, verified and unverified, as a daily summary per identity or as individual events. Unverified fingerprints show their ZKBioTime ID only and are never attributed to a team member. Recorded at the entry-side reader: not a confirmed exit, presence or hours worked."
         actions={<ExportReportButton terminals={site.terminals} departments={site.departments ?? []} context={{
           report: daily ? "daily" : mapping === "verified" ? "verified" : "recorded", siteId: site.site_id, today: site.today,
           from: s.from, to: s.to, q: s.q, emp: s.emp, mapping, dept: s.dept, term: s.term, flag: s.flag, review: s.review }} />}>
@@ -207,6 +207,7 @@ function ActivityView() {
       {daily ? (
         <DailyView filters={dailyFilters} sort={s.dsort} onSort={(v) => set({ dsort: v })} page={page} pageSize={pageSize}
           onPage={paging.onPage} onPageSize={paging.onPageSize} today={site.today}
+          onMapping={(v) => set({ mapping: v, page: "1" })}
           onEvents={(r) => set({ view: "events", from: r.local_date, to: r.local_date, page: "1",
             ...(r.mapping_state === "VERIFIED" ? { q: r.bamboohr_id ?? "", emp: "", mapping: "verified" } : { emp: r.emp_code, q: "", mapping: "all" }) })} />
       ) : query.isLoading ?<SkeletonRows label="Loading activity…" /> : !query.data ? <ErrorState onRetry={() => query.refetch()} /> :
@@ -224,7 +225,7 @@ function ActivityView() {
           )
         ) : (
           <>
-            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable — verified attendance is shown without names.</p>}
+            {!query.data.directory_available && <p className="text-sm text-dt-burnt-orange">Team member details unavailable. Verified attendance is shown without names.</p>}
             <DataView caption="Recorded activity events" rows={query.data.items}
               rowKey={(e) => e.event_id ?? `${e.emp_code}-${e.local_time}`}
               rowLabel={(e) => `${e.mapping_state && e.mapping_state !== "VERIFIED" ? `ZKBioTime ID ${e.emp_code}` : e.employee_name ?? e.emp_code} at ${localTime(e.local_time)}`}
@@ -236,7 +237,7 @@ function ActivityView() {
                 { key: "emp", header: "Team Member / ID", cell: (e) => <Who e={e} /> },
                 { key: "term", header: "Terminal", cell: (e) => <span className="text-dt-text-primary">{e.terminal ?? "—"}{e.area && <span className="block text-xs text-dt-text-secondary">{e.area}</span>}</span> },
                 { key: "id", header: "Mapping Status", nowrap: true, cell: (e) => <MappingStateBadge state={e.mapping_state} status={e.mapping_status} cls={e.identity_class} /> },
-                { key: "seq", header: "Punch in day", minWidth: "xl", help: "First and last recorded fingerprint of the whole site-local day for this team member (or ZKBioTime ID). Recorded order only — the last fingerprint is not an exit.",
+                { key: "seq", header: "Punch in day", minWidth: "xl", help: "First and last recorded fingerprint of the whole site-local day for this team member (or ZKBioTime ID). Recorded order only. The last fingerprint is not an exit.",
                   cell: (e) => <SequenceMarker seq={e.punch_sequence} position={e.punch_position} total={e.punches_in_day} /> },
                 { key: "flags", header: "Review", minWidth: "xl", cell: (e) => <FlagChips flags={e.review_flags ?? []} /> },
                 { key: "raw", header: "Raw state", minWidth: "2xl", nowrap: true, cell: (e) => <span className="font-mono text-xs">{e.punch_state_raw ?? "—"}</span> },
@@ -270,7 +271,7 @@ function ActivityView() {
 /** "11:00–11:59" — a site-local clock hour. */
 export function hourLabel(h: number): string {
   const hh = String(h).padStart(2, "0");
-  return `${hh}:00–${hh}:59`;
+  return `${hh}:00-${hh}:59`;
 }
 
 export default function ActivityPage() {

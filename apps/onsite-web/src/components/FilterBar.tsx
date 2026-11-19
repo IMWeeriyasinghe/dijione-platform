@@ -51,7 +51,7 @@ export function PeriodControl({ value, onChange, today, allowSingleDayOnly = fal
       {preset === "custom" && (
         <div className="flex flex-wrap items-center gap-2">
           <DateField label="From" value={value.from} max={today} onChange={(v) => onChange(normalizePeriod({ from: v, to: value.to }))} />
-          <span aria-hidden className="text-dt-text-secondary">–</span>
+          <span aria-hidden className="text-dt-text-secondary">-</span>
           <DateField label="To" value={value.to} max={today} onChange={(v) => onChange(normalizePeriod({ from: value.from, to: v }))} />
         </div>
       )}
