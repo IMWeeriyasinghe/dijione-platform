@@ -33,6 +33,7 @@ from tests.conftest import auth_headers
 VIEWER = {"onsite.dashboard.read", "onsite.attendance.read", "onsite.exceptions.read"}
 ADMIN = VIEWER | {
     "onsite.health.read", "onsite.identity.read", "onsite.identity.manage", "onsite.sync.request", "onsite.sites.manage",
+    "onsite.exceptions.manage",  # v0.9: attendance review decisions — On-site Admin only
 }
 APP_ROOT = Path(__file__).resolve().parents[1]
 
@@ -160,7 +161,7 @@ def test_admin_center_lists_both_roles_and_no_client_scope(api_client, db, two_t
         r for r in api_client.get("/api/platform/admin/roles", headers=headers).json()
         if r["module_key"] == "onsite" and not r["appointment_only"]
     ]
-    assert [(r["key"], r["name"]) for r in roles] == [("ONSITE_ADMIN", "On-site Admin"), ("ONSITE_VIEWER", "On-site Viewer")]
+    assert [(r["key"], r["name"]) for r in roles] == [("ONSITE_ADMIN", "On-site Admin"), ("ONSITE_VIEWER", "On-site User")]
     modules = {m["key"]: m for m in api_client.get("/api/platform/admin/modules", headers=headers).json()}
     assert modules["onsite"]["supports_client_scope"] is False
     assert modules["talent-flow"]["supports_client_scope"] is True  # client-scoped modules unchanged
@@ -186,7 +187,7 @@ def test_assign_viewer_then_admin_then_viewer_single_row(api_client, db, two_ten
         assert claim["client_ids"] is None  # unrestricted; stray scope not stored
     detail = api_client.get("/api/platform/admin/applications/onsite", headers=headers).json()
     assert [(u["user_id"], u["role"], u["role_name"]) for u in detail["assigned_users"]] == [
-        (target, "ONSITE_VIEWER", "On-site Viewer")]
+        (target, "ONSITE_VIEWER", "On-site User")]
 
 
 def test_group_assignment_both_roles(api_client, db, two_tenant_world):
@@ -344,6 +345,44 @@ def test_release_activation_uat_prod_only(tmp_path):
         assert rows["onsite"] == "ACTIVE"
         assert rows.get("spark", "COMING_SOON") == "COMING_SOON"  # other modules untouched
     assert status("development")["onsite"] == "ACTIVE"  # DEV via k1l2m3n4o5p6
+
+
+def test_v090_migration_relabels_and_links_review_permission_to_admin_only(tmp_path):
+    """s1t3v5x7z9b1 from the previous head: ONSITE_VIEWER is labelled "On-site
+    User" (key unchanged) and onsite.exceptions.manage is linked to ONSITE_ADMIN
+    only. Re-running converges without duplicates; downgrade restores the label."""
+    url = f"sqlite:///{(tmp_path / 'v090.db').as_posix()}"
+    assert _alembic(url, "upgrade", "r9t1v3x5z7b9").returncode == 0
+    eng = create_engine(url)
+
+    def state():
+        with eng.connect() as c:
+            names = dict(c.execute(text("SELECT key, name FROM roles WHERE module_key='onsite'")).all())
+            holders = sorted(c.execute(text(
+                "SELECT r.key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN permissions p "
+                "ON p.id = rp.permission_id WHERE p.key = 'onsite.exceptions.manage'")).scalars())
+            perms = c.execute(text("SELECT COUNT(*) FROM permissions WHERE key='onsite.exceptions.manage'")).scalar()
+            links = c.execute(text("SELECT COUNT(*) FROM role_permissions")).scalar()
+        return names, holders, perms, links
+
+    # An existing environment (registered before v0.9) holds the old label; a fresh database
+    # gets the current catalog text from the original registration migration.
+    with eng.begin() as c:
+        c.execute(text("UPDATE roles SET name='On-site Viewer' WHERE key='ONSITE_VIEWER' AND module_key='onsite'"))
+        c.execute(text("DELETE FROM role_permissions WHERE permission_id IN "
+                       "(SELECT id FROM permissions WHERE key='onsite.exceptions.manage')"))
+        c.execute(text("DELETE FROM permissions WHERE key='onsite.exceptions.manage'"))
+    before = state()
+    assert before[0]["ONSITE_VIEWER"] == "On-site Viewer" and before[1] == [] and before[2] == 0
+    assert _alembic(url, "upgrade", "head").returncode == 0
+    after = state()
+    assert after[0]["ONSITE_VIEWER"] == "On-site User" and after[0]["ONSITE_ADMIN"] == "On-site Admin"
+    assert after[1] == ["ONSITE_ADMIN"] and after[2] == 1 and after[3] == before[3] + 1
+    assert _alembic(url, "downgrade", "r9t1v3x5z7b9").returncode == 0
+    assert state()[0]["ONSITE_VIEWER"] == "On-site Viewer"
+    assert _alembic(url, "upgrade", "head").returncode == 0
+    assert state() == after  # idempotent: no duplicate permission or link
+    eng.dispose()
 
 
 def test_identity_manage_registration_migration_is_onsite_admin_only():

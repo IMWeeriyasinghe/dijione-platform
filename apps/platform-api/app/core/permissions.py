@@ -390,6 +390,12 @@ ONSITE_PERMISSIONS: list[PermissionDef] = [
         MODULE_ONSITE, "Attendance",
     ),
     PermissionDef(
+        "onsite.exceptions.manage", "Review Attendance Exceptions",
+        "Open, justify, resolve and reopen attendance review cases (administrative records only; fingerprint "
+        "records and identity mappings are never changed).",
+        MODULE_ONSITE, "Attendance",
+    ),
+    PermissionDef(
         "onsite.health.read", "View Site Health", "View site feed health, sync runs and technical details.",
         MODULE_ONSITE, "Administration",
     ),
@@ -414,19 +420,24 @@ ONSITE_PERMISSIONS: list[PermissionDef] = [
 ]
 
 _ONSITE_VIEWER_PERMISSIONS = ("onsite.dashboard.read", "onsite.attendance.read", "onsite.exceptions.read")
+ONSITE_USER_NAME = "On-site User"
+ONSITE_USER_DESCRIPTION = "View the dashboard, recorded fingerprint activity, reports and attendance review cases."
+ONSITE_ADMIN_DESCRIPTION = (
+    "On-site User permissions plus attendance review decisions, site health, identity mappings, sync requests, "
+    "site management and granting On-site User access."
+)
 
 ONSITE_ROLES: list[RoleDef] = [
+    # v0.9 two-role model: key ONSITE_VIEWER is unchanged, displayed as "On-site User".
     RoleDef(
-        "ONSITE_VIEWER", "On-site Viewer", "View the dashboard, attendance activity and items needing review.",
-        MODULE_ONSITE, _ONSITE_VIEWER_PERMISSIONS,
+        "ONSITE_VIEWER", ONSITE_USER_NAME, ONSITE_USER_DESCRIPTION, MODULE_ONSITE, _ONSITE_VIEWER_PERMISSIONS,
     ),
     RoleDef(
-        "ONSITE_ADMIN", "On-site Admin",
-        "Viewer permissions plus site health, identity match report, sync requests and site management.",
+        "ONSITE_ADMIN", "On-site Admin", ONSITE_ADMIN_DESCRIPTION,
         MODULE_ONSITE,
         _ONSITE_VIEWER_PERMISSIONS
-        + ("onsite.health.read", "onsite.identity.read", "onsite.identity.manage", "onsite.sync.request",
-           "onsite.sites.manage"),
+        + ("onsite.exceptions.manage", "onsite.health.read", "onsite.identity.read", "onsite.identity.manage",
+           "onsite.sync.request", "onsite.sites.manage"),
     ),
 ]
 
@@ -502,6 +513,12 @@ class DelegationDef:
     # Employee roles an appointment may authorise its holder to grant. External-user roles
     # (TALENT_CLIENT, BIRTHDAY_SUPPLIER) and the administrator-only roles are never delegable.
     delegable_roles: tuple[str, ...]
+    # Implied (unsaved) appointments: holding ``role`` through an ordinary DIRECT or GROUP grant
+    # (never a baseline) makes an eligible employee an access administrator of this application
+    # who may grant only ``grantable`` (always a subset of ``delegable_roles``; never appoints
+    # administrators). An explicit appointment row always takes precedence. Owner decision
+    # 2026-11-19: every On-site Admin may grant, change and revoke On-site User access.
+    implied_by: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def manage_permission(self) -> str:
@@ -520,7 +537,7 @@ DELEGATION: dict[str, DelegationDef] = {
         DelegationDef(MODULE_BIRTHDAY, "birthday", "DIJI Birthday", "BIRTHDAY_ACCESS_ADMIN", "BIRTHDAY_ACCESS_OWNER",
                       ("BIRTHDAY_USER", "BIRTHDAY_ADMIN")),
         DelegationDef(MODULE_ONSITE, "onsite", "Diji On-site", "ONSITE_ACCESS_ADMIN", "ONSITE_ACCESS_OWNER",
-                      ("ONSITE_VIEWER", "ONSITE_ADMIN")),
+                      ("ONSITE_VIEWER", "ONSITE_ADMIN"), implied_by=(("ONSITE_ADMIN", ("ONSITE_VIEWER",)),)),
         DelegationDef(MODULE_ATWORK, "atwork", "DijiAtWork", "ATWORK_ACCESS_ADMIN", "ATWORK_ACCESS_OWNER",
                       ("ATWORK_MANAGER",)),
     )
