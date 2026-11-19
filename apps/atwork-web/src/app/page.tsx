@@ -208,5 +208,5 @@ function TodayScreen() {
 }
 
 export default function TodayPage() {
-  return <Page><RequirePermission permission={PERM.READ_OWN} title="Attendance access required"><TodayScreen /></RequirePermission></Page>;
+  return <Page><RequirePermission permission={PERM.READ_OWN} title="Attendance is not set up for your account" description="You can open DijiAtWork, but your account is not linked to an employee record yet, so attendance cannot be recorded. If you are an employee, contact HR or your DijiOne administrator."><TodayScreen /></RequirePermission></Page>;
 }
