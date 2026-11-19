@@ -280,5 +280,5 @@ def test_photos_only_through_the_access_routes_of_an_administrator(api_client, d
     assert api_client.get(f"{ACCESS}/people/{OID_NEW}/photo", headers=ben).status_code == 403  # not an admin
     assert api_client.get(f"{ACCESS}/people/{OID_NEW}/photo").status_code == 401
     directory.unavailable = True
-    assert api_client.get(f"/api/access/onsite/people/22222222-0000-4000-8000-000000000009/photo",
+    assert api_client.get("/api/access/onsite/people/22222222-0000-4000-8000-000000000009/photo",
                           headers=ann).status_code == 503
