@@ -15,7 +15,8 @@ role holders — goes through ``_contributions``, so they can never disagree):
 
 1. The application is disabled in the registry: nothing applies.
 2. Mandatory grants always apply while their own conditions hold: default employee
-   access (``BASELINE``, eligible employees) and grants from ``SYSTEM`` groups.
+   access (``BASELINE``: eligible employees, or every active user where the application
+   opts in) and grants from ``SYSTEM`` groups.
 3. An application suspension removes every other grant for that application:
    direct assignments, ordinary group grants and the administrator appointment.
 4. Otherwise every grant applies (additive ALLOW, no DENY other than 3).
@@ -29,7 +30,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import DELEGATION
+from app.core.permissions import BASELINE_UNVERIFIED_PERMISSIONS, DELEGATION
 from app.models.access_group import (
     AccessGroup,
     AccessGroupStatus,
@@ -301,17 +302,23 @@ class AuthorizationService:
         return []
 
     def baseline_roles(self, user: User) -> dict[str, str]:
-        """Module roles every eligible employee holds. Always on: no assignment, disabled row,
-        group change or application suspension removes them while the person stays eligible.
-        Additive with any higher role."""
-        if not self.is_eligible_employee(user):
+        """Default module roles. Always on: no assignment, disabled row, group change or
+        application suspension removes them while the conditions hold. Additive with any higher
+        role. An eligible employee holds every enabled default; any other active user holds the
+        defaults of applications listed in ``BASELINE_UNVERIFIED_PERMISSIONS`` (DijiAtWork),
+        limited there to those permissions (``effective_permissions``)."""
+        if not user.is_active:
             return {}
         rows = self.db.execute(
             select(ModuleBaselineRole.module_key, ModuleBaselineRole.role)
             .join(ApplicationModule, ApplicationModule.key == ModuleBaselineRole.module_key)
             .where(ModuleBaselineRole.enabled.is_(True), ApplicationModule.enabled.is_(True))
         ).all()
-        return {module_key: role for module_key, role in rows}
+        if self.is_eligible_employee(user):
+            return {module_key: role for module_key, role in rows}
+        # Not an eligible employee: only applications that opt in to default access for every
+        # active user (BASELINE_UNVERIFIED_PERMISSIONS); every other baseline keeps requiring it.
+        return {module_key: role for module_key, role in rows if module_key in BASELINE_UNVERIFIED_PERMISSIONS}
 
     def effective_client_scope(
         self, user: User, module_key: str
@@ -379,10 +386,13 @@ class AuthorizationService:
         """Union of permissions across every distinct role contributing to
         ``module_key`` for this user, after precedence."""
         grants = self.effective_module_roles(user).get(module_key, [])
-        roles = {g.role for g in grants}
+        limited = None if self.is_eligible_employee(user) else BASELINE_UNVERIFIED_PERMISSIONS.get(module_key)
+        full_roles = {g.role for g in grants if limited is None or g.source_type != "BASELINE"}
         permissions: set[str] = set()
-        for role in roles:
+        for role in full_roles:
             permissions |= self._permissions_for(module_key, role)
+        for role in {g.role for g in grants if g.source_type == "BASELINE"} - full_roles:
+            permissions |= self._permissions_for(module_key, role) & limited
         return frozenset(permissions)
 
     def holds_role(self, user: User, module_key: str, role: str) -> bool:
