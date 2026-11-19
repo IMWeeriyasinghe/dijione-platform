@@ -74,10 +74,13 @@ def apply_employee_record(user: User, record: EmployeeRecord, *, now: datetime |
     return False
 
 
-def check_at_sign_in(user: User) -> None:
-    """Soft employee-record check during a verified sign-in. Never blocks or fails the sign-in."""
+def check_at_sign_in(user: User, *, wait_seconds: float = 0.0) -> None:
+    """Soft employee-record check during a verified sign-in. Never fails the sign-in; a first sign-in
+    may wait up to ``wait_seconds`` for an HR snapshot that is loading, then answers UNKNOWN."""
     try:
-        record = get_employee_record_checker().check(email=user.email, employee_id=user.employee_number, cached_only=True)
+        record = get_employee_record_checker().check(
+            email=user.email, employee_id=user.employee_number, cached_only=True, wait_seconds=wait_seconds
+        )
     except Exception:  # pragma: no cover - the checker already turns failures into UNKNOWN
         logger.warning("Employee-record check failed during sign-in")
         return

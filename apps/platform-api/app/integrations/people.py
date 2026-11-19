@@ -107,22 +107,32 @@ class EmployeeRecordChecker:
             return self._snapshot
 
     def cached(self) -> _Snapshot | None:
-        """The current snapshot if one is loaded and fresh; never calls people-api."""
-        with self._lock:
-            if self._snapshot is not None and time.monotonic() - self._loaded_at < _TTL_SECONDS:
-                return self._snapshot
-            return None
+        """The current snapshot if one is loaded and fresh; never calls people-api and never waits
+        for a load in progress (no lock: a sign-in must not queue behind the HR source)."""
+        snapshot, loaded_at = self._snapshot, self._loaded_at
+        if snapshot is not None and time.monotonic() - loaded_at < _TTL_SECONDS:
+            return snapshot
+        return None
 
     def warm_in_background(self) -> None:
         threading.Thread(target=self._load, name="employee-records-warm", daemon=True).start()
 
-    def check(self, *, email: str | None, employee_id: str | None = None, cached_only: bool = False) -> EmployeeRecord:
+    def check(
+        self, *, email: str | None, employee_id: str | None = None, cached_only: bool = False,
+        wait_seconds: float = 0.0,
+    ) -> EmployeeRecord:
         """``cached_only`` (sign-in) answers from an already-loaded snapshot, or UNKNOWN while one is
-        loaded in the background: a sign-in never waits for the HR source."""
+        loaded in the background. ``wait_seconds`` (first sign-in only) waits, strictly bounded, for
+        that one background load to finish; it never starts more than one load or calls people-api
+        itself."""
         if cached_only:
             snapshot = self.cached()
             if snapshot is None:
                 self.warm_in_background()
+                deadline = time.monotonic() + min(max(wait_seconds, 0.0), 5.0)
+                while snapshot is None and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                    snapshot = self.cached()
         else:
             snapshot = self._load()
         if snapshot is None:

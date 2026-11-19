@@ -185,7 +185,7 @@ class _EveryoneMatches(EmployeeRecordChecker):
     """Default for tests: every address matches an employee record (as most real employees do).
     Tests about unmatched or unavailable HR records install their own checker."""
 
-    def check(self, *, email, employee_id=None, cached_only=False):  # noqa: D401
+    def check(self, *, email, employee_id=None, cached_only=False, wait_seconds=0.0):  # noqa: D401
         return EmployeeRecord("MATCHED", employee_number=None, employment_status="Active")
 
 

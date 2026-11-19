@@ -35,7 +35,7 @@ class _Records(EmployeeRecordChecker):
     def __init__(self, statuses):
         self.statuses = statuses
 
-    def check(self, *, email, employee_id=None, cached_only=False):
+    def check(self, *, email, employee_id=None, cached_only=False, wait_seconds=0.0):
         return EmployeeRecord(self.statuses.get((email or "").lower(), "MATCHED"))
 
 

@@ -33,6 +33,7 @@ from app.services.entra_service import resolve_entra_user
 from tests.conftest import auth_headers, internal_headers
 
 TENANT = "tenant-1"
+ISS = f"https://login.microsoftonline.com/{TENANT}/v2.0"
 ADMIN = "/api/platform/admin"
 MODULE, STANDARD, MANAGER = "field-ops", "FIELD_USER", "FIELD_MANAGER"
 USER_PERMS, MANAGER_PERMS = frozenset({"field.use"}), frozenset({"field.use", "field.manage"})
@@ -296,7 +297,7 @@ def test_a_service_account_signing_in_gets_no_employee_access(db, directory, peo
     db.add(user)
     db.commit()
     signed = resolve_entra_user(db, {"oid": OID["svc"], "email": "svc-backup@dijital.example", "name": "S",
-                                     "tid": TENANT, "acct": 0})
+                                     "tid": TENANT, "iss": ISS, "acct": 0})
     assert signed.internal_employee and signed.employee_record_status == "NOT_FOUND"
     assert standard(db, signed) == frozenset()
 
@@ -317,7 +318,8 @@ def test_a_sign_in_never_waits_for_the_hr_source(db, directory):
                 internal_employee=True, identity_provider="ENTRA", entra_object_id=OID["ana"])
     db.add(user)
     db.commit()
-    signed = resolve_entra_user(db, {"oid": OID["ana"], "email": "ana@dijital.example", "name": "A", "tid": TENANT, "acct": 0})
+    signed = resolve_entra_user(db, {"oid": OID["ana"], "email": "ana@dijital.example", "name": "A",
+                                         "tid": TENANT, "iss": ISS, "acct": 0})
     assert signed.employee_record_status == "LEGACY" and signed.last_login_at is not None
     for _ in range(50):
         if checker.cached() is not None:
@@ -370,7 +372,8 @@ def test_legacy_employees_keep_access_and_are_reported_not_revoked(api_client, d
     assert ana.employee_record_status == "MATCHED" and ana.employee_number == "0107"
     assert ben.employee_record_status == "LEGACY" and standard(db, ben) == USER_PERMS  # still has access
     # A later sign-in that does not find Ben in BambooHR does not take it away either.
-    signed = resolve_entra_user(db, {"oid": OID["ben"], "email": "ben@dijital.example", "name": "B", "tid": TENANT, "acct": 0})
+    signed = resolve_entra_user(db, {"oid": OID["ben"], "email": "ben@dijital.example", "name": "B",
+                                         "tid": TENANT, "iss": ISS, "acct": 0})
     assert signed.employee_record_status == "LEGACY" and standard(db, signed) == USER_PERMS
 
 
@@ -410,7 +413,8 @@ def test_an_unverified_profile_cannot_be_viewed(api_client, db, admin, directory
 
 def test_the_first_sign_in_links_to_the_provisioned_profile(api_client, db, admin, directory, people):
     body = add(api_client, admin, "ana").json()
-    signed = resolve_entra_user(db, {"oid": OID["ana"], "email": "ana@dijital.example", "name": "A", "tid": TENANT, "acct": 0})
+    signed = resolve_entra_user(db, {"oid": OID["ana"], "email": "ana@dijital.example", "name": "A",
+                                         "tid": TENANT, "iss": ISS, "acct": 0})
     assert signed.id == body["id"] and signed.last_login_at is not None
     assert db.query(User).filter_by(email="ana@dijital.example").count() == 1
 
