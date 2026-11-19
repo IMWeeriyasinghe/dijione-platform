@@ -196,3 +196,89 @@ def test_other_applications_unaffected(api_client, db, world):
     # An On-site Admin gains nothing in other applications.
     assert api_client.get(f"/api/access/{BIRTHDAY}/me", headers=_h(api_client, "test-ann")).json()["is_admin"] is False
     assert api_client.get(f"/api/access/{TALENT}/users", headers=_h(api_client, "test-ann")).status_code == 403
+
+
+# --- Add Person from Microsoft Entra (v0.9 closure) ----------------------------------------------
+OID_NEW = "22222222-0000-4000-8000-000000000001"
+OID_NOHR = "22222222-0000-4000-8000-000000000002"
+OID_OTHER = "22222222-0000-4000-8000-000000000003"
+
+
+@pytest.fixture()
+def directory(world):
+    from app.integrations.directory import DirectoryUser, MockDirectoryProvider, Photo, set_directory_provider
+    from app.integrations.people import EmployeeRecord, EmployeeRecordChecker, set_employee_record_checker
+    from app.services.directory_service import photo_cache
+
+    def person(oid, name, email):
+        return DirectoryUser(object_id=oid, display_name=name, email=email, user_principal_name=email,
+                             job_title="Engineer", department="Ops", account_enabled=True, user_type="Member")
+
+    class Records(EmployeeRecordChecker):
+        def check(self, *, email, employee_id=None, cached_only=False):
+            return EmployeeRecord("NOT_FOUND" if email == "nohr@example.com" else "MATCHED")
+
+    # "dev@example.com" exists in DijiOne without this object id: a reused / unlinked address.
+    provider = MockDirectoryProvider(
+        users=[person(OID_NEW, "Nadia New", "nadia@example.com"), person(OID_NOHR, "Nolan NoHR", "nohr@example.com"),
+               person(OID_OTHER, "Dev Twin", "dev@example.com")],
+        photos={OID_NEW: Photo(content=b"\xff\xd8synthetic", content_type="image/jpeg")})
+    set_directory_provider(provider)
+    set_employee_record_checker(Records())
+    photo_cache.clear() if hasattr(photo_cache, "clear") else None
+    return provider
+
+
+def test_add_person_searches_entra_and_onboards_a_new_eligible_user(api_client, db, world, directory):
+    headers = _h(api_client, "test-ann")
+    found = api_client.get(f"{ACCESS}/people?q=nad", headers=headers).json()
+    assert [(p["entra_object_id"], p["can_grant"], p["user_principal_name"], p["has_photo"])
+            for p in found["people"]] == [(OID_NEW, True, "nadia@example.com", True)]
+    nohr = api_client.get(f"{ACCESS}/people?q=nolan", headers=headers).json()["people"]
+    assert nohr[0]["can_grant"] is False and "BambooHR" in nohr[0]["reason"]
+    assert api_client.post(f"{ACCESS}/users/from-directory", headers=headers,
+                           json={"entra_object_id": OID_NEW, "role": "ONSITE_ADMIN"}).status_code == 403
+    assert db.execute(select(User).where(User.email == "nadia@example.com")).first() is None  # nothing created
+    resp = api_client.post(f"{ACCESS}/users/from-directory", headers=headers,
+                           json={"entra_object_id": OID_NEW, "role": "ONSITE_VIEWER"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["role"] == "ONSITE_VIEWER" and body["role_name"] == "On-site User" and body["has_access"]
+    assert body["recorded_change"]["action"] == "module_assignment.created"
+    assert body["recorded_change"]["actor_name"] == "Ann"
+    nadia = db.execute(select(User).where(User.email == "nadia@example.com")).scalars().one()
+    assert nadia.entra_object_id == OID_NEW
+    # Idempotent: adding the same directory person again links the same profile, never a duplicate.
+    again = api_client.post(f"{ACCESS}/users/from-directory", headers=headers,
+                            json={"entra_object_id": OID_NEW, "role": "ONSITE_VIEWER"})
+    assert again.status_code == 201 and again.json()["user_id"] == nadia.id
+    assert len(db.execute(select(User).where(User.email == "nadia@example.com")).all()) == 1
+    assert _onsite_claim(db, nadia)["role"] == "ONSITE_VIEWER"
+
+
+def test_object_id_is_authoritative_never_an_address_match(api_client, db, world, directory):
+    headers = _h(api_client, "test-ann")
+    twin = api_client.get(f"{ACCESS}/people?q=twin", headers=headers).json()["people"]
+    assert [(p["entra_object_id"], p["can_grant"]) for p in twin] == [(OID_OTHER, False)]
+    assert "not linked" in twin[0]["reason"]
+    resp = api_client.post(f"{ACCESS}/users/from-directory", headers=headers,
+                           json={"entra_object_id": OID_OTHER, "role": "ONSITE_VIEWER"})
+    assert resp.status_code == 400 and "not linked" in resp.text
+    dev = db.get(User, world["dev"].id)
+    assert dev.entra_object_id != OID_OTHER and _onsite_claim(db, dev) is None  # the wrong person got nothing
+    assert api_client.post(f"{ACCESS}/users/from-directory", headers=headers,
+                           json={"entra_object_id": OID_NOHR, "role": "ONSITE_VIEWER"}).status_code == 400
+
+
+def test_photos_only_through_the_access_routes_of_an_administrator(api_client, db, world, directory):
+    ann, ben = _h(api_client, "test-ann"), _h(api_client, "test-ben")
+    ok = api_client.get(f"{ACCESS}/people/{OID_NEW}/photo", headers=ann)
+    assert ok.status_code == 200 and ok.headers["content-type"] == "image/jpeg"
+    assert ok.headers["cache-control"].startswith("private")
+    assert api_client.get(f"{ACCESS}/people/{OID_NOHR}/photo", headers=ann).status_code == 404  # no photo
+    assert api_client.get(f"{ACCESS}/people/not-a-guid/photo", headers=ann).status_code == 404
+    assert api_client.get(f"{ACCESS}/people/{OID_NEW}/photo", headers=ben).status_code == 403  # not an admin
+    assert api_client.get(f"{ACCESS}/people/{OID_NEW}/photo").status_code == 401
+    directory.unavailable = True
+    assert api_client.get(f"/api/access/onsite/people/22222222-0000-4000-8000-000000000009/photo",
+                          headers=ann).status_code == 503

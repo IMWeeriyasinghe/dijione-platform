@@ -65,6 +65,15 @@ class AppointmentInfoOut(BaseModel):
     appointed_at: datetime
 
 
+class RecordedChangeOut(BaseModel):
+    """The audit record written for the latest access change (shown after a change)."""
+
+    audit_id: int
+    action: str
+    actor_name: str | None = None
+    at: datetime
+
+
 class AppUserOut(BaseModel):
     user_id: int
     full_name: str
@@ -80,6 +89,8 @@ class AppUserOut(BaseModel):
     administrator: AppointmentInfoOut | None = None
     manageable: bool = False  # the caller may change this person's access here
     managed_reason: str | None = None  # why not, when not
+    has_photo: bool = False
+    recorded_change: RecordedChangeOut | None = None  # set on responses to a change
 
 
 class AppUsersOut(BaseModel):
@@ -95,6 +106,10 @@ class PersonOut(BaseModel):
     job_title: str | None = None
     department: str | None = None
     source: str  # DIJIONE / DIRECTORY
+    user_principal_name: str | None = None
+    # A profile photo may be requested through this application's access routes (the
+    # browser never calls Microsoft Graph); 404 there renders initials.
+    has_photo: bool = False
     has_access: bool = False
     role_name: str | None = None
     can_grant: bool = False

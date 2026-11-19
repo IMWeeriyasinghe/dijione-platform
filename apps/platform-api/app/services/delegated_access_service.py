@@ -35,6 +35,7 @@ from app.core.permissions import DELEGATION, DelegationDef
 from app.integrations.directory import DirectoryUnavailable
 from app.models.access_group import AccessGroup, AccessGroupStatus, GroupModuleRole, UserGroupMembership
 from app.models.application_access import ApplicationAccessSuspension, ApplicationAdministrator
+from app.models.audit_log import AuditLog
 from app.models.client import Client
 from app.models.module import ApplicationModule
 from app.models.user import User, UserModuleRole
@@ -52,6 +53,7 @@ from app.schemas.app_access import (
     AppUsersOut,
     PeopleOut,
     PersonOut,
+    RecordedChangeOut,
     RevokePreviewOut,
     SuspensionOut,
 )
@@ -66,7 +68,7 @@ from app.services.admin_service import (
 )
 from app.services.audit_service import AuditService
 from app.services.authorization_service import SYSTEM_GROUP_TYPE, AuthorizationService
-from app.services.directory_service import DirectoryService
+from app.services.directory_service import DirectoryService, photo_for
 
 APPLICATION = "APPLICATION"
 CENTRAL = "CENTRAL"
@@ -347,7 +349,7 @@ class DelegatedAccessService:
             role_name=self._role_name(key, primary.role) if primary else None,
             sources=sources, suspension=self._suspension_out(user, suspension) if suspension else None,
             administrator=self._appointment_info(module, appointment) if appointment else None,
-            manageable=manageable, managed_reason=reason,
+            manageable=manageable, managed_reason=reason, has_photo=bool(user.entra_object_id),
         )
 
     def _related_user_ids(self, module_key: str) -> set[int]:
@@ -418,7 +420,7 @@ class DelegatedAccessService:
         people: list[PersonOut] = []
         seen: set[int] = set()
 
-        def add_user(user: User) -> None:
+        def add_user(user: User, upn: str | None = None) -> None:
             if user.id in seen:
                 return
             related = user.id in related_ids
@@ -429,6 +431,7 @@ class DelegatedAccessService:
             block = self._block_reason(ctx, actor, user, granting=True)
             people.append(PersonOut(
                 user_id=user.id, full_name=user.full_name, email=user.email, job_title=user.title, source="DIJIONE",
+                user_principal_name=upn, has_photo=bool(user.entra_object_id),
                 has_access=view.has_access, role_name=view.role_name,
                 can_grant=block is None and view.manageable, reason=block or view.managed_reason,
             ))
@@ -450,19 +453,68 @@ class DelegatedAccessService:
         for r in results:
             if len(people) >= SEARCH_LIMIT:
                 break
+            oid, upn = r["entra_object_id"], r.get("user_principal_name")
             existing_id = r.get("existing_user_id")
             if existing_id:
                 user = self.db.get(User, existing_id)
-                if user is not None and user.is_active:
-                    add_user(user)
+                if user is None or not user.is_active:
+                    continue
+                if user.entra_object_id == oid:
+                    add_user(user, upn=upn)
+                    continue
+                # The Entra Object ID is authoritative: an address match alone is a different
+                # identity until Central Admin links it. Shown, never grantable.
+                people.append(PersonOut(
+                    entra_object_id=oid, full_name=r["full_name"], email=r["email"], user_principal_name=upn,
+                    job_title=r.get("job_title"), department=r.get("department"), source="DIRECTORY",
+                    has_photo=True, can_grant=False,
+                    reason="A DijiOne profile with this email is not linked to this directory account. Ask Central Admin.",
+                ))
                 continue
-            if r.get("employee_record") != "MATCHED":
-                continue  # only employees matched to BambooHR can be added here
+            matched = r.get("employee_record") == "MATCHED"
             people.append(PersonOut(
-                entra_object_id=r["entra_object_id"], full_name=r["full_name"], email=r["email"],
-                job_title=r.get("job_title"), department=r.get("department"), source="DIRECTORY", can_grant=True,
+                entra_object_id=oid, full_name=r["full_name"], email=r["email"], user_principal_name=upn,
+                job_title=r.get("job_title"), department=r.get("department"), source="DIRECTORY", has_photo=True,
+                can_grant=matched,
+                reason=None if matched else (
+                    "Not matched to a BambooHR employee record, so access cannot be granted here."
+                    if r.get("employee_record") == "NOT_FOUND"
+                    else "The HR system could not be checked just now. Try again later."),
             ))
         return PeopleOut(people=people[:SEARCH_LIMIT], directory_available=directory_available)
+
+    # --- profile photos (Microsoft Graph, server-side only) -----------------------------
+
+    def directory_photo(self, actor: User, module_key: str, object_id: str):
+        """A directory person's photo for this application's Add Person search. Only an access
+        administrator of the application may ask; the object id is validated by the provider; Graph
+        tokens never reach the browser; results are cached (``photo_for``)."""
+        self._require_admin(actor, module_key)
+        return photo_for(object_id)
+
+    def user_photo(self, actor: User, module_key: str, user_id: int):
+        """A DijiOne person's photo (by their verified Entra object id), for people this
+        administrator can see on the Access page or in search."""
+        self._require_admin(actor, module_key)
+        user = self.db.get(User, user_id)
+        if user is None or not (user.id in self._related_user_ids(module_key) or self.authz.is_eligible_employee(user)):
+            raise NotFoundError("Person not found.")
+        return photo_for(user.entra_object_id)
+
+    def recorded_change(self, module_key: str, user_id: int) -> RecordedChangeOut | None:
+        """The audit record of the latest access change for this person in this application."""
+        rows = self.db.execute(
+            select(AuditLog).where(AuditLog.subject_user_id == user_id).order_by(AuditLog.id.desc()).limit(20)
+        ).scalars().all()
+        for row in rows:
+            if f'"module_key": "{module_key}"' in (row.event_metadata or ""):
+                return RecordedChangeOut(audit_id=row.id, action=row.action, actor_name=self._name(row.actor_id),
+                                         at=row.created_at)
+        return None
+
+    def _with_record(self, out: AppUserOut, module_key: str) -> AppUserOut:
+        out.recorded_change = self.recorded_change(module_key, out.user_id)
+        return out
 
     # --- changing access ----------------------------------------------------------------
 
@@ -493,7 +545,7 @@ class DelegatedAccessService:
             actor=actor, target_user_id=target.id, module_key=ctx.module.key, role=role, enabled=True,
             client_scope=client_scope, channel=APPLICATION, extra_audit={"suspension_lifted": lifted} if lifted else None,
         )  # commits the lift and the assignment together
-        return self.user_out(ctx.module, target, ctx=ctx, actor=actor)
+        return self._with_record(self.user_out(ctx.module, target, ctx=ctx, actor=actor), ctx.module.key)
 
     def grant(self, actor: User, module_key: str, user_id: int, role: str, client_scope: ClientScopeIn | None) -> AppUserOut:
         ctx = self._require_admin(actor, module_key)
@@ -578,7 +630,7 @@ class DelegatedAccessService:
                 metadata={"channel": APPLICATION, "module_key": module_key}, subject_user_id=target.id,
             )
         self.db.commit()
-        return self.user_out(ctx.module, target, ctx=ctx, actor=actor)
+        return self._with_record(self.user_out(ctx.module, target, ctx=ctx, actor=actor), module_key)
 
     def lift_suspension(self, actor: User, module_key: str, user_id: int) -> AppUserOut:
         """The application administrator restores group access they (or a colleague) suspended."""
