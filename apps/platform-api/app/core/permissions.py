@@ -496,6 +496,15 @@ ATWORK_ROLES: list[RoleDef] = [
     ),
 ]
 
+# Default access (module_baseline_roles) applies to every active DijiOne user. For someone who
+# is not an eligible employee (verified internal identity + employee record, see
+# AuthorizationService.is_eligible_employee) the default grant carries only these permissions:
+# they can open the application, but actions that need an attendance identity stay closed.
+# Explicit assignments (direct, group) are never limited by this.
+BASELINE_UNVERIFIED_PERMISSIONS: dict[str, frozenset[str]] = {
+    MODULE_ATWORK: frozenset({"atwork.access"}),
+}
+
 # --- Delegated application access administration -----------------------------
 # An Application Administrator is appointed per application (table
 # ``application_administrators``). The appointment, not an assignment, grants one of

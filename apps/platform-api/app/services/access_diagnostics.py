@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.permissions import BASELINE_UNVERIFIED_PERMISSIONS
 from app.models.access_group import AccessGroup, GroupModuleRole, UserGroupMembership
 from app.models.audit_log import AuditLog
 from app.models.module import ApplicationModule
@@ -82,8 +83,19 @@ class AccessDiagnosticsService:
                 reasons.append("The application is disabled.")
             elif module_key in granted:
                 state = "GRANTED"
-                reasons.append("Included for every eligible employee (verified identity and employee record); always on.")
-                if user.employee_record_status == "LEGACY":
+                eligible = self.authz.is_eligible_employee(user)
+                reasons.append(
+                    "Included for every eligible employee (verified identity and employee record); always on."
+                    if eligible and module_key not in BASELINE_UNVERIFIED_PERMISSIONS
+                    else "Included for every active DijiOne user; always on."
+                )
+                if not eligible:
+                    reasons.append(
+                        "Application access only: actions that need an employee identity stay unavailable until the "
+                        "person is a verified internal employee matched to a BambooHR employee record"
+                        + (" (the HR system could not be reached)." if user.employee_record_status == "UNKNOWN" else ".")
+                    )
+                elif user.employee_record_status == "LEGACY":
                     reasons.append("Eligible from before employee-record checks; HR reconciliation is still to be confirmed.")
             else:
                 state = "NOT_ELIGIBLE"
