@@ -80,6 +80,10 @@ const ONSITE = {
     "apps/platform-api/alembic/versions/i9j0k1l2m3n4_register_onsite_module.py",
     "apps/platform-api/alembic/versions/f2a4b6c8d0e2_register_onsite_identity_manage.py",
     "apps/platform-api/tests/test_onsite_registration.py",
+    // v0.9: "On-site User" label + onsite.exceptions.manage (registration data) and the
+    // On-site implied-delegation registration test (DelegationDef.implied_by).
+    "apps/platform-api/alembic/versions/s1t3v5x7z9b1_onsite_v090_roles_and_review_permission.py",
+    "apps/platform-api/tests/test_onsite_delegation.py",
   ]),
 };
 
