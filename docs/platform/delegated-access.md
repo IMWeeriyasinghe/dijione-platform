@@ -17,13 +17,17 @@ edits, so session tokens, revocation, audit and every application's enforcement 
 whichever page made the change. App backends are unchanged: they keep authorizing from the session
 token's permissions.
 
-Status: merged (`ea881cd`) and live in DEV. The feature switch is the platform-api setting `DELEGATED_ACCESS_ENABLED`, off by default. It is declared in infrastructure code as `delegatedAccessEnabled` in `deploy/bicep/main.*.bicepparam`:
+Status: merged (`ea881cd`), live in DEV, UAT and Production. The feature switch is the platform-api setting `DELEGATED_ACCESS_ENABLED`, off by default. It is declared in infrastructure code as `delegatedAccessEnabled` in `deploy/bicep/main.*.bicepparam`:
 
 | Environment | Value |
 |---|---|
 | DEV | `true` |
-| UAT | `false` (until separately authorized) |
-| PROD | `false` (until separately authorized) |
+| UAT | `true` (owner-authorized 2026-11-19, On-site v0.9.1) |
+| PROD | `true` (owner-authorized 2026-11-19, On-site v0.9.1) |
+
+The switch is shared by every registered application. With it on:
+- On-site Admins can manage On-site User only. This is the implied authority from the On-site delegation definition.
+- DijiTalentFlow, DIJI Birthday and DijiAtWork get no delegation until a Platform or Super Admin explicitly appoints an access administrator.
 
 Applications that do not read client scope are flagged `supports_client_scope = false` in the registry, so their Access page asks for no client: Diji On-site, DijiAtWork, and DIJI Birthday (corrected by migration `r9t1v3x5z7b9`).
 
