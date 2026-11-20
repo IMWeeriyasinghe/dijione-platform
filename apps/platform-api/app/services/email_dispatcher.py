@@ -88,7 +88,10 @@ def effective_policy_name(settings: Settings) -> str:
 
 
 def active_test_recipients(session: Session) -> list[str]:
-    return list(session.execute(select(EmailTestRecipient.address).where(EmailTestRecipient.active.is_(True))).scalars())
+    """Explicit individual addresses only. A legacy ``@domain`` row is ignored, so the allowlist
+    can never widen to a whole domain."""
+    rows = session.execute(select(EmailTestRecipient.address).where(EmailTestRecipient.active.is_(True))).scalars()
+    return [a for a in rows if a and not a.strip().startswith("@") and "@" in a]
 
 
 def build_policy(session: Session, settings: Settings) -> MailPolicy:

@@ -419,10 +419,10 @@ function RecipientsTab({ summary }: { summary: NotificationSummary }) {
       <p className="mb-4 text-sm text-dt-text-secondary">
         {summary.is_production
           ? "This is a production environment: the test recipient list is not used here."
-          : "In DEV and UAT, email is only sent to these addresses (or to anyone at a listed @domain). Everyone else is blocked."}
+          : "In DEV and UAT, email is only sent to these individual addresses. Everyone else is blocked."}
       </p>
       <Card className="mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-        <FormField label="Email address or @domain" htmlFor="r-address" required>
+        <FormField label="Email address" htmlFor="r-address" required>
           <Input id="r-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="tester@dijitalteam.com" />
         </FormField>
         <FormField label="Label" htmlFor="r-label">

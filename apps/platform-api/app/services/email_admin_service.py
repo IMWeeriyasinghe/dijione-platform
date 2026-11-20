@@ -20,7 +20,7 @@ from app.services.admin_service import ConflictError, NotFoundError
 from app.services.audit_service import AuditService
 from app.services.email_dispatcher import PRODUCTION_ENVIRONMENTS, effective_policy_name
 
-_ADDRESS = re.compile(r"^(?:[^@\s]+@[^@\s]+\.[^@\s]+|@[^@\s]+\.[^@\s]+)$")
+_ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")  # one person's address; never a whole domain
 APPLICATIONS = {access_notifications.APPLICATION_KEY: access_notifications.APPLICATION_NAME}
 
 
@@ -112,6 +112,9 @@ class EmailAdminService:
             raise NotFoundError("Notification not found")
         if row.status not in OutboxStatus.RETRYABLE_BY_ADMIN:
             raise ConflictError(f"A {row.status} notification cannot be retried")
+        if not access_notifications.is_still_accurate(self.db, row):
+            raise ConflictError("This notification no longer matches the person's current access, so it "
+                                "will not be re-sent. A newer change is (or will be) notified instead.")
         previous = row.status
         row.status = OutboxStatus.PENDING
         row.attempts = 0
@@ -161,7 +164,7 @@ class EmailAdminService:
     def add_recipient(self, *, actor, address: str, label: str = "") -> list[dict]:
         address = (address or "").strip().lower()
         if not _ADDRESS.match(address):
-            raise InvalidInputError("Enter an email address, or @domain for a whole domain")
+            raise InvalidInputError("Enter one person's full email address (whole domains are not allowed)")
         existing = self.db.execute(select(EmailTestRecipient).where(EmailTestRecipient.address == address)).scalar()
         if existing is not None:
             if existing.active:

@@ -82,6 +82,13 @@ sequenceDiagram
 - **Folding.** Rows wait `ACCESS_EMAIL_DELAY_SECONDS` (default 60). A further change in that
   window supersedes the unsent row with one email for the net change; a change undone in time
   sends nothing.
+- **Platform-wide changes are silent.** Enabling or disabling a whole application, or editing
+  the role, permission or default-access catalog, emails nobody: every person's snapshot is
+  realigned silently, so the change is never reported later either. A waiting (unsent) email
+  is kept, and its starting point is rebased so a folded follow-up cannot mention the global
+  change. People whose own assignment, group membership, delegation or account changed (even
+  in the same commit) are emailed as usual. Consequence: a default application rolled out by
+  catalog change produces no welcome/granted email.
 - **Existing people.** Anyone without a snapshot gets a silent baseline (the dispatcher runs
   `backfill` at start; also `python -m app.services.access_notifications backfill`). No email
   is ever sent about the past.
@@ -135,10 +142,15 @@ no `MAIL_*` and runs the null transport. Settings: `apps/platform-api/.env.examp
 - **Delivery history** — filter by application, event, status, recipient; details (error,
   attempts, correlation id); **Retry** for `FAILED`/`BLOCKED`/`DISABLED`/`SKIPPED`; **Process now**.
 - **Events** — switch each event on/off.
-- **Test recipients** — exact addresses or `@domain`; used only by `internal_allowlist`.
-- Permissions: viewing needs `platform.admin.view_audit` (history shows addresses); every
-  change needs `platform.admin.manage_modules`. Both PLATFORM_ADMIN and SUPER_ADMIN hold them.
-  Retry, event and recipient changes are written to the audit log.
+- **Test recipients** — explicit individual addresses only (a whole `@domain` is refused, and a
+  legacy `@domain` row is ignored by the dispatcher); used only by `internal_allowlist`.
+- **Retry** refuses (409) an access email that no longer describes the person's current access
+  (a newer access email exists, a granted application is gone, a revoked one is back, or a
+  deactivated account is active again), so a retry never sends obsolete information.
+- Permissions: dedicated `platform.admin.view_notifications` (history shows addresses) and
+  `platform.admin.manage_notifications` (retry, process now, events, test recipients), added by
+  migration `u3v5x7z9b1d3` to SUPER_ADMIN and PLATFORM_ADMIN only. Ordinary users and View-as
+  sessions are refused. Retry, event and recipient changes are written to the audit log.
 
 ## Required Azure / Exchange configuration (not performed — each step needs approval)
 
