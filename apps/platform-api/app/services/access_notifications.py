@@ -45,7 +45,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from mail_client_py import EmailContent, EmailItem, format_subject
-from sqlalchemy import event, select
+from sqlalchemy import event, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -328,6 +328,38 @@ def backfill_snapshots(session: Session, *, batch_size: int = 200) -> int:
     return added
 
 
+def rebaseline_snapshots(session: Session, *, batch_size: int = 200) -> int:
+    """Silently bring every stored snapshot in line with current effective access.
+
+    Access can change without an ORM flush: a release's data migration edits the role catalog,
+    or a code constant (default-access permissions, implied grants) changes with the image.
+    Those changes never pass through the listener, so without this the *next* unrelated change
+    for a person would report them. Run at startup, after migrations: no email, version
+    unchanged. Each row is written only if nobody updated it meanwhile (optimistic check on
+    ``updated_at``), so a concurrent real change is never overwritten. Returns rows changed."""
+    rows = session.execute(
+        select(UserAccessSnapshot.user_id, UserAccessSnapshot.snapshot, UserAccessSnapshot.updated_at)
+        .order_by(UserAccessSnapshot.user_id)
+    ).all()
+    changed = 0
+    for start in range(0, len(rows), batch_size):
+        for user_id, stored, stamp in rows[start:start + batch_size]:
+            user = session.get(User, user_id)
+            if user is None:
+                continue
+            current = compute_snapshot(session, user)
+            if current == stored:
+                continue
+            result = session.execute(
+                update(UserAccessSnapshot)
+                .where(UserAccessSnapshot.user_id == user_id, UserAccessSnapshot.updated_at == stamp)
+                .values(snapshot=current, updated_at=utcnow())
+            )
+            changed += result.rowcount or 0
+        session.commit()
+    return changed
+
+
 # --- rendering (used by the dispatcher) --------------------------------------------------------
 
 
@@ -371,3 +403,4 @@ if __name__ == "__main__":  # python -m app.services.access_notifications backfi
 
     with SessionLocal() as _session:
         print(f"access snapshots recorded for {backfill_snapshots(_session)} users (no emails queued)")
+        print(f"access snapshots realigned for {rebaseline_snapshots(_session)} users (no emails queued)")

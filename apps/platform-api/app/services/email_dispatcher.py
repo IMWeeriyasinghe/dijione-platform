@@ -218,6 +218,9 @@ class DispatcherThread:
                 added = access_notifications.backfill_snapshots(session)
                 if added:
                     logger.info("access snapshot baseline recorded for %s users", added)
+                realigned = access_notifications.rebaseline_snapshots(session)
+                if realigned:
+                    logger.info("access snapshots silently realigned for %s users", realigned)
         except Exception:  # noqa: BLE001
             logger.exception("access snapshot backfill failed; will rely on silent baselines")
         while not self._stop.wait(self._interval):

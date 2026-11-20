@@ -20,8 +20,8 @@ from mail_client_py import (
     [
         ("DijiOne", "Access Granted", "[DijiOne] | Access Granted"),
         ("DijiOne", "Application Access Updated", "[DijiOne] | Application Access Updated"),
-        ("Diji At Work", "Attendance Summary", "[Diji At Work] | Attendance Summary"),
-        ("Diji On-site", "Attendance Exception", "[Diji On-site] | Attendance Exception"),
+        ("Example App", "Weekly Summary", "[Example App] | Weekly Summary"),
+        ("Sample Tracker", "Status Exception", "[Sample Tracker] | Status Exception"),
         ("DijiTalentFlow", "Candidate Review Required", "[DijiTalentFlow] | Candidate Review Required"),
         ("DIJI Birthday", "Cake Order Confirmation", "[DIJI Birthday] | Cake Order Confirmation"),
     ],
@@ -64,7 +64,7 @@ def _content(**overrides):
         application_name="DijiOne",
         heading="Your access has changed",
         paragraphs=["Hello,", "Your access was updated."],
-        items=[EmailItem("DijiAtWork", "Access granted")],
+        items=[EmailItem("Example App", "Access granted")],
         action_label="Open DijiOne",
         action_url="https://dijione.example.com/",
     )
@@ -74,7 +74,7 @@ def _content(**overrides):
 
 def test_render_contains_content_in_html_and_text():
     rendered = render_email(_content())
-    for needle in ("DijiOne", "Your access has changed", "DijiAtWork", "Access granted", "https://dijione.example.com/"):
+    for needle in ("DijiOne", "Your access has changed", "Example App", "Access granted", "https://dijione.example.com/"):
         assert needle in rendered.html
         assert needle in rendered.text
     assert rendered.html.startswith("<!DOCTYPE html>")

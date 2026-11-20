@@ -6,6 +6,7 @@ from mail_client_py import MailOutcome, MailResult, MailTransport
 from sqlalchemy import delete, select
 
 from app.core.config import get_settings
+from app.core.permissions import BASELINE_UNVERIFIED_PERMISSIONS, BIRTHDAY_ROLES
 from app.models.access_group import AccessGroup, GroupModuleRole, UserGroupMembership
 from app.models.email_notification import (
     EmailOutbox,
@@ -28,7 +29,6 @@ from app.services.access_notifications import (
 from app.services.email_dispatcher import dispatch_due, set_transport_override
 from app.services.entra_service import resolve_entra_user
 from tests.conftest import auth_headers, make_eligible
-from tests.test_atwork_registration import _register_module
 
 TALENT = "talent-flow"
 ALL_CLIENTS = {"all_clients": True}
@@ -71,10 +71,22 @@ def world(db, two_tenant_world):
 
 
 @pytest.fixture()
-def atwork_default(db):
-    _register_module(db)
-    db.add(ModuleBaselineRole(module_key="atwork", role="ATWORK_USER", enabled=True))
+def default_app(db, monkeypatch):
+    """A neutral default application: every active person gets BIRTHDAY_USER by baseline, but
+    only one permission until their employee record is matched (as an opt-in default app works)."""
+    role = next(r for r in BIRTHDAY_ROLES if r.key == "BIRTHDAY_USER")
+    monkeypatch.setitem(BASELINE_UNVERIFIED_PERMISSIONS, "birthday", frozenset(sorted(role.permissions)[:1]))
+    if db.execute(select(ApplicationModule).where(ApplicationModule.key == "birthday")).scalar_one_or_none() is None:
+        db.add(ApplicationModule(key="birthday", name="Birthday", description="Test default app", icon="Gift",
+                                 route="/birthday", status="ACTIVE", enabled=True, display_order=9,
+                                 required_roles="ANY", supports_client_scope=False))
+    db.add(ModuleBaselineRole(module_key="birthday", role="BIRTHDAY_USER", enabled=True))
     db.commit()
+
+
+def default_app_name(db):
+    return db.execute(
+        select(ApplicationModule.name).where(ApplicationModule.key == "birthday")).scalar_one()
 
 
 def new_person(db, name="person", **extra):
@@ -100,19 +112,19 @@ def test_new_user_with_an_application_gets_one_welcome(db, world):
     assert row.status == OutboxStatus.PENDING
 
 
-def test_first_sign_in_with_default_atwork_sends_one_email_only(db, atwork_default):
+def test_first_sign_in_with_a_default_app_sends_one_email_only(db, default_app):
     claims = {"oid": "oid-emp", "email": "emp@dijital.example", "name": "Emp", "tid": TENANT, "iss": ISS, "acct": 0}
     user = resolve_entra_user(db, claims)
     resolve_entra_user(db, claims)  # signing in again changes nothing
     [row] = live(db, user.id)
     assert row.event_type == EVENT_WELCOME
-    assert row.template_data["apps"] == ["DijiAtWork"]
+    assert row.template_data["apps"] == [default_app_name(db)]
 
 
-def test_default_access_growing_with_eligibility_is_not_a_second_email(db, atwork_default):
-    user = new_person(db, "emp")  # active platform user: DijiAtWork access only
+def test_default_access_growing_with_eligibility_is_not_a_second_email(db, default_app):
+    user = new_person(db, "emp")  # active platform user: default access only
     assert [r.event_type for r in live(db, user.id)] == [EVENT_WELCOME]
-    make_eligible(user)  # matched employee record: attendance permissions arrive
+    make_eligible(user)  # matched employee record: the rest of the role's permissions arrive
     db.commit()
     assert [r.event_type for r in live(db, user.id)] == [EVENT_WELCOME]
 
@@ -256,7 +268,7 @@ def test_a_notification_failure_never_breaks_the_access_change(db, world, monkey
     assert rows(db, ta.id) == []
 
 
-def test_sign_in_survives_a_notification_failure(db, atwork_default, monkeypatch):
+def test_sign_in_survives_a_notification_failure(db, default_app, monkeypatch):
     monkeypatch.setattr(access_notifications, "process_pending",
                         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("x")))
     claims = {"oid": "oid-s", "email": "s@dijital.example", "name": "S", "tid": TENANT, "iss": ISS, "acct": 0}
@@ -278,10 +290,13 @@ def test_folded_change_describes_the_net_result(db, world):
     ta = world["ta_user"]
     db.add(UserModuleRole(user_id=ta.id, module_key="birthday", role="BIRTHDAY_USER"))
     db.commit()
-    db.add(UserModuleRole(user_id=ta.id, module_key="onsite", role="ONSITE_VIEWER"))
+    talent = db.execute(select(UserModuleRole).where(UserModuleRole.user_id == ta.id,
+                                                     UserModuleRole.module_key == TALENT)).scalar_one()
+    db.delete(talent)
     db.commit()
     [row] = live(db, ta.id)
-    assert row.event_type == EVENT_GRANTED and row.template_data["granted"] == ["birthday", "onsite"]
+    assert row.template_data["granted"] == ["birthday"]
+    assert row.template_data["revoked"] == [TALENT]
 
 
 def test_switched_off_event_queues_nothing(db, world):
@@ -520,3 +535,28 @@ def test_view_as_session_cannot_administer_email_or_change_access(db, world, api
                           json={"role": "BIRTHDAY_USER", "client_scope": ALL_CLIENTS},
                           headers=view_as).status_code == 403
     assert rows(db) == []
+
+
+def test_out_of_band_catalog_change_is_absorbed_silently_and_never_reported_later(db, world):
+    """A release migration that grows a role must not appear in the next unrelated email."""
+    from app.models.role import Permission, Role, RolePermission
+
+    ta = world["ta_user"]
+    role = db.execute(select(Role).where(Role.key == "TA_MEMBER")).scalar_one()
+    # Simulate a data migration: raw SQL only, so the ORM listener never sees it.
+    db.execute(Permission.__table__.insert().values(key="talent.release_added", name="Release added",
+                                                    description="", module_key=TALENT,
+                                                    created_at=role.created_at, updated_at=role.updated_at))
+    perm_id = db.execute(select(Permission.id).where(Permission.key == "talent.release_added")).scalar_one()
+    db.execute(RolePermission.__table__.insert().values(role_id=role.id, permission_id=perm_id))
+    db.commit()
+    assert rows(db) == []
+
+    assert access_notifications.rebaseline_snapshots(db) >= 1
+    assert rows(db) == []
+    db.add(UserModuleRole(user_id=ta.id, module_key="birthday", role="BIRTHDAY_USER"))
+    db.commit()
+    [row] = live(db, ta.id)
+    assert row.event_type == EVENT_GRANTED
+    assert row.template_data["changed"] == []  # the release change is not reported
+    assert access_notifications.rebaseline_snapshots(db) == 0  # idempotent

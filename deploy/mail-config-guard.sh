@@ -29,16 +29,30 @@ param_value() {  # value of `param <name> = '<value>'` in the .bicepparam ('' wh
   sed -nE "s/^[[:space:]]*param[[:space:]]+$1[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p" "$PARAMS" | tail -1
 }
 
-live_env() {  # value of env var $2 on container app $1 ('' when unset)
-  az containerapp show -g "$RG" -n "$1" \
-    --query "properties.template.containers[0].env[?name=='$2'].value | [0]" -o tsv 2>/dev/null || true
+fail_closed() {  # any az error other than "not found" stops the deploy: never compare against nothing
+  echo "!! mail-config-guard: cannot read $1 from Azure (${2:-az error}); refusing to continue" >&2
+  echo "   fix the az login/subscription, or set ALLOW_MAIL_CONFIG_CHANGE=1 to override deliberately" >&2
+  [ "${ALLOW_MAIL_CONFIG_CHANGE:-0}" = "1" ] || exit 1
+}
+
+live_env() {  # value of env var $2 on container app $1 ('' when unset); fails closed on az error
+  local out
+  if ! out="$(az containerapp show -g "$RG" -n "$1" \
+      --query "properties.template.containers[0].env[?name=='$2'].value | [0]" -o tsv 2>&1)"; then
+    fail_closed "$1 $2" "$(printf '%s' "$out" | head -1)"; out=""
+  fi
+  printf '%s' "$out"
 }
 
 drift=0
 for row in "${SERVICES[@]}"; do
   IFS='|' read -r svc p_transport p_policy p_mailbox <<<"$row"
-  if ! az containerapp show -g "$RG" -n "$svc" --query name -o tsv >/dev/null 2>&1; then
-    echo "   $svc: not deployed yet — nothing to compare"
+  if ! err="$(az containerapp show -g "$RG" -n "$svc" --query name -o tsv 2>&1 >/dev/null)"; then
+    if printf '%s' "$err" | grep -qiE 'ResourceNotFound|was not found|could not be found'; then
+      echo "   $svc: not deployed yet — nothing to compare"
+      continue
+    fi
+    fail_closed "$svc" "$(printf '%s' "$err" | head -1)"
     continue
   fi
   want_transport="$(param_value "$p_transport")"
@@ -47,7 +61,7 @@ for row in "${SERVICES[@]}"; do
     want_policy="$(param_value "$p_policy")"; want_mailbox="$(param_value "$p_mailbox")"; fi
   for pair in "MAIL_TRANSPORT|$want_transport" "MAIL_POLICY|$want_policy" "MAIL_SHARED_MAILBOX|$want_mailbox"; do
     var="${pair%%|*}"; want="${pair#*|}"
-    have="$(live_env "$svc" "$var")"
+    have="$(live_env "$svc" "$var")" || exit 1
     if [ "$have" != "$want" ]; then
       echo "!! $svc $var: live='${have:-<unset>}' would become '${want:-<unset>}'" >&2
       drift=1

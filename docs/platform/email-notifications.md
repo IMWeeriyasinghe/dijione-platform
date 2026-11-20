@@ -85,6 +85,12 @@ sequenceDiagram
 - **Existing people.** Anyone without a snapshot gets a silent baseline (the dispatcher runs
   `backfill` at start; also `python -m app.services.access_notifications backfill`). No email
   is ever sent about the past.
+- **Changes made outside the ORM.** A release can change effective access without any ORM
+  write (a data migration editing the role catalog, or a code constant such as default-access
+  permissions). At start the dispatcher also runs `rebaseline_snapshots`, which silently
+  realigns every stored snapshot with current access (no email, version unchanged, optimistic
+  `updated_at` check so a concurrent real change is never overwritten). Without it, the next
+  unrelated change for that person would report the release change as "updated".
 - **View-as.** Read-only impersonation tokens are refused by every mutating and every
   notification-admin endpoint (`deps.get_current_user`), so they can neither change access nor
   trigger, retry or configure email (tests in `test_access_notifications.py`).
@@ -158,7 +164,9 @@ no `MAIL_*` and runs the null transport. Settings: `apps/platform-api/.env.examp
 deployment. It compares, read-only, the live `MAIL_*` env of birthday-api and platform-api
 with what the param file will produce and stops on any difference (override only with
 `ALLOW_MAIL_CONFIG_CHANGE=1` when that change is the approved intent). This closes the gap
-where a full redeploy silently reset birthday-api's mail settings.
+where a full redeploy silently reset birthday-api's mail settings. It fails **closed**: any
+`az` error other than "resource not found" (expired login, wrong subscription, throttling)
+stops the deploy rather than being read as "nothing to compare".
 
 ## Adding another application later
 
