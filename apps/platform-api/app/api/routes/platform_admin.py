@@ -13,6 +13,7 @@ responses here — the service layer never imports FastAPI.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_platform_admin, require_platform_permission
@@ -46,6 +47,8 @@ from app.schemas.app_access import AdministratorOut, AppointIn, ModuleEnabledIn,
 from app.services.access_diagnostics import AccessDiagnosticsService
 from app.services.admin_service import AdminError, AdminService, ConflictError, ForbiddenError, NotFoundError
 from app.services.delegated_access_service import DelegatedAccessService
+from app.services.email_admin_service import EmailAdminService, InvalidInputError
+from app.services.email_dispatcher import dispatch_due
 from app.services.protected_admin import ProtectedAdminError
 
 router = APIRouter(prefix="/api/platform/admin", tags=["platform-admin"])
@@ -425,3 +428,120 @@ def set_module_enabled(
     person's access version is raised, so applications refuse the old token and the browser
     refreshes to a token without the application)."""
     return _handle(lambda: AdminService(db).set_module_enabled(actor=admin, module_key=module_key, enabled=payload.enabled))
+
+
+# --- Notifications (email outbox) -------------------------------------------------------------
+# Reads need the audit permission (history shows recipients); every change needs Manage Modules
+# (platform configuration). View-as sessions never reach these: get_current_user refuses them.
+
+
+_VIEW_NOTIFICATIONS = "platform.admin.view_audit"
+_MANAGE_NOTIFICATIONS = "platform.admin.manage_modules"
+
+
+class NotificationEventIn(BaseModel):
+    enabled: bool
+
+
+class EmailTestRecipientIn(BaseModel):
+    address: str = Field(min_length=3, max_length=255)
+    label: str = Field(default="", max_length=255)
+
+
+def _handle_email(action):
+    try:
+        return _handle(action)
+    except InvalidInputError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.get("/notifications/summary")
+def notifications_summary(
+    _admin: User = Depends(require_platform_permission(_VIEW_NOTIFICATIONS)), db: Session = Depends(get_db)
+) -> dict:
+    return EmailAdminService(db).summary()
+
+
+@router.get("/notifications/outbox")
+def notifications_outbox(
+    application: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
+    recipient: str | None = Query(default=None, max_length=255),
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _admin: User = Depends(require_platform_permission(_VIEW_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> dict:
+    return EmailAdminService(db).list_outbox(application=application, event_type=event_type, recipient=recipient,
+                                             status=status_filter, limit=limit, offset=offset)
+
+
+@router.get("/notifications/outbox/{outbox_id}")
+def notification_detail(
+    outbox_id: int,
+    _admin: User = Depends(require_platform_permission(_VIEW_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> dict:
+    return _handle_email(lambda: EmailAdminService(db).get(outbox_id))
+
+
+@router.post("/notifications/outbox/{outbox_id}/retry")
+def notification_retry(
+    outbox_id: int,
+    admin: User = Depends(require_platform_permission(_MANAGE_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> dict:
+    return _handle_email(lambda: EmailAdminService(db).retry(actor=admin, outbox_id=outbox_id))
+
+
+@router.post("/notifications/dispatch")
+def notifications_dispatch(
+    _admin: User = Depends(require_platform_permission(_MANAGE_NOTIFICATIONS)),
+) -> dict:
+    """Process due notifications now (the background dispatcher does this every interval)."""
+    return {"processed": dispatch_due()}
+
+
+@router.get("/notifications/events")
+def notification_events(
+    _admin: User = Depends(require_platform_permission(_VIEW_NOTIFICATIONS)), db: Session = Depends(get_db)
+) -> list[dict]:
+    return EmailAdminService(db).list_events()
+
+
+@router.put("/notifications/events/{event_type}")
+def set_notification_event(
+    event_type: str,
+    payload: NotificationEventIn,
+    admin: User = Depends(require_platform_permission(_MANAGE_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    return _handle_email(lambda: EmailAdminService(db).set_event(actor=admin, event_type=event_type,
+                                                                 enabled=payload.enabled))
+
+
+@router.get("/notifications/test-recipients")
+def list_test_recipients(
+    _admin: User = Depends(require_platform_permission(_VIEW_NOTIFICATIONS)), db: Session = Depends(get_db)
+) -> list[dict]:
+    return EmailAdminService(db).list_recipients()
+
+
+@router.post("/notifications/test-recipients", status_code=status.HTTP_201_CREATED)
+def add_test_recipient(
+    payload: EmailTestRecipientIn,
+    admin: User = Depends(require_platform_permission(_MANAGE_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    return _handle_email(lambda: EmailAdminService(db).add_recipient(actor=admin, address=payload.address,
+                                                                     label=payload.label))
+
+
+@router.delete("/notifications/test-recipients/{recipient_id}")
+def remove_test_recipient(
+    recipient_id: int,
+    admin: User = Depends(require_platform_permission(_MANAGE_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    return _handle_email(lambda: EmailAdminService(db).remove_recipient(actor=admin, recipient_id=recipient_id))

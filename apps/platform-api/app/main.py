@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from auth_client_py import CorrelationIdMiddleware, assert_trust_anchors_safe
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,7 +31,25 @@ assert_trust_anchors_safe(
     database_url=settings.database_url,
 )
 
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Starts the in-process email outbox dispatcher (docs/platform/email-notifications.md).
+    Sending itself stays off unless MAIL_TRANSPORT=graph and a policy allows it."""
+    dispatcher = None
+    if settings.email_dispatcher_enabled:
+        from app.services.email_dispatcher import DispatcherThread
+
+        dispatcher = DispatcherThread(settings.email_dispatch_interval_seconds)
+        dispatcher.start()
+    yield
+    if dispatcher is not None:
+        dispatcher.stop()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="DijiOne Platform Core API",
     description=(
         "Owns DijiOne identity, authorization, the module registry, audit log "

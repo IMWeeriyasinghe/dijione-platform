@@ -144,3 +144,100 @@ export const liftApplicationSuspension = (moduleKey: string, userId: number) =>
   request<{ status: string }>(`/api/admin/applications/${moduleKey}/suspensions/${userId}`, { method: "DELETE" });
 export const setModuleEnabled = (moduleKey: string, enabled: boolean) =>
   request<AdminModuleOut>(`/api/admin/modules/${moduleKey}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+
+// --- Notifications (email outbox; owned by Platform Core, proxied by admin-api) ---------------
+export type EmailStatus =
+  | "PENDING" | "SENDING" | "RETRY" | "SUBMITTED" | "SIMULATED" | "FAILED"
+  | "BLOCKED" | "DISABLED" | "SUPERSEDED" | "SKIPPED";
+
+export interface EmailOutboxItem {
+  id: number;
+  correlation_id: string;
+  application_key: string;
+  application_name: string;
+  event_type: string;
+  recipient_email: string;
+  recipient_user_id: number | null;
+  subject: string;
+  status: EmailStatus;
+  attempts: number;
+  max_attempts: number;
+  transport_outcome: string | null;
+  created_at: string;
+  not_before: string;
+  last_attempt_at: string | null;
+  completed_at: string | null;
+  can_retry: boolean;
+  // detail only
+  last_error?: string | null;
+  graph_request_id?: string | null;
+  superseded_by_id?: number | null;
+  template_data?: Record<string, unknown>;
+}
+
+export interface EmailOutboxPage {
+  total: number;
+  items: EmailOutboxItem[];
+}
+
+export interface NotificationSummary {
+  counts: Record<EmailStatus, number>;
+  environment: string;
+  transport: "null" | "graph";
+  configured_policy: string;
+  effective_policy: "simulated" | "internal_allowlist" | "production" | "disabled";
+  is_production: boolean;
+  sender_mailbox: string | null;
+  access_notifications_enabled: boolean;
+  dispatcher_enabled: boolean;
+  applications: { key: string; name: string }[];
+  statuses: EmailStatus[];
+}
+
+export interface NotificationEvent {
+  event_type: string;
+  application_key: string;
+  subject: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface EmailTestRecipient {
+  id: number;
+  address: string;
+  label: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface OutboxFilters {
+  application?: string;
+  event_type?: string;
+  recipient?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export const getNotificationSummary = () => request<NotificationSummary>("/api/admin/notifications/summary");
+export const listEmailOutbox = (filters: OutboxFilters) =>
+  request<EmailOutboxPage>(`/api/admin/notifications/outbox${qs(filters as Record<string, string | number | undefined>)}`);
+export const getEmailOutboxItem = (id: number) => request<EmailOutboxItem>(`/api/admin/notifications/outbox/${id}`);
+export const retryEmailOutboxItem = (id: number) =>
+  request<EmailOutboxItem>(`/api/admin/notifications/outbox/${id}/retry`, { method: "POST" });
+export const dispatchNotificationsNow = () =>
+  request<{ processed: Record<string, number> }>("/api/admin/notifications/dispatch", { method: "POST" });
+export const listNotificationEvents = () => request<NotificationEvent[]>("/api/admin/notifications/events");
+export const setNotificationEvent = (eventType: string, enabled: boolean) =>
+  request<NotificationEvent[]>(`/api/admin/notifications/events/${encodeURIComponent(eventType)}`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+export const listEmailTestRecipients = () => request<EmailTestRecipient[]>("/api/admin/notifications/test-recipients");
+export const addEmailTestRecipient = (address: string, label: string) =>
+  request<EmailTestRecipient[]>("/api/admin/notifications/test-recipients", {
+    method: "POST",
+    body: JSON.stringify({ address, label }),
+  });
+export const removeEmailTestRecipient = (id: number) =>
+  request<EmailTestRecipient[]>(`/api/admin/notifications/test-recipients/${id}`, { method: "DELETE" });

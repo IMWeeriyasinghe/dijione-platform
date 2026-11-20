@@ -45,7 +45,7 @@ registry (Architecture Completion Plan §6.1).
 | Diji On-site attendance (Azure SQL `onsite.*`, ingestion plane owned outside DijiOne) | `onsite-api` *(planned)*, only inside `app/attendance_source/` | SELECT-only, Entra managed-identity token | No other DijiOne service reads it; a static guard will enforce that only `attendance_source` imports the SQL driver. |
 | HubSpot | `commercial-api` (skeleton; no live client yet) | none yet | Stub client + unauthenticated `/webhooks/hubspot` relocated here from `talent-api`; no credential requested. |
 | Microsoft Entra ID / Graph (auth) | `platform-api` | OIDC Auth Code + PKCE, JWKS | Identity boundary. |
-| Microsoft Graph (email) | `birthday-api` | client-credentials, mock by default | Independent of the identity Graph usage — see §6. |
+| Microsoft Graph (email) | each sender independently: `birthday-api`, `platform-api` (access notifications) | each service's own managed identity + Exchange RBAC scope; null transport by default | Shared code (`packages/mail-client-py`), never a shared runtime or identity — `email-architecture.md`, `email-notifications.md`. |
 
 A test/static guard exists for every "one owner" rule above; a new direct
 import of a provider client outside its owning service is a build-breaking

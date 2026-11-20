@@ -79,6 +79,8 @@ done
 echo "== deploy $TO workloads with the promoted digests =="
 # Per-app RELEASE_DATE: carry every live value forward; stamp only the
 # explicit release targets in RELEASE_APPS (comma list, may be empty).
+# Mail drift guard: stop if this deployment would silently switch email on/off.
+bash "$(dirname "${BASH_SOURCE[0]}")/mail-config-guard.sh" "$TO_RG" "$BICEP_DIR/main.${TO}.bicepparam"
 RELEASE_DATES="$(bash "$(dirname "${BASH_SOURCE[0]}")/release-dates.sh" "$TO_RG")"
 echo "   releaseDates: $RELEASE_DATES"
 az deployment group create -g "$TO_RG" -n "dijione-workloads-${GITSHA}" \

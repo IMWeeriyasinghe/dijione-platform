@@ -508,3 +508,108 @@ def set_module_enabled(
     return call_platform_admin(
         platform, "PATCH", f"/api/platform/admin/modules/{module_key}", bearer_token=bearer_token, json=payload
     )
+
+
+# --- Notifications (email outbox, owned by Platform Core) ---------------------------------------
+# Pure pass-through: Platform Core authorizes every call from the caller's own token.
+
+
+@router.get("/notifications/summary")
+def notifications_summary(
+    bearer_token: str = Depends(get_bearer_token), platform: PlatformClient = Depends(get_platform_client)
+) -> Response:
+    return forward_platform_admin(platform, "GET", "/api/platform/admin/notifications/summary",
+                                  bearer_token=bearer_token)
+
+
+@router.get("/notifications/outbox")
+def notifications_outbox(
+    application: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
+    recipient: str | None = Query(default=None, max_length=255),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    params = {"application": application, "event_type": event_type, "recipient": recipient, "status": status,
+              "limit": limit, "offset": offset}
+    return forward_platform_admin(platform, "GET", "/api/platform/admin/notifications/outbox",
+                                  bearer_token=bearer_token, params={k: v for k, v in params.items() if v is not None})
+
+
+@router.get("/notifications/outbox/{outbox_id}")
+def notification_detail(
+    outbox_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(platform, "GET", f"/api/platform/admin/notifications/outbox/{outbox_id}",
+                                  bearer_token=bearer_token)
+
+
+@router.post("/notifications/outbox/{outbox_id}/retry")
+def notification_retry(
+    outbox_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(platform, "POST", f"/api/platform/admin/notifications/outbox/{outbox_id}/retry",
+                                  bearer_token=bearer_token)
+
+
+@router.post("/notifications/dispatch")
+def notifications_dispatch(
+    bearer_token: str = Depends(get_bearer_token), platform: PlatformClient = Depends(get_platform_client)
+) -> Response:
+    return forward_platform_admin(platform, "POST", "/api/platform/admin/notifications/dispatch",
+                                  bearer_token=bearer_token)
+
+
+@router.get("/notifications/events")
+def notification_events(
+    bearer_token: str = Depends(get_bearer_token), platform: PlatformClient = Depends(get_platform_client)
+) -> Response:
+    return forward_platform_admin(platform, "GET", "/api/platform/admin/notifications/events",
+                                  bearer_token=bearer_token)
+
+
+@router.put("/notifications/events/{event_type}")
+def set_notification_event(
+    event_type: str,
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(platform, "PUT", f"/api/platform/admin/notifications/events/{event_type}",
+                                  bearer_token=bearer_token, json=payload)
+
+
+@router.get("/notifications/test-recipients")
+def list_test_recipients(
+    bearer_token: str = Depends(get_bearer_token), platform: PlatformClient = Depends(get_platform_client)
+) -> Response:
+    return forward_platform_admin(platform, "GET", "/api/platform/admin/notifications/test-recipients",
+                                  bearer_token=bearer_token)
+
+
+@router.post("/notifications/test-recipients", status_code=201)
+def add_test_recipient(
+    payload: dict,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(platform, "POST", "/api/platform/admin/notifications/test-recipients",
+                                  bearer_token=bearer_token, json=payload)
+
+
+@router.delete("/notifications/test-recipients/{recipient_id}")
+def remove_test_recipient(
+    recipient_id: int,
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(platform, "DELETE",
+                                  f"/api/platform/admin/notifications/test-recipients/{recipient_id}",
+                                  bearer_token=bearer_token)

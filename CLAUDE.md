@@ -3675,9 +3675,11 @@ Build a strong shared platform foundation, implement DijiTalentFlow thoroughly e
      Lever-posting → client association** (see rule 4a) — HubSpot remains
      for future commercial/CRM data only, and never for identity (rule 2a).
    - **Entra / Graph (identity) → `platform-api`.** **Graph (email) →
-     `birthday-api`**, a deliberately independent app registration behind a
-     factory seam (mock by default) — see `docs/platform/data-ownership.md`
-     §6; a shared platform Communication contract is defined but not built.
+     each sending service independently** (`birthday-api`; `platform-api` for
+     DijiOne access notifications), each with its own managed identity and
+     Exchange scope behind a factory seam (null transport by default) — see
+     `docs/platform/data-ownership.md` §6, rule 21a and
+     `docs/platform/email-notifications.md`. No central mail service.
 4. **Applications own operational / business / trust state.** DijiTalentFlow
    owns `TalentRequest`, `Application`, workflow state, **`PostingClientMapping`**
    (`UNMAPPED`/`VERIFIED` client-visibility trust — client exposure fails

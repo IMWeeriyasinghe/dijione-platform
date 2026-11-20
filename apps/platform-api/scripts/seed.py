@@ -189,6 +189,10 @@ def seed(*, identity_only: bool = False) -> None:
     demonstrates a feature). See docs/platform/hosted-dev-data.md.
     """
     db = SessionLocal()
+    # Seeded personas are demo data: record their access snapshots, queue no emails.
+    from app.services.access_notifications import SUPPRESS_KEY
+
+    db.info[SUPPRESS_KEY] = True
     try:
         seed_authorization_catalog(db)
 

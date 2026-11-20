@@ -218,6 +218,23 @@ on `MailClient.send()` to override it with. If a future app needs a visually
 distinct sender identity, provision a dedicated mailbox for it — never fake
 a per-app display name against a shared one.
 
+**Adopters (2026-11):** birthday-api (supplier email) and platform-api (DijiOne
+access notifications — `docs/platform/email-notifications.md`). Both send as
+`appassistant@dijitalteam.com` ("Diji Apps Notify", unchanged), each with its
+own identity and Exchange role assignment.
+
+## Subject convention and shared layout
+
+Every application subject is `[Application Name] | Notification Purpose`
+(e.g. `[DijiOne] | Access Granted`, `[DIJI Birthday] | Cake Order
+Confirmation`), built with `mail_client_py.format_subject` — it rejects line
+breaks (header injection) and bracket/pipe characters in the application
+name. `mail_client_py.render_email` provides the one escaped, branded HTML
+layout; `mail_client_py.retry` provides bounded exponential backoff for a
+service's own outbox. All three are pure code: no runtime, no state, no
+environment reads. Existing Birthday subjects/templates are unchanged until
+Birthday adopts them on its own release schedule.
+
 ## Future app adoption checklist
 
 1. `-e ../../packages/mail-client-py` in the service's own `requirements.txt`.
@@ -248,4 +265,8 @@ a per-app display name against a shared one.
 - `apps/birthday-api/app/models/supplier_communication.py` —
   `transport_outcome` column.
 - `deploy/Dockerfile.api` — the shared-package Docker wiring.
+- `apps/platform-api/app/services/access_notifications.py`,
+  `email_dispatcher.py` — platform-api's own outbox and dispatcher.
+- `deploy/mail-config-guard.sh` — stops a deployment that would silently
+  change a service's live `MAIL_*` settings.
 - `CLAUDE.md` — the standing platform-wide rule (near rule 21).

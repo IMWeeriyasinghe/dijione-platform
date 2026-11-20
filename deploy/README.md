@@ -246,21 +246,23 @@ az group delete -g rg-dijione-dev --yes --no-wait                        # full 
 Full design, the Exchange RBAC runbook, and the future-app-adoption
 checklist: `docs/platform/email-architecture.md`.
 
-**Follow-up work, not built yet — tracked here on purpose.**
-`MAIL_TRANSPORT`/`MAIL_POLICY`/`MAIL_SHARED_MAILBOX`/`MAIL_ALLOWLIST` are
-currently only set ad hoc on birthday-api's DEV Container App
-(`az containerapp update --set-env-vars ...`) for controlled real-Graph
-testing — they are **not yet** parameterized in `main.bicep`, which still
-declares no email-related env vars for birthday-api at all. **Do not run a
-full `main.bicep` deployment against an environment that has any of these
-ad hoc env vars set** without first manually capturing
-(`az containerapp show ... --query "properties.template.containers[0].env"`)
-and understanding what would be lost — Container Apps `env` arrays are
-fully replaced, not merged, by a bicep deployment (the same lesson already
-documented for `RELEASE_DATE` in `docs/platform/versioning.md`). When this
-is eventually built: a `mailTransport`/`mailPolicy`/`mailSharedMailbox`/
-`mailAllowlist` set of bicep parameters, plus a deployment-wrapper
-preserve-then-override mechanism — never the parameters alone.
+**Status (2026-11): built.** birthday-api's `MAIL_TRANSPORT`/`MAIL_POLICY`/
+`MAIL_SHARED_MAILBOX` are declared in `main.bicep` (`birthdayMail*` parameters,
+set in `main.dev.bicepparam` and `main.prod.bicepparam`; deliberately unset in
+UAT = null transport). platform-api's access-notification mail has the same
+shape (`platformMail*`, unset everywhere until approved —
+`docs/platform/email-notifications.md`). `MAIL_ALLOWLIST` no longer exists
+(replaced by DB-backed test recipients).
+
+**Drift guard.** Container Apps `env` arrays are replaced, not merged, by a
+deployment, so a param file that disagrees with live would silently switch
+email on or off. `deploy/mail-config-guard.sh` runs in `deploy.sh` and
+`promote.sh` before the workload deployment: it reads (only) the live
+`MAIL_*` env of birthday-api and platform-api, compares it with what the param
+file will produce, and stops on any difference. Fix the param file in a
+reviewed change, or set `ALLOW_MAIL_CONFIG_CHANGE=1` only when changing live
+email is the approved intent of that deployment. Never set mail env vars
+ad hoc with `az containerapp update --set-env-vars` again.
 
 ## Directory read for platform-api (Microsoft Graph, managed identity, read only)
 

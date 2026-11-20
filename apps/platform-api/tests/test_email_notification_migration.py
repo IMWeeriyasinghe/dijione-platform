@@ -1,0 +1,57 @@
+"""Migration t2u4w6y8a0c2: email outbox tables — additive, single head, reversible, no data touched."""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from sqlalchemy import create_engine, inspect, text
+
+APP_ROOT = Path(__file__).resolve().parents[1]
+PREVIOUS, THIS = "s1t3v5x7z9b1", "t2u4w6y8a0c2"
+TABLES = {"email_outbox", "user_access_snapshots", "notification_event_settings", "email_test_recipients"}
+
+
+def _alembic(url, *args):
+    env = {**os.environ, "DATABASE_URL": url, "APP_ENV": "production"}
+    env.pop("PYTHONPATH", None)
+    return subprocess.run([sys.executable, "-m", "alembic", *args], cwd=APP_ROOT, env=env, capture_output=True, text=True)
+
+
+def _users(engine):
+    with engine.connect() as c:
+        return c.execute(text("SELECT id, email, is_active, access_version FROM users ORDER BY id")).all()
+
+
+def test_single_head_upgrade_adds_only_the_new_tables_and_downgrade_removes_them(tmp_path):
+    url = f"sqlite:///{tmp_path / 'mail.db'}"
+    heads = _alembic(url, "heads")
+    assert heads.returncode == 0, heads.stderr
+    assert heads.stdout.split() == [THIS, "(head)"]
+
+    assert _alembic(url, "upgrade", PREVIOUS).returncode == 0
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(text(
+            "INSERT INTO users (id, email, full_name, platform_role, is_active, identity_provider, internal_employee,"
+            " access_version, created_at, updated_at) VALUES (1, 'a@example.com', 'A', 'PLATFORM_USER', 1, 'ENTRA', 0,"
+            " 7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ))
+    before_tables, before_users = set(inspect(engine).get_table_names()), _users(engine)
+
+    result = _alembic(url, "upgrade", THIS)
+    assert result.returncode == 0, result.stderr
+    engine.dispose()
+    after = set(inspect(engine).get_table_names())
+    assert after - before_tables == TABLES
+    assert _users(engine) == before_users  # no row touched, no access_version raised
+    outbox = {c["name"] for c in inspect(engine).get_columns("email_outbox")}
+    assert {"correlation_id", "dedupe_key", "status", "attempts", "not_before", "transport_outcome"} <= outbox
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM email_outbox")).scalar() == 0
+
+    result = _alembic(url, "downgrade", PREVIOUS)
+    assert result.returncode == 0, result.stderr
+    engine.dispose()
+    assert set(inspect(engine).get_table_names()) == before_tables
+    assert _users(engine) == before_users

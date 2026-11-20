@@ -6,6 +6,7 @@ import type { NavSection } from "@dijione/design-system";
 import {
   BookOpen,
   FileClock,
+  Mail,
   Grid3x3,
   KeyRound,
   LayoutDashboard,
@@ -30,6 +31,7 @@ const ADMIN_SECTIONS: NavSection[] = [
       { label: "Permissions", href: "/permissions", icon: KeyRound },
       { label: "Client Access", href: "/client-access", icon: UsersIcon },
       { label: "Guide & Access Model", href: "/guide", icon: BookOpen },
+      { label: "Notifications", href: "/notifications", icon: Mail },
       { label: "Audit", href: "/audit", icon: FileClock },
     ],
   },

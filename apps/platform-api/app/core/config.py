@@ -64,6 +64,32 @@ class Settings(BaseSettings):
     # People / Workforce domain (BambooHR). Empty: employee records cannot be checked (UNKNOWN).
     people_api_url: str = ""
 
+    # --- Email notifications (packages/mail-client-py; docs/platform/email-notifications.md) ---
+    # Queue access-change emails in the email outbox (same transaction as the change). Snapshots
+    # are kept either way, so switching this on later never mails about old changes.
+    access_notifications_enabled: bool = True
+    # "null" (default: local, CI, any environment not explicitly switched on) -> nothing leaves
+    # the system, rows become SIMULATED. "graph" -> Microsoft Graph sendMail with this Container
+    # App's own managed identity, as MAIL_SHARED_MAILBOX.
+    mail_transport: str = "null"
+    # Only consulted with mail_transport=graph. "disabled" (default, fail closed),
+    # "internal_allowlist" (DEV/UAT: Admin > Notifications test recipients only) or
+    # "production" (honoured only when APP_ENV=prod; anything else falls back to disabled).
+    mail_policy: str = "disabled"
+    mail_shared_mailbox: str = ""
+    graph_base_url: str = "https://graph.microsoft.com/v1.0"
+    # Background dispatcher in this process (replica-safe: rows are claimed atomically).
+    email_dispatcher_enabled: bool = True
+    email_dispatch_interval_seconds: int = 30
+    email_dispatch_batch_size: int = 25
+    # A quick follow-up change within this window is folded into one email.
+    access_email_delay_seconds: int = 60
+    email_max_attempts: int = 5
+    email_retry_base_seconds: int = 60
+    email_retry_cap_seconds: int = 3600
+    # A SENDING claim older than this (a crashed dispatcher) is released for retry.
+    email_claim_lease_seconds: int = 300
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

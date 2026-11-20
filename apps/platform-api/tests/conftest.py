@@ -9,6 +9,10 @@ os.environ["DEV_IDENTITY_MODE"] = "true"
 os.environ["PLATFORM_JWT_SECRET"] = "test-only-secret"
 os.environ["API_CORS_ORIGINS"] = "http://localhost:3000"
 os.environ["INTERNAL_SERVICE_SECRET"] = "test-only-internal-secret"
+# Email: no background thread in tests (dispatch is driven explicitly), no fold-in delay.
+os.environ["EMAIL_DISPATCHER_ENABLED"] = "false"
+os.environ["ACCESS_EMAIL_DELAY_SECONDS"] = "0"
+os.environ.setdefault("MAIL_TRANSPORT", "null")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
