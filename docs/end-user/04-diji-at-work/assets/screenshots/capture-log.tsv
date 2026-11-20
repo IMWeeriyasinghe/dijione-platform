@@ -1,0 +1,36 @@
+01-dijione-home	/	Employee
+02-user-menu-sign-out	/	Employee
+03-today-not-checked-in	/atwork	Employee
+04-home-access-only-user	/	No employee record
+05-access-only-today	/atwork	No employee record
+06-today-work-mode-selected	/atwork	Employee
+07-today-checked-in	/atwork	Employee
+08-today-on-break	/atwork	Employee
+09-check-out-confirm	/atwork	Employee
+10-today-checked-out	/atwork	Employee
+11-sidebar-collapsed	/atwork	Employee
+12-today-missed-check-out	/atwork	Employee
+13-notification-missed-check-out	/atwork	Employee
+14-today-phone	/atwork	Employee
+15-my-attendance	/atwork/attendance	Employee
+16-session-detail	/atwork/attendance/f4adec02-f603-4fe7-b505-a39f3675204f	Employee
+17-correction-form	/atwork/requests/new?sessionId=7fac09bf-9ca2-460d-8e35-3b5c31312dd0	Employee
+18-missing-session-form	/atwork/requests/new	Employee
+19-my-requests	/atwork/requests	Employee
+20-notifications-decisions	/atwork/requests	Employee
+21-management-access-required	/atwork/management	Employee
+22-management-overview	/atwork/management	Manager
+23-notifications-manager	/atwork/management	Manager
+24-management-employees	/atwork/management/employees	Manager
+25-employee-attendance	/atwork/management/employees/1	Manager
+26-management-session-unverified	/atwork/management/sessions/e567a0f3-d153-4359-975d-f2465ae0a8ce	Manager
+27-corrections-queue	/atwork/management/corrections	Manager
+28-correction-detail	/atwork/management/corrections/9627b033-62bf-47fc-b3a4-364804939b13	Manager
+29-approve-dialog	/atwork/management/corrections/9627b033-62bf-47fc-b3a4-364804939b13	Manager
+30-reject-dialog	/atwork/management/corrections/9627b033-62bf-47fc-b3a4-364804939b13	Manager
+31-own-request-restriction	/atwork/management/corrections/0fd94d09-e074-44d7-8669-4666a70f82b9	Manager
+32-correction-approved	/atwork/management/corrections/8e14bd4c-2bcf-4686-befc-957036d8eaf6	Manager
+33-reports	/atwork/management/reports	Manager
+34-audit-history	/atwork/management/audit	Manager
+35-settings	/atwork/management/settings	Manager
+36-management-collapsed	/atwork/management	Manager
