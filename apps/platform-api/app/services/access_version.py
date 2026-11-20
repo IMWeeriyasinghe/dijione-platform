@@ -51,6 +51,9 @@ _USER_ACCESS_COLUMNS = {
 # A change to any of these affects every user.
 _GLOBAL_MODELS = (ModuleBaselineRole, Role, RolePermission, Permission)
 _SESSION_KEY = "access_version_pending"
+# session.info key: users whose access may have changed in the open transaction (read by
+# app.services.access_notifications at commit, cleared when the transaction ends).
+ACCESS_CHANGE_KEY = "access_change_pending"
 
 
 def _changed(obj, columns: set[str]) -> bool:
@@ -183,5 +186,11 @@ def _bump_access_versions(session: Session, _flush_context, _instances) -> None:
     if not (session.new or session.dirty or session.deleted):
         return
     users, everyone = affected_users(session)
+    # Shared with access_notifications: the same "whose access may have changed" answer,
+    # accumulated across every flush of the transaction and acted on at commit.
+    pending = session.info.setdefault(ACCESS_CHANGE_KEY, {"users": set(), "everyone": False, "new_users": []})
+    pending["users"] |= users
+    pending["everyone"] = pending["everyone"] or everyone
+    pending["new_users"].extend(o for o in session.new if isinstance(o, User))
     if users or everyone:
         _bump(session, users, everyone)

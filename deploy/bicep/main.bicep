@@ -152,6 +152,23 @@ param birthdayMailPolicy string = ''
 @description('birthday-api MAIL_SHARED_MAILBOX — the one mailbox the managed identity sends as (Exchange RBAC-scoped). Required when birthdayMailTransport == "graph".')
 param birthdayMailSharedMailbox string = ''
 
+// ---- DijiOne access-notification mail (platform-api only) -------------------
+// Same contract as birthday-api's: empty transport = emit nothing = the app's fail-closed
+// defaults (null transport -> SIMULATED rows, nothing sent). platform-api uses its OWN
+// system-assigned managed identity and its OWN Exchange RBAC scope (never birthday-api's).
+// deploy/mail-config-guard.sh stops a deployment that would change the live values.
+// See docs/platform/email-notifications.md.
+@description('platform-api MAIL_TRANSPORT. "" = not set (app default "null"); "null" = simulated; "graph" = Microsoft Graph sendMail via platform-api\'s own system-assigned managed identity.')
+@allowed([ '', 'null', 'graph' ])
+param platformMailTransport string = ''
+
+@description('platform-api MAIL_POLICY. "disabled" fails closed; "internal_allowlist" = Admin > Notifications test recipients only (DEV/UAT, never PROD); "production" = honoured by the app only when APP_ENV=prod.')
+@allowed([ '', 'disabled', 'internal_allowlist', 'production' ])
+param platformMailPolicy string = ''
+
+@description('platform-api MAIL_SHARED_MAILBOX — the mailbox platform-api sends as (Exchange RBAC-scoped). Required when platformMailTransport == "graph".')
+param platformMailSharedMailbox string = ''
+
 // ---- per-app runtime RELEASE_DATE (docs/platform/versioning.md) -----------
 @description('Per-service runtime RELEASE_DATE, keyed by service name. NEVER hand-edit in a .bicepparam: deploy/deploy.sh and deploy/promote.sh build it with deploy/release-dates.sh, which carries every live value forward and stamps only the apps named in RELEASE_APPS. A service absent from the map gets no RELEASE_DATE.')
 param releaseDates object = {}
@@ -281,6 +298,16 @@ var commonApiEnv = [
 // DEV/UAT Email Safety allowlist, and graph transport needs its mailbox.
 var _mailPolicyForEnv = environmentName == 'prod' && birthdayMailPolicy == 'internal_allowlist' ? int('PROD must not use birthdayMailPolicy=internal_allowlist') : 0
 var _mailMailboxPresent = birthdayMailTransport == 'graph' && empty(birthdayMailSharedMailbox) ? int('birthdayMailTransport=graph requires birthdayMailSharedMailbox') : 0
+
+var _platformMailPolicyForEnv = environmentName == 'prod' && platformMailPolicy == 'internal_allowlist' ? int('PROD must not use platformMailPolicy=internal_allowlist') : 0
+var _platformMailPolicyNonProd = environmentName != 'prod' && platformMailPolicy == 'production' ? int('platformMailPolicy=production is for PROD only') : 0
+var _platformMailMailboxPresent = platformMailTransport == 'graph' && empty(platformMailSharedMailbox) ? int('platformMailTransport=graph requires platformMailSharedMailbox') : 0
+
+var platformApiMailEnv = (_platformMailPolicyForEnv + _platformMailPolicyNonProd + _platformMailMailboxPresent) != 0 || empty(platformMailTransport) ? [] : concat(
+  [ { name: 'MAIL_TRANSPORT', value: platformMailTransport } ],
+  empty(platformMailPolicy) ? [] : [ { name: 'MAIL_POLICY', value: platformMailPolicy } ],
+  empty(platformMailSharedMailbox) ? [] : [ { name: 'MAIL_SHARED_MAILBOX', value: platformMailSharedMailbox } ]
+)
 
 var birthdayApiMailEnv = (_mailPolicyForEnv + _mailMailboxPresent) != 0 || empty(birthdayMailTransport) ? [] : concat(
   [ { name: 'MAIL_TRANSPORT', value: birthdayMailTransport } ],
@@ -493,7 +520,7 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], s.name == 'birthday-web' ? birthdayWebEnv : [], s.name == 'birthday-api' ? birthdayApiMailEnv : [],
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], s.name == 'birthday-web' ? birthdayWebEnv : [], s.name == 'birthday-api' ? birthdayApiMailEnv : [], s.name == 'platform-api' ? platformApiMailEnv : [],
         s.name == 'platform-api' ? [ { name: 'DELEGATED_ACCESS_ENABLED', value: delegatedAccessEnabled ? 'true' : 'false' } ] : [], contains(releaseDates, s.name) ? [ { name: 'RELEASE_DATE', value: string(releaseDates[s.name]) } ] : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase, externalPortalBaseUrl))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the

@@ -8,6 +8,12 @@ from app.models.access_group import (
 from app.models.application_access import ApplicationAccessSuspension, ApplicationAdministrator
 from app.models.audit_log import AuditLog
 from app.models.client import Client, ClientExternalId, ClientStatus
+from app.models.email_notification import (
+    EmailOutbox,
+    EmailTestRecipient,
+    NotificationEventSetting,
+    UserAccessSnapshot,
+)
 from app.models.module import ApplicationModule
 from app.models.module_baseline import ModuleBaselineRole
 from app.models.notification import Notification
@@ -18,6 +24,10 @@ from app.models.user_module_client_scope import UserModuleClientScope
 from app.models.view_as_session import ViewAsSession
 
 __all__ = [
+    "EmailOutbox",
+    "EmailTestRecipient",
+    "NotificationEventSetting",
+    "UserAccessSnapshot",
     "ModuleBaselineRole",
     "ApplicationAdministrator",
     "ApplicationAccessSuspension",
@@ -44,5 +54,6 @@ __all__ = [
 
 # Registers the listener that keeps ``users.access_version`` in step with every
 # access change. Imported last: it depends on the models above.
+from app.services import access_notifications as _access_notifications  # noqa: E402,F401
 from app.services import access_version as _access_version  # noqa: E402,F401
 from app.services import protected_admin as _protected_admin  # noqa: E402,F401
