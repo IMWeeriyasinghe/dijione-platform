@@ -435,8 +435,8 @@ def set_module_enabled(
 # (platform configuration). View-as sessions never reach these: get_current_user refuses them.
 
 
-_VIEW_NOTIFICATIONS = "platform.admin.view_audit"
-_MANAGE_NOTIFICATIONS = "platform.admin.manage_modules"
+_VIEW_NOTIFICATIONS = "platform.admin.view_notifications"
+_MANAGE_NOTIFICATIONS = "platform.admin.manage_notifications"
 
 
 class NotificationEventIn(BaseModel):

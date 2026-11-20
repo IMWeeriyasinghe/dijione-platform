@@ -75,6 +75,16 @@ PLATFORM_PERMISSIONS: list[PermissionDef] = [
         "Inspect platform administrative audit history.", None, "Administration",
     ),
     PermissionDef(
+        "platform.admin.view_notifications", "View Notifications",
+        "View platform email notification history, delivery status and settings (shows recipient "
+        "addresses).", None, "Administration",
+    ),
+    PermissionDef(
+        "platform.admin.manage_notifications", "Manage Notifications",
+        "Retry failed notifications, process the queue, switch notification events on or off and "
+        "manage the DEV/UAT test-recipient list.", None, "Administration",
+    ),
+    PermissionDef(
         "platform.admin.view_as", "View As User",
         "Open a read-only session that shows an internal employee's applications exactly as that "
         "employee sees them. Also requires the SUPER_ADMIN role; every session is audited.", None,
@@ -98,6 +108,8 @@ PLATFORM_ROLES: list[RoleDef] = [
             "platform.admin.manage_modules",
             "platform.admin.manage_client_scopes",
             "platform.admin.view_audit",
+            "platform.admin.view_notifications",
+            "platform.admin.manage_notifications",
         ),
     ),
     RoleDef(

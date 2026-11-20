@@ -27,7 +27,7 @@ def test_single_head_upgrade_adds_only_the_new_tables_and_downgrade_removes_them
     url = f"sqlite:///{tmp_path / 'mail.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == [THIS, "(head)"]
+    assert heads.stdout.split() == ["u3v5x7z9b1d3", "(head)"]
 
     assert _alembic(url, "upgrade", PREVIOUS).returncode == 0
     engine = create_engine(url)
@@ -55,3 +55,19 @@ def test_single_head_upgrade_adds_only_the_new_tables_and_downgrade_removes_them
     engine.dispose()
     assert set(inspect(engine).get_table_names()) == before_tables
     assert _users(engine) == before_users
+
+
+def test_notification_permissions_migration_links_super_and_platform_admin_only(tmp_path):
+    url = f"sqlite:///{tmp_path / 'perm.db'}"
+    result = _alembic(url, "upgrade", "head")
+    assert result.returncode == 0, result.stderr
+    engine = create_engine(url)
+    with engine.connect() as c:
+        linked = c.execute(text(
+            "SELECT p.key, r.key FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id"
+            " JOIN roles r ON r.id = rp.role_id WHERE p.key LIKE 'platform.admin.%_notifications'"
+        )).all()
+    keys = {"platform.admin.view_notifications", "platform.admin.manage_notifications"}
+    assert {p for p, _ in linked} == keys
+    assert set(linked) == {(p, r) for p in keys for r in ("SUPER_ADMIN", "PLATFORM_ADMIN")}
+    assert _alembic(url, "upgrade", "head").returncode == 0  # re-run is safe

@@ -253,14 +253,99 @@ def _process_user(session: Session, user_id: int, *, is_new: bool, suppress: boo
     queue_access_change(session, user, before, after, snap)
 
 
+def _rebase(from_snapshot: dict, old: dict, new: dict) -> dict:
+    """Carry a silent change (old -> new) into an unsent email's starting point, so folding a
+    later personal change into that email never reports the silent change."""
+    rebased = {"active": from_snapshot.get("active", True), "apps": dict(from_snapshot.get("apps", {}))}
+    old_apps, new_apps = old.get("apps", {}), new.get("apps", {})
+    for key in set(old_apps) | set(new_apps):
+        if old_apps.get(key) == new_apps.get(key) or rebased["apps"].get(key) != old_apps.get(key):
+            continue  # unchanged silently, or also part of the unsent personal change: keep it
+        if key in new_apps:
+            rebased["apps"][key] = new_apps[key]
+        else:
+            rebased["apps"].pop(key, None)
+    return rebased
+
+
+def realign_silently(session: Session, user_id: int, *, expected_stamp=None) -> bool:
+    """Set a person's snapshot to their current access without any email or version change.
+
+    Keeps an unsent access email intact (its content is still a true personal change) but
+    rebases its starting point. With ``expected_stamp``, writes only if nobody updated the row
+    since it was read (optimistic; used by the startup realignment). Returns True if changed."""
+    user = session.get(User, user_id)
+    snap = session.get(UserAccessSnapshot, user_id)
+    if user is None or snap is None:
+        return False  # no baseline yet: the next personal change (or backfill) records it
+    current = compute_snapshot(session, user)
+    stored = snap.snapshot or dict(EMPTY_SNAPSHOT, apps={})
+    if current == stored:
+        return False
+    if expected_stamp is not None:
+        result = session.execute(
+            update(UserAccessSnapshot)
+            .where(UserAccessSnapshot.user_id == user_id, UserAccessSnapshot.updated_at == expected_stamp)
+            .values(snapshot=current, updated_at=utcnow())
+            .execution_options(synchronize_session=False)
+        )
+        if not result.rowcount:
+            return False
+        session.expire(snap)
+    else:
+        snap.snapshot = current
+    unsent = _unsent_access_email(session, user_id)
+    if unsent is not None and unsent.from_snapshot is not None:
+        unsent.from_snapshot = _rebase(unsent.from_snapshot, stored, current)
+    return True
+
+
+def is_still_accurate(session: Session, row: EmailOutbox) -> bool:
+    """Whether an access email still describes the person's current access (for admin retry)."""
+    if row.template_key != TEMPLATE_KEY or row.recipient_user_id is None:
+        return True
+    user = session.get(User, row.recipient_user_id)
+    if user is None:
+        return False
+    newer = session.execute(
+        select(EmailOutbox.id).where(
+            EmailOutbox.recipient_user_id == row.recipient_user_id, EmailOutbox.template_key == TEMPLATE_KEY,
+            EmailOutbox.id > row.id, EmailOutbox.status != OutboxStatus.SUPERSEDED,
+        ).limit(1)
+    ).first()
+    if newer is not None:
+        return False  # a later access email exists: this one is history
+    current = compute_snapshot(session, user)
+    apps, data = set(current.get("apps", {})), row.template_data or {}
+    names = _module_names(session)
+    have = {names.get(k, k) for k in apps} | apps
+    event_type = data.get("event", row.event_type)
+    if event_type == EVENT_DEACTIVATED:
+        return not current.get("active", True)
+    if not current.get("active", True):
+        return False
+    if any(a not in have for a in data.get("apps", []) + data.get("granted", []) + data.get("changed", [])):
+        return False
+    return not any(a in have for a in data.get("revoked", []))
+
+
 def process_pending(session: Session, pending: dict) -> None:
+    """Email the people whose own access was changed; silently realign everyone else.
+
+    A platform-wide change (enabling/disabling a whole application, editing the role,
+    permission or default-access catalog) flags ``everyone``. Those people are *not* emailed:
+    their stored snapshot is realigned silently, so the change is never reported later either.
+    A person whose own assignment, group membership, delegation or account changed in the same
+    transaction is processed normally."""
     new_ids = {u.id for u in pending.get("new_users", []) if u.id is not None}
-    user_ids = set(pending.get("users", set())) | new_ids
-    if pending.get("everyone"):
-        user_ids |= set(session.execute(select(User.id)).scalars())
+    user_ids = {u for u in set(pending.get("users", set())) | new_ids if u is not None}
     suppress = bool(session.info.get(SUPPRESS_KEY))
-    for user_id in sorted(u for u in user_ids if u is not None):
+    for user_id in sorted(user_ids):
         _process_user(session, user_id, is_new=user_id in new_ids, suppress=suppress)
+    if pending.get("everyone"):
+        for user_id in session.execute(select(User.id).order_by(User.id)).scalars():
+            if user_id not in user_ids:
+                realign_silently(session, user_id)
 
 
 def _has_work(pending: dict | None) -> bool:
@@ -335,27 +420,17 @@ def rebaseline_snapshots(session: Session, *, batch_size: int = 200) -> int:
     or a code constant (default-access permissions, implied grants) changes with the image.
     Those changes never pass through the listener, so without this the *next* unrelated change
     for a person would report them. Run at startup, after migrations: no email, version
-    unchanged. Each row is written only if nobody updated it meanwhile (optimistic check on
-    ``updated_at``), so a concurrent real change is never overwritten. Returns rows changed."""
+    unchanged, unsent emails kept (their starting point rebased). Each row is written only if
+    nobody updated it meanwhile (optimistic ``updated_at`` check), so a concurrent personal
+    change, or another replica doing the same work, is never overwritten. Returns rows changed."""
     rows = session.execute(
-        select(UserAccessSnapshot.user_id, UserAccessSnapshot.snapshot, UserAccessSnapshot.updated_at)
-        .order_by(UserAccessSnapshot.user_id)
+        select(UserAccessSnapshot.user_id, UserAccessSnapshot.updated_at).order_by(UserAccessSnapshot.user_id)
     ).all()
     changed = 0
     for start in range(0, len(rows), batch_size):
-        for user_id, stored, stamp in rows[start:start + batch_size]:
-            user = session.get(User, user_id)
-            if user is None:
-                continue
-            current = compute_snapshot(session, user)
-            if current == stored:
-                continue
-            result = session.execute(
-                update(UserAccessSnapshot)
-                .where(UserAccessSnapshot.user_id == user_id, UserAccessSnapshot.updated_at == stamp)
-                .values(snapshot=current, updated_at=utcnow())
-            )
-            changed += result.rowcount or 0
+        for user_id, stamp in rows[start:start + batch_size]:
+            if realign_silently(session, user_id, expected_stamp=stamp):
+                changed += 1
         session.commit()
     return changed
 

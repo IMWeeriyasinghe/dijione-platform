@@ -316,18 +316,6 @@ def test_master_switch_off_keeps_snapshots_without_emails(db, world, monkeypatch
     assert rows(db) == []
 
 
-def test_module_disable_notifies_holders(db, world):
-    db.add(ApplicationModule(key="birthday", name="DIJI Birthday", description="", route="/birthday", enabled=True))
-    db.add(UserModuleRole(user_id=world["ta_user"].id, module_key="birthday", role="BIRTHDAY_USER"))
-    db.commit()
-    dispatch_due()
-    module = db.execute(select(ApplicationModule).where(ApplicationModule.key == "birthday")).scalar_one()
-    module.enabled = False
-    db.commit()
-    row = live(db, world["ta_user"].id)[-1]
-    assert row.event_type == EVENT_REVOKED and row.template_data["revoked"] == ["DIJI Birthday"]
-
-
 # --- dispatcher --------------------------------------------------------------------------------------
 
 
@@ -560,3 +548,166 @@ def test_out_of_band_catalog_change_is_absorbed_silently_and_never_reported_late
     assert row.event_type == EVENT_GRANTED
     assert row.template_data["changed"] == []  # the release change is not reported
     assert access_notifications.rebaseline_snapshots(db) == 0  # idempotent
+
+
+# --- platform-wide changes are silent (M-1) -----------------------------------------------------
+
+
+def _birthday_module(db):
+    module = db.execute(select(ApplicationModule).where(ApplicationModule.key == "birthday")).scalar_one_or_none()
+    if module is None:
+        module = ApplicationModule(key="birthday", name="DIJI Birthday", description="", route="/birthday",
+                                   enabled=True)
+        db.add(module)
+        db.commit()
+    return module
+
+
+def _set_talent_role(db, user, role):
+    row = db.execute(select(UserModuleRole).where(UserModuleRole.user_id == user.id,
+                                                  UserModuleRole.module_key == TALENT)).scalar_one()
+    row.role = role
+
+
+def _holder(db, world):
+    """ta_user holds birthday; their own grant email is already sent."""
+    _birthday_module(db)
+    ta = _grant(db, world)
+    dispatch_due()
+    clear_outbox(db)
+    return ta
+
+
+def test_disabling_and_re_enabling_an_application_emails_nobody(db, world):
+    ta = _holder(db, world)
+    module = _birthday_module(db)
+    module.enabled = False
+    db.commit()
+    assert rows(db) == []
+    assert "birthday" not in db.get(UserAccessSnapshot, ta.id).snapshot["apps"]  # realigned silently
+    module.enabled = True
+    db.commit()
+    assert rows(db) == []
+    assert "birthday" in db.get(UserAccessSnapshot, ta.id).snapshot["apps"]
+
+
+def test_a_personal_change_after_a_silent_global_change_reports_only_itself(db, world):
+    ta = _holder(db, world)
+    _birthday_module(db).enabled = False
+    db.commit()
+    _set_talent_role(db, ta, "TA_MANAGER")
+    db.commit()
+    [row] = live(db, ta.id)
+    assert row.template_data["revoked"] == []  # the disabled application is not reported
+
+
+def test_editing_a_role_definition_emails_nobody(db, world):
+    from app.models.role import Permission, Role, RolePermission
+
+    role = db.execute(select(Role).where(Role.key == "TA_MEMBER")).scalar_one()
+    perm = Permission(key="talent.global_added", name="Global added", module_key=TALENT)
+    db.add(perm)
+    db.flush()
+    db.add(RolePermission(role_id=role.id, permission_id=perm.id))
+    db.commit()
+    assert rows(db) == []
+
+
+def test_global_change_while_an_email_waits_never_leaks_into_the_folded_email(db, world):
+    ta = _holder(db, world)
+    _set_talent_role(db, ta, "TA_MANAGER")
+    db.commit()  # unsent personal email
+    [waiting] = live(db, ta.id)
+    _birthday_module(db).enabled = False  # silent global change while it waits
+    db.commit()
+    [kept] = live(db, ta.id)
+    assert kept.id == waiting.id  # the waiting email is kept intact
+    _set_talent_role(db, ta, "TA_MEMBER")
+    db.commit()
+    _set_talent_role(db, ta, "TA_MANAGER")
+    db.commit()  # follow-up personal change folds into it
+    for row in live(db, ta.id):
+        assert "DIJI Birthday" not in row.template_data["revoked"]
+
+
+def test_user_specific_change_in_the_same_commit_as_a_global_one_is_still_emailed(db, world):
+    ta = _holder(db, world)
+    _birthday_module(db).enabled = False
+    _set_talent_role(db, ta, "TA_MANAGER")
+    db.commit()
+    assert {r.recipient_user_id for r in live(db)} == {ta.id}
+
+
+# --- admin retry never re-sends obsolete information ------------------------------------------
+
+
+def test_retry_refuses_an_email_that_no_longer_matches_current_access(db, world, monkeypatch):
+    from app.services.admin_service import ConflictError
+    from app.services.email_admin_service import EmailAdminService
+
+    _graph(monkeypatch, "internal_allowlist")
+    set_transport_override(RecordingTransport())
+    ta = _grant(db, world)
+    assert dispatch_due() == {OutboxStatus.BLOCKED: 1}
+    [blocked] = rows(db, ta.id)
+    db.execute(delete(UserModuleRole).where(UserModuleRole.user_id == ta.id, UserModuleRole.module_key == "birthday"))
+    db.commit()  # raw delete: access changed, the "granted" email is now false
+    access_notifications.rebaseline_snapshots(db)
+    with pytest.raises(ConflictError):
+        EmailAdminService(db).retry(actor=world["super_admin"], outbox_id=blocked.id)
+
+
+def test_retry_refuses_an_email_superseded_by_a_newer_one(db, world, monkeypatch):
+    from app.services.admin_service import ConflictError
+    from app.services.email_admin_service import EmailAdminService
+
+    _graph(monkeypatch, "internal_allowlist")
+    set_transport_override(RecordingTransport())
+    ta = _grant(db, world)
+    dispatch_due()
+    [first] = rows(db, ta.id)
+    _set_talent_role(db, ta, "TA_MANAGER")
+    db.commit()
+    with pytest.raises(ConflictError):
+        EmailAdminService(db).retry(actor=world["super_admin"], outbox_id=first.id)
+
+
+# --- DEV/UAT allowlist: explicit individual addresses only ------------------------------------
+
+
+def test_whole_domain_test_recipients_are_refused_and_legacy_rows_ignored(db, world, api_client, monkeypatch):
+    headers = auth_headers(api_client, "test-super-admin")
+    assert api_client.post(f"{ADMIN}/test-recipients", json={"address": "@example.com"},
+                           headers=headers).status_code == 422
+    db.add(EmailTestRecipient(address="@example.com"))  # e.g. written before this rule
+    db.commit()
+    _graph(monkeypatch, "internal_allowlist")
+    transport = RecordingTransport()
+    set_transport_override(transport)
+    _grant(db, world)
+    assert dispatch_due() == {OutboxStatus.BLOCKED: 1}
+    assert transport.sent == []
+
+
+# --- dedicated notification permissions --------------------------------------------------------
+
+
+def test_platform_admin_holds_the_dedicated_notification_permissions(db, world, api_client):
+    headers = auth_headers(api_client, "test-platform-admin")
+    assert api_client.get(f"{ADMIN}/outbox", headers=headers).status_code == 200
+    assert api_client.put(f"{ADMIN}/events/{EVENT_GRANTED}", json={"enabled": True},
+                          headers=headers).status_code == 200
+
+
+def test_notification_endpoints_require_the_dedicated_permissions(db, world, api_client, monkeypatch):
+    from app.api.routes import platform_admin
+
+    assert platform_admin._VIEW_NOTIFICATIONS == "platform.admin.view_notifications"
+    assert platform_admin._MANAGE_NOTIFICATIONS == "platform.admin.manage_notifications"
+    from app.core.permissions import PLATFORM_ROLES
+
+    roles = {r.key: set(r.permissions) for r in PLATFORM_ROLES}
+    for key in ("SUPER_ADMIN", "PLATFORM_ADMIN"):
+        assert {"platform.admin.view_notifications", "platform.admin.manage_notifications"} <= roles[key]
+    assert roles["PLATFORM_USER"] == set()
+    assert "platform.admin.manage_admins" not in roles["PLATFORM_ADMIN"]  # invariant kept
