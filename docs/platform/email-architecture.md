@@ -207,8 +207,9 @@ DijiBirthday DEV specifically: identity `DijiBirthday-Dev-API-MI`, scope
 `DijiBirthday-MailSender-Scope` restricted to `appassistant@dijitalteam.com`
 only, role assignment `DijiBirthday-Dev-MailSend`.
 
-DijiOne platform-api (access notifications): its own scope
-`DijiOnePlatform-MailSender-Scope` (same one-mailbox filter) and one
+DijiOne platform-api (access notifications) references the same existing scope,
+`DijiApps-AppAssistant-Mailbox-Scope`. Exchange Online refuses a second scope with an
+identical filter. platform-api has one
 `DijiOnePlatform-<Env>-MailSend` assignment per environment, on that environment's
 system-assigned identity. Idempotent verify/grant scripts and per-env identities:
 `deploy/runbooks/exchange-mail-rbac/README.md`.

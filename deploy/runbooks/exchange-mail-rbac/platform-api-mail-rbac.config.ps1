@@ -6,11 +6,14 @@
 #                       az ad sp show --id <principalId> --query appId
 
 $SharedMailbox = 'appassistant@dijitalteam.com'
-# platform-api's OWN scope (CLAUDE.md rule 21a: own scope per sending service). Same one-mailbox filter as
-# DijiBirthday's 'DijiApps-AppAssistant-Mailbox-Scope', which these scripts only ever READ, never change.
-$MailboxScopeName = 'DijiOnePlatform-MailSender-Scope'
+# The tenant's existing one-mailbox scope. Exchange Online refuses a second scope with an identical
+# filter ("Use the existing management scope instead of creating a new one"), so every sender of
+# appassistant@ (DijiBirthday, CustomerPortalV2, Zapier, platform-api) references this one scope.
+# Each service still has its OWN identity and OWN role assignment. These scripts never create,
+# edit or remove this scope.
+$MailboxScopeName = 'DijiApps-AppAssistant-Mailbox-Scope'
 $MailboxScopeFilter = "PrimarySmtpAddress -eq '$SharedMailbox'"
-$BirthdayScopeName = 'DijiApps-AppAssistant-Mailbox-Scope'
+$BirthdayScopeName = $MailboxScopeName
 
 $PlatformApiIdentities = @{
   Dev  = @{ AppId = '7ed96daa-05a4-47a1-a52c-8cf43ca39e09'; ObjectId = '6b26bb56-0759-4760-a0b7-4a5f20620d52'; DisplayName = 'DijiOnePlatform-Dev-API-MI';  Assignment = 'DijiOnePlatform-Dev-MailSend' }
@@ -62,4 +65,10 @@ function Get-GraphPaged([string]$url) {
     $url = if ($page.PSObject.Properties['@odata.nextLink']) { $page.'@odata.nextLink' } else { $null }
   }
   return ,$items
+}
+
+function Test-InScope($result) {
+  # Exchange Online returns InScope as the STRING 'True'/'False'; a non-empty string is truthy in
+  # PowerShell, so never test it directly. Anything other than an exact true is "not in scope".
+  return "$($result.InScope)".Trim() -eq 'True'
 }

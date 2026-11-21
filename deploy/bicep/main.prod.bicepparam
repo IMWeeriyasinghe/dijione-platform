@@ -128,3 +128,11 @@ param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'
 // links (EXTERNAL_PORTAL_BASE_URL). Equals live PROD talent-api (verified
 // 2026-11-13); omitting it made a full main.bicep run remove the variable.
 param externalPortalBaseUrl = 'https://talentflow-portal-web.icybush-52a8142b.southeastasia.azurecontainerapps.io'
+
+// DijiOne platform-api access notifications (live 2026-11-22). Real Graph mail to the affected
+// employee for genuine effective-access changes. Exchange: DijiOnePlatform-Prod-MailSend, scope
+// appassistant@ only (deploy/runbooks/exchange-mail-rbac/README.md). Rollback: remove these three
+// lines AND platform-api's MAIL_* env (back to SIMULATED).
+param platformMailTransport = 'graph'
+param platformMailPolicy = 'production'
+param platformMailSharedMailbox = 'appassistant@dijitalteam.com'

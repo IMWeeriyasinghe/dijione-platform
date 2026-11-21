@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Reports, for one environment:
-    1. platform-api's own mailbox scope exists and is restricted to exactly the shared mailbox.
+    1. The shared one-mailbox scope exists and is restricted to exactly the shared mailbox.
     2. Whether the platform-api system-assigned managed identity is registered in Exchange.
     3. Every "Application Mail.*" role assignment in the tenant (so Birthday's are visible,
        never changed), and any assignment for this identity that is broader than intended.
@@ -41,11 +41,9 @@ if ($NegativeMailbox.Trim().ToLower() -eq $SharedMailbox) { throw 'NegativeMailb
 # 1. Scope
 $scope = Get-ExoObjectOrNull { Get-ManagementScope -Identity $MailboxScopeName }
 if (-not $scope) { Fail "management scope '$MailboxScopeName' not found" }
-elseif (-not (Test-ScopeFilter $scope.RecipientRestrictionFilter)) {
-  Fail "scope filter is '$($scope.RecipientRestrictionFilter)' - expected only PrimarySmtpAddress -eq '$SharedMailbox'"
-} else { Pass "scope '$MailboxScopeName' filter: $($scope.RecipientRestrictionFilter)" }
-$bScope = Get-ExoObjectOrNull { Get-ManagementScope -Identity $BirthdayScopeName }
-if ($bScope) { Write-Host "INFO  DijiBirthday scope '$BirthdayScopeName' (read only): $($bScope.RecipientRestrictionFilter)" }
+elseif (-not (Test-ScopeFilter $scope.RecipientFilter)) {
+  Fail "scope filter is '$($scope.RecipientFilter)' - expected only PrimarySmtpAddress -eq '$SharedMailbox'"
+} else { Pass "scope '$MailboxScopeName' filter: $($scope.RecipientFilter)" }
 
 # 2. Exchange service principal for this identity
 $sp = Get-PlatformApiExchangeSp $id.AppId
@@ -71,11 +69,11 @@ if ($sp) {
   # 4. Positive / negative authorization
   $pos = @(Test-ServicePrincipalAuthorization -Identity $sp.ObjectId -Resource $SharedMailbox |
     Where-Object { $_.RoleName -eq 'Application Mail.Send' })
-  if ($pos.Count -and ($pos | Where-Object InScope)) { Pass "positive: Mail.Send InScope True for $SharedMailbox" }
+  if ($pos.Count -and ($pos | Where-Object { Test-InScope $_ })) { Pass "positive: Mail.Send InScope True for $SharedMailbox" }
   else { Fail "positive: Mail.Send NOT in scope for $SharedMailbox (new grants can take time to propagate)" }
 
   $neg = @(Test-ServicePrincipalAuthorization -Identity $sp.ObjectId -Resource $NegativeMailbox |
-    Where-Object { $_.RoleName -like 'Application Mail*' -and $_.InScope })
+    Where-Object { $_.RoleName -like 'Application Mail*' -and (Test-InScope $_) })
   if ($neg.Count -eq 0) { Pass "negative: no Mail.* permission on $NegativeMailbox" }
   else { Fail "negative: identity CAN act on $NegativeMailbox ($($neg.RoleName -join ', ')) - scope is too broad" }
 } else { $ok = $false }

@@ -96,3 +96,10 @@ param customDomains = {
 
 // DijiBirthday outbound mail: deliberately left unset in UAT (null transport
 // = SIMULATED, never sends), matching live UAT. "Sent" in UAT is not delivery.
+
+// DijiOne platform-api access notifications (live 2026-11-22, platform-api--0000018). Real Graph
+// mail ONLY to individual Admin > Notifications test recipients. Exchange: DijiOnePlatform-Uat-MailSend
+// (deploy/runbooks/exchange-mail-rbac/README.md).
+param platformMailTransport = 'graph'
+param platformMailPolicy = 'internal_allowlist'
+param platformMailSharedMailbox = 'appassistant@dijitalteam.com'

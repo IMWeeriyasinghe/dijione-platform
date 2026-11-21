@@ -6,7 +6,7 @@
 .DESCRIPTION
   Needs explicit owner approval per environment before it is run (see README.md).
   Supports -WhatIf: run with -WhatIf first to see exactly what would be created.
-  - Creates platform-api's own management scope if absent; never edits an existing one.
+  - Never creates, edits or removes the management scope (it must already exist and be exact).
   - Never touches any other assignment (DijiBirthday's included).
   - Never grants a Microsoft Graph application permission.
   - Refuses (changes nothing) on any unexpected existing state instead of "fixing" it.
@@ -26,15 +26,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'platform-api-mail-rbac.config.ps1')
 $id = $PlatformApiIdentities[$Environment]
 
-# 0. platform-api's own mailbox scope: create if absent; an existing one must already be exact.
+# 0. The shared one-mailbox scope must already exist and be exact. Never created or changed here.
 $scope = Get-ExoObjectOrNull { Get-ManagementScope -Identity $MailboxScopeName }
-if ($scope) {
-  if (-not (Test-ScopeFilter $scope.RecipientRestrictionFilter)) { throw "Scope '$MailboxScopeName' filter '$($scope.RecipientRestrictionFilter)' is not restricted to $SharedMailbox - stop; review manually." }
-  Write-Host "exists   scope $MailboxScopeName ($($scope.RecipientRestrictionFilter))"
-} elseif ($PSCmdlet.ShouldProcess($MailboxScopeName, "New-ManagementScope -RecipientRestrictionFilter $MailboxScopeFilter")) {
-  New-ManagementScope -Name $MailboxScopeName -RecipientRestrictionFilter $MailboxScopeFilter | Out-Null
-  Write-Host "created  scope $MailboxScopeName"
-}
+if (-not $scope) { throw "Scope '$MailboxScopeName' not found - stop; this script never creates scopes." }
+if (-not (Test-ScopeFilter $scope.RecipientFilter)) { throw "Scope '$MailboxScopeName' filter '$($scope.RecipientFilter)' is not restricted to $SharedMailbox - stop; review manually." }
+Write-Host "exists   scope $MailboxScopeName ($($scope.RecipientFilter))"
 
 # 1. Exchange service principal (pointer to the Entra managed identity).
 $sp = Get-PlatformApiExchangeSp $id.AppId
