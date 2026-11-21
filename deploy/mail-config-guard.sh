@@ -35,12 +35,24 @@ fail_closed() {  # any az error other than "not found" stops the deploy: never c
   [ "${ALLOW_MAIL_CONFIG_CHANGE:-0}" = "1" ] || exit 1
 }
 
+first_error() {  # first meaningful stderr line: Azure CLI WARNING lines are not the error
+  grep -v -E '^[[:space:]]*(WARNING:|$)' "$1" | head -1 || true
+}
+
 live_env() {  # value of env var $2 on container app $1 ('' when unset); fails closed on az error
-  local out
+  # stdout carries the value; stderr (az extension/preview WARNING lines, errors) goes to a
+  # separate file and is NEVER compared — mixing the two once reported a false drift.
+  local out errf
+  errf="$(mktemp)"
   if ! out="$(az containerapp show -g "$RG" -n "$1" \
-      --query "properties.template.containers[0].env[?name=='$2'].value | [0]" -o tsv 2>&1)"; then
-    fail_closed "$1 $2" "$(printf '%s' "$out" | head -1)"; out=""
+      --query "properties.template.containers[0].env[?name=='$2'].value | [0]" -o tsv 2>"$errf")"; then
+    fail_closed "$1 $2" "$(first_error "$errf")"; out=""
   fi
+  rm -f "$errf"
+  out="${out%$'\r'}"
+  case "$out" in  # a single env value is one line; anything else is not a result we understand
+    *$'\n'*|*$'\r'*) fail_closed "$1 $2" "malformed az result"; out="" ;;
+  esac
   printf '%s' "$out"
 }
 
@@ -52,9 +64,10 @@ for row in "${SERVICES[@]}"; do
       echo "   $svc: not deployed yet — nothing to compare"
       continue
     fi
-    fail_closed "$svc" "$(printf '%s' "$err" | head -1)"
+    fail_closed "$svc" "$(printf '%s\n' "$err" | grep -v -E '^[[:space:]]*(WARNING:|$)' | head -1 || true)"
     continue
   fi
+  svc_drift=0
   want_transport="$(param_value "$p_transport")"
   # main.bicep emits no MAIL_* at all when the transport parameter is empty.
   if [ -z "$want_transport" ]; then want_policy=""; want_mailbox=""; else
@@ -64,10 +77,10 @@ for row in "${SERVICES[@]}"; do
     have="$(live_env "$svc" "$var")" || exit 1
     if [ "$have" != "$want" ]; then
       echo "!! $svc $var: live='${have:-<unset>}' would become '${want:-<unset>}'" >&2
-      drift=1
+      drift=1; svc_drift=1
     fi
   done
-  [ "$drift" -eq 0 ] && echo "   $svc: mail configuration unchanged (transport='${want_transport:-<unset>}')"
+  [ "$svc_drift" -eq 0 ] && echo "   $svc: mail configuration unchanged (transport='${want_transport:-<unset>}')"
 done
 
 if [ "$drift" -ne 0 ]; then
