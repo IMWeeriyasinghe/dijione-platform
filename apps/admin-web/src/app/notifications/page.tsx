@@ -48,6 +48,9 @@ const EVENT_LABELS: Record<string, string> = {
   "account.deactivated": "Account deactivated",
 };
 
+const IN_FLIGHT = new Set<EmailStatus>(["PENDING", "SENDING", "RETRY"]);
+const IN_FLIGHT_POLL_MS = 10_000;
+
 const STATUS_HELP: Record<EmailStatus, string> = {
   PENDING: "Waiting to be sent",
   SENDING: "Being sent now",
@@ -212,6 +215,9 @@ function HistoryTab({ summary }: { summary: NotificationSummary }) {
   const outbox = useQuery({
     queryKey: ["admin", "notifications", "outbox", filters],
     queryFn: () => listEmailOutbox(filters),
+    // Emails wait ~60s before dispatch; keep the list current while any row is still in flight.
+    refetchInterval: (query) =>
+      query.state.data?.items.some((i) => IN_FLIGHT.has(i.status)) ? IN_FLIGHT_POLL_MS : false,
   });
   const dispatch = useMutation({
     mutationFn: dispatchNotificationsNow,
@@ -344,7 +350,13 @@ function HistoryTab({ summary }: { summary: NotificationSummary }) {
           </div>
         </>
       )}
-      <DetailModal id={selected} onClose={() => setSelected(null)} />
+      <DetailModal
+        id={selected}
+        onClose={() => {
+          setSelected(null);
+          queryClient.invalidateQueries({ queryKey: ["admin", "notifications"] });
+        }}
+      />
     </div>
   );
 }
