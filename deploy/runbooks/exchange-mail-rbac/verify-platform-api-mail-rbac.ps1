@@ -48,20 +48,21 @@ $bScope = Get-ManagementScope -Identity $BirthdayScopeName -ErrorAction Silently
 if ($bScope) { Write-Host "INFO  DijiBirthday scope '$BirthdayScopeName' (read only): $($bScope.RecipientRestrictionFilter)" }
 
 # 2. Exchange service principal for this identity
-$sp = Get-ServicePrincipal -ErrorAction SilentlyContinue | Where-Object { $_.AppId -eq $id.AppId }
+$sp = Get-PlatformApiExchangeSp $id.AppId
 if (-not $sp) { Write-Host "INFO  platform-api $Environment identity (AppId $($id.AppId)) is NOT registered in Exchange" -ForegroundColor Yellow }
 elseif ($sp.ObjectId -ne $id.ObjectId) { Fail "Exchange SP for AppId $($id.AppId) has ObjectId $($sp.ObjectId), expected $($id.ObjectId)" }
 else { Pass "Exchange SP '$($sp.DisplayName)' AppId $($sp.AppId) ObjectId $($sp.ObjectId)" }
 
 # 3. Application Mail.* assignments (all, read-only listing)
-$all = @(Get-ManagementRoleAssignment -RoleAssigneeType ServicePrincipal -ErrorAction SilentlyContinue |
+$all = @(Get-ManagementRoleAssignment -RoleAssigneeType ServicePrincipal |
   Where-Object { $_.Role -like 'Application Mail*' })
 Write-Host "`nApplication Mail.* role assignments in the tenant:"
 $all | Format-Table Name, Role, RoleAssigneeName, CustomResourceScope -AutoSize | Out-String | Write-Host
 if ($sp) {
-  $mine = @($all | Where-Object { $_.RoleAssigneeName -in @($sp.DisplayName, $sp.Identity, $sp.ObjectId) })
+  $mine = @(Get-ManagementRoleAssignment -RoleAssigneeType ServicePrincipal | Where-Object { Test-IsAssignee $_ $sp })
   foreach ($a in $mine) {
-    if ($a.Role -ne 'Application Mail.Send') { Fail "broader role on this identity: $($a.Name) = $($a.Role)" }
+    if ($a.Name -ne $id.Assignment) { Fail "unexpected extra assignment on this identity: $($a.Name) = $($a.Role) / $($a.CustomResourceScope)" }
+    elseif ($a.Role -ne 'Application Mail.Send') { Fail "broader role on this identity: $($a.Name) = $($a.Role)" }
     elseif ($a.CustomResourceScope -ne $MailboxScopeName) { Fail "assignment $($a.Name) has scope '$($a.CustomResourceScope)' (expected $MailboxScopeName)" }
     else { Pass "assignment $($a.Name): $($a.Role) scoped to $($a.CustomResourceScope)" }
   }
@@ -78,6 +79,21 @@ if ($sp) {
   if ($neg.Count -eq 0) { Pass "negative: no Mail.* permission on $NegativeMailbox" }
   else { Fail "negative: identity CAN act on $NegativeMailbox ($($neg.RoleName -join ', ')) — scope is too broad" }
 } else { $ok = $false }
+
+# 5. Exchange cannot see Entra Graph app roles: a tenant-wide Graph Mail.* grant would bypass the scope.
+#    Checked with the Azure CLI (az login as a user that can read service principals).
+$graphMail = $null
+try {
+  $json = az rest --method get --url "https://graph.microsoft.com/v1.0/servicePrincipals/$($id.ObjectId)/appRoleAssignments" -o json 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $json) { throw 'az rest failed' }
+  $assigned = @(($json | ConvertFrom-Json).value | Where-Object { $_.resourceDisplayName -eq 'Microsoft Graph' })
+  $graphSp = az ad sp show --id 00000003-0000-0000-c000-000000000000 --query "appRoles[].{id:id,v:value}" -o json | ConvertFrom-Json
+  $graphMail = @($assigned | ForEach-Object { $r = $_.appRoleId; ($graphSp | Where-Object { $_.id -eq $r }).v } | Where-Object { $_ -like 'Mail.*' })
+} catch { Fail "could not read Entra Graph app roles for $($id.ObjectId) (az login required): $_" }
+if ($null -ne $graphMail) {
+  if ($graphMail.Count -eq 0) { Pass 'Entra: no Microsoft Graph Mail.* application permission on this identity' }
+  else { Fail "Entra: tenant-wide Graph permission(s) present: $($graphMail -join ', ') — remove before enabling" }
+}
 
 Write-Host ''
 if ($ok) { Write-Host "RESULT: platform-api $Environment is authorized to send as $SharedMailbox only." -ForegroundColor Green; exit 0 }

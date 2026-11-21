@@ -37,7 +37,7 @@ if ($scope) {
 }
 
 # 1. Exchange service principal (pointer to the Entra managed identity).
-$sp = Get-ServicePrincipal -ErrorAction SilentlyContinue | Where-Object { $_.AppId -eq $id.AppId }
+$sp = Get-PlatformApiExchangeSp $id.AppId
 if ($sp) {
   if ($sp.ObjectId -ne $id.ObjectId) { throw "Existing Exchange SP for AppId $($id.AppId) has ObjectId $($sp.ObjectId) (expected $($id.ObjectId)) — stop." }
   Write-Host "exists   service principal $($sp.DisplayName)"
@@ -46,11 +46,17 @@ if ($sp) {
   Write-Host "created  service principal $($id.DisplayName)"
 }
 
-# 2. The one role assignment.
+# 2. The one role assignment. Refuse if this identity already holds any OTHER assignment.
+if ($sp) {
+  $other = @(Get-ManagementRoleAssignment -RoleAssigneeType ServicePrincipal |
+    Where-Object { (Test-IsAssignee $_ $sp) -and $_.Name -ne $id.Assignment })
+  if ($other.Count -gt 0) { throw "Identity already holds other assignment(s): $(($other | ForEach-Object { "$($_.Name)=$($_.Role)/$($_.CustomResourceScope)" }) -join ', ') — stop; review manually." }
+}
 $existing = Get-ManagementRoleAssignment -Identity $id.Assignment -ErrorAction SilentlyContinue
 if ($existing) {
-  if ($existing.Role -ne 'Application Mail.Send' -or $existing.CustomResourceScope -ne $MailboxScopeName) {
-    throw "Assignment $($id.Assignment) exists with Role=$($existing.Role) Scope=$($existing.CustomResourceScope) — stop; review manually."
+  if (-not $sp) { throw "Assignment $($id.Assignment) exists but the identity has no Exchange service principal — stop; review manually." }
+  if ($existing.Role -ne 'Application Mail.Send' -or $existing.CustomResourceScope -ne $MailboxScopeName -or -not (Test-IsAssignee $existing $sp)) {
+    throw "Assignment $($id.Assignment) exists with Role=$($existing.Role) Scope=$($existing.CustomResourceScope) Assignee=$($existing.RoleAssigneeName) — stop; review manually."
   }
   Write-Host "exists   assignment $($id.Assignment) (Application Mail.Send / $MailboxScopeName)"
 } elseif ($PSCmdlet.ShouldProcess($id.Assignment, "New-ManagementRoleAssignment Application Mail.Send scoped to $MailboxScopeName")) {

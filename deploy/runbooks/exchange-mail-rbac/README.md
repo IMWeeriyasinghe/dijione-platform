@@ -43,6 +43,9 @@ Graph app roles on all three identities, verified read-only on 2026-11-21: `User
 - PowerShell 7+ with `Install-Module ExchangeOnlineManagement` (3.x), then run `Connect-ExchangeOnline`.
 - **To verify:** any Exchange role that can read RBAC, for example *View-Only Organization Management*.
 - **To grant:** *Organization Management*, or any role group that holds **Role Management**.
+- **The verify script also needs** the Azure CLI signed in (`az login`) as a user who can read
+  service principals. Exchange can't see Entra Graph app roles, so the script checks separately
+  that no tenant-wide Graph `Mail.*` permission exists, which would bypass the mailbox scope.
 - No Entra permission change and no Azure change is needed for this step.
 
 ## Procedure, one environment at a time (DEV first)
@@ -61,7 +64,8 @@ cd deploy/runbooks/exchange-mail-rbac
 
 Running the grant again is safe: existing objects are reported, not recreated. The script
 stops and changes nothing if an existing scope, service principal or assignment differs
-from what is expected. Graph can take up to about an hour to honour a new grant, so a
+from what is expected, if the identity already holds any other
+assignment, or if more than one Exchange service principal exists for the AppId. Graph can take up to about an hour to honour a new grant, so a
 `403` on the first send is expected to be temporary. Only enable `MAIL_TRANSPORT=graph`
 after step 4 passes.
 

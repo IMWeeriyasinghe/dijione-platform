@@ -23,3 +23,15 @@ function Test-ScopeFilter([string]$filter) {
   $norm = ($filter -replace '\s+', ' ').Trim().ToLower() -replace '"', "'"
   return $norm -eq "primarysmtpaddress -eq '$SharedMailbox'"
 }
+
+function Get-PlatformApiExchangeSp([string]$appId) {
+  # Exactly zero or one Exchange service principal per AppId; anything else is unexpected state.
+  $found = @(Get-ServicePrincipal | Where-Object { $_.AppId -eq $appId })
+  if ($found.Count -gt 1) { throw "Multiple Exchange service principals for AppId $appId — stop; review manually." }
+  if ($found.Count -eq 1) { return $found[0] }
+  return $null
+}
+
+function Test-IsAssignee($assignment, $sp) {
+  return $assignment.RoleAssigneeName -in @($sp.DisplayName, "$($sp.Identity)", "$($sp.ObjectId)")
+}
