@@ -178,7 +178,11 @@ with what the param file will produce and stops on any difference (override only
 `ALLOW_MAIL_CONFIG_CHANGE=1` when that change is the approved intent). This closes the gap
 where a full redeploy silently reset birthday-api's mail settings. It fails **closed**: any
 `az` error other than "resource not found" (expired login, wrong subscription, throttling)
-stops the deploy rather than being read as "nothing to compare".
+stops the deploy rather than being read as "nothing to compare". Only `az` stdout is
+compared: stderr (for example the containerapp extension's `WARNING:` lines) is kept apart
+and used only for the error message, and a malformed (multi-line) result also fails closed.
+Each service is compared and reported on its own. Regression tests with a fake `az`:
+`scripts/ci/mail-config-guard.test.js` (run by CI's `guard` job on every event).
 
 ## Adding another application later
 
