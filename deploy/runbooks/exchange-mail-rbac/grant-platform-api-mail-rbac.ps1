@@ -27,9 +27,9 @@ $ErrorActionPreference = 'Stop'
 $id = $PlatformApiIdentities[$Environment]
 
 # 0. platform-api's own mailbox scope: create if absent; an existing one must already be exact.
-$scope = Get-ManagementScope -Identity $MailboxScopeName -ErrorAction SilentlyContinue
+$scope = Get-ExoObjectOrNull { Get-ManagementScope -Identity $MailboxScopeName }
 if ($scope) {
-  if (-not (Test-ScopeFilter $scope.RecipientRestrictionFilter)) { throw "Scope '$MailboxScopeName' filter '$($scope.RecipientRestrictionFilter)' is not restricted to $SharedMailbox — stop; review manually." }
+  if (-not (Test-ScopeFilter $scope.RecipientRestrictionFilter)) { throw "Scope '$MailboxScopeName' filter '$($scope.RecipientRestrictionFilter)' is not restricted to $SharedMailbox - stop; review manually." }
   Write-Host "exists   scope $MailboxScopeName ($($scope.RecipientRestrictionFilter))"
 } elseif ($PSCmdlet.ShouldProcess($MailboxScopeName, "New-ManagementScope -RecipientRestrictionFilter $MailboxScopeFilter")) {
   New-ManagementScope -Name $MailboxScopeName -RecipientRestrictionFilter $MailboxScopeFilter | Out-Null
@@ -39,7 +39,7 @@ if ($scope) {
 # 1. Exchange service principal (pointer to the Entra managed identity).
 $sp = Get-PlatformApiExchangeSp $id.AppId
 if ($sp) {
-  if ($sp.ObjectId -ne $id.ObjectId) { throw "Existing Exchange SP for AppId $($id.AppId) has ObjectId $($sp.ObjectId) (expected $($id.ObjectId)) — stop." }
+  if ($sp.ObjectId -ne $id.ObjectId) { throw "Existing Exchange SP for AppId $($id.AppId) has ObjectId $($sp.ObjectId) (expected $($id.ObjectId)) - stop." }
   Write-Host "exists   service principal $($sp.DisplayName)"
 } elseif ($PSCmdlet.ShouldProcess($id.DisplayName, 'New-ServicePrincipal')) {
   $sp = New-ServicePrincipal -AppId $id.AppId -ObjectId $id.ObjectId -DisplayName $id.DisplayName
@@ -50,13 +50,13 @@ if ($sp) {
 if ($sp) {
   $other = @(Get-ManagementRoleAssignment -RoleAssigneeType ServicePrincipal |
     Where-Object { (Test-IsAssignee $_ $sp) -and $_.Name -ne $id.Assignment })
-  if ($other.Count -gt 0) { throw "Identity already holds other assignment(s): $(($other | ForEach-Object { "$($_.Name)=$($_.Role)/$($_.CustomResourceScope)" }) -join ', ') — stop; review manually." }
+  if ($other.Count -gt 0) { throw "Identity already holds other assignment(s): $(($other | ForEach-Object { "$($_.Name)=$($_.Role)/$($_.CustomResourceScope)" }) -join ', ') - stop; review manually." }
 }
-$existing = Get-ManagementRoleAssignment -Identity $id.Assignment -ErrorAction SilentlyContinue
+$existing = Get-ExoObjectOrNull { Get-ManagementRoleAssignment -Identity $id.Assignment }
 if ($existing) {
-  if (-not $sp) { throw "Assignment $($id.Assignment) exists but the identity has no Exchange service principal — stop; review manually." }
+  if (-not $sp) { throw "Assignment $($id.Assignment) exists but the identity has no Exchange service principal - stop; review manually." }
   if ($existing.Role -ne 'Application Mail.Send' -or $existing.CustomResourceScope -ne $MailboxScopeName -or -not (Test-IsAssignee $existing $sp)) {
-    throw "Assignment $($id.Assignment) exists with Role=$($existing.Role) Scope=$($existing.CustomResourceScope) Assignee=$($existing.RoleAssigneeName) — stop; review manually."
+    throw "Assignment $($id.Assignment) exists with Role=$($existing.Role) Scope=$($existing.CustomResourceScope) Assignee=$($existing.RoleAssigneeName) - stop; review manually."
   }
   Write-Host "exists   assignment $($id.Assignment) (Application Mail.Send / $MailboxScopeName)"
 } elseif ($PSCmdlet.ShouldProcess($id.Assignment, "New-ManagementRoleAssignment Application Mail.Send scoped to $MailboxScopeName")) {

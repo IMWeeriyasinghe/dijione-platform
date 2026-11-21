@@ -75,6 +75,6 @@ after step 4 passes.
   `MAIL_SHARED_MAILBOX` from platform-api. Emails go back to SIMULATED.
 - **Remove the permission:**
   `Remove-ManagementRoleAssignment DijiOnePlatform-<Env>-MailSend`. Optionally also run
-  `Remove-ServicePrincipal` for that environment's identity. Remove
+  `Remove-ServicePrincipal` for that environment's identity. Run
   `Remove-ManagementScope DijiOnePlatform-MailSender-Scope` only after all three
   environments' assignments are gone. None of these steps affects DijiBirthday.

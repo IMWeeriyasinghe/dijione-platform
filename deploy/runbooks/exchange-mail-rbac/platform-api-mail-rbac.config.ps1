@@ -1,7 +1,7 @@
 # Shared constants for the platform-api Exchange RBAC scripts. Dot-sourced; changes nothing.
 # Identities are each environment's platform-api SYSTEM-ASSIGNED managed identity (the one
 # DefaultAzureCredential selects: no AZURE_CLIENT_ID is set on platform-api). Never the shared
-# user-assigned id-dijione-<env> identity. Not secrets — public object identifiers.
+# user-assigned id-dijione-<env> identity. Not secrets - public object identifiers.
 # Re-check before use:  az containerapp show -g rg-dijione-<env> -n platform-api --query identity.principalId
 #                       az ad sp show --id <principalId> --query appId
 
@@ -27,11 +27,39 @@ function Test-ScopeFilter([string]$filter) {
 function Get-PlatformApiExchangeSp([string]$appId) {
   # Exactly zero or one Exchange service principal per AppId; anything else is unexpected state.
   $found = @(Get-ServicePrincipal | Where-Object { $_.AppId -eq $appId })
-  if ($found.Count -gt 1) { throw "Multiple Exchange service principals for AppId $appId — stop; review manually." }
+  if ($found.Count -gt 1) { throw "Multiple Exchange service principals for AppId $appId - stop; review manually." }
   if ($found.Count -eq 1) { return $found[0] }
   return $null
 }
 
 function Test-IsAssignee($assignment, $sp) {
-  return $assignment.RoleAssigneeName -in @($sp.DisplayName, "$($sp.Identity)", "$($sp.ObjectId)")
+  # Exchange may report the assignee by display name, identity, object id or app id, on either
+  # RoleAssigneeName or RoleAssignee; accept any of those forms, nothing else.
+  $known = @($sp.DisplayName, "$($sp.Identity)", "$($sp.ObjectId)", "$($sp.AppId)") | Where-Object { $_ }
+  foreach ($prop in 'RoleAssigneeName', 'RoleAssignee') {
+    if ($assignment.PSObject.Properties[$prop] -and "$($assignment.$prop)" -in $known) { return $true }
+  }
+  return $false
+}
+
+function Get-ExoObjectOrNull([scriptblock]$lookup) {
+  # First-run safe lookup: "not found" -> $null; any other error (auth, throttling) still stops.
+  try { return & $lookup }
+  catch {
+    if ("$_" -match "couldn't be found|could not be found|was not found|ManagementObjectNotFound") { return $null }
+    throw
+  }
+}
+
+function Get-GraphPaged([string]$url) {
+  # Follows @odata.nextLink; throws on any az failure (fail closed).
+  $items = @()
+  while ($url) {
+    $json = az rest --method get --url $url -o json 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $json) { throw "az rest failed: $url" }
+    $page = $json | ConvertFrom-Json
+    $items += @($page.value)
+    $url = if ($page.PSObject.Properties['@odata.nextLink']) { $page.'@odata.nextLink' } else { $null }
+  }
+  return ,$items
 }

@@ -39,12 +39,12 @@ function Pass($msg) { Write-Host "OK    $msg" -ForegroundColor Green }
 if ($NegativeMailbox.Trim().ToLower() -eq $SharedMailbox) { throw 'NegativeMailbox must differ from the shared mailbox.' }
 
 # 1. Scope
-$scope = Get-ManagementScope -Identity $MailboxScopeName -ErrorAction SilentlyContinue
+$scope = Get-ExoObjectOrNull { Get-ManagementScope -Identity $MailboxScopeName }
 if (-not $scope) { Fail "management scope '$MailboxScopeName' not found" }
 elseif (-not (Test-ScopeFilter $scope.RecipientRestrictionFilter)) {
-  Fail "scope filter is '$($scope.RecipientRestrictionFilter)' — expected only PrimarySmtpAddress -eq '$SharedMailbox'"
+  Fail "scope filter is '$($scope.RecipientRestrictionFilter)' - expected only PrimarySmtpAddress -eq '$SharedMailbox'"
 } else { Pass "scope '$MailboxScopeName' filter: $($scope.RecipientRestrictionFilter)" }
-$bScope = Get-ManagementScope -Identity $BirthdayScopeName -ErrorAction SilentlyContinue
+$bScope = Get-ExoObjectOrNull { Get-ManagementScope -Identity $BirthdayScopeName }
 if ($bScope) { Write-Host "INFO  DijiBirthday scope '$BirthdayScopeName' (read only): $($bScope.RecipientRestrictionFilter)" }
 
 # 2. Exchange service principal for this identity
@@ -77,20 +77,19 @@ if ($sp) {
   $neg = @(Test-ServicePrincipalAuthorization -Identity $sp.ObjectId -Resource $NegativeMailbox |
     Where-Object { $_.RoleName -like 'Application Mail*' -and $_.InScope })
   if ($neg.Count -eq 0) { Pass "negative: no Mail.* permission on $NegativeMailbox" }
-  else { Fail "negative: identity CAN act on $NegativeMailbox ($($neg.RoleName -join ', ')) — scope is too broad" }
+  else { Fail "negative: identity CAN act on $NegativeMailbox ($($neg.RoleName -join ', ')) - scope is too broad" }
 } else { $ok = $false }
 
 # 5. Exchange cannot see Entra Graph app roles: a tenant-wide Graph Mail.* grant would bypass the scope.
 #    Checked with the Azure CLI (az login as a user that can read service principals).
 $graphMail = $null
 try {
-  $json = az rest --method get --url "https://graph.microsoft.com/v1.0/servicePrincipals/$($id.ObjectId)/appRoleAssignments" -o json 2>$null
-  if ($LASTEXITCODE -ne 0 -or -not $json) { throw 'az rest failed' }
+  $roleAssignments = Get-GraphPaged "https://graph.microsoft.com/v1.0/servicePrincipals/$($id.ObjectId)/appRoleAssignments"
   $graphJson = az ad sp show --id 00000003-0000-0000-c000-000000000000 --query "{oid:id, roles:appRoles[].{id:id,v:value}}" -o json 2>$null
   if ($LASTEXITCODE -ne 0 -or -not $graphJson) { throw 'az ad sp show (Microsoft Graph) failed' }
   $graph = $graphJson | ConvertFrom-Json
   if (-not $graph.oid -or -not $graph.roles) { throw 'Microsoft Graph service principal returned no id/appRoles' }
-  $assigned = @(($json | ConvertFrom-Json).value | Where-Object { $_.resourceId -eq $graph.oid })
+  $assigned = @($roleAssignments | Where-Object { $_.resourceId -eq $graph.oid })
   $graphMail = @($assigned | ForEach-Object {
       $r = $_.appRoleId
       $m = @($graph.roles | Where-Object { $_.id -eq $r })
@@ -100,7 +99,7 @@ try {
 } catch { Fail "could not read Entra Graph app roles for $($id.ObjectId) (az login required): $_" }
 if ($null -ne $graphMail) {
   if ($graphMail.Count -eq 0) { Pass 'Entra: no Microsoft Graph Mail.* application permission on this identity' }
-  else { Fail "Entra: tenant-wide Graph permission(s) present: $($graphMail -join ', ') — remove before enabling" }
+  else { Fail "Entra: tenant-wide Graph permission(s) present: $($graphMail -join ', ') - remove before enabling" }
 }
 
 Write-Host ''
