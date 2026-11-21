@@ -86,9 +86,17 @@ $graphMail = $null
 try {
   $json = az rest --method get --url "https://graph.microsoft.com/v1.0/servicePrincipals/$($id.ObjectId)/appRoleAssignments" -o json 2>$null
   if ($LASTEXITCODE -ne 0 -or -not $json) { throw 'az rest failed' }
-  $assigned = @(($json | ConvertFrom-Json).value | Where-Object { $_.resourceDisplayName -eq 'Microsoft Graph' })
-  $graphSp = az ad sp show --id 00000003-0000-0000-c000-000000000000 --query "appRoles[].{id:id,v:value}" -o json | ConvertFrom-Json
-  $graphMail = @($assigned | ForEach-Object { $r = $_.appRoleId; ($graphSp | Where-Object { $_.id -eq $r }).v } | Where-Object { $_ -like 'Mail.*' })
+  $graphJson = az ad sp show --id 00000003-0000-0000-c000-000000000000 --query "{oid:id, roles:appRoles[].{id:id,v:value}}" -o json 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $graphJson) { throw 'az ad sp show (Microsoft Graph) failed' }
+  $graph = $graphJson | ConvertFrom-Json
+  if (-not $graph.oid -or -not $graph.roles) { throw 'Microsoft Graph service principal returned no id/appRoles' }
+  $assigned = @(($json | ConvertFrom-Json).value | Where-Object { $_.resourceId -eq $graph.oid })
+  $graphMail = @($assigned | ForEach-Object {
+      $r = $_.appRoleId
+      $m = @($graph.roles | Where-Object { $_.id -eq $r })
+      if ($m.Count -ne 1) { throw "unresolved Graph appRoleId $r" }
+      $m[0].v
+    } | Where-Object { $_ -like 'Mail.*' })
 } catch { Fail "could not read Entra Graph app roles for $($id.ObjectId) (az login required): $_" }
 if ($null -ne $graphMail) {
   if ($graphMail.Count -eq 0) { Pass 'Entra: no Microsoft Graph Mail.* application permission on this identity' }
