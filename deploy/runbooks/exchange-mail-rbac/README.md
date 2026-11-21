@@ -19,10 +19,12 @@ made separately for each environment. Design background: `docs/platform/email-ar
   identity because platform-api sets no `AZURE_CLIENT_ID`. The DEV directory reader
   already proves this: it uses the same credential, and its Graph roles exist only on the
   system identity.
-- **One management scope, `DijiOnePlatform-MailSender-Scope`**, with filter
-  `PrimarySmtpAddress -eq 'appassistant@dijitalteam.com'`. platform-api owns this scope, as
-  CLAUDE.md rule 21a requires. DijiBirthday keeps `DijiApps-AppAssistant-Mailbox-Scope`;
-  these scripts only read Birthday's scope and never change it.
+- **The existing management scope `DijiApps-AppAssistant-Mailbox-Scope`**, with filter
+  `PrimarySmtpAddress -eq 'appassistant@dijitalteam.com'`. Exchange Online refuses a second
+  scope with an identical filter, so every sender of this mailbox (DijiBirthday,
+  CustomerPortalV2, Zapier and platform-api) references this one scope. Rule 21a still holds:
+  each service has its own identity and its own role assignment. These scripts never create,
+  edit or remove the scope.
 - **One role assignment per environment, `DijiOnePlatform-<Env>-MailSend`**, with role
   `Application Mail.Send` limited to that scope.
 - **Not granted:** a Microsoft Graph `Mail.Send` application permission (tenant-wide),
@@ -75,6 +77,5 @@ after step 4 passes.
   `MAIL_SHARED_MAILBOX` from platform-api. Emails go back to SIMULATED.
 - **Remove the permission:**
   `Remove-ManagementRoleAssignment DijiOnePlatform-<Env>-MailSend`. Optionally also run
-  `Remove-ServicePrincipal` for that environment's identity. Run
-  `Remove-ManagementScope DijiOnePlatform-MailSender-Scope` only after all three
-  environments' assignments are gone. None of these steps affects DijiBirthday.
+  `Remove-ServicePrincipal` for that environment's identity. Never
+  remove the shared scope, because other services use it. None of these steps affects DijiBirthday.
