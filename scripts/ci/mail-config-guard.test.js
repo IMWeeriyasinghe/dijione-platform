@@ -143,3 +143,22 @@ test('the explicit ALLOW_MAIL_CONFIG_CHANGE=1 override is unchanged', () => {
   assert.equal(r.code, 0);
   assert.match(r.out, /ALLOW_MAIL_CONFIG_CHANGE=1: proceeding/);
 });
+
+test('enabling platform-api Graph (live unset, params graph) is reported, not silently applied', () => {
+  const params = `${PARAMS_MATCH}
+param platformMailTransport = 'graph'
+param platformMailPolicy = 'internal_allowlist'
+param platformMailSharedMailbox = 'sender@example.com'
+`;
+  const r = run({ env: BIRTHDAY_LIVE, params });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /platform-api MAIL_TRANSPORT: live='<unset>' would become 'graph'/);
+  assert.match(r.err, /platform-api MAIL_POLICY: live='<unset>' would become 'internal_allowlist'/);
+  assert.match(r.err, /platform-api MAIL_SHARED_MAILBOX: live='<unset>' would become 'sender@example.com'/);
+  assert.match(r.out, /birthday-api: mail configuration unchanged/);
+
+  const applied = run({ env: { ...BIRTHDAY_LIVE, FAKE_PLATFORM_API_MAIL_TRANSPORT: 'graph',
+    FAKE_PLATFORM_API_MAIL_POLICY: 'internal_allowlist', FAKE_PLATFORM_API_MAIL_SHARED_MAILBOX: 'sender@example.com' }, params });
+  assert.equal(applied.code, 0);
+  assert.match(applied.out, /platform-api: mail configuration unchanged \(transport='graph'\)/);
+});
