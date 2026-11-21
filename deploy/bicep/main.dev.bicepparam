@@ -100,6 +100,14 @@ param birthdayMailTransport = 'graph'
 param birthdayMailPolicy = 'internal_allowlist'
 param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'
 
+// DijiOne platform-api access notifications — DEV desired state. Real Graph mail ONLY to the
+// individual Admin > Notifications test recipients (internal_allowlist). Applied to live DEV
+// only after the Exchange grant verifies (deploy/runbooks/exchange-mail-rbac/README.md); until
+// then mail-config-guard.sh reports this as an intended null -> graph change.
+param platformMailTransport = 'graph'
+param platformMailPolicy = 'internal_allowlist'
+param platformMailSharedMailbox = 'appassistant@dijitalteam.com'
+
 // External DijiTalentFlow client portal origin used by talent-api for portal
 // links (EXTERNAL_PORTAL_BASE_URL). Equals live DEV talent-api (verified
 // 2026-11-13); omitting it made a full main.bicep run remove the variable.
