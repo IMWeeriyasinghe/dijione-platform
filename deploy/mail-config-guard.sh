@@ -46,7 +46,8 @@ live_env() {  # value of env var $2 on container app $1 ('' when unset); fails c
   errf="$(mktemp)"
   if ! out="$(az containerapp show -g "$RG" -n "$1" \
       --query "properties.template.containers[0].env[?name=='$2'].value | [0]" -o tsv 2>"$errf")"; then
-    fail_closed "$1 $2" "$(first_error "$errf")"; out=""
+    local msg; msg="$(first_error "$errf")"; rm -f "$errf"
+    fail_closed "$1 $2" "$msg"; out=""
   fi
   rm -f "$errf"
   out="${out%$'\r'}"
