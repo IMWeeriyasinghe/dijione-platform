@@ -69,11 +69,11 @@ if ($sp) {
   # 4. Positive / negative authorization
   $pos = @(Test-ServicePrincipalAuthorization -Identity $sp.ObjectId -Resource $SharedMailbox |
     Where-Object { $_.RoleName -eq 'Application Mail.Send' })
-  if ($pos.Count -and ($pos | Where-Object InScope)) { Pass "positive: Mail.Send InScope True for $SharedMailbox" }
+  if ($pos.Count -and ($pos | Where-Object { Test-InScope $_ })) { Pass "positive: Mail.Send InScope True for $SharedMailbox" }
   else { Fail "positive: Mail.Send NOT in scope for $SharedMailbox (new grants can take time to propagate)" }
 
   $neg = @(Test-ServicePrincipalAuthorization -Identity $sp.ObjectId -Resource $NegativeMailbox |
-    Where-Object { $_.RoleName -like 'Application Mail*' -and $_.InScope })
+    Where-Object { $_.RoleName -like 'Application Mail*' -and (Test-InScope $_) })
   if ($neg.Count -eq 0) { Pass "negative: no Mail.* permission on $NegativeMailbox" }
   else { Fail "negative: identity CAN act on $NegativeMailbox ($($neg.RoleName -join ', ')) - scope is too broad" }
 } else { $ok = $false }

@@ -66,3 +66,9 @@ function Get-GraphPaged([string]$url) {
   }
   return ,$items
 }
+
+function Test-InScope($result) {
+  # Exchange Online returns InScope as the STRING 'True'/'False'; a non-empty string is truthy in
+  # PowerShell, so never test it directly. Anything other than an exact true is "not in scope".
+  return "$($result.InScope)".Trim() -eq 'True'
+}
