@@ -32,13 +32,61 @@ semantics. It may adopt `format_subject`/`render_email` later, on its own releas
 
 ## Events
 
-| Event | Subject | When |
+**One email per person per net access change.** When exactly one application changed, the email
+is that application's own: its `application_key` is set, and the subject uses the **registry
+display name**, never a code constant. First access, deactivation and changes to several
+applications send one consolidated `[DijiOne]` email instead. Admin Center access
+(`users.platform_role`) is reported as the platform application `admin-center`, named
+"DijiOne Admin Center".
+
+| Event | Subject (single application / several) | When |
 |---|---|---|
 | `access.welcome` | `[DijiOne] \| Access Available` | A person's first application access appears (including default DijiAtWork access at first sign-in). Lists every application. |
-| `access.granted` | `[DijiOne] \| Access Granted` | One or more applications gained, nothing lost or changed. |
-| `access.revoked` | `[DijiOne] \| Access Revoked` | One or more applications lost, nothing gained or changed. |
-| `access.updated` | `[DijiOne] \| Application Access Updated` | Effective permissions changed in an application, or a mix of gains/losses. |
+| `access.granted` | `[<App>] \| Access Granted` / `[DijiOne] \| Access Granted` | Application(s) gained, nothing else changed. |
+| `access.revoked` | `[<App>] \| Access Revoked` / `[DijiOne] \| Access Revoked` | Application(s) lost, nothing else changed. |
+| `access.role_updated` | `[<App>] \| Role Updated` | The effective roles in one application change, even when the permissions are identical. |
+| `access.scope_updated` | `[<App>] \| Client Access Updated` | The clients in one client-scoped application change (compared by durable client reference, so A → B is detected). |
+| `access.administration_updated` | `[<App>] \| Access Administration Updated` | The person becomes, stops being, or changes as an access administrator of one application. |
+| `access.updated` | `[<App>] \| Access Updated` / `[DijiOne] \| Access Updated` | Permissions only, several kinds of change together, or several applications. |
 | `account.deactivated` | `[DijiOne] \| Account Deactivated` | Active → inactive. One email, not one per application. |
+
+**Snapshot v2** (`user_access_snapshots.snapshot`) holds, per application, `permissions`,
+`roles` (direct, group and default access), `clients` (client-scoped applications only;
+`null` = all clients), `administers` (the delegated-administration authority) and
+`default_only`, plus the person's `platform_role`.
+- **Source changes alone are silent.** Where access comes from (direct versus group) is not
+  stored, so switching to an equivalent source sends nothing.
+- **Default-access suppression is unchanged.** A change inside access that is default-only before
+  and after is never reported. Moving from default access to an explicit role, for example
+  DijiAtWork Manager, is reported.
+- **The upgrade from v1 is silent.** A dimension missing from a stored v1 snapshot is unknown and
+  never compared. The startup rebaseline writes v2 for everyone without an email; it uses an
+  optimistic check, so it never overwrites a concurrent change, and unsent emails are kept.
+  Rollback is safe because v1 code reads only `active`, `permissions` and `default_only`.
+- **Transition handling (v1 → v2):**
+  - **Startup:** every v1 snapshot is upgraded synchronously before the revision serves traffic
+    (`upgrade_v1_snapshots` in the app lifespan).
+  - **Each dispatcher cycle:** remaining v1 rows are swept. These are rows an older revision wrote
+    during the rolling switch.
+  - **Folding:** an email still unsent from before v2 has its starting point completed from the
+    stored v2 snapshot (`upgrade_from_snapshot`), so role, client, administration and Admin Center
+    changes folded into it are reported.
+  - **Residual:** a role-, client- or administration-only change made on the *old* revision during
+    the seconds-long switchover is handled as v1 handled it, so it is not emailed. So is such a
+    change for the same person on the new revision before the next sweep (≤ one dispatcher
+    interval). The post-deploy audit query in
+    `deploy/runbooks/access-notifications-v2/README.md` lists the access changes in that window
+    for manual review.
+
+**Origin** (`template_data.origin`, admin-facing only, shown in the Notifications details):
+`channel` (`CENTRAL` / `APPLICATION` / `SYSTEM` / `MIXED` / `UNKNOWN`), source application, initiating
+administrator, audit ids, and the groups involved.
+- **Proven, never guessed.** It is taken only from this transaction's own audit rows about the
+  person. Anything unproven is `UNKNOWN` or null.
+- **Never in the email body.** Origin, actor, roles and clients are never included.
+
+**Links.** A single-application email links to that application's registry route on the DijiOne
+host. Anything else links to DijiOne home. Links are never built from client-provided data.
 
 Each can be switched off in Admin > Notifications > Events (absent setting = on).
 
@@ -202,6 +250,9 @@ Each service is compared and reported on its own. Regression tests with a fake `
 `scripts/ci/mail-config-guard.test.js` (run by CI's `guard` job on every event).
 
 ## Adding another application later
+
+Access emails for a new platform-managed application need **no code**. See
+`access-notifications-standard.md`.
 
 An application that wants email (attendance summaries, TalentFlow reviews, Birthday reports)
 follows `email-architecture.md`'s adoption checklist with its **own** identity, config, outbox

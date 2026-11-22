@@ -22,7 +22,8 @@ from app.services.audit_service import AuditService
 from app.services.email_dispatcher import PRODUCTION_ENVIRONMENTS, effective_policy_name
 
 _ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")  # one person's address; never a whole domain
-APPLICATIONS = {access_notifications.APPLICATION_KEY: access_notifications.APPLICATION_NAME}
+APPLICATIONS = {access_notifications.APPLICATION_KEY: access_notifications.APPLICATION_NAME,
+                access_notifications.ADMIN_CENTER_KEY: access_notifications.ADMIN_CENTER_NAME}
 RECIPIENT_SEARCH_USERS = 10
 RECIPIENT_SEARCH_HISTORY = 5
 
@@ -36,12 +37,13 @@ class InvalidInputError(ValueError):
     pass
 
 
-def _row_out(row: EmailOutbox, *, detail: bool = False) -> dict:
+def _row_out(row: EmailOutbox, *, detail: bool = False, names: dict[str, str] | None = None) -> dict:
+    names = names or APPLICATIONS
     out = {
         "id": row.id,
         "correlation_id": row.correlation_id,
         "application_key": row.application_key,
-        "application_name": APPLICATIONS.get(row.application_key, row.application_key),
+        "application_name": names.get(row.application_key, row.application_key),
         "event_type": row.event_type,
         "recipient_email": row.recipient_email,
         "recipient_user_id": row.recipient_user_id,
@@ -90,7 +92,33 @@ class EmailAdminService:
         rows = self.db.execute(
             stmt.order_by(EmailOutbox.id.desc()).limit(min(max(limit, 1), 500)).offset(max(offset, 0))
         ).scalars()
-        return {"total": total, "items": [_row_out(r) for r in rows]}
+        names = self._names()
+        return {"total": total, "items": [_row_out(r, names=names) for r in rows]}
+
+    def _names(self) -> dict[str, str]:
+        """Application display names from the registry (plus DijiOne and Admin Center)."""
+        return access_notifications._module_names(self.db)
+
+    def _origin_out(self, data: dict) -> dict | None:
+        """Admin-facing origin of an access email; ``None`` for rows queued before it was recorded.
+        Unknown parts stay unknown: nothing is inferred."""
+        origin = data.get("origin") if isinstance(data, dict) else None
+        if not isinstance(origin, dict):
+            return None
+        names = self._names()
+        actor_id = origin.get("actor_user_id")
+        actor = self.db.get(User, actor_id) if isinstance(actor_id, int) else None
+        src = origin.get("source_application_key")
+        return {
+            "channel": origin.get("channel") or "UNKNOWN",
+            "source_application_key": src,
+            "source_application_name": names.get(src, src) if src else None,
+            "actor_user_id": actor_id,
+            "actor_name": (actor.full_name or actor.email) if actor else None,
+            "actions": origin.get("actions") or [],
+            "audit_ids": origin.get("audit_ids") or [],
+            "via_groups": origin.get("via_groups") or [],
+        }
 
     def search_recipients(self, q: str) -> list[dict]:
         """History-filter suggestions: DijiOne users (name, email, employee number) plus addresses
@@ -125,7 +153,9 @@ class EmailAdminService:
         row = self.db.get(EmailOutbox, outbox_id)
         if row is None:
             raise NotFoundError("Notification not found")
-        return _row_out(row, detail=True)
+        out = _row_out(row, detail=True, names=self._names())
+        out["origin"] = self._origin_out(row.template_data or {})
+        return out
 
     def summary(self) -> dict:
         counts = dict(self.db.execute(select(EmailOutbox.status, func.count()).group_by(EmailOutbox.status)).all())
@@ -140,7 +170,7 @@ class EmailAdminService:
             "sender_mailbox": settings.mail_shared_mailbox or None,
             "access_notifications_enabled": settings.access_notifications_enabled,
             "dispatcher_enabled": settings.email_dispatcher_enabled,
-            "applications": [{"key": k, "name": v} for k, v in APPLICATIONS.items()],
+            "applications": [{"key": k, "name": v} for k, v in sorted(self._names().items(), key=lambda kv: kv[1])],
             "statuses": list(OutboxStatus.ALL),
         }
 
@@ -169,9 +199,15 @@ class EmailAdminService:
 
     def list_events(self) -> list[dict]:
         rows = {r.event_type: r for r in self.db.execute(select(NotificationEventSetting)).scalars()}
+        platform_wide = (access_notifications.EVENT_WELCOME, access_notifications.EVENT_DEACTIVATED)
+
+        def subject(key: str, purpose: str) -> str:
+            app = access_notifications.APPLICATION_NAME if key in platform_wide else "Application, or DijiOne for several"
+            return f"[{app}] | {purpose}"
+
         return [
             {"event_type": key, "application_key": access_notifications.APPLICATION_KEY,
-             "subject": f"[{access_notifications.APPLICATION_NAME}] | {purpose}", "description": description,
+             "subject": subject(key, purpose), "description": description,
              "enabled": rows[key].enabled if key in rows else True}
             for key, (purpose, description) in access_notifications.EVENTS.items()
         ]

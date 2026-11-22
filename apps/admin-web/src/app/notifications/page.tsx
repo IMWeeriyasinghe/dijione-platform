@@ -16,6 +16,7 @@ import {
   removeEmailTestRecipient,
   retryEmailOutboxItem,
   setNotificationEvent,
+  type EmailOutboxItem,
   type EmailStatus,
   type NotificationSummary,
   type OutboxFilters,
@@ -50,8 +51,55 @@ const EVENT_FALLBACK: Record<string, string> = {
   "access.granted": "Access granted",
   "access.revoked": "Access revoked",
   "access.updated": "Access updated",
+  "access.role_updated": "Role updated",
+  "access.scope_updated": "Client access updated",
+  "access.administration_updated": "Access administration updated",
   "account.deactivated": "Account deactivated",
 };
+
+const CHANNEL_LABEL: Record<string, string> = {
+  CENTRAL: "Admin Center",
+  APPLICATION: "Application Access page",
+  SYSTEM: "Automatic (first sign-in or system)",
+  MIXED: "Several sources",
+  UNKNOWN: "Not recorded",
+};
+
+function OriginRows({ origin }: { origin: EmailOutboxItem["origin"] }) {
+  if (origin === undefined) return null;
+  if (origin === null) {
+    return (
+      <>
+        <dt className="text-dt-text-secondary">Changed in</dt>
+        <dd className="text-dt-text-secondary">Not recorded (queued before origin tracking)</dd>
+      </>
+    );
+  }
+  const where =
+    origin.channel === "APPLICATION" && origin.source_application_name
+      ? `${origin.source_application_name} Access page`
+      : (CHANNEL_LABEL[origin.channel] ?? origin.channel);
+  return (
+    <>
+      <dt className="text-dt-text-secondary">Changed in</dt>
+      <dd>{where}</dd>
+      <dt className="text-dt-text-secondary">Changed by</dt>
+      <dd>{origin.actor_name ?? "Not recorded"}</dd>
+      {origin.via_groups.length > 0 && (
+        <>
+          <dt className="text-dt-text-secondary">Through group</dt>
+          <dd>{origin.via_groups.join(", ")}</dd>
+        </>
+      )}
+      {origin.audit_ids.length > 0 && (
+        <>
+          <dt className="text-dt-text-secondary">Audit records</dt>
+          <dd className="font-mono text-xs">{origin.audit_ids.join(", ")}</dd>
+        </>
+      )}
+    </>
+  );
+}
 
 const IN_FLIGHT = new Set<EmailStatus>(["PENDING", "SENDING", "RETRY"]);
 const IN_FLIGHT_POLL_MS = 10_000;
@@ -232,6 +280,7 @@ function DetailModal({ id, onClose, eventLabels, canManage }: {
                 <dd>{statusMeta(item.transport_outcome).label}</dd>
               </>
             )}
+            <OriginRows origin={item.origin} />
             <dt className="text-dt-text-secondary">Correlation ID</dt>
             <dd className="break-all font-mono text-xs">{item.correlation_id}</dd>
             {item.graph_request_id && (

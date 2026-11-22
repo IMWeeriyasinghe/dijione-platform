@@ -230,6 +230,29 @@ describe("statuses, summary and details", () => {
   });
 });
 
+describe("origin", () => {
+  it("shows where an access change was made and by whom", async () => {
+    api.getEmailOutboxItem.mockResolvedValue({ ...row(1), last_error: null, origin: {
+      channel: "APPLICATION", source_application_key: "app-x", source_application_name: "App X", actor_user_id: 3,
+      actor_name: "Tom Admin", actions: ["module_assignment.created"], audit_ids: [12299], via_groups: ["Site Leads"] } });
+    renderPage();
+    await screen.findByText("person1@dijitalteam.com");
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(await screen.findByText("App X Access page")).toBeInTheDocument();
+    expect(screen.getByText("Tom Admin")).toBeInTheDocument();
+    expect(screen.getByText("Site Leads")).toBeInTheDocument();
+    expect(screen.getByText("12299")).toBeInTheDocument();
+  });
+
+  it("says the origin is not recorded rather than guessing", async () => {
+    api.getEmailOutboxItem.mockResolvedValue({ ...row(1), last_error: null, origin: null });
+    renderPage();
+    await screen.findByText("person1@dijitalteam.com");
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(await screen.findByText(/not recorded/i)).toBeInTheDocument();
+  });
+});
+
 describe("permissions", () => {
   it("hides management actions without manage_notifications", async () => {
     perms.set = new Set();

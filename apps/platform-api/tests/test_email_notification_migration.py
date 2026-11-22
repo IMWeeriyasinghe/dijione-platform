@@ -27,7 +27,7 @@ def test_single_head_upgrade_adds_only_the_new_tables_and_downgrade_removes_them
     url = f"sqlite:///{tmp_path / 'mail.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["u3v5x7z9b1d3", "(head)"]
+    assert heads.stdout.split() == ["v4w6y8a0c2e4", "(head)"]  # single head
 
     assert _alembic(url, "upgrade", PREVIOUS).returncode == 0
     engine = create_engine(url)
@@ -71,3 +71,29 @@ def test_notification_permissions_migration_links_super_and_platform_admin_only(
     assert {p for p, _ in linked} == keys
     assert set(linked) == {(p, r) for p in keys for r in ("SUPER_ADMIN", "PLATFORM_ADMIN")}
     assert _alembic(url, "upgrade", "head").returncode == 0  # re-run is safe
+
+
+def test_birthday_display_name_migration_is_idempotent_and_reversible(tmp_path):
+    url = f"sqlite:///{tmp_path / 'name.db'}"
+    assert _alembic(url, "upgrade", "u3v5x7z9b1d3").returncode == 0
+    engine = create_engine(url)
+
+    def name():
+        with engine.connect() as c:
+            return c.execute(text("SELECT key, name FROM application_modules WHERE key = 'birthday'")).all()
+
+    with engine.begin() as c:
+        if not name():
+            c.execute(text(
+                "INSERT INTO application_modules (key, name, description, icon, route, status, enabled, display_order,"
+                " required_roles, supports_client_scope, created_at, updated_at) VALUES ('birthday', 'DijiBirthday',"
+                " '', 'Gift', '/birthday', 'ACTIVE', 1, 2, 'ANY', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
+    before = name()
+    assert before == [("birthday", "DijiBirthday")]
+    assert _alembic(url, "upgrade", "head").returncode == 0
+    engine.dispose()
+    assert name() == [("birthday", "DIJI Birthday")]
+    assert _alembic(url, "upgrade", "head").returncode == 0  # re-run is safe
+    assert _alembic(url, "downgrade", "u3v5x7z9b1d3").returncode == 0
+    engine.dispose()
+    assert name() == before

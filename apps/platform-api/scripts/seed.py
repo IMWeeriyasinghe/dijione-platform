@@ -122,7 +122,7 @@ def seed_module_registry(db) -> None:
             display_order=1, required_roles="ANY",
         ),
         dict(
-            key=MODULE_BIRTHDAY, name="DijiBirthday",
+            key=MODULE_BIRTHDAY, name="DIJI Birthday",
             description="Birthday Workflow Automation", icon="Cake",
             route="/birthday", status="ACTIVE", enabled=True,
             display_order=2,
