@@ -42,7 +42,7 @@ SELECT id, created_at, event_type, application_key, recipient_user_id, status
 FROM email_outbox WHERE created_at >= :release_start ORDER BY id;
 
 -- 2. Every snapshot is v2 (after the sweep): expect 0.
-SELECT count(*) FROM user_access_snapshots WHERE snapshot NOT LIKE '%"v": 2%';
+SELECT count(*) FROM user_access_snapshots WHERE (snapshot->>'v') IS DISTINCT FROM '2';  -- PostgreSQL json
 
 -- 3. Switchover review: access changes made from 5 minutes before to 5 minutes after the
 --    revision switch. A role-, client- or administration-only change in this window may not
