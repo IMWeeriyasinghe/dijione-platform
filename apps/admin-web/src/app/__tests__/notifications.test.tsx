@@ -92,9 +92,22 @@ describe("recipient picker", () => {
     await screen.findByText("person1@dijitalteam.com");
     await type("old");
     await screen.findByText("old.svc@dijitalteam.com");
-    fireEvent.keyDown(recipientBox(), { key: "ArrowDown" }); // second suggestion (history)
+    // options: [search history for "old", Madushanka, old.svc (history)]
+    fireEvent.keyDown(recipientBox(), { key: "ArrowDown" });
+    fireEvent.keyDown(recipientBox(), { key: "ArrowDown" });
     fireEvent.keyDown(recipientBox(), { key: "Enter" });
     await waitFor(() => expect(lastFilters()).toMatchObject({ recipient: "old.svc@dijitalteam.com" }));
+  });
+
+  it("Enter searches exactly what was typed, even before newer suggestions arrive", async () => {
+    renderPage();
+    await screen.findByText("person1@dijitalteam.com");
+    await type("ma");
+    await screen.findByText("Madushanka Weeriyasinghe");
+    fireEvent.change(recipientBox(), { target: { value: "max" } }); // debounce still pending
+    expect(screen.queryByText("Madushanka Weeriyasinghe")).not.toBeInTheDocument();
+    fireEvent.keyDown(recipientBox(), { key: "Enter" });
+    await waitFor(() => expect(lastFilters()).toMatchObject({ recipient: "max" }));
   });
 
   it("searches history for a manually typed address without a directory match", async () => {

@@ -29,6 +29,10 @@ export function RecipientPicker({ value, onChange }: { value: string; onChange: 
   const [active, setActive] = useState(0);
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+  }, []);
   // Follow outside changes (Reset filters) without an effect: adjust state while rendering.
   const [prevValue, setPrevValue] = useState(value);
   if (value !== prevValue) {
@@ -46,12 +50,17 @@ export function RecipientPicker({ value, onChange }: { value: string; onChange: 
   });
   // Results always belong to the current term (the query is keyed by it), so an older, slower
   // response can never replace a newer one.
-  const people: NotificationRecipient[] = enabled && search.data ? search.data : [];
   const typed = text.trim();
+  // Only suggestions for exactly what is in the box: while the debounce is pending, an older
+  // term's results are never shown or picked.
+  const people: NotificationRecipient[] = enabled && term === typed && search.data ? search.data : [];
+  // The manual "search history for what I typed" option is always first, so Enter (without
+  // moving to a suggestion) searches exactly what was typed.
   const options: { key: string; email: string; person?: NotificationRecipient }[] = [
-    ...people.map((p) => ({ key: `${p.source}:${p.user_id ?? p.email}`, email: p.email, person: p })),
     ...(typed.length > 0 ? [{ key: "manual", email: typed }] : []),
+    ...people.map((p) => ({ key: `${p.source}:${p.user_id ?? p.email}`, email: p.email, person: p })),
   ];
+  const pending = enabled && (term !== typed || search.isFetching) && people.length === 0;
   const showList = open && typed.length > 0 && typed !== value;
 
   const choose = (email: string) => {
@@ -95,7 +104,7 @@ export function RecipientPicker({ value, onChange }: { value: string; onChange: 
           id="f-recipient"
           role="combobox"
           aria-expanded={showList}
-          aria-controls={listId}
+          aria-controls={showList ? listId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={showList && options[active] ? `${listId}-${active}` : undefined}
           aria-describedby={`${listId}-hint`}
@@ -107,8 +116,13 @@ export function RecipientPicker({ value, onChange }: { value: string; onChange: 
             setOpen(true);
             setActive(0);
           }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onFocus={() => {
+            if (blurTimer.current) clearTimeout(blurTimer.current);
+            setOpen(true);
+          }}
+          onBlur={() => {
+            blurTimer.current = setTimeout(() => setOpen(false), 150);
+          }}
           onKeyDown={onKeyDown}
           className="h-10 w-full rounded-md border border-dt-border bg-dt-surface pl-8 pr-8 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-dt-orange"
         />
@@ -127,22 +141,21 @@ export function RecipientPicker({ value, onChange }: { value: string; onChange: 
         Type at least two characters for suggestions. Press Enter to search history for exactly what you typed.
       </span>
       {showList && (
+        <div className="absolute z-20 mt-1 w-full min-w-[16rem] rounded-md border border-dt-border bg-dt-surface py-1 shadow-lg">
+        <p aria-live="polite" className="text-sm">
+          {pending && <span className="block px-3 py-2 text-dt-text-secondary">Searching…</span>}
+          {enabled && term === typed && search.isError && <span className="block px-3 py-2 text-dt-danger">Could not search people.</span>}
+          {enabled && term === typed && search.isSuccess && !search.isFetching && people.length === 0 && (
+            <span className="block px-3 py-2 text-dt-text-secondary">No matching people.</span>
+          )}
+        </p>
         <ul
           id={listId}
           role="listbox"
           aria-label="Recipient suggestions"
           aria-busy={search.isFetching}
-          className="absolute z-20 mt-1 max-h-80 w-full min-w-[16rem] overflow-auto rounded-md border border-dt-border bg-dt-surface py-1 shadow-lg"
+          className="max-h-80 overflow-auto"
         >
-          {enabled && search.isFetching && people.length === 0 && (
-            <li className="px-3 py-2 text-sm text-dt-text-secondary" aria-live="polite">Searching…</li>
-          )}
-          {enabled && search.isError && (
-            <li className="px-3 py-2 text-sm text-dt-danger" aria-live="polite">Could not search people.</li>
-          )}
-          {enabled && search.isSuccess && people.length === 0 && (
-            <li className="px-3 py-2 text-sm text-dt-text-secondary" aria-live="polite">No matching people.</li>
-          )}
           {options.map((o, i) => (
             <li
               key={o.key}
@@ -182,6 +195,7 @@ export function RecipientPicker({ value, onChange }: { value: string; onChange: 
             </li>
           ))}
         </ul>
+        </div>
       )}
     </div>
   );

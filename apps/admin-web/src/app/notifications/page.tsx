@@ -97,7 +97,7 @@ function EmailStatusBadge({ status }: { status: EmailStatus }) {
 function useEventLabels(): Record<string, string> {
   const events = useQuery({ queryKey: ["admin", "notifications", "events"], queryFn: listNotificationEvents });
   if (!events.data) return EVENT_FALLBACK;
-  return Object.fromEntries(events.data.map((e) => [e.event_type, EVENT_FALLBACK[e.event_type] ?? e.description ?? e.event_type]));
+  return Object.fromEntries(events.data.map((e) => [e.event_type, EVENT_FALLBACK[e.event_type] || e.description || e.event_type]));
 }
 
 /** Readable reason for an API failure; a View-as session is read-only by design. */
@@ -444,6 +444,7 @@ function HistoryTab({ summary }: { summary: NotificationSummary }) {
 
 function EventsTab() {
   const queryClient = useQueryClient();
+  const eventLabels = useEventLabels();
   const canManage = usePlatformPermission(MANAGE);
   const [error, setError] = useState<string | null>(null);
   const events = useQuery({ queryKey: ["admin", "notifications", "events"], queryFn: listNotificationEvents });
@@ -463,7 +464,7 @@ function EventsTab() {
       {events.data?.map((ev) => (
         <Card key={ev.event_type} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="font-medium">{EVENT_FALLBACK[ev.event_type] ?? ev.event_type}</p>
+            <p className="font-medium">{eventLabels[ev.event_type] ?? ev.event_type}</p>
             <p className="text-sm text-dt-text-secondary">{ev.description}</p>
             <p className="mt-1 break-words font-mono text-xs text-dt-text-secondary">{ev.subject}</p>
           </div>
