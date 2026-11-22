@@ -539,6 +539,16 @@ def notifications_outbox(
                                   bearer_token=bearer_token, params={k: v for k, v in params.items() if v is not None})
 
 
+@router.get("/notifications/recipients")
+def notification_recipient_search(
+    q: str = Query(min_length=2, max_length=64),
+    bearer_token: str = Depends(get_bearer_token),
+    platform: PlatformClient = Depends(get_platform_client),
+) -> Response:
+    return forward_platform_admin(platform, "GET", "/api/platform/admin/notifications/recipients",
+                                  bearer_token=bearer_token, params={"q": q})
+
+
 @router.get("/notifications/outbox/{outbox_id}")
 def notification_detail(
     outbox_id: int,

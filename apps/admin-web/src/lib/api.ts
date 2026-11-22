@@ -219,6 +219,21 @@ export interface OutboxFilters {
   offset?: number;
 }
 
+/** A suggestion for the history Recipient filter: a DijiOne user, or an address seen only in history. */
+export interface NotificationRecipient {
+  source: "user" | "history";
+  user_id: number | null;
+  full_name: string | null;
+  email: string;
+  employee_number: string | null;
+  is_active: boolean | null;
+  has_photo: boolean;
+}
+
+/** Read-only search for the history filter; never adds a test recipient or sends anything. */
+export const searchNotificationRecipients = (q: string, signal?: AbortSignal) =>
+  request<NotificationRecipient[]>(`/api/admin/notifications/recipients${qs({ q })}`, { signal });
+
 export const getNotificationSummary = () => request<NotificationSummary>("/api/admin/notifications/summary");
 export const listEmailOutbox = (filters: OutboxFilters) =>
   request<EmailOutboxPage>(`/api/admin/notifications/outbox${qs(filters as Record<string, string | number | undefined>)}`);
