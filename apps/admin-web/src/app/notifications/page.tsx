@@ -60,6 +60,7 @@ const EVENT_FALLBACK: Record<string, string> = {
 const CHANNEL_LABEL: Record<string, string> = {
   CENTRAL: "Admin Center",
   APPLICATION: "Application Access page",
+  SYSTEM: "Automatic (first sign-in or system)",
   MIXED: "Several sources",
   UNKNOWN: "Not recorded",
 };

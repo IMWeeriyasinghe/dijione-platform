@@ -63,9 +63,12 @@ applications send one consolidated `[DijiOne]` email instead. Admin Center acces
   never compared. The startup rebaseline writes v2 for everyone without an email; it uses an
   optimistic check, so it never overwrites a concurrent change, and unsent emails are kept.
   Rollback is safe because v1 code reads only `active`, `permissions` and `default_only`.
+  Known transition edge: an access email still unsent at release time carries a v1 starting
+  point. A role, client, administration or Admin Center change folded into it in the next minute
+  is not reported. Only a permission change is. This is bounded by `access_email_delay_seconds`.
 
 **Origin** (`template_data.origin`, admin-facing only, shown in the Notifications details):
-`channel` (`CENTRAL` / `APPLICATION` / `MIXED` / `UNKNOWN`), source application, initiating
+`channel` (`CENTRAL` / `APPLICATION` / `SYSTEM` / `MIXED` / `UNKNOWN`), source application, initiating
 administrator, audit ids, and the groups involved.
 - **Proven, never guessed.** It is taken only from this transaction's own audit rows about the
   person. Anything unproven is `UNKNOWN` or null.

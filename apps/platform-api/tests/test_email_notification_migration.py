@@ -82,10 +82,17 @@ def test_birthday_display_name_migration_is_idempotent_and_reversible(tmp_path):
         with engine.connect() as c:
             return c.execute(text("SELECT key, name FROM application_modules WHERE key = 'birthday'")).all()
 
+    with engine.begin() as c:
+        if not name():
+            c.execute(text(
+                "INSERT INTO application_modules (key, name, description, icon, route, status, enabled, display_order,"
+                " required_roles, supports_client_scope, created_at, updated_at) VALUES ('birthday', 'DijiBirthday',"
+                " '', 'Gift', '/birthday', 'ACTIVE', 1, 2, 'ANY', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
     before = name()
+    assert before == [("birthday", "DijiBirthday")]
     assert _alembic(url, "upgrade", "head").returncode == 0
     engine.dispose()
-    assert name() == ([("birthday", "DIJI Birthday")] if before else [])
+    assert name() == [("birthday", "DIJI Birthday")]
     assert _alembic(url, "upgrade", "head").returncode == 0  # re-run is safe
     assert _alembic(url, "downgrade", "u3v5x7z9b1d3").returncode == 0
     engine.dispose()

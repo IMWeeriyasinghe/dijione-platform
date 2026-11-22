@@ -136,6 +136,29 @@ def _administers(authz: AuthorizationService, user: User, module_key: str, grant
     return out
 
 
+def _memoised_authz(session: Session) -> AuthorizationService:
+    """An AuthorizationService that resolves each person's contributions and appointments once:
+    a snapshot reads them for permissions, roles, administration and client scope of every
+    application. Local to one snapshot, so it can never serve stale data across changes."""
+    authz = AuthorizationService(session)
+    contributions, appointments = {}, {}
+    resolve, appointed = authz._all_contributions, authz.appointments
+
+    def _contributions(user):
+        if user.id not in contributions:
+            contributions[user.id] = resolve(user)
+        return contributions[user.id]
+
+    def _appointments(user):
+        if user.id not in appointments:
+            appointments[user.id] = appointed(user)
+        return appointments[user.id]
+
+    authz._all_contributions = _contributions
+    authz.appointments = _appointments
+    return authz
+
+
 def compute_snapshot(session: Session, user: User) -> dict:
     """The person's effective access now (snapshot v2).
 
@@ -147,7 +170,7 @@ def compute_snapshot(session: Session, user: User) -> dict:
     part of the snapshot, so a change of source alone is never reported."""
     if not user.is_active:
         return dict(EMPTY_SNAPSHOT, apps={}, v=SNAPSHOT_VERSION, platform_role=None)
-    authz = AuthorizationService(session)
+    authz = _memoised_authz(session)
     scoped = set(session.execute(
         select(ApplicationModule.key).where(ApplicationModule.supports_client_scope.is_(True))).scalars())
     apps: dict[str, dict] = {}
@@ -322,8 +345,9 @@ def _origin(session: Session, user: User, after: dict) -> dict:
     """Where this person's change came from, proven only by this transaction's own audit rows
     about them (never guessed from unrelated records): channel, source application, initiating
     administrator, audit references, and the groups their changed access now comes through."""
-    mine = [r for r in session.info.get(AUDIT_KEY, []) if r.subject_user_id == user.id or
-            (r.entity_type == "User" and r.entity_id == user.id)]
+    # Only rows still in the session: a rolled-back savepoint's audit rows were expunged.
+    mine = [r for r in session.info.get(AUDIT_KEY, []) if r in session and (r.subject_user_id == user.id or
+            (r.entity_type == "User" and r.entity_id == user.id))]
     channels, apps, actors = set(), set(), set()
     for r in mine:
         try:
@@ -338,8 +362,8 @@ def _origin(session: Session, user: User, after: dict) -> dict:
         if r.actor_id is not None:
             actors.add(r.actor_id)
     via_groups: set[str] = set()
-    if mine or session.info.get(AUDIT_KEY):
-        authz = AuthorizationService(session)
+    if any("group" in r.action for r in mine):
+        authz = _memoised_authz(session)
         for grants in authz.effective_module_roles(user).values():
             via_groups |= {g.source_name for g in grants if g.source_type == "GROUP" and g.source_name}
     return {
@@ -348,7 +372,7 @@ def _origin(session: Session, user: User, after: dict) -> dict:
         "actor_user_id": actors.pop() if len(actors) == 1 else None,
         "actions": sorted({r.action for r in mine}),
         "audit_ids": sorted(r.id for r in mine if r.id is not None),
-        "via_groups": sorted(via_groups) if any("group" in r.action for r in mine) else [],
+        "via_groups": sorted(via_groups),
     }
 
 
