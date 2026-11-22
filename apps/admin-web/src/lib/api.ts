@@ -173,6 +173,19 @@ export interface EmailOutboxItem {
   graph_request_id?: string | null;
   superseded_by_id?: number | null;
   template_data?: Record<string, unknown>;
+  /** Where the change came from (detail only; null for emails queued before it was recorded). */
+  origin?: NotificationOrigin | null;
+}
+
+export interface NotificationOrigin {
+  channel: "CENTRAL" | "APPLICATION" | "MIXED" | "UNKNOWN" | string;
+  source_application_key: string | null;
+  source_application_name: string | null;
+  actor_user_id: number | null;
+  actor_name: string | null;
+  actions: string[];
+  audit_ids: number[];
+  via_groups: string[];
 }
 
 export interface EmailOutboxPage {

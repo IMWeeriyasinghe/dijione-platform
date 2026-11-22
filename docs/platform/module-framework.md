@@ -94,7 +94,12 @@ frontend app — following the pattern `apps/birthday-api` and
    fork the design system per module. See
    `docs/platform/service-contracts.md` "Gateway / routing" for the exact
    pattern and its cross-zone-navigation gotcha.
-6. **Docs**: add `docs/<module>/requirements.md`, update this file's module
+6. **Access notifications**: by registering roles in the platform catalog and changing access
+   only through `AdminService` / `DelegatedAccessService` (the shared `AccessManagementPage`),
+   the module gets application-specific access emails automatically. Add the contract test
+   from `docs/platform/access-notifications-standard.md`; never build a module-specific
+   sender for staff access emails.
+7. **Docs**: add `docs/<module>/requirements.md`, update this file's module
    table below, and add the service to
    `docs/platform/service-architecture.md`'s service table and
    `docs/platform/local-development.md`'s port table.

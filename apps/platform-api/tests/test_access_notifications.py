@@ -23,7 +23,7 @@ from app.services.access_notifications import (
     EVENT_DEACTIVATED,
     EVENT_GRANTED,
     EVENT_REVOKED,
-    EVENT_UPDATED,
+    EVENT_ROLE_UPDATED,
     EVENT_WELCOME,
 )
 from app.services.email_dispatcher import dispatch_due, set_transport_override
@@ -87,6 +87,11 @@ def default_app(db, monkeypatch):
 def default_app_name(db):
     return db.execute(
         select(ApplicationModule.name).where(ApplicationModule.key == "birthday")).scalar_one()
+
+
+def app_name(db, key):
+    """The registry display name (the source of single-application subjects); key if unregistered."""
+    return db.execute(select(ApplicationModule.name).where(ApplicationModule.key == key)).scalar_one_or_none() or key
 
 
 def new_person(db, name="person", **extra):
@@ -161,8 +166,9 @@ def test_grant_revoke_and_role_change_through_the_admin_api(db, world, api_clien
                           headers=headers)
     assert resp.status_code == 200, resp.text
     [granted] = live(db, ta.id)
-    assert (granted.event_type, granted.subject) == (EVENT_GRANTED, "[DijiOne] | Access Granted")
-    assert granted.template_data["granted"] == ["birthday"]
+    assert (granted.event_type, granted.subject) == (EVENT_GRANTED, f"[{app_name(db, 'birthday')}] | Access Granted")
+    assert granted.application_key == "birthday"
+    assert granted.template_data["granted"] == [app_name(db, "birthday")]
 
     dispatch_due()  # sent, so the next change is a separate email
     resp = api_client.put(
@@ -171,13 +177,13 @@ def test_grant_revoke_and_role_change_through_the_admin_api(db, world, api_clien
                           headers=headers)
     assert resp.status_code == 200, resp.text
     updated = live(db, ta.id)[-1]
-    assert (updated.event_type, updated.subject) == (EVENT_UPDATED, "[DijiOne] | Application Access Updated")
+    assert (updated.event_type, updated.subject) == (EVENT_ROLE_UPDATED, f"[{app_name(db, TALENT)}] | Role Updated")
 
     dispatch_due()
     resp = api_client.delete(f"/api/platform/admin/users/{ta.id}/modules/birthday", headers=headers)
     assert resp.status_code == 200, resp.text
     revoked = live(db, ta.id)[-1]
-    assert (revoked.event_type, revoked.template_data["revoked"]) == (EVENT_REVOKED, ["birthday"])
+    assert (revoked.event_type, revoked.template_data["revoked"]) == (EVENT_REVOKED, [app_name(db, "birthday")])
     assert len(live(db, ta.id)) == 3
 
 
@@ -358,7 +364,7 @@ def test_submitted_is_recorded_with_html_body(db, world, monkeypatch):
     _grant(db, world)
     assert dispatch_due() == {OutboxStatus.SUBMITTED: 1}
     to, subject, body, content_type = transport.sent[0]
-    assert (to, subject, content_type) == ("ta-user@example.com", "[DijiOne] | Access Granted", "HTML")
+    assert (to, subject, content_type) == ("ta-user@example.com", f"[{app_name(db, 'birthday')}] | Access Granted", "HTML")
     assert "birthday" in body and "Access granted" in body
 
 
@@ -476,7 +482,7 @@ def test_admin_can_filter_inspect_and_retry(db, world, api_client, monkeypatch):
     assert listing["total"] == 1 and listing["items"][0]["can_retry"] is True
     item_id = listing["items"][0]["id"]
     detail = api_client.get(f"{ADMIN}/outbox/{item_id}", headers=headers).json()
-    assert detail["subject"] == "[DijiOne] | Access Granted" and "last_error" in detail
+    assert detail["subject"] == f"[{app_name(db, 'birthday')}] | Access Granted" and "last_error" in detail
     assert api_client.get(f"{ADMIN}/outbox", params={"event_type": EVENT_REVOKED}, headers=headers).json()["total"] == 0
 
     resp = api_client.post(f"{ADMIN}/test-recipients", json={"address": "TA-user@example.com"}, headers=headers)
