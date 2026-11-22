@@ -39,6 +39,7 @@ roles, client scopes or who made the change.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -396,7 +397,9 @@ def queue_access_change(session: Session, user: User, before: dict, after: dict,
     welcomed = snap.welcomed_at is not None
     unsent = _unsent_access_email(session, user.id)
     if unsent is not None:
-        before = unsent.from_snapshot or before
+        # An email still unsent from before v2 starts from a v1 snapshot: complete it from the
+        # stored v2 snapshot so a role/client/administration/Admin Center change is not lost.
+        before = upgrade_from_snapshot(unsent.from_snapshot, before) if unsent.from_snapshot else before
         if unsent.event_type == EVENT_WELCOME:
             welcomed = False  # the welcome never went out
             snap.welcomed_at = None
@@ -479,6 +482,52 @@ def _rebase(from_snapshot: dict, old: dict, new: dict) -> dict:
     return rebased
 
 
+_V2_APP_KEYS = ("roles", "clients", "administers")
+
+
+def upgrade_from_snapshot(from_snapshot: dict, reference: dict) -> dict:
+    """Fill the v2 dimensions a v1 starting point lacks, from a v2 ``reference`` snapshot.
+
+    Used when a change is folded into an email that is still unsent from before v2, and on
+    silent realignment. For an application whose permissions are identical in both, its roles,
+    clients and administration are taken from ``reference`` (v1 recorded no difference there;
+    a role swap with identical permissions was invisible to v1 anyway). Applications whose
+    permissions differ keep those dimensions unknown, exactly as before. Without this, a role,
+    client, administration or Admin Center change folded into such an email would be lost."""
+    if from_snapshot.get("v") == SNAPSHOT_VERSION or reference.get("v") != SNAPSHOT_VERSION:
+        return from_snapshot
+    upgraded = copy.deepcopy(from_snapshot)
+    ref_apps = reference.get("apps", {})
+    for key, app in upgraded.get("apps", {}).items():
+        ref = ref_apps.get(key)
+        if ref is not None and ref.get("permissions") == app.get("permissions"):
+            for dim in _V2_APP_KEYS:
+                if dim not in app and dim in ref:
+                    app[dim] = copy.deepcopy(ref[dim])
+    if "platform_role" not in upgraded and "platform_role" in reference:
+        upgraded["platform_role"] = reference["platform_role"]
+    upgraded["v"] = SNAPSHOT_VERSION
+    return upgraded
+
+
+def upgrade_v1_snapshots(session: Session) -> int:
+    """Silently move every snapshot still in v1 form to v2 (and the starting point of their unsent
+    emails). Run synchronously at startup, before the revision serves traffic, and on every
+    dispatcher cycle, which picks up rows an older revision wrote during a rolling switch. Only
+    v1 rows are touched; each write is optimistic. Returns rows upgraded."""
+    rows = session.execute(select(UserAccessSnapshot.user_id, UserAccessSnapshot.updated_at,
+                                  UserAccessSnapshot.snapshot)).all()
+    upgraded = 0
+    for user_id, stamp, snap in rows:
+        if isinstance(snap, dict) and snap.get("v") == SNAPSHOT_VERSION:
+            continue
+        if realign_silently(session, user_id, expected_stamp=stamp):
+            upgraded += 1
+    if upgraded:
+        session.commit()
+    return upgraded
+
+
 def realign_silently(session: Session, user_id: int, *, expected_stamp=None) -> bool:
     """Set a person's snapshot to their current access without any email or version change.
 
@@ -507,7 +556,7 @@ def realign_silently(session: Session, user_id: int, *, expected_stamp=None) -> 
         snap.snapshot = current
     unsent = _unsent_access_email(session, user_id)
     if unsent is not None and unsent.from_snapshot is not None:
-        unsent.from_snapshot = _rebase(unsent.from_snapshot, stored, current)
+        unsent.from_snapshot = upgrade_from_snapshot(_rebase(unsent.from_snapshot, stored, current), current)
     return True
 
 

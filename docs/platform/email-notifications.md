@@ -63,9 +63,19 @@ applications send one consolidated `[DijiOne]` email instead. Admin Center acces
   never compared. The startup rebaseline writes v2 for everyone without an email; it uses an
   optimistic check, so it never overwrites a concurrent change, and unsent emails are kept.
   Rollback is safe because v1 code reads only `active`, `permissions` and `default_only`.
-  Known transition edge: an access email still unsent at release time carries a v1 starting
-  point. A role, client, administration or Admin Center change folded into it in the next minute
-  is not reported. Only a permission change is. This is bounded by `access_email_delay_seconds`.
+- **Transition handling (v1 → v2):**
+  - **Startup:** every v1 snapshot is upgraded synchronously before the revision serves traffic
+    (`upgrade_v1_snapshots` in the app lifespan).
+  - **Each dispatcher cycle:** remaining v1 rows are swept. These are rows an older revision wrote
+    during the rolling switch.
+  - **Folding:** an email still unsent from before v2 has its starting point completed from the
+    stored v2 snapshot (`upgrade_from_snapshot`), so role, client, administration and Admin Center
+    changes folded into it are reported.
+  - **Residual:** a role-, client- or administration-only change made on the *old* revision during
+    the seconds-long switchover is handled as v1 handled it, so it is not emailed. So is such a
+    change for the same person on the new revision before the next sweep (≤ one dispatcher
+    interval). The release runbook's post-deploy audit query lists the access changes in that
+    window for manual review.
 
 **Origin** (`template_data.origin`, admin-facing only, shown in the Notifications details):
 `channel` (`CENTRAL` / `APPLICATION` / `SYSTEM` / `MIXED` / `UNKNOWN`), source application, initiating

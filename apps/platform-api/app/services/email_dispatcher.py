@@ -228,6 +228,11 @@ class DispatcherThread:
             logger.exception("access snapshot backfill failed; will rely on silent baselines")
         while not self._stop.wait(self._interval):
             try:
+                with SessionLocal() as session:  # rows a previous revision wrote in v1 form
+                    access_notifications.upgrade_v1_snapshots(session)
+            except Exception:  # noqa: BLE001
+                logger.exception("access snapshot upgrade sweep failed")
+            try:
                 dispatch_due(SessionLocal)
             except Exception:  # noqa: BLE001
                 logger.exception("email dispatch cycle failed")

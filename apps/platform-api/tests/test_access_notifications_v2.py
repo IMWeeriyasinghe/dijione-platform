@@ -445,3 +445,85 @@ def test_new_events_can_be_switched_off(db, world, api_client):
     count = len(rows(db, sam.id))
     central(api_client, sam.id, TALENT, "TA_MANAGER")
     assert len(rows(db, sam.id)) == count
+
+
+# --- v1 -> v2 transition: nothing legitimate is lost --------------------------------------------
+
+
+def test_role_change_folded_into_an_unsent_v1_email_is_not_lost(db, world, api_client):
+    """An email still unsent from before v2 starts from a v1 snapshot; a role change folded into
+    it must still be reported (the documented transition gap, now closed)."""
+    sam = world["sam"]
+    central(api_client, sam.id, TALENT, "CUSTOMER_SUCCESS")
+    dispatch_due()
+    key = _other_module(TALENT)
+    db.add(UserModuleRole(user_id=sam.id, module_key=key, role=DELEGATION[key].delegable_roles[0]))
+    db.commit()
+    unsent = rows(db, sam.id)[-1]
+    assert unsent.status == OutboxStatus.PENDING
+    unsent.from_snapshot = _as_v1(copy.deepcopy(unsent.from_snapshot))  # queued by the v1 revision
+    db.commit()
+    central(api_client, sam.id, TALENT, "TA_MANAGER")  # identical permissions: role only
+    row = rows(db, sam.id)[-1]
+    kinds = {c["name"]: c["kind"] for c in row.template_data["changes"]}
+    assert kinds == {name_of(db, key): "granted", name_of(db, TALENT): "role"}
+    assert row.subject == "[DijiOne] | Access Updated"
+
+
+def test_admin_center_change_folded_into_an_unsent_v1_email_is_not_lost(db, world, api_client):
+    sam = world["sam"]
+    central(api_client, sam.id, TALENT, "TA_MEMBER")
+    dispatch_due()
+    key = _other_module(TALENT)
+    db.add(UserModuleRole(user_id=sam.id, module_key=key, role=DELEGATION[key].delegable_roles[0]))
+    db.commit()
+    unsent = rows(db, sam.id)[-1]
+    unsent.from_snapshot = _as_v1(copy.deepcopy(unsent.from_snapshot))
+    db.commit()
+    resp = api_client.patch(f"{ADMIN}/users/{sam.id}/platform-role", json={"platform_role": "PLATFORM_ADMIN"},
+                            headers=h(api_client))
+    assert resp.status_code == 200
+    kinds = {c["name"]: c["kind"] for c in rows(db, sam.id)[-1].template_data["changes"]}
+    assert kinds[an.ADMIN_CENTER_NAME] == "granted"
+
+
+def test_v1_snapshot_upgrade_is_silent_targets_only_v1_and_respects_concurrent_writes(db, world):
+    sam, pat = world["sam"], world["pat"]
+    for user in (sam, pat):
+        db.add(UserModuleRole(user_id=user.id, module_key=TALENT, role="TA_MEMBER"))
+    db.commit()
+    dispatch_due()
+    _store_v1(db, sam.id)
+    pat_stamp = db.get(UserAccessSnapshot, pat.id).updated_at
+    before = len(rows(db))
+    assert an.upgrade_v1_snapshots(db) >= 1
+    assert snapshot(db, sam.id)["v"] == 2 and len(rows(db)) == before
+    assert db.get(UserAccessSnapshot, pat.id).updated_at == pat_stamp  # v2 rows untouched
+    assert an.upgrade_v1_snapshots(db) == 0  # idempotent
+
+
+def test_upgrade_completes_the_starting_point_of_an_unsent_v1_email(db, world):
+    sam = world["sam"]
+    db.add(UserModuleRole(user_id=sam.id, module_key=TALENT, role="TA_MEMBER"))
+    db.commit()
+    dispatch_due()
+    key = _other_module(TALENT)
+    db.add(UserModuleRole(user_id=sam.id, module_key=key, role=DELEGATION[key].delegable_roles[0]))
+    db.commit()
+    unsent = rows(db, sam.id)[-1]
+    unsent.from_snapshot = _as_v1(copy.deepcopy(unsent.from_snapshot))
+    _store_v1(db, sam.id)
+    an.upgrade_v1_snapshots(db)
+    db.expire_all()
+    row = db.get(EmailOutbox, unsent.id)
+    assert row.status == OutboxStatus.PENDING
+    assert row.from_snapshot["v"] == 2 and "roles" in row.from_snapshot["apps"][TALENT]
+
+
+def test_upgrade_from_snapshot_keeps_unknown_where_permissions_differ():
+    v1 = {"active": True, "apps": {"a": {"permissions": ["x"], "default_only": False}}}
+    ref = {"v": 2, "active": True, "platform_role": None,
+           "apps": {"a": {"permissions": ["x", "y"], "roles": ["R"], "administers": [], "default_only": False}}}
+    out = an.upgrade_from_snapshot(v1, ref)
+    assert "roles" not in out["apps"]["a"] and out["platform_role"] is None
+    assert an.upgrade_from_snapshot(ref, v1) is ref  # already v2: unchanged

@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from auth_client_py import CorrelationIdMiddleware, assert_trust_anchors_safe
@@ -38,6 +39,18 @@ async def lifespan(_app: FastAPI):
     """Starts the in-process email outbox dispatcher (docs/platform/email-notifications.md).
     Sending itself stays off unless MAIL_TRANSPORT=graph and a policy allows it."""
     dispatcher = None
+    # Before this revision serves any request: snapshots still in v1 form become v2 silently, so
+    # the first change for anyone is compared in full (docs/platform/email-notifications.md).
+    try:
+        from app.db.session import SessionLocal
+        from app.services.access_notifications import upgrade_v1_snapshots
+
+        with SessionLocal() as session:
+            upgraded = upgrade_v1_snapshots(session)
+        if upgraded:
+            logging.getLogger(__name__).info("access snapshots upgraded to v2 for %s users", upgraded)
+    except Exception:  # noqa: BLE001 - never blocks startup; the dispatcher sweep retries
+        logging.getLogger(__name__).exception("access snapshot upgrade at startup failed")
     if settings.email_dispatcher_enabled:
         from app.services.email_dispatcher import DispatcherThread
 
