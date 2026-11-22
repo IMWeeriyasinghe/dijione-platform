@@ -431,8 +431,8 @@ def set_module_enabled(
 
 
 # --- Notifications (email outbox) -------------------------------------------------------------
-# Reads need the audit permission (history shows recipients); every change needs Manage Modules
-# (platform configuration). View-as sessions never reach these: get_current_user refuses them.
+# Reads need platform.admin.view_notifications; every change needs platform.admin.manage_notifications
+# (SUPER_ADMIN and PLATFORM_ADMIN). View-as sessions never reach these: get_current_user refuses them.
 
 
 _VIEW_NOTIFICATIONS = "platform.admin.view_notifications"
@@ -475,6 +475,16 @@ def notifications_outbox(
 ) -> dict:
     return EmailAdminService(db).list_outbox(application=application, event_type=event_type, recipient=recipient,
                                              status=status_filter, limit=limit, offset=offset)
+
+
+@router.get("/notifications/recipients")
+def notification_recipient_search(
+    q: str = Query(min_length=2, max_length=64),
+    _admin: User = Depends(require_platform_permission(_VIEW_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Suggestions for the history Recipient filter. Read-only; never adds a test recipient."""
+    return EmailAdminService(db).search_recipients(q)
 
 
 @router.get("/notifications/outbox/{outbox_id}")

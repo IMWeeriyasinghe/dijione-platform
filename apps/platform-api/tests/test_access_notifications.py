@@ -711,3 +711,74 @@ def test_notification_endpoints_require_the_dedicated_permissions(db, world, api
         assert {"platform.admin.view_notifications", "platform.admin.manage_notifications"} <= roles[key]
     assert roles["PLATFORM_USER"] == set()
     assert "platform.admin.manage_admins" not in roles["PLATFORM_ADMIN"]  # invariant kept
+
+
+# --- history recipient search (Admin > Notifications filter) -----------------------------------
+
+
+def _history_only(db, address):
+    import uuid
+    db.add(EmailOutbox(correlation_id=str(uuid.uuid4()), application_key="dijione", event_type=EVENT_GRANTED,
+                       recipient_email=address, subject="[DijiOne] | Access Granted", template_key="access_change",
+                       template_data={}, dedupe_key=f"test:{uuid.uuid4()}", status=OutboxStatus.SUBMITTED))
+    db.commit()
+
+
+def test_recipient_search_by_name_email_and_employee_number(db, world, api_client):
+    headers = auth_headers(api_client, "test-super-admin")
+    db.add(User(email="madushanka.w@dijital.example", full_name="Madushanka Weeriyasinghe",
+                employee_number="10042", entra_object_id="oid-mad"))
+    db.add(User(email="old.staff@dijital.example", full_name="Old Staff", is_active=False))
+    db.commit()
+
+    by_name = api_client.get(f"{ADMIN}/recipients", params={"q": "mad"}, headers=headers).json()
+    assert [r["email"] for r in by_name] == ["madushanka.w@dijital.example"]
+    assert by_name[0]["source"] == "user" and by_name[0]["has_photo"] is True
+    assert api_client.get(f"{ADMIN}/recipients", params={"q": "OLD.STAFF@"}, headers=headers).json()[0][
+        "is_active"] is False
+    assert [r["full_name"] for r in api_client.get(f"{ADMIN}/recipients", params={"q": "1004"},
+                                                    headers=headers).json()] == ["Madushanka Weeriyasinghe"]
+    assert api_client.get(f"{ADMIN}/recipients", params={"q": "zzz-nobody"}, headers=headers).json() == []
+    assert api_client.get(f"{ADMIN}/recipients", params={"q": "m"}, headers=headers).status_code == 422
+
+
+def test_recipient_search_includes_history_only_addresses_and_is_read_only(db, world, api_client):
+    from app.models.email_notification import EmailTestRecipient
+    headers = auth_headers(api_client, "test-super-admin")
+    _history_only(db, "svc-payroll@dijital.example")
+    before_outbox, before_rcpt = len(rows(db)), db.execute(select(EmailTestRecipient)).all()
+    found = api_client.get(f"{ADMIN}/recipients", params={"q": "svc-pay"}, headers=headers).json()
+    assert found == [{"source": "history", "user_id": None, "full_name": None, "email": "svc-payroll@dijital.example",
+                      "employee_number": None, "is_active": None, "has_photo": False}]
+    assert len(rows(db)) == before_outbox
+    assert db.execute(select(EmailTestRecipient)).all() == before_rcpt
+
+
+def test_recipient_filter_treats_wildcards_literally(db, world, api_client):
+    headers = auth_headers(api_client, "test-super-admin")
+    _history_only(db, "a_b@dijital.example")
+    _history_only(db, "axb@dijital.example")
+    listing = api_client.get(f"{ADMIN}/outbox", params={"recipient": "a_b@"}, headers=headers).json()
+    assert [i["recipient_email"] for i in listing["items"]] == ["a_b@dijital.example"]
+    assert api_client.get(f"{ADMIN}/outbox", params={"recipient": "%"}, headers=headers).json()["total"] == 0
+    assert api_client.get(f"{ADMIN}/recipients", params={"q": "a_b"}, headers=headers).json()[0]["email"] == \
+        "a_b@dijital.example"
+
+
+@pytest.mark.parametrize("persona", ["test-ta", "test-abc-client"])
+def test_ordinary_users_cannot_search_recipients(db, world, api_client, persona):
+    assert api_client.get(f"{ADMIN}/recipients", params={"q": "ta"},
+                          headers=auth_headers(api_client, persona)).status_code == 403
+
+
+def test_platform_admin_can_search_recipients_but_view_as_cannot(db, world, api_client, monkeypatch):
+    assert api_client.get(f"{ADMIN}/recipients", params={"q": "ta"},
+                          headers=auth_headers(api_client, "test-platform-admin")).status_code == 200
+    monkeypatch.setenv("VIEW_AS_ENABLED", "true")
+    get_settings.cache_clear()
+    ta = make_eligible(db.get(User, world["ta_user"].id))
+    db.commit()
+    started = api_client.post("/api/platform/admin/view-as", json={"target_user_id": ta.id},
+                              headers=auth_headers(api_client, "test-super-admin"))
+    view_as = {"Authorization": f"Bearer {started.json()['access_token']}"}
+    assert api_client.get(f"{ADMIN}/recipients", params={"q": "ta"}, headers=view_as).status_code == 403

@@ -201,6 +201,7 @@ def _build_stub_platform_app() -> FastAPI:
     @stub.api_route("/api/platform/admin/applications/{module_key}/{kind}", methods=["GET"])
     @stub.api_route("/api/platform/admin/applications/{module_key}/{kind}/{user_id}", methods=["PUT", "DELETE"])
     @stub.api_route("/api/platform/admin/modules/{module_key}", methods=["PATCH"])
+    @stub.api_route("/api/platform/admin/notifications/recipients", methods=["GET"])
     async def delegated_echo(request: Request, authorization: str | None = Header(default=None)):
         _require_admin_token(authorization)
         body = await request.body()

@@ -139,8 +139,25 @@ no `MAIL_*` and runs the null transport. Settings: `apps/platform-api/.env.examp
 
 ## Administration (Admin Center > Notifications)
 
-- **Delivery history** — filter by application, event, status, recipient; details (error,
-  attempts, correlation id); **Retry** for `FAILED`/`BLOCKED`/`DISABLED`/`SKIPPED`; **Process now**.
+- **Delivery history**:
+  - **Filters:** application, event (options from the events API), status and recipient, all
+    combinable, with **Reset filters**.
+  - **Summary strip:** Submitted, Pending / Retry, Failed and Blocked, always counted over all
+    history.
+  - **Details:** application, scheduled and processed times, transport result, error, attempts and
+    correlation id.
+  - **Actions:** **Retry** for `FAILED`/`BLOCKED`/`DISABLED`/`SKIPPED`, and **Process now**. Both are
+    shown only with `manage_notifications`.
+  - **Status wording:** `SUBMITTED` means Microsoft Graph accepted the email, not that it was
+    delivered.
+- **Recipient filter**: a searchable picker over local DijiOne users (name, email, employee number),
+  plus addresses that appear only in history.
+  - **Endpoint:** `GET /api/platform/admin/notifications/recipients?q=`. It needs view permission,
+    `q` must be 2–64 characters, and LIKE wildcards are escaped.
+  - **Manual search:** Enter searches history for any typed text, as a partial, case-insensitive
+    email match.
+  - **Read-only:** it never calls the Entra directory, never adds a test recipient and never sends
+    email.
 - **Events** — switch each event on/off.
 - **Test recipients** — explicit individual addresses only (a whole `@domain` is refused, and a
   legacy `@domain` row is ignored by the dispatcher); used only by `internal_allowlist`.

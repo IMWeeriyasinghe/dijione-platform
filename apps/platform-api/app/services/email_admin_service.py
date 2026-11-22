@@ -9,12 +9,13 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.base import utcnow
 from app.models.email_notification import EmailOutbox, EmailTestRecipient, NotificationEventSetting, OutboxStatus
+from app.models.user import User
 from app.services import access_notifications
 from app.services.admin_service import ConflictError, NotFoundError
 from app.services.audit_service import AuditService
@@ -22,6 +23,13 @@ from app.services.email_dispatcher import PRODUCTION_ENVIRONMENTS, effective_pol
 
 _ADDRESS = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")  # one person's address; never a whole domain
 APPLICATIONS = {access_notifications.APPLICATION_KEY: access_notifications.APPLICATION_NAME}
+RECIPIENT_SEARCH_USERS = 10
+RECIPIENT_SEARCH_HISTORY = 5
+
+
+def _like_term(term: str) -> str:
+    """Escape LIKE wildcards so a typed ``%`` or ``_`` matches literally (used with escape='\\')."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class InvalidInputError(ValueError):
@@ -74,7 +82,8 @@ class EmailAdminService:
         if event_type:
             stmt = stmt.where(EmailOutbox.event_type == event_type)
         if recipient:
-            stmt = stmt.where(func.lower(EmailOutbox.recipient_email).contains(recipient.strip().lower()))
+            term = _like_term(recipient.strip().lower()[:255])
+            stmt = stmt.where(func.lower(EmailOutbox.recipient_email).like(f"%{term}%", escape="\\"))
         if status:
             stmt = stmt.where(EmailOutbox.status == status)
         total = self.db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
@@ -82,6 +91,35 @@ class EmailAdminService:
             stmt.order_by(EmailOutbox.id.desc()).limit(min(max(limit, 1), 500)).offset(max(offset, 0))
         ).scalars()
         return {"total": total, "items": [_row_out(r) for r in rows]}
+
+    def search_recipients(self, q: str) -> list[dict]:
+        """History-filter suggestions: DijiOne users (name, email, employee number) plus addresses
+        that appear only in delivery history (deleted users, service accounts). Local data only —
+        never the Entra directory — and read-only: nothing here queues or allowlists anything."""
+        term = (q or "").strip().lower()
+        if len(term) < 2:
+            return []
+        like = f"%{_like_term(term)}%"
+        conds = [func.lower(User.full_name).like(like, escape="\\"), func.lower(User.email).like(like, escape="\\")]
+        if term.isdigit():
+            conds.append(User.employee_number.like(f"{_like_term(term)}%", escape="\\"))
+        users = self.db.execute(
+            select(User).where(or_(*conds)).order_by(User.is_active.desc(), User.full_name, User.id)
+            .limit(RECIPIENT_SEARCH_USERS)
+        ).scalars().all()
+        out = [{"source": "user", "user_id": u.id, "full_name": u.full_name, "email": u.email,
+                "employee_number": u.employee_number, "is_active": u.is_active,
+                "has_photo": bool(u.entra_object_id)} for u in users]
+        seen = {(u.email or "").lower() for u in users}
+        history = self.db.execute(
+            select(func.lower(EmailOutbox.recipient_email)).where(
+                func.lower(EmailOutbox.recipient_email).like(like, escape="\\"))
+            .distinct().order_by(func.lower(EmailOutbox.recipient_email)).limit(RECIPIENT_SEARCH_HISTORY + len(seen))
+        ).scalars().all()
+        extra = [a for a in history if a and a not in seen][:RECIPIENT_SEARCH_HISTORY]
+        out += [{"source": "history", "user_id": None, "full_name": None, "email": a, "employee_number": None,
+                 "is_active": None, "has_photo": False} for a in extra]
+        return out
 
     def get(self, outbox_id: int) -> dict:
         row = self.db.get(EmailOutbox, outbox_id)
