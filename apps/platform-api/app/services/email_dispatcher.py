@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections import Counter
 from datetime import timedelta
 
@@ -199,6 +200,9 @@ def dispatch_due(session_factory: sessionmaker | None = None, *, limit: int | No
     return dict(counts)
 
 
+SWEEP_WINDOW_SECONDS = 1800  # rolling switch window, generously
+
+
 class DispatcherThread:
     """The in-process loop: backfill once, then dispatch every interval. Never raises."""
 
@@ -226,12 +230,19 @@ class DispatcherThread:
                     logger.info("access snapshots silently realigned for %s users", realigned)
         except Exception:  # noqa: BLE001
             logger.exception("access snapshot backfill failed; will rely on silent baselines")
+        started, sweeping = time.monotonic(), True
         while not self._stop.wait(self._interval):
-            try:
-                with SessionLocal() as session:  # rows a previous revision wrote in v1 form
-                    access_notifications.upgrade_v1_snapshots(session)
-            except Exception:  # noqa: BLE001
-                logger.exception("access snapshot upgrade sweep failed")
+            # v1 -> v2 sweep: finishes the startup budget's remainder and rows an older revision
+            # wrote during the rolling switch. Stops once the switch window has passed and a
+            # sweep finds nothing, so it never becomes a permanent full-table read.
+            if sweeping:
+                try:
+                    with SessionLocal() as session:
+                        found = access_notifications.upgrade_v1_snapshots(session, deadline_s=20)
+                    if not found and time.monotonic() - started > SWEEP_WINDOW_SECONDS:
+                        sweeping = False
+                except Exception:  # noqa: BLE001
+                    logger.exception("access snapshot upgrade sweep failed")
             try:
                 dispatch_due(SessionLocal)
             except Exception:  # noqa: BLE001

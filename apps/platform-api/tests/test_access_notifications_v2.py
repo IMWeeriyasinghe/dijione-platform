@@ -527,3 +527,26 @@ def test_upgrade_from_snapshot_keeps_unknown_where_permissions_differ():
     out = an.upgrade_from_snapshot(v1, ref)
     assert "roles" not in out["apps"]["a"] and out["platform_role"] is None
     assert an.upgrade_from_snapshot(ref, v1) is ref  # already v2: unchanged
+
+
+def test_upgrade_respects_its_time_budget_and_isolates_failures(db, world, monkeypatch):
+    sam, pat = world["sam"], world["pat"]
+    for user in (sam, pat):
+        db.add(UserModuleRole(user_id=user.id, module_key=TALENT, role="TA_MEMBER"))
+    db.commit()
+    for user in (sam, pat):
+        _store_v1(db, user.id)
+    assert an.upgrade_v1_snapshots(db, deadline_s=-1) == 0  # budget spent: nothing done, nothing lost
+    assert "v" not in snapshot(db, sam.id)
+    real = an.realign_silently
+
+    def flaky(session, user_id, **kw):
+        if user_id == sam.id:
+            raise RuntimeError("bad row")
+        return real(session, user_id, **kw)
+
+    monkeypatch.setattr(an, "realign_silently", flaky)
+    assert an.upgrade_v1_snapshots(db) >= 1  # pat upgraded despite sam failing
+    assert snapshot(db, pat.id)["v"] == 2 and "v" not in snapshot(db, sam.id)
+    monkeypatch.setattr(an, "realign_silently", real)
+    assert an.upgrade_v1_snapshots(db) >= 1 and snapshot(db, sam.id)["v"] == 2

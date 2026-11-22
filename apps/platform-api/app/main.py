@@ -46,7 +46,7 @@ async def lifespan(_app: FastAPI):
         from app.services.access_notifications import upgrade_v1_snapshots
 
         with SessionLocal() as session:
-            upgraded = upgrade_v1_snapshots(session)
+            upgraded = upgrade_v1_snapshots(session, deadline_s=20)  # well inside the liveness window
         if upgraded:
             logging.getLogger(__name__).info("access snapshots upgraded to v2 for %s users", upgraded)
     except Exception:  # noqa: BLE001 - never blocks startup; the dispatcher sweep retries

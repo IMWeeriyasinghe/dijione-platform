@@ -510,20 +510,31 @@ def upgrade_from_snapshot(from_snapshot: dict, reference: dict) -> dict:
     return upgraded
 
 
-def upgrade_v1_snapshots(session: Session) -> int:
+def upgrade_v1_snapshots(session: Session, *, deadline_s: float | None = None, batch_size: int = 100) -> int:
     """Silently move every snapshot still in v1 form to v2 (and the starting point of their unsent
-    emails). Run synchronously at startup, before the revision serves traffic, and on every
-    dispatcher cycle, which picks up rows an older revision wrote during a rolling switch. Only
-    v1 rows are touched; each write is optimistic. Returns rows upgraded."""
+    emails). Run at startup with a time budget (before the revision serves traffic; whatever is
+    left is finished by the dispatcher sweep) and on dispatcher cycles, which pick up rows an
+    older revision wrote during a rolling switch. Only v1 rows are touched; each write is
+    optimistic and isolated in a savepoint; progress is committed per batch. Returns rows upgraded."""
+    import time as _time
+
+    started = _time.monotonic()
     rows = session.execute(select(UserAccessSnapshot.user_id, UserAccessSnapshot.updated_at,
                                   UserAccessSnapshot.snapshot)).all()
+    pending = [(uid, stamp) for uid, stamp, snap in rows
+               if not (isinstance(snap, dict) and snap.get("v") == SNAPSHOT_VERSION)]
+    session.rollback()  # end the read; each batch below is its own transaction
     upgraded = 0
-    for user_id, stamp, snap in rows:
-        if isinstance(snap, dict) and snap.get("v") == SNAPSHOT_VERSION:
-            continue
-        if realign_silently(session, user_id, expected_stamp=stamp):
-            upgraded += 1
-    if upgraded:
+    for start in range(0, len(pending), batch_size):
+        if deadline_s is not None and _time.monotonic() - started > deadline_s:
+            break
+        for user_id, stamp in pending[start:start + batch_size]:
+            try:
+                with session.begin_nested():
+                    if realign_silently(session, user_id, expected_stamp=stamp):
+                        upgraded += 1
+            except Exception:  # noqa: BLE001 - one person's snapshot never blocks everyone else's
+                logger.exception("access snapshot upgrade skipped for user %s", user_id)
         session.commit()
     return upgraded
 

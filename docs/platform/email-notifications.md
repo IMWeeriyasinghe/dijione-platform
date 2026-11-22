@@ -74,8 +74,9 @@ applications send one consolidated `[DijiOne]` email instead. Admin Center acces
   - **Residual:** a role-, client- or administration-only change made on the *old* revision during
     the seconds-long switchover is handled as v1 handled it, so it is not emailed. So is such a
     change for the same person on the new revision before the next sweep (≤ one dispatcher
-    interval). The release runbook's post-deploy audit query lists the access changes in that
-    window for manual review.
+    interval). The post-deploy audit query in
+    `deploy/runbooks/access-notifications-v2/README.md` lists the access changes in that window
+    for manual review.
 
 **Origin** (`template_data.origin`, admin-facing only, shown in the Notifications details):
 `channel` (`CENTRAL` / `APPLICATION` / `SYSTEM` / `MIXED` / `UNKNOWN`), source application, initiating
