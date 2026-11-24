@@ -139,6 +139,14 @@ def post_portal_message(
             )
         except Exception:  # noqa: BLE001 - best-effort
             pass
+        # Email P&C (after the message is committed; never fails the post).
+        from app.services import internal_alert_service
+
+        internal_alert_service.notify_supplier_activity(
+            db, order, event_type=internal_alert_service.EVENT_SUPPLIER_MESSAGE,
+            source_key=f"message:{comm.id}", summary=clean,
+        )
+        db.refresh(comm)
 
     return comm
 
@@ -168,6 +176,19 @@ class TimelineEntry:
     title: str
     body: str | None
     meta: dict
+    # "html" for an HTML email body (rendered sandboxed by the portals),
+    # otherwise "text". Lets clients never show raw markup as text.
+    body_format: str = "text"
+    subject: str | None = None
+
+
+_HTML_MARKER = re.compile(r"<\s*(!doctype|html|head|body|table|div|p|br|span|a|td|tr|style)\b", re.I)
+
+
+def looks_like_html(body: str | None) -> bool:
+    """True when a stored communication body is HTML markup (the release /
+    message emails are stored as the exact HTML that was sent)."""
+    return bool(body and _HTML_MARKER.search(body))
 
 
 def _author_label(author_type: str | None) -> str:
@@ -207,6 +228,8 @@ def build_timeline(db: Session, order: BirthdayOrder, *, audience: str) -> list[
                     + (f" — {c.subject}" if is_email and c.subject else "")
                 ),
                 body=c.body or None,
+                body_format="html" if is_email and looks_like_html(c.body) else "text",
+                subject=c.subject if is_email else None,
                 meta={
                     "status": c.status,
                     "message_id": c.message_id,

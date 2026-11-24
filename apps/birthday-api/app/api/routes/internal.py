@@ -19,7 +19,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.integrations.factory import get_employee_source
 from app.models.scan_run import ScanRun
-from app.services import attention_service, inbound_email_service, order_email_service
+from app.services import attention_service, inbound_email_service, internal_alert_service, order_email_service
 from app.services.detection_service import run_daily_scan
 
 router = APIRouter(prefix="/api/birthday/internal", tags=["birthday-internal"])
@@ -46,6 +46,7 @@ def run_comms_endpoint(
     backoff retry, and (Phase 1 §1.5) inbound supplier-email polling."""
     return {
         "email_retry": order_email_service.retry_failed_outbound(db),
+        "internal_alert_retry": internal_alert_service.retry_failed_alerts(db),
         "inbound_email": inbound_email_service.poll(db),
     }
 

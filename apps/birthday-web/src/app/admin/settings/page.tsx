@@ -13,6 +13,7 @@ import {
   Modal,
   PageHeader,
 } from "@dijione/design-system";
+import { AlertRecipientsSection } from "./alert-recipients";
 import { applyCleanStart, getCleanStartPreview, getConfig, updateConfig } from "@/lib/api";
 import { addDaysIso, formatIsoDate, validateLeadTime, validateStartDate } from "@/lib/operational-settings";
 
@@ -183,6 +184,8 @@ export default function OperationalSettingsPage() {
           </Button>
         </div>
       </section>
+
+      <AlertRecipientsSection saved={configQuery.data.ops_alert_recipients ?? null} />
 
       <section className="rounded-xl border border-dt-border bg-dt-surface p-5">
         <h2 className="text-base font-semibold text-dt-text-primary">Clean start (one time)</h2>

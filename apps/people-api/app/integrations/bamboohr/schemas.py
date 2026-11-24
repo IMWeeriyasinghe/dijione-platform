@@ -87,3 +87,7 @@ class BambooHREmployee(BaseModel):
     state_province: str | None = None
     postal_code: str | None = None
     country: str | None = None
+    # Team-member contact numbers (BambooHR mobilePhone / homePhone) —
+    # delivery contact for the birthday order only. Optional.
+    mobile_phone: str | None = None
+    home_phone: str | None = None

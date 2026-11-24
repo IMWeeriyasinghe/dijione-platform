@@ -405,6 +405,8 @@ func _perServiceEnv(svc string, authMode string, entraTenantId string, entraClie
         // start took 23s. Deployment-visible, not a buried code constant.
         { name: 'PEOPLE_API_TIMEOUT_SECONDS', value: '30' }
         { name: 'SUPPLIER_AUTH_MODE', value: supplierAuthMode }
+        // Deep links in internal P&C supplier-activity alert emails.
+        { name: 'BIRTHDAY_INTERNAL_BASE_URL', value: publicBaseUrl }
         { name: 'REVOCATION_ENABLED', value: 'true' }
       ],
       supplierAuthMode == 'entra' ? [

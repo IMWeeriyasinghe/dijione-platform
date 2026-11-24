@@ -44,6 +44,7 @@ def _build_roster() -> list[EmployeeRecord]:
             hire_date=_LONG_TENURED_HIRE_DATE,
             address_line1="12 Galle Road", city="Colombo", state_province="Western",
             postal_code="00300", country="Sri Lanka",
+            mobile_phone="+94 77 000 0001", home_phone="+94 11 000 0001",
         ),
         EmployeeRecord(
             id="bhr-1002", employee_number="102", display_name="Nadeesha Perera",

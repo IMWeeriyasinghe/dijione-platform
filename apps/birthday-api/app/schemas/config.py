@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # year either side of today (works in any year without code changes).
 OPERATIONAL_START_WINDOW_DAYS = 365
 MAX_SUPPLIER_LEAD_TIME_DAYS = 60
+MAX_ALERT_RECIPIENTS = 20
 
 
 class DetectionConfigRead(BaseModel):
@@ -30,6 +31,7 @@ class DetectionConfigRead(BaseModel):
     clean_start_applied_by: int | None = None
     clean_start_excluded_count: int | None = None
     clean_start_first_eligible: date | None = None
+    ops_alert_recipients: str | None = None
     updated_by: int | None
 
 
@@ -45,6 +47,23 @@ class DetectionConfigUpdate(BaseModel):
     auto_release_enabled: bool | None = None
     operational_start_date: date | None = None
     supplier_lead_time_days: int | None = Field(default=None, ge=0, le=MAX_SUPPLIER_LEAD_TIME_DAYS)
+    # P&C operational alert recipients (comma/semicolon/newline separated).
+    ops_alert_recipients: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("ops_alert_recipients")
+    @classmethod
+    def _valid_recipients(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from app.services.internal_alert_service import invalid_recipients, parse_recipients
+
+        bad = invalid_recipients(value)
+        if bad:
+            raise ValueError(f"Not a valid email address: {', '.join(bad[:3])}")
+        emails = parse_recipients(value)
+        if len(emails) > MAX_ALERT_RECIPIENTS:
+            raise ValueError(f"At most {MAX_ALERT_RECIPIENTS} alert recipients")
+        return "\n".join(emails) or None
 
     @field_validator("operational_start_date")
     @classmethod

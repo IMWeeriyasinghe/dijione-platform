@@ -319,6 +319,7 @@ export type DetectionConfig = {
   clean_start_applied_by: number | null;
   clean_start_excluded_count: number | null;
   clean_start_first_eligible: string | null;
+  ops_alert_recipients?: string | null;
   updated_by: number | null;
 };
 

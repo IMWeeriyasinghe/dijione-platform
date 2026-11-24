@@ -133,6 +133,13 @@ def update_delivery_address(
     if changed_fields:
         order.delivery_address_source = "MANUAL_CORRECTION"
 
+    # The delivery contact number is chosen during verification but is not
+    # an address correction: it never sets MANUAL_CORRECTION, so it never
+    # changes how Verify routes the order.
+    if "delivery_contact_phone" in fields and order.delivery_contact_phone != fields["delivery_contact_phone"]:
+        order.delivery_contact_phone = fields["delivery_contact_phone"]
+        changed_fields.append("delivery_contact_phone")
+
     db.commit()
     db.refresh(order)
 
@@ -142,7 +149,12 @@ def update_delivery_address(
             # No address values in the audit trail — field names only.
             service.log(
                 actor_id=actor_id,
-                action="birthday.order.address_corrected",
+                action=(
+                    "birthday.order.address_corrected"
+                    if order.delivery_address_source == "MANUAL_CORRECTION"
+                    and any(f != "delivery_contact_phone" for f in changed_fields)
+                    else "birthday.order.delivery_contact_updated"
+                ),
                 entity_type="birthday_order",
                 entity_id=order.id,
                 previous_state=None,

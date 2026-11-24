@@ -19,6 +19,7 @@ import {
   Textarea,
 } from "@dijione/design-system";
 import { getSupplierOrderStatusLabel, type OrderIssueType } from "@dijione/contracts";
+import { DeliveryContact } from "@/app/delivery-contact";
 import { acceptPortalOrder, getPortalOrder, raisePortalIssue, updatePortalOrderStatus } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 import { usePortalMe } from "@/lib/portal-me";
@@ -200,6 +201,9 @@ export default function SupplierOrderDetailPage({ params }: { params: Promise<{ 
                 Released once the delivery address has been verified by Dijital Team.
               </p>
             )}
+          </div>
+          <div className="sm:col-span-2">
+            <DeliveryContact order={order} />
           </div>
           {order.special_instructions.length > 0 && (
             <div className="sm:col-span-2">

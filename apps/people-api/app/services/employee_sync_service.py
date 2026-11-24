@@ -52,6 +52,8 @@ class EmployeeSyncService:
                 "state_province": mapped.get("state_province"),
                 "postal_code": mapped.get("postal_code"),
                 "country": mapped.get("country"),
+                "mobile_phone": mapped.get("mobile_phone"),
+                "home_phone": mapped.get("home_phone"),
                 "last_synced_at": now,
             }
             _row, is_new = self.repo.upsert(mapped["employee_id"], fields)

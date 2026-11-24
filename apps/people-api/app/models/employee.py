@@ -17,8 +17,8 @@ class Employee(TimestampMixin, Base):
     Keyed on the stable BambooHR internal ``id`` (``bamboohr_id``); the
     human-facing ``employee_number`` is a separate, nullable field (can be
     blank for some records — confirmed live). No PII beyond what
-    consumers already needed (name, work email, birthday MM-DD, address for
-    delivery) — never salary/compensation/personal email/phone.
+    consumers already needed (name, work email, birthday MM-DD, address and
+    contact numbers for delivery) — never salary/compensation/personal email.
     """
 
     __tablename__ = "employees"
@@ -44,5 +44,10 @@ class Employee(TimestampMixin, Base):
     state_province: Mapped[str | None] = mapped_column(String(128), nullable=True)
     postal_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     country: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # Team-member contact numbers (BambooHR "Mobile Phone" / "Home Phone").
+    # Used only to snapshot onto a birthday order for delivery contact.
+    mobile_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    home_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

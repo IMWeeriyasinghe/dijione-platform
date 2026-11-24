@@ -318,6 +318,11 @@ export type BirthdayOrderOut = {
   delivery_postal_code: string | null;
   delivery_country: string | null;
   delivery_address_source: string | null;
+  /** Team-member contact numbers snapshotted from BambooHR via People API. */
+  employee_mobile_phone?: string | null;
+  employee_home_phone?: string | null;
+  /** The number given to the supplier; chosen by P&C during verification. */
+  delivery_contact_phone?: string | null;
   supplier_id: number | null;
   supplier_name: string | null;
   delivery_date: string | null;
@@ -372,6 +377,7 @@ export type DeliveryAddressUpdateInput = {
   delivery_state_province?: string | null;
   delivery_postal_code?: string | null;
   delivery_country?: string | null;
+  delivery_contact_phone?: string | null;
 };
 
 export type BirthdayOrderCreateInput = {
@@ -409,6 +415,10 @@ export type TimelineEntryOut = {
   title: string;
   body: string | null;
   meta: Record<string, unknown>;
+  /** "html" = an HTML email body; render it sandboxed, never as text. */
+  body_format?: "html" | "text";
+  /** Email subject, for email entries only. */
+  subject?: string | null;
 };
 
 export type OrderTimelineResponse = {
@@ -474,6 +484,12 @@ export type SupplierOrderView = {
   delivery_country: string | null;
   status: OrderStatus;
   special_instructions: string[];
+};
+
+/** Single-order supplier view: adds the delivery contact numbers. */
+export type SupplierOrderDetailView = SupplierOrderView & {
+  delivery_contact_phone?: string | null;
+  alternative_contact_phone?: string | null;
 };
 
 export type SupplierOrderListResponse = {

@@ -54,6 +54,11 @@ _REPORT_FIELDS = [
     "state",
     "zipcode",
     "country",
+    # Team-member contact numbers for birthday delivery (2026-11-24 business
+    # request). Standard BambooHR fields: mobilePhone ("Mobile Phone") and
+    # homePhone ("Home Phone"). Read-only, never written back.
+    "mobilePhone",
+    "homePhone",
 ]
 
 
@@ -133,6 +138,8 @@ class BambooHRHttpClient(BambooHRClient):
                     city=row.get("city") or None,
                     state_province=row.get("state") or None,
                     postal_code=row.get("zipcode") or None,
+                    mobile_phone=(row.get("mobilePhone") or "").strip() or None,
+                    home_phone=(row.get("homePhone") or "").strip() or None,
                     country=row.get("country") or None,
                 )
             )
