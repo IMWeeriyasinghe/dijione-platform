@@ -65,6 +65,10 @@ param minReplicas = {
   // 30 s proxy failure + 21 s retry (dashboard); warm < 1 s.
   'admin-api': 1
   'admin-web': 1
+  // DijiBirthday Supplier Portal (2026-11-24): external supplier entry point.
+  // Measured cold first load 46.5 s (platform scale-from-zero p50 15 s, p90 41 s,
+  // 73 cold starts in 30 days); warm 0.2-0.9 s. Backend birthday-api is already warm.
+  'birthday-supplier-web': 1
 }
 param maxReplicasDefault = 2
 param maxReplicasOverrides = {
