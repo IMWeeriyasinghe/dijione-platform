@@ -239,6 +239,9 @@ def update_order(
     updates = payload.model_dump(exclude_unset=True)
     supplier_reassigned = "supplier_id" in updates and updates["supplier_id"] != order.supplier_id
     date_changed = "delivery_date" in updates and updates["delivery_date"] != order.delivery_date
+    greeting_changed = (
+        "birthday_greeting" in updates and (updates["birthday_greeting"] or "") != (order.birthday_greeting or "")
+    )
     if supplier_reassigned and updates["supplier_id"] is not None:
         target_supplier = db.get(Supplier, updates["supplier_id"])
         if target_supplier is None:
@@ -337,11 +340,13 @@ def update_order(
             )
         )
     change_detail = None
-    if (supplier_reassigned or date_changed) and was_supplier_visible:
+    if (supplier_reassigned or date_changed or greeting_changed) and was_supplier_visible:
         change_detail = (
             f"delivery date changed to {updates.get('delivery_date')}"
             if date_changed
             else "the assigned supplier changed"
+            if supplier_reassigned
+            else "the birthday greeting was updated"
         )
         db.add(
             OrderEvent(

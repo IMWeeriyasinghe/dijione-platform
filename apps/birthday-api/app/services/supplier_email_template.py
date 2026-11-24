@@ -116,6 +116,12 @@ def _render_text(
         lines.append("Special Instructions:")
         lines.extend(f"- {text}" for text in supplier_instructions)
 
+    birthday_message = (order.birthday_greeting or "").strip()
+    if birthday_message:
+        lines.append("")
+        lines.append("BIRTHDAY GREETING")
+        lines.extend(birthday_message.split("\n"))
+
     lines.append("")
     if portal_url:
         lines.append(f"View this order in the Supplier Portal: {portal_url}")
@@ -165,6 +171,21 @@ def _render_html(
                    Special Instructions</td>
         <td style="padding:10px 0;font-size:14px;color:{_BRAND_TEXT};vertical-align:top;">
           <ul style="margin:0;padding-left:18px;">{instructions_html}</ul>
+        </td>
+      </tr>""")
+
+    birthday_message = (order.birthday_greeting or "").strip()
+    if birthday_message:
+        # Escape first, then turn line breaks into <br>: the greeting is free
+        # text typed by P&C and must never be able to inject markup.
+        greeting_html = escape(birthday_message).replace("\n", "<br>")
+        rows.append(f"""
+      <tr>
+        <td style="padding:10px 0;font-size:12px;font-weight:600;text-transform:uppercase;
+                   letter-spacing:.04em;color:{_BRAND_TEXT_SECONDARY};width:44%;vertical-align:top;">
+                   Birthday Greeting</td>
+        <td style="padding:10px 0;font-size:14px;color:{_BRAND_TEXT};vertical-align:top;line-height:1.5;">
+          {greeting_html}
         </td>
       </tr>""")
 

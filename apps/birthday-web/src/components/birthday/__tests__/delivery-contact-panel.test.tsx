@@ -8,33 +8,55 @@ vi.mock("@dijione/design-system", () => ({
   ),
 }));
 
-import { DeliveryContactPanel } from "../DeliveryContactPanel";
+import { contactNumbers, DeliveryContactPanel } from "../DeliveryContactPanel";
 
-const ORDER = { employee_mobile_phone: "+94 77 111 2222", employee_home_phone: "+94 11 333 4444",
+const BOTH = { employee_mobile_phone: "+94 77 111 2222", employee_home_phone: "+94 11 333 4444",
   delivery_contact_phone: "+94 77 111 2222" };
 
+describe("contactNumbers", () => {
+  it("primary is the mobile; secondary is the other number only when there are two", () => {
+    expect(contactNumbers(BOTH)).toEqual({ primary: "+94 77 111 2222", secondary: "+94 11 333 4444" });
+    expect(contactNumbers({ employee_mobile_phone: "+94 77 1", employee_home_phone: null }))
+      .toEqual({ primary: "+94 77 1", secondary: null });
+    expect(contactNumbers({ employee_mobile_phone: null, employee_home_phone: "+94 11 2" }))
+      .toEqual({ primary: "+94 11 2", secondary: null }); // home takes the primary slot
+    expect(contactNumbers({ employee_mobile_phone: "+94 77 1", employee_home_phone: "+94 77 1" }).secondary).toBeNull();
+    expect(contactNumbers({})).toEqual({ primary: null, secondary: null });
+  });
+});
+
 describe("DeliveryContactPanel", () => {
-  it("shows both BambooHR numbers and the number given to the supplier", () => {
-    render(<DeliveryContactPanel order={ORDER} canEdit={false} onSave={() => {}} />);
-    expect(screen.getByText("Mobile")).toBeInTheDocument();
-    expect(screen.getAllByText("+94 77 111 2222").length).toBeGreaterThan(0);
-    expect(screen.getByText("+94 11 333 4444")).toBeInTheDocument();
+  it("shows primary and secondary contacts and what the supplier will see", () => {
+    render(<DeliveryContactPanel order={BOTH} canEdit={false} onSave={() => {}} />);
+    expect(screen.getByTestId("primary-contact")).toHaveTextContent("+94 77 111 2222");
+    expect(screen.getByTestId("secondary-contact")).toHaveTextContent("+94 11 333 4444");
     expect(screen.getByTestId("delivery-contact-current")).toHaveTextContent("+94 77 111 2222");
     expect(screen.queryByText("Save contact")).toBeNull(); // read-only for non-admins
+    expect(screen.queryByText("Mobile")).toBeNull();
+    expect(screen.queryByText("Home Phone")).toBeNull();
   });
 
-  it("lets P&C choose the home number", () => {
+  it("lets P&C choose the secondary contact", () => {
     const onSave = vi.fn();
-    render(<DeliveryContactPanel order={ORDER} canEdit onSave={onSave} />);
+    render(<DeliveryContactPanel order={BOTH} canEdit onSave={onSave} />);
     expect(screen.getByText("Save contact")).toBeDisabled();
-    fireEvent.click(screen.getByLabelText("Home Phone"));
+    fireEvent.click(screen.getByLabelText("Secondary contact"));
     fireEvent.click(screen.getByText("Save contact"));
     expect(onSave).toHaveBeenCalledWith("+94 11 333 4444");
   });
 
+  it("offers only options that hold a value", () => {
+    render(<DeliveryContactPanel order={{ employee_mobile_phone: "+94 77 555 6666", delivery_contact_phone: "+94 77 555 6666" }}
+      canEdit onSave={() => {}} />);
+    expect(screen.queryByTestId("secondary-contact")).toBeNull();
+    expect(screen.getByLabelText("Primary contact")).toBeChecked();
+    expect(screen.queryByLabelText("Secondary contact")).toBeNull();
+    expect(screen.getByLabelText("Other number")).toBeInTheDocument();
+  });
+
   it("accepts a valid other number and rejects an invalid one", () => {
     const onSave = vi.fn();
-    render(<DeliveryContactPanel order={ORDER} canEdit onSave={onSave} />);
+    render(<DeliveryContactPanel order={BOTH} canEdit onSave={onSave} />);
     fireEvent.click(screen.getByLabelText("Other number"));
     fireEvent.change(screen.getByLabelText("Other contact number"), { target: { value: "call me" } });
     expect(screen.getByText(/digits, spaces/)).toBeInTheDocument();
@@ -44,11 +66,15 @@ describe("DeliveryContactPanel", () => {
     expect(onSave).toHaveBeenCalledWith("+94 71 999 0000");
   });
 
-  it("handles missing numbers", () => {
-    render(<DeliveryContactPanel order={{ employee_mobile_phone: null, employee_home_phone: null,
-      delivery_contact_phone: null }} canEdit onSave={() => {}} />);
-    expect(screen.getAllByText("Not in BambooHR")).toHaveLength(2);
-    expect(screen.getByTestId("delivery-contact-current")).toHaveTextContent("None");
-    expect(screen.queryByLabelText("Mobile")).toBeNull();
+  it("with no numbers on file, goes straight to entering one", () => {
+    const onSave = vi.fn();
+    render(<DeliveryContactPanel order={{}} canEdit onSave={onSave} />);
+    expect(screen.getByTestId("primary-contact")).toHaveTextContent("Not available");
+    expect(screen.getByTestId("delivery-contact-current")).toHaveTextContent("No number");
+    expect(screen.getByText(/No number on file/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Primary contact")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Other contact number"), { target: { value: "+94 77 123 4567" } });
+    fireEvent.click(screen.getByText("Save contact"));
+    expect(onSave).toHaveBeenCalledWith("+94 77 123 4567");
   });
 });

@@ -323,6 +323,10 @@ export type BirthdayOrderOut = {
   employee_home_phone?: string | null;
   /** The number given to the supplier; chosen by P&C during verification. */
   delivery_contact_phone?: string | null;
+  /** Birthday message sent to the supplier. null = legacy order, "" = cleared. */
+  birthday_greeting?: string | null;
+  /** The default greeting for this employee (shown, not saved, for legacy orders). */
+  suggested_birthday_greeting?: string;
   supplier_id: number | null;
   supplier_name: string | null;
   delivery_date: string | null;
@@ -400,6 +404,7 @@ export type BirthdayOrderUpdateInput = {
   delivery_date?: string | null;
   catalogue_item_id?: number | null;
   employee_number?: string | null;
+  birthday_greeting?: string | null;
 };
 
 // --- Unified Timeline / communication (Phase 1 §G) --------------------
@@ -490,6 +495,8 @@ export type SupplierOrderView = {
 export type SupplierOrderDetailView = SupplierOrderView & {
   delivery_contact_phone?: string | null;
   alternative_contact_phone?: string | null;
+  /** The birthday message P&C released with the order (read-only). */
+  birthday_greeting?: string | null;
 };
 
 export type SupplierOrderListResponse = {

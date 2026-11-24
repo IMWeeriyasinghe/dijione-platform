@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -104,6 +105,11 @@ class BirthdayOrder(TimestampMixin, Base):
     # The number given to the supplier for delivery. Defaults to mobile (or
     # home if no mobile); P&C may change it during verification.
     delivery_contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Birthday message for the team member, sent to the supplier with the
+    # order. Generated once at creation from the work-email first name;
+    # P&C can edit it before release. NULL = a legacy order that predates
+    # the field (initialised at release); "" = deliberately cleared.
+    birthday_greeting: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     supplier_id: Mapped[int | None] = mapped_column(
         ForeignKey("suppliers.id"), nullable=True
