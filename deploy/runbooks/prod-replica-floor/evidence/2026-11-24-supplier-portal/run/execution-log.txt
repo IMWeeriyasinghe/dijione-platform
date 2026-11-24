@@ -1,0 +1,11 @@
+2026-11-24T14:29:52Z precheck rg-dijione-prod as sa-***@dijitalteam.com: live spec, revision and digest vs recorded baseline
+2026-11-24T14:29:55Z   birthday-supplier-web OK    rev=birthday-supplier-web--0000002 min=0 max=2 sha256:c604e134412ba8530cccc803e8d77312553741295d3773e5986d480f91694866 spec=a76ad1a0c92d
+2026-11-24T14:29:55Z precheck: other PROD deployment activity
+2026-11-24T14:30:10Z   none: no ARM deployment running, all apps/jobs Succeeded, no migration running, no foreign Container Apps/deployment writes in the last 60 min
+2026-11-24T14:30:10Z precheck: related jobs per app (checked again before each update)
+2026-11-24T14:30:10Z   birthday-supplier-web -
+2026-11-24T14:30:10Z PRECHECK PASS
+2026-11-24T14:47:22Z birthday-supplier-web: az containerapp update --min-replicas 1 (current revision birthday-supplier-web--0000002, spec a76ad1a0c92d)
+2026-11-24T14:48:31Z birthday-supplier-web: PASS in 69s - birthday-supplier-web--0000003: health=Healthy prov=Provisioned replicas=1 traffic=100 ready=birthday-supplier-web--0000003; spec a76ad1a0c92d -> a76ad1a0c92d (identical: image, env, secrets, probes, resources, ingress unchanged)
+2026-11-24T14:48:33Z birthday-supplier-web: latest=birthday-supplier-web--0000003 ready=birthday-supplier-web--0000003 prov=Succeeded running=Running min=1 max=2
+2026-11-24T14:48:34Z   active birthday-supplier-web--0000003: health=Healthy prov=Provisioned running=Running replicas=1 traffic=100

@@ -200,3 +200,44 @@ Run this after 2026-11-21, once billing has caught up.
    - **Warm-idle reference:** `shell-web` and `platform-api`, at about AUD 0.37/day.
    - **Pre-change rates (AUD/day):** `people-api` 0.048, `birthday-api` 0.787, `onsite-api` 1.289, `onsite-web` 0.007, `talent-api` 0.026, `talent-web` 0.001, `atwork-*` ≈ 0.
 3. **Rollback trigger:** an app above its threshold for 3 consecutive days, with no explanation. Ask for approval before running `PHASE1_APPROVED=yes python3 phase1_runbook.py rollback <app>`.
+
+## Phase 1c — DijiBirthday Supplier Portal (2026-11-24)
+
+The user approved the same Production-only `minReplicas` 0 → 1 change for `birthday-supplier-web` (`supplierportal.dijitalteam.com`). The template side is PR #201, merged as `a84abac`. Evidence is in `deploy/runbooks/prod-replica-floor/evidence/2026-11-24-supplier-portal/`.
+
+**Architecture.** One Next.js Container App with external ingress and a custom domain. Sign-in is a Microsoft Entra redirect from `/login`. Its only backend is `birthday-api` (`/api/birthday/portal/*`), already warm. No other gateway and no scheduled jobs.
+
+**Root cause.** Scale-to-zero. Over 73 cold starts in 30 days the app was ready 0.2 s after start. Azure's platform start phase took a median of 15 s (p90 41 s, max 44 s). About 3 cold starts a day.
+
+**Execution (2026-11-24, 14:47 UTC).**
+- Precheck at 14:30 UTC: PASS.
+- `apply` passed in 69 s: revision `--0000002` → `--0000003`, min 0 → 1, max 2, Healthy, 100% traffic, 0 restarts.
+- Spec SHA-256 before = after = `a76ad1a0c92d`: image, env, secrets, resources and ingress unchanged. No rollback.
+
+**Measurements** (server time to first byte):
+
+| | Before | After (10+ min idle) |
+|---|---|---|
+| Home page, first request | 46.5 s (cold) | 0.93 s |
+| `/login` redirect to Entra | 0.43–0.77 s (warm) | 0.27 s |
+| Backend API check (not signed in) | 0.75 s | 0.24 s |
+| Warm home page | 0.24–0.86 s | mean 0.43 s, max 0.76 s |
+
+Signed-in supplier workflows were not tested (no test credentials).
+
+**Effective scale settings.**
+
+| Environment | min / max | Source |
+|---|---|---|
+| DEV | 0 / 1 | parameter unset; `main.bicep` default 0 |
+| UAT | 0 / 2 | parameter unset; default 0 |
+| PROD | 1 / 2 | `main.prod.bicepparam` |
+
+**Cost.** Measured before: about AUD 0.036/day (about 1.1/month). Forecast after: about AUD 12/month, an increase of about 11, matching the other warm web apps at about AUD 0.40–0.42/day. This stays a forecast until observed in billing.
+
+**Follow-up checks (read-only, manual).**
+1. **24 hours** (from 2026-11-25 14:50 UTC):
+   - `PHASE1_APPS=birthday-supplier-web PHASE1_BASELINE_DIR=…/baseline python3 phase1_runbook.py audit`
+   - in the PROD Log Analytics workspace, query `ContainerAppSystemLogs_CL` for `birthday-supplier-web`: activations, `ProbeFailed` and terminations should be 0 after the change;
+   - first-request time after an idle gap (`measure.py`).
+2. **7 days** (read on or after 2026-12-02): measured daily cost for `birthday-supplier-web` against the AUD 0.45/day threshold; the rollback trigger is 3 consecutive days above it with no explanation, which needs approval first.
