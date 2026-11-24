@@ -1,0 +1,20 @@
+{
+ "birthday-supplier-web": {
+  "post": {
+   "at": "2026-11-24T14:48:00Z",
+   "image_digest": "sha256:c604e134412ba8530cccc803e8d77312553741295d3773e5986d480f91694866",
+   "maxReplicas": 2,
+   "minReplicas": 1,
+   "revision": "birthday-supplier-web--0000003",
+   "spec_sha256": "a76ad1a0c92d3299c48091674e839fa61345c50a1fd1649ed667dfa4fa04a00b"
+  },
+  "pre": {
+   "at": "2026-11-24T14:47:22Z",
+   "image_digest": "sha256:c604e134412ba8530cccc803e8d77312553741295d3773e5986d480f91694866",
+   "maxReplicas": 2,
+   "minReplicas": 0,
+   "revision": "birthday-supplier-web--0000002",
+   "spec_sha256": "a76ad1a0c92d3299c48091674e839fa61345c50a1fd1649ed667dfa4fa04a00b"
+  }
+ }
+}
