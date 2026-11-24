@@ -29,6 +29,7 @@ from app.core.constants import (
     OrderStatus,
     SpecialRequirementKind,
 )
+from app.core.greeting import default_greeting_for
 from app.integrations.factory import get_email_client
 from app.models.birthday_order import BirthdayOrder
 from app.models.order_event import OrderEvent
@@ -252,6 +253,12 @@ def _send(
             f"verifies the delivery address (current status: "
             f"{order.address_verification_status})"
         )
+
+    # A legacy order that predates the greeting (NULL) is initialised once,
+    # here, at release. An edited or deliberately cleared ("") greeting is
+    # never touched.
+    if order.birthday_greeting is None:
+        order.birthday_greeting = default_greeting_for(order.employee_email, order.employee_name)
 
     subject, body, _text_body = render_supplier_email(order)
     retry_count = (order.retry_count or 0) + 1 if order.status == OrderStatus.REQUIRES_ATTENTION.value else 0

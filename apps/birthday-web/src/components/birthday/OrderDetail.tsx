@@ -117,6 +117,9 @@ export function OrderDetail({ orderId }: { orderId: number }) {
   // touched-then-emptied field stays empty rather than snapping back to the
   // order's value. Avoids seeding state from an effect.
   const [fulfilmentEdit, setFulfilmentEdit] = useState<FulfilmentEdit>({});
+  // Birthday greeting draft — undefined until P&C touches it, so a saved
+  // (or system-suggested) greeting is never overwritten by re-rendering.
+  const [greetingEdit, setGreetingEdit] = useState<string | undefined>(undefined);
 
   const {
     data: order,
@@ -240,6 +243,14 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     },
   });
 
+  const greetingMutation = useMutation({
+    mutationFn: (text: string) => updateOrder(orderId, { birthday_greeting: text }),
+    onSuccess: () => {
+      invalidate();
+      setGreetingEdit(undefined);
+    },
+  });
+
   // §H1 — recover a MISSING_EMPLOYEE_NUMBER order: supplying the real
   // Team Member ID clears the exception + regenerates the reference.
   const setTeamMemberIdMutation = useMutation({
@@ -300,6 +311,9 @@ export function OrderDetail({ orderId }: { orderId: number }) {
     eff.deliveryDate !== (order.delivery_date ?? "") ||
     eff.catalogueId !== (order.catalogue_item_id != null ? String(order.catalogue_item_id) : "");
   const catalogueItems = catalogueQuery.data ?? [];
+  const savedGreeting = order.birthday_greeting ?? order.suggested_birthday_greeting ?? "";
+  const greetingValue = greetingEdit ?? savedGreeting;
+  const greetingDirty = greetingEdit !== undefined && greetingEdit !== savedGreeting;
 
   // Phase 1.6 §10 (R10) — one shared policy object instead of five
   // separately-named consts plus inline conditions (the shape that let
@@ -695,6 +709,44 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                       Discard changes
                     </Button>
                   )}
+                </div>
+
+                <div className="mt-5 border-t border-dt-border pt-4">
+                  <FormField label="Birthday Greeting" htmlFor="fa-greeting">
+                    <textarea
+                      id="fa-greeting"
+                      rows={6}
+                      maxLength={2000}
+                      className="w-full rounded-lg border border-dt-border px-3 py-2 text-sm"
+                      value={greetingValue}
+                      onChange={(e) => setGreetingEdit(e.target.value)}
+                    />
+                  </FormField>
+                  <p className="mt-1 text-xs text-dt-text-secondary">
+                    Shown to the supplier with this order and in the order email. Edit freely before
+                    release; your edits are never overwritten.
+                    {order.birthday_greeting == null && " (Suggested text — save to keep it.)"}
+                  </p>
+                  {greetingMutation.error && (
+                    <p className="mt-2 text-sm text-dt-danger">
+                      Could not save greeting: {(greetingMutation.error as Error).message}
+                    </p>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      size="sm"
+                      disabled={!greetingDirty || isMutating}
+                      loading={greetingMutation.isPending}
+                      onClick={() => greetingMutation.mutate(greetingValue)}
+                    >
+                      Save greeting
+                    </Button>
+                    {greetingDirty && (
+                      <Button size="sm" variant="secondary" onClick={() => setGreetingEdit(undefined)}>
+                        Discard
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

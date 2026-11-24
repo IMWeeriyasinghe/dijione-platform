@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.constants import ActorType, AddressVerificationStatus, OrderStatus, SpecialRequirementKind
+from app.core.greeting import default_greeting_for
 from app.models.birthday_order import BirthdayOrder
 from app.models.order_event import OrderEvent
 from app.repositories.birthday_order_repository import BirthdayOrderRepository
@@ -107,6 +108,9 @@ def create_or_get_order(
         # Home when there is no mobile. P&C can change it during verification.
         delivery_contact_phone=(employee_mobile_phone or "").strip() or (employee_home_phone or "").strip() or None,
         delivery_address_source="BAMBOOHR" if has_address else None,
+        # Default birthday greeting, generated once here (first name from the
+        # work email). After this it is only ever changed by P&C.
+        birthday_greeting=default_greeting_for(employee_email, employee_name),
     )
 
     try:
@@ -154,8 +158,11 @@ def to_supplier_detail_view(order: BirthdayOrder) -> SupplierOrderDetailView:
     the other snapshotted number when it differs. Both stay hidden until the
     address is verified, exactly like the delivery address."""
     base = to_supplier_view(order)
+    # The greeting is exactly the text P&C released; a cleared ("") or legacy
+    # (NULL) greeting is simply not shown.
+    greeting = (order.birthday_greeting or "").strip() and order.birthday_greeting
     if not base.address_verified:
-        return SupplierOrderDetailView(**base.model_dump())
+        return SupplierOrderDetailView(**base.model_dump(), birthday_greeting=greeting or None)
     chosen = order.delivery_contact_phone or order.employee_mobile_phone or order.employee_home_phone
     alternative = next(
         (p for p in (order.employee_mobile_phone, order.employee_home_phone) if p and p != chosen),
@@ -163,6 +170,7 @@ def to_supplier_detail_view(order: BirthdayOrder) -> SupplierOrderDetailView:
     )
     return SupplierOrderDetailView(
         **base.model_dump(), delivery_contact_phone=chosen, alternative_contact_phone=alternative,
+        birthday_greeting=greeting or None,
     )
 
 

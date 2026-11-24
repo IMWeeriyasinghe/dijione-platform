@@ -62,6 +62,23 @@ _REPORT_FIELDS = [
 ]
 
 
+def _phone(row: dict, alias: str, field_id: str) -> str | None:
+    """Reads a BambooHR phone field the same way Customer Portal V2 does
+    (field id first, alias as fallback — BambooHR keys a custom-report row
+    by whichever form was requested). Whitespace-only counts as absent."""
+    for key in (alias, field_id):
+        value = row.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+# BambooHR standard field ids: 13 = Mobile Phone (the number Customer Portal
+# V2 shows as "Phone"), 14 = Home Phone.
+_MOBILE_PHONE = ("mobilePhone", "13")
+_HOME_PHONE = ("homePhone", "14")
+
+
 def _parse_birthday_field(raw: str | None) -> tuple[int, int] | None:
     """BambooHR's `birthday` report field is already ``MM-DD`` (no year —
     confirmed live, distinct from `dateOfBirth` which does carry a real
@@ -138,8 +155,8 @@ class BambooHRHttpClient(BambooHRClient):
                     city=row.get("city") or None,
                     state_province=row.get("state") or None,
                     postal_code=row.get("zipcode") or None,
-                    mobile_phone=(row.get("mobilePhone") or "").strip() or None,
-                    home_phone=(row.get("homePhone") or "").strip() or None,
+                    mobile_phone=_phone(row, *_MOBILE_PHONE),
+                    home_phone=_phone(row, *_HOME_PHONE),
                     country=row.get("country") or None,
                 )
             )
@@ -188,5 +205,7 @@ class BambooHRHttpClient(BambooHRClient):
                 employment_status=(row.get("status") or "").strip(),
                 hire_date=row.get("hireDate") or None,
                 termination_date=row.get("terminationDate") or None,
+                mobile_phone=_phone(row, *_MOBILE_PHONE),
+                home_phone=_phone(row, *_HOME_PHONE),
             )
         return None

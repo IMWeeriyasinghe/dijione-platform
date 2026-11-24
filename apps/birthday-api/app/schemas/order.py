@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+
+from app.core.greeting import GREETING_MAX_LENGTH, default_greeting_for, normalise_greeting
 
 # Accepts numbers as people write them (+94 77 123 4567, (011) 234-5678).
 # Validation only: the value is stored exactly as entered, never reformatted.
@@ -98,6 +100,7 @@ class BirthdayOrderRead(BaseModel):
     employee_mobile_phone: str | None = None
     employee_home_phone: str | None = None
     delivery_contact_phone: str | None = None
+    birthday_greeting: str | None = None
     supplier_id: int | None
     supplier_name: str | None = None
     delivery_date: date | None = None
@@ -123,6 +126,14 @@ class BirthdayOrderRead(BaseModel):
     events: list[OrderEventRead] = []
     special_requirements: list[SpecialRequirementRead] = []
     issues: list[OrderIssueRead] = []
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def suggested_birthday_greeting(self) -> str:
+        """What the default greeting would be. Shown (not saved) for a legacy
+        order whose greeting is still NULL, so P&C can adopt or edit it;
+        never overwrites a stored greeting."""
+        return default_greeting_for(self.employee_email, self.employee_name)
 
 
 class BirthdayOrderCreate(BaseModel):
@@ -153,6 +164,14 @@ class BirthdayOrderUpdate(BaseModel):
     # exception and (while the order has never reached a supplier)
     # regenerates the provisional BDAY-TMP… reference to BDAY-EMP…
     employee_number: str | None = None
+    # P&C-edited birthday greeting (multi-line). An empty value clears it so
+    # no greeting is sent; the stored text is never regenerated afterwards.
+    birthday_greeting: str | None = Field(default=None, max_length=GREETING_MAX_LENGTH)
+
+    @field_validator("birthday_greeting")
+    @classmethod
+    def _clean_greeting(cls, value: str | None) -> str | None:
+        return None if value is None else normalise_greeting(value)
 
 
 class HoldRequest(BaseModel):
@@ -348,6 +367,9 @@ class SupplierOrderDetailView(SupplierOrderView):
 
     delivery_contact_phone: str | None = None
     alternative_contact_phone: str | None = None
+    # The birthday message P&C released with the order (read-only for the
+    # supplier; line breaks preserved).
+    birthday_greeting: str | None = None
 
 
 class SupplierOrderListResponse(BaseModel):
