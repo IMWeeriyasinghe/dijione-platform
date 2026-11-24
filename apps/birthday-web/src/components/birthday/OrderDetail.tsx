@@ -46,6 +46,7 @@ import {
   resolveOrderIssue,
   sendOrderToSupplier,
   updateAddressVerification,
+  refreshOrderContact,
   updateDeliveryAddress,
   updateOrder,
   verifyAddress,
@@ -86,6 +87,13 @@ const ADDRESS_VERIFICATION_OPTIONS = [
   "NEEDS_UPDATE",
   "NOT_APPLICABLE",
 ];
+
+/** The refresh endpoint answers with {detail: {code, message}}; show its message. */
+function refreshErrorMessage(error: unknown): string | null {
+  if (!error) return null;
+  const detail = (error as { body?: { detail?: { message?: string } } }).body?.detail;
+  return detail?.message ?? (error as Error).message ?? "Could not refresh the contact.";
+}
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -211,6 +219,11 @@ export function OrderDetail({ orderId }: { orderId: number }) {
       invalidate();
       setAddressEditOpen(false);
     },
+  });
+
+  const refreshContactMutation = useMutation({
+    mutationFn: () => refreshOrderContact(orderId),
+    onSuccess: () => invalidate(),
   });
 
   // "Verification is the approval" (plan §K) — this one call is the
@@ -815,6 +828,10 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                 order={order}
                 canEdit={!!scope?.isAdmin}
                 saving={addressEditMutation.isPending}
+                refreshable={!!order.contact_refreshable}
+                refreshing={refreshContactMutation.isPending}
+                refreshError={refreshErrorMessage(refreshContactMutation.error)}
+                onRefresh={() => refreshContactMutation.mutate()}
                 onSave={(phone) => addressEditMutation.mutate({ delivery_contact_phone: phone })}
               />
 

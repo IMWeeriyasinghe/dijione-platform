@@ -135,6 +135,17 @@ class BirthdayOrderRead(BaseModel):
         never overwrites a stored greeting."""
         return default_greeting_for(self.employee_email, self.employee_name)
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def contact_refreshable(self) -> bool:
+        """True when "Refresh contact from People" can safely fill a missing
+        contact snapshot: unreleased, identifiable, something still empty."""
+        return (
+            self.released_at is None
+            and bool((self.employee_id or "").strip())
+            and not ((self.employee_mobile_phone or "").strip() and (self.employee_home_phone or "").strip())
+        )
+
 
 class BirthdayOrderCreate(BaseModel):
     employee_id: str

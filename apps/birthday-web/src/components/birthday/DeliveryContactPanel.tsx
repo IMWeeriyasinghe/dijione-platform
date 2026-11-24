@@ -41,11 +41,20 @@ export function DeliveryContactPanel({
   canEdit,
   saving,
   onSave,
+  refreshable = false,
+  refreshing,
+  refreshError,
+  onRefresh,
 }: {
   order: DeliveryContactOrder;
   canEdit: boolean;
   saving?: boolean;
   onSave: (phone: string | null) => void;
+  /** Server-decided: unreleased and a contact snapshot is still empty. */
+  refreshable?: boolean;
+  refreshing?: boolean;
+  refreshError?: string | null;
+  onRefresh?: () => void;
 }) {
   const { primary, secondary } = contactNumbers(order);
   const [choice, setChoice] = useState<Choice>(() => initialChoice(order));
@@ -75,6 +84,22 @@ export function DeliveryContactPanel({
           {order.delivery_contact_phone || "No number"}
         </dd>
       </dl>
+
+      {canEdit && refreshable && onRefresh && (
+        <div className="mt-2" data-testid="refresh-contact">
+          {!hasOptions && (
+            <p className="text-xs text-dt-text-secondary">No contact captured when this order was created.</p>
+          )}
+          <Button size="sm" variant="secondary" className="mt-1" loading={refreshing} onClick={onRefresh}>
+            Refresh contact from People
+          </Button>
+          {refreshError && (
+            <p role="alert" className="mt-1 text-xs text-dt-danger">
+              {refreshError}
+            </p>
+          )}
+        </div>
+      )}
 
       {canEdit && (
         <fieldset className="mt-3">
