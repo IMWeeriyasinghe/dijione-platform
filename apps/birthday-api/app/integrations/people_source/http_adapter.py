@@ -32,6 +32,7 @@ def _to_record(row: dict) -> EmployeeRecord:
         address_line2=row.get("address_line2"), city=row.get("city"),
         state_province=row.get("state_province"), postal_code=row.get("postal_code"),
         country=row.get("country"),
+        mobile_phone=row.get("mobile_phone"), home_phone=row.get("home_phone"),
     )
 
 

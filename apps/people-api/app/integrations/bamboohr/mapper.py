@@ -43,4 +43,6 @@ def map_employee(employee: BambooHREmployee) -> dict:
         "state_province": employee.state_province,
         "postal_code": employee.postal_code,
         "country": employee.country,
+        "mobile_phone": employee.mobile_phone,
+        "home_phone": employee.home_phone,
     }

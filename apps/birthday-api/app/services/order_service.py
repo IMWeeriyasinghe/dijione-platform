@@ -23,7 +23,7 @@ from app.core.constants import ActorType, AddressVerificationStatus, OrderStatus
 from app.models.birthday_order import BirthdayOrder
 from app.models.order_event import OrderEvent
 from app.repositories.birthday_order_repository import BirthdayOrderRepository
-from app.schemas.order import SupplierOrderView
+from app.schemas.order import SupplierOrderDetailView, SupplierOrderView
 
 
 def create_or_get_order(
@@ -53,6 +53,8 @@ def create_or_get_order(
     delivery_state_province: str | None = None,
     delivery_postal_code: str | None = None,
     delivery_country: str | None = None,
+    employee_mobile_phone: str | None = None,
+    employee_home_phone: str | None = None,
 ) -> tuple[BirthdayOrder, bool]:
     repo = BirthdayOrderRepository(db)
 
@@ -99,6 +101,11 @@ def create_or_get_order(
         delivery_state_province=delivery_state_province,
         delivery_postal_code=delivery_postal_code,
         delivery_country=delivery_country,
+        employee_mobile_phone=(employee_mobile_phone or "").strip() or None,
+        employee_home_phone=(employee_home_phone or "").strip() or None,
+        # The number the supplier calls for delivery: Mobile by default,
+        # Home when there is no mobile. P&C can change it during verification.
+        delivery_contact_phone=(employee_mobile_phone or "").strip() or (employee_home_phone or "").strip() or None,
         delivery_address_source="BAMBOOHR" if has_address else None,
     )
 
@@ -138,6 +145,25 @@ def _write_events(db: Session, order: BirthdayOrder, status: OrderStatus, hold_r
             )
         )
     db.flush()
+
+
+def to_supplier_detail_view(order: BirthdayOrder) -> SupplierOrderDetailView:
+    """The supplier's single-order view: ``to_supplier_view`` plus the
+    delivery contact numbers from the order snapshot (never a live lookup).
+    ``delivery_contact_phone`` is the number P&C chose; the alternative is
+    the other snapshotted number when it differs. Both stay hidden until the
+    address is verified, exactly like the delivery address."""
+    base = to_supplier_view(order)
+    if not base.address_verified:
+        return SupplierOrderDetailView(**base.model_dump())
+    chosen = order.delivery_contact_phone or order.employee_mobile_phone or order.employee_home_phone
+    alternative = next(
+        (p for p in (order.employee_mobile_phone, order.employee_home_phone) if p and p != chosen),
+        None,
+    )
+    return SupplierOrderDetailView(
+        **base.model_dump(), delivery_contact_phone=chosen, alternative_contact_phone=alternative,
+    )
 
 
 def to_supplier_view(order: BirthdayOrder) -> SupplierOrderView:

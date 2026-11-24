@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     supplier_entra_client_secret: str = ""
     supplier_entra_redirect_uri: str = ""
     supplier_public_base_url: str = ""
+    # Public origin of the internal DijiOne shell (e.g.
+    # https://dijione-dev.dijitalteam.com). Used only to build deep links to
+    # /birthday/orders/<id> in internal P&C alert emails. Empty = no link.
+    birthday_internal_base_url: str = ""
 
     # --- Outbound mail (packages/mail-client-py) -------------------------
     # "null"  -> NullMailTransport, no real email ever leaves the system.

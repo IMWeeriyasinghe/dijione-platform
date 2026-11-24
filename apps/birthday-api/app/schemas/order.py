@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Accepts numbers as people write them (+94 77 123 4567, (011) 234-5678).
+# Validation only: the value is stored exactly as entered, never reformatted.
+_PHONE_PATTERN = re.compile(r"\+?[0-9][0-9 ()\-.]{4,40}")
 
 
 class OrderEventRead(BaseModel):
@@ -90,6 +95,9 @@ class BirthdayOrderRead(BaseModel):
     delivery_postal_code: str | None = None
     delivery_country: str | None = None
     delivery_address_source: str | None = None
+    employee_mobile_phone: str | None = None
+    employee_home_phone: str | None = None
+    delivery_contact_phone: str | None = None
     supplier_id: int | None
     supplier_name: str | None = None
     delivery_date: date | None = None
@@ -237,6 +245,8 @@ class TimelineEntryOut(BaseModel):
     title: str
     body: str | None = None
     meta: dict = {}
+    body_format: str = "text"
+    subject: str | None = None
 
 
 class OrderTimelineResponse(BaseModel):
@@ -280,6 +290,19 @@ class DeliveryAddressUpdate(BaseModel):
     delivery_state_province: str | None = None
     delivery_postal_code: str | None = None
     delivery_country: str | None = None
+    # The number the supplier should call. Changing it is not an address
+    # correction, so it never flags the order for review.
+    delivery_contact_phone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("delivery_contact_phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if value and not _PHONE_PATTERN.fullmatch(value):
+            raise ValueError("Enter a phone number using digits, spaces, +, -, ( or )")
+        return value or None
 
 
 class SupplierOrderView(BaseModel):
@@ -315,6 +338,16 @@ class SupplierOrderView(BaseModel):
     delivery_country: str | None = None
     status: str
     special_instructions: list[str] = []
+
+
+class SupplierOrderDetailView(SupplierOrderView):
+    """Single-order view for the assigned supplier: adds the team member's
+    delivery contact numbers. Only ever returned by the order-detail route,
+    never by list endpoints, and only populated once the address is
+    verified (same rule as the delivery address)."""
+
+    delivery_contact_phone: str | None = None
+    alternative_contact_phone: str | None = None
 
 
 class SupplierOrderListResponse(BaseModel):

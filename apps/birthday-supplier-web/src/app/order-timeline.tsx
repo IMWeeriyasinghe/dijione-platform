@@ -8,6 +8,8 @@ import { getPortalOrderTimeline, postPortalOrderMessage } from "@/lib/api";
 import { useSupplierAuth } from "@/lib/supplier-auth";
 import { usePortalMe } from "@/lib/portal-me";
 import { supplierActionPolicy } from "@/lib/supplier-action-policy";
+import { emailPlainText, isHtmlBody } from "@/lib/email-html";
+import { EmailPreview } from "./email-preview";
 
 export function OrderTimeline({ orderId, orderStatus }: { orderId: number; orderStatus?: string }) {
   const { token } = useSupplierAuth();
@@ -49,16 +51,28 @@ export function OrderTimeline({ orderId, orderStatus }: { orderId: number; order
             {entries.map((e, i) => (
               <li key={i} className="border-l-2 border-dt-border pl-3">
                 <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span className="font-medium text-dt-text-primary">{e.title}</span>
+                  <span className="font-medium text-dt-text-primary">
+                    {e.kind === "email" && e.subject ? e.title.replace(` — ${e.subject}`, "") : e.title}
+                  </span>
                   {e.channel && (
                     <span className="rounded bg-dt-surface-warm px-1.5 py-0.5 text-[11px] text-dt-text-secondary">
                       {e.channel}
                     </span>
                   )}
                 </div>
-                {e.body && (
-                  <p className="mt-0.5 whitespace-pre-wrap text-sm text-dt-text-secondary">{e.body}</p>
+                {e.kind === "email" && e.subject && (
+                  <p className="mt-0.5 text-sm text-dt-text-primary" data-testid="email-subject">{e.subject}</p>
                 )}
+                {e.body &&
+                  (e.kind === "email" && isHtmlBody(e) ? (
+                    <EmailPreview html={e.body} subject={e.subject} />
+                  ) : e.kind === "email" ? (
+                    <p className="mt-0.5 whitespace-pre-wrap text-sm text-dt-text-secondary">
+                      {emailPlainText(e.body)}
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 whitespace-pre-wrap text-sm text-dt-text-secondary">{e.body}</p>
+                  ))}
                 <p className="mt-0.5 text-xs text-dt-text-secondary">
                   {e.at ? new Date(e.at).toLocaleString() : "—"}
                 </p>

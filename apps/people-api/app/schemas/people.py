@@ -24,6 +24,8 @@ class EmployeeOut(BaseModel):
     state_province: str | None = None
     postal_code: str | None = None
     country: str | None = None
+    mobile_phone: str | None = None
+    home_phone: str | None = None
     synced_at: str | None = None
 
 

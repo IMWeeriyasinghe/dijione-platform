@@ -97,6 +97,13 @@ class BirthdayOrder(TimestampMixin, Base):
     # (P&C edited it) — lets the UI show whether the current snapshot is
     # the original BambooHR value or a human correction.
     delivery_address_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Team-member contact numbers snapshotted at detection time from People
+    # API (BambooHR "Mobile Phone" / "Home Phone"). Never refreshed later.
+    employee_mobile_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    employee_home_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The number given to the supplier for delivery. Defaults to mobile (or
+    # home if no mobile); P&C may change it during verification.
+    delivery_contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     supplier_id: Mapped[int | None] = mapped_column(
         ForeignKey("suppliers.id"), nullable=True

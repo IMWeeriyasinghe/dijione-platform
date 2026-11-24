@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Integer
+from sqlalchemy import Boolean, Date, DateTime, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -47,6 +47,11 @@ class BirthdayDetectionConfig(TimestampMixin, Base):
     clean_start_applied_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     clean_start_excluded_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     clean_start_first_eligible: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Internal P&C email alerts for supplier activity (messages, issues,
+    # cannot-fulfil): comma/newline separated addresses, admin-managed in
+    # Operational Settings. Empty = no email alerts (in-app ones still go).
+    ops_alert_recipients: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # No FK to `users.id` — User is owned by platform-api's own database.
     updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True)

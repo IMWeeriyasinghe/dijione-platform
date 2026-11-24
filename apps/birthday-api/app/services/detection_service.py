@@ -313,6 +313,8 @@ def run_daily_scan(
                 delivery_state_province=employee.get("state_province"),
                 delivery_postal_code=employee.get("postal_code"),
                 delivery_country=employee.get("country"),
+                employee_mobile_phone=employee.get("mobile_phone"),
+                employee_home_phone=employee.get("home_phone"),
             )
 
             if created:

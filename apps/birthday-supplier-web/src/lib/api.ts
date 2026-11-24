@@ -3,6 +3,7 @@ import type {
   OrderIssueType,
   OrderTimelineResponse,
   SupplierOrderListResponse,
+  SupplierOrderDetailView,
   SupplierOrderView,
 } from "@dijione/contracts";
 
@@ -86,7 +87,7 @@ export const listPortalOrders = (
 ) => request<SupplierOrderListResponse>(`/api/birthday/portal/orders${qs(params)}`, token);
 
 export const getPortalOrder = (token: string, id: number) =>
-  request<SupplierOrderView>(`/api/birthday/portal/orders/${id}`, token);
+  request<SupplierOrderDetailView>(`/api/birthday/portal/orders/${id}`, token);
 
 // Merged acknowledge+confirm (plan §O) — one commitment, one click.
 export const acceptPortalOrder = (token: string, id: number) =>

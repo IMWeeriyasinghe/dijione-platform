@@ -12,7 +12,8 @@ from tests.conftest import internal_headers
 _EMPLOYEE_FIELDS = {
     "bamboohr_id", "employee_number", "full_name", "work_email", "birth_month", "birth_day",
     "department", "office_location", "employment_status", "hire_date", "termination_date",
-    "address_line1", "address_line2", "city", "state_province", "postal_code", "country", "synced_at",
+    "address_line1", "address_line2", "city", "state_province", "postal_code", "country",
+    "mobile_phone", "home_phone", "synced_at",
 }
 
 

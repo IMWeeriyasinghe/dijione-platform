@@ -52,6 +52,7 @@ import {
 } from "@/lib/api";
 import type { BirthdayOrderOut, DeliveryAddressUpdateInput, SupplierOut } from "@dijione/contracts";
 import { OrderTimeline } from "@/components/birthday/OrderTimeline";
+import { DeliveryContactPanel } from "@/components/birthday/DeliveryContactPanel";
 import { EventLogTimeline } from "@/components/birthday/EventLogTimeline";
 import { orderActionPolicy } from "@/lib/order-action-policy";
 
@@ -756,6 +757,14 @@ export function OrderDetail({ orderId }: { orderId: number }) {
                   </Button>
                 )}
               </div>
+
+              <DeliveryContactPanel
+                key={order.delivery_contact_phone ?? ""}
+                order={order}
+                canEdit={!!scope?.isAdmin}
+                saving={addressEditMutation.isPending}
+                onSave={(phone) => addressEditMutation.mutate({ delivery_contact_phone: phone })}
+              />
 
               <div className="flex flex-wrap items-center gap-3">
                 <StatusBadge status={order.address_verification_status} />

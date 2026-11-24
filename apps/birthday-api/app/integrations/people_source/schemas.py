@@ -32,3 +32,7 @@ class EmployeeRecord(BaseModel):
     state_province: str | None = None
     postal_code: str | None = None
     country: str | None = None
+    # Team-member contact numbers from People API (BambooHR "Mobile Phone"
+    # and "Home Phone"). Optional; snapshotted onto the order for delivery.
+    mobile_phone: str | None = None
+    home_phone: str | None = None

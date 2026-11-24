@@ -39,15 +39,16 @@ from app.schemas.order import (
     OrderIssueRead,
     OrderMessageCreate,
     OrderTimelineResponse,
+    SupplierOrderDetailView,
     SupplierOrderListResponse,
     SupplierOrderView,
     SupplierStatusUpdateRequest,
     TimelineEntryOut,
 )
-from app.services import communication_service, order_status_service
+from app.services import communication_service, internal_alert_service, order_status_service
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
-from app.services.order_service import to_supplier_view
+from app.services.order_service import to_supplier_detail_view, to_supplier_view
 
 router = APIRouter(prefix="/api/birthday/portal", tags=["birthday-supplier-portal"])
 
@@ -177,14 +178,14 @@ def list_supplier_orders(
     )
 
 
-@router.get("/orders/{order_id}", response_model=SupplierOrderView)
+@router.get("/orders/{order_id}", response_model=SupplierOrderDetailView)
 def get_supplier_order(
     order_id: int,
     db: Session = Depends(get_db),
     scope: SupplierScope = Depends(require_supplier_permission("birthday.portal.access")),
-) -> SupplierOrderView:
+) -> SupplierOrderDetailView:
     order = _get_supplier_order_or_404(db, order_id, scope)
-    return to_supplier_view(order)
+    return to_supplier_detail_view(order)
 
 
 @router.post("/orders/{order_id}/accept", response_model=SupplierOrderView)
@@ -320,6 +321,16 @@ def raise_supplier_issue(
     except Exception:  # noqa: BLE001 - best-effort
         pass
 
+    # Email P&C (after the issue is committed; never fails this request).
+    internal_alert_service.notify_supplier_activity(
+        db, order,
+        event_type=(
+            internal_alert_service.EVENT_SUPPLIER_CANNOT_FULFIL
+            if payload.type == "CANNOT_FULFIL" else internal_alert_service.EVENT_SUPPLIER_ISSUE
+        ),
+        source_key=f"issue:{issue.id}", summary=payload.detail, issue_type=payload.type,
+    )
+    db.refresh(issue)
     return issue
 
 

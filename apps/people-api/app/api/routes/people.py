@@ -39,7 +39,8 @@ def _employee_out(e: Employee) -> EmployeeOut:
         employment_status=e.employment_status, hire_date=_iso(e.hire_date),
         termination_date=_iso(e.termination_date), address_line1=e.address_line1,
         address_line2=e.address_line2, city=e.city, state_province=e.state_province,
-        postal_code=e.postal_code, country=e.country, synced_at=_iso(e.last_synced_at),
+        postal_code=e.postal_code, country=e.country,
+        mobile_phone=e.mobile_phone, home_phone=e.home_phone, synced_at=_iso(e.last_synced_at),
     )
 
 
@@ -81,7 +82,8 @@ def get_employee(
                 termination_date=m["termination_date"].isoformat() if m.get("termination_date") else None,
                 address_line1=m.get("address_line1"), address_line2=m.get("address_line2"),
                 city=m.get("city"), state_province=m.get("state_province"),
-                postal_code=m.get("postal_code"), country=m.get("country"), synced_at=None,
+                postal_code=m.get("postal_code"), country=m.get("country"),
+                mobile_phone=m.get("mobile_phone"), home_phone=m.get("home_phone"), synced_at=None,
             )
 
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown employee")
