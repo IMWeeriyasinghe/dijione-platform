@@ -61,6 +61,7 @@ ROUTE_POLICY: dict[str, str] = {
     "PATCH /api/birthday/orders/{order_id}": WRITE,
     "PATCH /api/birthday/orders/{order_id}/address-verification": WRITE,
     "PATCH /api/birthday/orders/{order_id}/delivery-address": WRITE,
+    "POST /api/birthday/orders/{order_id}/refresh-contact": WRITE,
     "POST /api/birthday/orders/{order_id}/issues": WRITE,
     "PATCH /api/birthday/orders/{order_id}/issues/{issue_id}/resolve": WRITE,
     "POST /api/birthday/orders/{order_id}/messages": WRITE,

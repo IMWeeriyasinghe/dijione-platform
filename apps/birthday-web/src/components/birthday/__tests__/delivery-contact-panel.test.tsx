@@ -66,6 +66,35 @@ describe("DeliveryContactPanel", () => {
     expect(onSave).toHaveBeenCalledWith("+94 71 999 0000");
   });
 
+  it("offers Refresh contact from People on a legacy order with no contact captured", () => {
+    const onRefresh = vi.fn();
+    render(<DeliveryContactPanel order={{}} canEdit refreshable onRefresh={onRefresh} onSave={() => {}} />);
+    expect(screen.getByText("No contact captured when this order was created.")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Refresh contact from People"));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("still offers the refresh when only one number is captured, without the legacy message", () => {
+    render(
+      <DeliveryContactPanel order={{ employee_mobile_phone: "+94 77 555 6666" }} canEdit refreshable
+        onRefresh={() => {}} onSave={() => {}} />,
+    );
+    expect(screen.getByText("Refresh contact from People")).toBeInTheDocument();
+    expect(screen.queryByText(/No contact captured/)).toBeNull();
+  });
+
+  it("hides the refresh when nothing is refreshable, for non-admins, and shows an error message", () => {
+    const { rerender } = render(<DeliveryContactPanel order={BOTH} canEdit refreshable={false} onRefresh={() => {}} onSave={() => {}} />);
+    expect(screen.queryByText("Refresh contact from People")).toBeNull();
+    rerender(<DeliveryContactPanel order={{}} canEdit={false} refreshable onRefresh={() => {}} onSave={() => {}} />);
+    expect(screen.queryByText("Refresh contact from People")).toBeNull();
+    rerender(
+      <DeliveryContactPanel order={{}} canEdit refreshable onRefresh={() => {}} onSave={() => {}}
+        refreshError="No contact number is currently available from People." />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("No contact number is currently available from People.");
+  });
+
   it("with no numbers on file, goes straight to entering one", () => {
     const onSave = vi.fn();
     render(<DeliveryContactPanel order={{}} canEdit onSave={onSave} />);

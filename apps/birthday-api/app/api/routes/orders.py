@@ -54,6 +54,7 @@ from app.schemas.order import (
 from app.services import (
     address_verification_service,
     communication_service,
+    contact_refresh_service,
     delivery_date_service,
     detection_service,
     order_email_service,
@@ -740,6 +741,26 @@ def update_delivery_address(
     return address_verification_service.update_delivery_address(
         db, order, payload.model_dump(exclude_unset=True), actor_id=scope.user.id,
     )
+
+
+@router.post("/{order_id}/refresh-contact", response_model=BirthdayOrderRead)
+def refresh_contact(
+    order_id: int,
+    db: Session = Depends(get_db),
+    scope: BirthdayScope = Depends(require_birthday_permission("birthday.orders.update")),
+) -> BirthdayOrder:
+    """Explicit P&C remediation for a legacy order created before contact
+    snapshots existed: fills only EMPTY contact snapshot fields from People.
+    Never overwrites, never touches address/verification/status/release, and
+    sends no email."""
+    order = _get_order_or_404(db, order_id)
+    try:
+        return contact_refresh_service.refresh_contact(
+            db, order, actor_id=scope.user.id, actor_display_name=scope.user.full_name,
+        ).order
+    except contact_refresh_service.ContactRefreshError as exc:
+        code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.code == "PEOPLE_UNAVAILABLE" else status.HTTP_409_CONFLICT
+        raise HTTPException(code, detail={"code": exc.code, "message": str(exc)}) from exc
 
 
 @router.post("/{order_id}/send-to-supplier", response_model=BirthdayOrderRead)

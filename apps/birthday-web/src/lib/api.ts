@@ -155,7 +155,10 @@ export const updateDeliveryAddress = (id: number, payload: DeliveryAddressUpdate
     body: JSON.stringify(payload),
   });
 
-export const sendOrderToSupplier = (id: number) =>
+export const refreshOrderContact = (id: number) =>
+  request<BirthdayOrderOut>(`/api/birthday/orders/${id}/refresh-contact`, { method: "POST" });
+
+export const sendOrderToSupplier =(id: number) =>
   request<BirthdayOrderOut>(`/api/birthday/orders/${id}/send-to-supplier`, { method: "POST" });
 
 export const resendOrderToSupplier = (id: number) =>

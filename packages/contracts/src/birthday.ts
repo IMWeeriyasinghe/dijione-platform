@@ -327,6 +327,8 @@ export type BirthdayOrderOut = {
   birthday_greeting?: string | null;
   /** The default greeting for this employee (shown, not saved, for legacy orders). */
   suggested_birthday_greeting?: string;
+  /** True when "Refresh contact from People" can safely fill an empty contact snapshot. */
+  contact_refreshable?: boolean;
   supplier_id: number | null;
   supplier_name: string | null;
   delivery_date: string | null;
