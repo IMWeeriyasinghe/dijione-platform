@@ -7,6 +7,7 @@ AtworkReminderEmailSent table for at-most-once per session+stage+channel.
 """
 
 import logging
+import re
 from datetime import datetime, timedelta
 
 from auth_client_py import PlatformClient
@@ -182,16 +183,30 @@ def _get_watermark(db: Session, now: datetime) -> datetime:
 # ---------------------------------------------------------------------------
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,253}\.[^@\s]{2,}$")
+_SERVICE_PREFIXES = ("no-reply", "noreply", "donotreply", "do-not-reply", "mailer-daemon", "postmaster")
+
+
 def _resolve_recipient(db: Session, user_id: int) -> str | None:
-    """Return verified company email for the employee, or None if unavailable."""
+    """Return the Entra-sourced email for this employee from the DijiOne identity directory.
+
+    AttendanceEmployee.email is written from claims.email (Entra JWT) by remember_employee()
+    on every attendance action — it is the established trusted DijiOne identity mapping.
+    Returns None when the address is absent, malformed, or matches a service-account pattern.
+    """
     emp = db.get(AttendanceEmployee, user_id)
     if emp is None or not emp.email:
         return None
-    email = emp.email.strip().lower()
-    # Reject empty, service account patterns, and non-email strings.
-    if not email or "@" not in email or email.startswith("no-reply") or email.startswith("noreply"):
+    email = emp.email.strip()
+    lower = email.lower()
+    # Must match a minimal but structurally valid address format.
+    if not _EMAIL_RE.match(lower):
         return None
-    return emp.email.strip()
+    # Reject well-known service account patterns.
+    local = lower.split("@")[0]
+    if any(local.startswith(p) for p in _SERVICE_PREFIXES):
+        return None
+    return email
 
 
 def _claim_email(db: Session, session_id: str, stage: int, recipient: str) -> AtworkReminderEmailSent | None:
@@ -308,6 +323,20 @@ def _enqueue_staged_reminders(
 
         elapsed_seconds = (now - check_in).total_seconds()
         elapsed_hours = elapsed_seconds / 3600
+        recipient = _resolve_recipient(db, uid)
+
+        # Catch-up sequencing: when a session first appears at a late stage, only send
+        # one email (the highest applicable) so a 25h session doesn't flood the employee
+        # with three simultaneous messages. In-app notifications are still deduped per
+        # stage and are all fine to create; only the email channel needs suppression.
+        # For normal incremental runs, lower-stage rows already exist (SENT), so
+        # _claim_email returns None for them and only the new stage email is sent.
+        if elapsed_hours >= STAGE3_HOURS:
+            max_email_stage = 3
+        elif elapsed_hours >= stage2_hours:
+            max_email_stage = 2
+        else:
+            max_email_stage = 1
 
         # Stage 1 (>= 10 h)
         inapp_key1 = f"atwork:reminder:stage1:inapp:{sid}"
@@ -322,20 +351,21 @@ def _enqueue_staged_reminders(
         )
         s1_count += int(inapp_added)
 
-        email_row = _claim_email(db, sid, 1, _resolve_recipient(db, uid) or "")
-        if email_row and email_row.recipient_email:
-            subject, html = render_stage1_email(
-                employee_name=full_name,
-                check_in_at=check_in,
-                zone=zone,
-                zone_name=zone_name,
-                app_url=settings.atwork_app_url,
-            )
-            if _send_email(db, mail, email_row, subject, html, now):
-                email_sent += 1
-        elif email_row:
-            email_row.status = "FAILED"
-            db.commit()
+        if max_email_stage == 1:
+            email_row = _claim_email(db, sid, 1, recipient or "")
+            if email_row and email_row.recipient_email:
+                subject, html = render_stage1_email(
+                    employee_name=full_name,
+                    check_in_at=check_in,
+                    zone=zone,
+                    zone_name=zone_name,
+                    app_url=settings.atwork_app_url,
+                )
+                if _send_email(db, mail, email_row, subject, html, now):
+                    email_sent += 1
+            elif email_row:
+                email_row.status = "FAILED"
+                db.commit()
 
         # Stage 2 (>= policy.missed_checkout_hours)
         if elapsed_hours >= stage2_hours:
@@ -354,21 +384,22 @@ def _enqueue_staged_reminders(
             )
             s2_count += int(inapp_added2)
 
-            email_row2 = _claim_email(db, sid, 2, _resolve_recipient(db, uid) or "")
-            if email_row2 and email_row2.recipient_email:
-                subject2, html2 = render_stage2_email(
-                    employee_name=full_name,
-                    check_in_at=check_in,
-                    zone=zone,
-                    zone_name=zone_name,
-                    threshold_hours=stage2_hours,
-                    app_url=settings.atwork_app_url,
-                )
-                if _send_email(db, mail, email_row2, subject2, html2, now):
-                    email_sent += 1
-            elif email_row2:
-                email_row2.status = "FAILED"
-                db.commit()
+            if max_email_stage == 2:
+                email_row2 = _claim_email(db, sid, 2, recipient or "")
+                if email_row2 and email_row2.recipient_email:
+                    subject2, html2 = render_stage2_email(
+                        employee_name=full_name,
+                        check_in_at=check_in,
+                        zone=zone,
+                        zone_name=zone_name,
+                        threshold_hours=stage2_hours,
+                        app_url=settings.atwork_app_url,
+                    )
+                    if _send_email(db, mail, email_row2, subject2, html2, now):
+                        email_sent += 1
+                elif email_row2:
+                    email_row2.status = "FAILED"
+                    db.commit()
 
         # Stage 3 (>= 24 h)
         if elapsed_hours >= STAGE3_HOURS:
@@ -397,7 +428,8 @@ def _enqueue_staged_reminders(
                 exclude=[uid],
             )
 
-            email_row3 = _claim_email(db, sid, 3, _resolve_recipient(db, uid) or "")
+            # Stage 3 email is always the most relevant; always attempt it.
+            email_row3 = _claim_email(db, sid, 3, recipient or "")
             if email_row3 and email_row3.recipient_email:
                 subject3, html3 = render_stage3_email(
                     employee_name=full_name,
@@ -413,6 +445,66 @@ def _enqueue_staged_reminders(
                 db.commit()
 
     return {"stage1": s1_count, "stage2": s2_count, "stage3": s3_count, "email_sent": email_sent}
+
+
+# ---------------------------------------------------------------------------
+# Email retry
+# ---------------------------------------------------------------------------
+
+RETRY_EMAIL_MAX_AGE = timedelta(days=7)
+
+
+def _retry_pending_emails(db: Session, mail: MailClient, policy: AttendancePolicy, now: datetime) -> dict:
+    """Retry PENDING email rows whose next_attempt_at has elapsed and whose session is still open.
+
+    Skips rows whose session has been checked out since the original send attempt,
+    marking them FAILED so they are not retried again. This is the sole path for
+    recovering transient send failures — the initial _enqueue_staged_reminders only
+    attempts once per claim.
+    """
+    rows = list(
+        db.scalars(
+            select(AtworkReminderEmailSent).where(
+                AtworkReminderEmailSent.status == "PENDING",
+                AtworkReminderEmailSent.next_attempt_at <= now,
+                AtworkReminderEmailSent.created_at >= now - RETRY_EMAIL_MAX_AGE,
+            )
+        )
+    )
+    settings = get_settings()
+    retried = cancelled = 0
+    for row in rows:
+        # Revalidate: session must still be open.
+        session = db.scalar(
+            select(AttendanceSession).where(
+                AttendanceSession.id == row.session_id,
+                AttendanceSession.status == STATUS_OPEN,
+            )
+        )
+        if session is None:
+            row.status = "FAILED"
+            db.commit()
+            cancelled += 1
+            continue
+        # Rebuild the email body from the still-open session state.
+        uid = session.platform_user_id
+        names = employee_names(db, {uid})
+        emp = names.get(uid)
+        full_name = emp.full_name if emp else f"User #{uid}"
+        zone = policy.zone
+        zone_name = policy.business_time_zone
+        app_url = settings.atwork_app_url
+        check_in = session.check_in_at
+        kw = dict(employee_name=full_name, check_in_at=check_in, zone=zone, zone_name=zone_name, app_url=app_url)
+        if row.stage == 1:
+            subject, html = render_stage1_email(**kw)
+        elif row.stage == 2:
+            subject, html = render_stage2_email(**kw, threshold_hours=policy.missed_checkout_hours)
+        else:
+            subject, html = render_stage3_email(**kw)
+        if _send_email(db, mail, row, subject, html, now):
+            retried += 1
+    return {"email_retried": retried, "email_cancelled": cancelled}
 
 
 # ---------------------------------------------------------------------------
@@ -481,10 +573,17 @@ def enqueue_scheduled(db: Session, policy: AttendancePolicy, now: datetime, mail
                 reviewers=True,
             )
     db.commit()
+
+    # Retry any reminder emails that failed transiently and are now due.
+    email_retry = {"email_retried": 0, "email_cancelled": 0}
+    if mail is not None:
+        email_retry = _retry_pending_emails(db, mail, policy, now)
+
     return {
         "missed_checkout": int(missed),
         "pending_reminder": int(reminders),
         **staged,
+        **email_retry,
     }
 
 

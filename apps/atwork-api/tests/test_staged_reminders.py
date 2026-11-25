@@ -725,3 +725,262 @@ class TestFrontendIsOverdueFlagLogic:
         for threshold_hours, expected in [(12, False), (8, True), (6, True)]:
             is_overdue = gross_seconds >= threshold_hours * 3600
             assert is_overdue is expected, f"threshold={threshold_hours}h failed"
+
+
+# ===========================================================================
+# J. Catch-up sequencing (email flood suppression)
+# ===========================================================================
+
+
+class TestCatchUpSequencing:
+    """When a session first appears at a late stage, only the most relevant email
+    is sent in that run.  In-app notifications are still created for all applicable
+    stages via deduplication.
+    """
+
+    def test_J01_25h_session_sends_only_stage3_email(self, db):
+        """A 25 h session seen for the first time produces exactly 1 email (stage 3)."""
+        now = _now()
+        _watermark(db, now - timedelta(hours=48))
+        _session(db, 1, now - timedelta(hours=25))
+        _employee(db, 1, "emp@example.com")
+        db.commit()
+        mail = _sent_mail()
+        result = svc._enqueue_staged_reminders(db, _policy(), now, mail, now - timedelta(hours=48))
+        assert result["email_sent"] == 1
+        # Stage-3 email row must be SENT
+        from sqlalchemy import select
+
+        from app.models.reminders import AtworkReminderEmailSent
+
+        rows = db.scalars(select(AtworkReminderEmailSent)).all()
+        assert any(r.stage == 3 and r.status == "SENT" for r in rows)
+        # Stage-1 and stage-2 rows must NOT exist (suppressed)
+        assert all(r.stage not in (1, 2) for r in rows)
+
+    def test_J02_13h_session_sends_only_stage2_email(self, db):
+        """A 13 h session (past threshold, below 24 h) sends only the stage-2 email."""
+        now = _now()
+        _watermark(db, now - timedelta(hours=48))
+        _session(db, 2, now - timedelta(hours=13))
+        _employee(db, 2, "emp2@example.com")
+        db.commit()
+        mail = _sent_mail()
+        result = svc._enqueue_staged_reminders(db, _policy(missed_checkout_hours=12), now, mail, now - timedelta(hours=48))
+        assert result["email_sent"] == 1
+        from sqlalchemy import select
+
+        from app.models.reminders import AtworkReminderEmailSent
+
+        rows = db.scalars(select(AtworkReminderEmailSent)).all()
+        assert any(r.stage == 2 and r.status == "SENT" for r in rows)
+        assert all(r.stage not in (1, 3) for r in rows)
+
+    def test_J03_normal_progression_sends_one_email_per_run(self, db):
+        """Two incremental runs: first at 10 h sends stage-1 email, second at 12 h sends stage-2.
+        Neither run sends more than 1 email.
+        """
+        base = _now()
+        _watermark(db, base - timedelta(hours=48))
+        _session(db, 3, base - timedelta(hours=10, minutes=1))
+        _employee(db, 3, "emp3@example.com")
+        db.commit()
+
+        # Run 1 — just past stage 1
+        mail1 = _sent_mail()
+        result1 = svc._enqueue_staged_reminders(db, _policy(missed_checkout_hours=12), base, mail1, base - timedelta(hours=48))
+        assert result1["email_sent"] == 1
+
+        # Run 2 — now at 12 h+ (stage 2 threshold)
+        now2 = base + timedelta(hours=2)
+        mail2 = _sent_mail()
+        result2 = svc._enqueue_staged_reminders(db, _policy(missed_checkout_hours=12), now2, mail2, base - timedelta(hours=48))
+        assert result2["email_sent"] == 1
+
+        from sqlalchemy import select
+
+        from app.models.reminders import AtworkReminderEmailSent
+
+        rows = db.scalars(select(AtworkReminderEmailSent)).all()
+        # Exactly one stage-1 SENT and one stage-2 SENT; no stage-3 yet.
+        assert sum(1 for r in rows if r.stage == 1 and r.status == "SENT") == 1
+        assert sum(1 for r in rows if r.stage == 2 and r.status == "SENT") == 1
+        assert all(r.stage != 3 for r in rows)
+
+    def test_J04_in_app_notifications_created_for_all_stages_in_catchup(self, db):
+        """A 25 h catch-up run still creates in-app notifications for all 3 stages."""
+        now = _now()
+        _watermark(db, now - timedelta(hours=48))
+        _session(db, 4, now - timedelta(hours=25))
+        _employee(db, 4, "emp4@example.com")
+        db.commit()
+        result = svc._enqueue_staged_reminders(db, _policy(), now, _null_mail(), now - timedelta(hours=48))
+        assert result["stage1"] == 1
+        assert result["stage2"] == 1
+        assert result["stage3"] == 1
+
+
+# ===========================================================================
+# K. Email retry
+# ===========================================================================
+
+
+class TestEmailRetry:
+    """PENDING email rows are retried when next_attempt_at has elapsed and the
+    session is still open; rows whose sessions have been checked out are cancelled.
+    """
+
+    def _make_pending_row(self, db, session_id, stage: int, next_attempt_at):
+        from app.models.reminders import AtworkReminderEmailSent
+
+        row = AtworkReminderEmailSent(
+            session_id=session_id,
+            stage=stage,
+            recipient_email="retry@example.com",
+            status="PENDING",
+            next_attempt_at=next_attempt_at,
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    def test_K01_pending_row_retried_after_next_attempt_at(self, db):
+        """A PENDING row whose next_attempt_at is in the past is retried."""
+        now = _now()
+        _watermark(db, now - timedelta(hours=48))
+        s = _session(db, 10, now - timedelta(hours=11))
+        _employee(db, 10, "retry@example.com")
+        db.commit()
+        self._make_pending_row(db, s.id, 1, now - timedelta(minutes=5))
+        db.commit()
+
+        mail = _sent_mail()
+        result = svc._retry_pending_emails(db, mail, _policy(), now)
+        assert result["email_retried"] == 1
+        assert result["email_cancelled"] == 0
+
+    def test_K02_pending_row_not_retried_before_next_attempt_at(self, db):
+        """A PENDING row whose next_attempt_at is still in the future is not touched."""
+        now = _now()
+        _watermark(db, now - timedelta(hours=48))
+        s = _session(db, 11, now - timedelta(hours=11))
+        _employee(db, 11, "retry2@example.com")
+        db.commit()
+        self._make_pending_row(db, s.id, 1, now + timedelta(minutes=30))
+        db.commit()
+
+        mail = _sent_mail()
+        result = svc._retry_pending_emails(db, mail, _policy(), now)
+        assert result["email_retried"] == 0
+        assert result["email_cancelled"] == 0
+
+    def test_K03_pending_row_cancelled_when_session_checked_out(self, db):
+        """If the session was checked out before the retry, the row is marked FAILED."""
+        now = _now()
+        _watermark(db, now - timedelta(hours=48))
+        s = _session(db, 12, now - timedelta(hours=14), status=STATUS_COMPLETED)
+        _employee(db, 12, "retry3@example.com")
+        db.commit()
+        self._make_pending_row(db, s.id, 2, now - timedelta(minutes=1))
+        db.commit()
+
+        mail = _sent_mail()
+        result = svc._retry_pending_emails(db, mail, _policy(), now)
+        assert result["email_retried"] == 0
+        assert result["email_cancelled"] == 1
+        from sqlalchemy import select
+
+        from app.models.reminders import AtworkReminderEmailSent
+
+        row = db.scalars(select(AtworkReminderEmailSent)).first()
+        assert row.status == "FAILED"
+
+    def test_K04_retry_wired_from_enqueue_scheduled(self, db):
+        """enqueue_scheduled calls _retry_pending_emails when mail is provided."""
+        now = _now()
+        _watermark(db, now - timedelta(hours=48))
+        s = _session(db, 13, now - timedelta(hours=11))
+        _employee(db, 13, "retry4@example.com")
+        db.commit()
+
+        # Manually insert a PENDING row with elapsed next_attempt_at.
+        from app.models.reminders import AtworkReminderEmailSent
+
+        row = AtworkReminderEmailSent(
+            session_id=s.id,
+            stage=1,
+            recipient_email="retry4@example.com",
+            status="PENDING",
+            next_attempt_at=now - timedelta(minutes=10),
+        )
+        db.add(row)
+        db.commit()
+
+        mail = _sent_mail()
+        result = svc.enqueue_scheduled(db, _policy(), now, mail=mail)
+        assert result["email_retried"] == 1
+
+
+# ===========================================================================
+# L. Recipient identity validation
+# ===========================================================================
+
+
+class TestRecipientIdentity:
+    """_resolve_recipient validates the email from AttendanceEmployee (Entra-sourced
+    via remember_employee) with an RFC-inspired regex and service-account prefix rejection.
+    """
+
+    def test_L01_valid_email_accepted(self, db):
+        """A well-formed employee email is returned unchanged."""
+        _employee(db, 20, "alice@dijitalteam.com")
+        db.commit()
+        assert svc._resolve_recipient(db, 20) == "alice@dijitalteam.com"
+
+    def test_L02_missing_at_sign_rejected(self, db):
+        """An email without @ is rejected."""
+        _employee(db, 21, "notanemail")
+        db.commit()
+        assert svc._resolve_recipient(db, 21) is None
+
+    def test_L03_no_domain_dot_rejected(self, db):
+        """An email whose domain has no dot is rejected."""
+        _employee(db, 22, "user@localdomain")
+        db.commit()
+        assert svc._resolve_recipient(db, 22) is None
+
+    def test_L04_no_reply_prefix_rejected(self, db):
+        """no-reply@ address is rejected as a service account."""
+        _employee(db, 23, "no-reply@dijitalteam.com")
+        db.commit()
+        assert svc._resolve_recipient(db, 23) is None
+
+    def test_L05_noreply_prefix_rejected(self, db):
+        """noreply@ address is rejected as a service account."""
+        _employee(db, 24, "noreply@example.com")
+        db.commit()
+        assert svc._resolve_recipient(db, 24) is None
+
+    def test_L06_donotreply_prefix_rejected(self, db):
+        """donotreply@ address is rejected as a service account."""
+        _employee(db, 25, "donotreply@example.com")
+        db.commit()
+        assert svc._resolve_recipient(db, 25) is None
+
+    def test_L07_empty_email_rejected(self, db):
+        """An empty string email is rejected."""
+        _employee(db, 26, "")
+        db.commit()
+        assert svc._resolve_recipient(db, 26) is None
+
+    def test_L08_whitespace_only_email_rejected(self, db):
+        """A whitespace-only email is rejected."""
+        _employee(db, 27, "   ")
+        db.commit()
+        assert svc._resolve_recipient(db, 27) is None
+
+    def test_L09_spaces_in_local_part_rejected(self, db):
+        """An address with spaces in the local part is rejected."""
+        _employee(db, 28, "first last@example.com")
+        db.commit()
+        assert svc._resolve_recipient(db, 28) is None
