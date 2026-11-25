@@ -227,7 +227,8 @@ describe("Identity Management — fail-closed confirmation", () => {
     expect(screen.queryByTestId("confirm-sentence")).not.toBeInTheDocument();
     expect(id.getEvidence).not.toHaveBeenCalled();
     id.getEvidence.mockRejectedValue(new ApiError(503, JSON.stringify({ error: "DIRECTORY_UNAVAILABLE", message: "The Workforce Directory is unavailable." })));
-    fireEvent.change(screen.getByLabelText(/Owned from/), { target: { value: "2026-11-01" } });
+    // Use a date different from the hire date (2026-11-01) so React Query doesn't return the cached success result
+    fireEvent.change(screen.getByLabelText(/Owned from/), { target: { value: "2026-10-01" } });
     expect(await screen.findByText(/Workforce Directory is unavailable/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm mapping" })).toBeDisabled();
     expect(screen.queryByText(/No evidence warnings/)).not.toBeInTheDocument();
