@@ -27,13 +27,23 @@ def _bearer(payload, *, secret=SECRET, issuer="dijione-dev-identity"):
 
 def _supplier_session(sub=1, **supplier):
     """The shape birthday-api signs for a supplier-portal user."""
-    portal = {"role": "BIRTHDAY_SUPPLIER", "client_id": None, "client_ids": None,
-              "permissions": ["birthday.portal.access", "birthday.portal.respond"]}
-    return _bearer({
-        "sub": str(sub), "full_name": "Supplier Person", "email": "orders@supplier.example",
-        "platform_role": "PLATFORM_USER", "platform_permissions": [], "module_roles": {"birthday": portal},
-        "supplier": {"supplier_id": 5, "supplier_user_id": sub, **supplier},
-    })
+    portal = {
+        "role": "BIRTHDAY_SUPPLIER",
+        "client_id": None,
+        "client_ids": None,
+        "permissions": ["birthday.portal.access", "birthday.portal.respond"],
+    }
+    return _bearer(
+        {
+            "sub": str(sub),
+            "full_name": "Supplier Person",
+            "email": "orders@supplier.example",
+            "platform_role": "PLATFORM_USER",
+            "platform_permissions": [],
+            "module_roles": {"birthday": portal},
+            "supplier": {"supplier_id": 5, "supplier_user_id": sub, **supplier},
+        }
+    )
 
 
 def _routes_requiring_a_token(api_client):

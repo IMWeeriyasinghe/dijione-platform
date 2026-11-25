@@ -332,8 +332,7 @@ def test_permissions_are_enforced_separately(api_client):
 def test_default_access_without_an_attendance_identity_opens_the_app_but_records_nothing(api_client, db):
     """Platform Core gives every active user ATWORK_USER; without a verified employee record the
     grant carries only atwork.access. The app opens; no attendance action is possible."""
-    access_only = {"atwork": {"role": "ATWORK_USER", "client_id": None, "client_ids": None,
-                              "permissions": ["atwork.access"]}}
+    access_only = {"atwork": {"role": "ATWORK_USER", "client_id": None, "client_ids": None, "permissions": ["atwork.access"]}}
     h = bearer(issue_token(7, module_roles=access_only))
     me = api_client.get("/api/atwork/me", headers=h).json()
     assert me["module_access"] is True and me["role"] == "ATWORK_USER"

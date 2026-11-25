@@ -4,9 +4,9 @@ import { useEffect, useRef } from "react";
 import { Button } from "@dijione/design-system";
 import { duration } from "@/lib/format";
 
-type Props = { netSeconds: number; grossSeconds: number; onCancel: () => void; onConfirm: () => void };
+type Props = { netSeconds: number; grossSeconds: number; isOverdue?: boolean; onCancel: () => void; onConfirm: () => void };
 
-export function CheckoutDialog({ netSeconds, grossSeconds, onCancel, onConfirm }: Props) {
+export function CheckoutDialog({ netSeconds, grossSeconds, isOverdue = false, onCancel, onConfirm }: Props) {
   const panel = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(null);
@@ -30,15 +30,32 @@ export function CheckoutDialog({ netSeconds, grossSeconds, onCancel, onConfirm }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onKeyDown={onKeyDown}>
       <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="checkout-title" className="w-full max-w-md rounded-2xl bg-dt-surface p-6 shadow-xl">
-        <h2 id="checkout-title" className="text-lg font-semibold">End this session?</h2>
+        <h2 id="checkout-title" className="text-lg font-semibold">
+          {isOverdue ? "Check out of this open session?" : "End this session?"}
+        </h2>
+        {isOverdue && (
+          <p className="mt-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            This session has been open for an extended period. Checking out now records your attendance accurately. If the check-out time is not right, use <strong>Request Correction</strong> after checking out.
+          </p>
+        )}
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-          <div><dt className="text-dt-text-secondary">Net working time</dt><dd className="font-mono text-xl font-semibold tabular-nums">{duration(netSeconds)}</dd></div>
-          <div><dt className="text-dt-text-secondary">Session elapsed</dt><dd className="font-mono text-xl font-semibold tabular-nums">{duration(grossSeconds)}</dd></div>
+          <div><dt className="text-dt-text-secondary">{isOverdue ? "Unverified elapsed time" : "Net working time"}</dt><dd className="font-mono text-xl font-semibold tabular-nums">{duration(isOverdue ? grossSeconds : netSeconds)}</dd></div>
+          {!isOverdue && <div><dt className="text-dt-text-secondary">Session elapsed</dt><dd className="font-mono text-xl font-semibold tabular-nums">{duration(grossSeconds)}</dd></div>}
         </dl>
         <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-dt-text-secondary">
-          <li>Your session ends now and cannot be undone.</li>
-          <li>If you still have work to do, you can check in again. That starts a new session, and both count toward today&apos;s total.</li>
-          <li>Time between sessions is not counted. To add it or change this check-out, send a correction request for Management to review.</li>
+          {isOverdue ? (
+            <>
+              <li>Your session ends at the current time.</li>
+              <li>If the actual time you stopped working was earlier, request a correction after checking out.</li>
+              <li>Your attendance manager will be able to see the correction request.</li>
+            </>
+          ) : (
+            <>
+              <li>Your session ends now and cannot be undone.</li>
+              <li>If you still have work to do, you can check in again. That starts a new session, and both count toward today&apos;s total.</li>
+              <li>Time between sessions is not counted. To add it or change this check-out, send a correction request for Management to review.</li>
+            </>
+          )}
         </ul>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button ref={cancel} variant="secondary" onClick={onCancel}>Keep Working</Button>

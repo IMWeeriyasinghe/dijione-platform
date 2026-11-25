@@ -31,7 +31,7 @@ def alembic(url, *args):
 def test_upgrade_constraints_downgrade_and_reupgrade(tmp_path):
     url = f"sqlite:///{tmp_path / 'migration.db'}"
     heads = alembic(url, "heads")
-    assert heads.stdout.split() == ["0003_atwork_notifications", "(head)"]
+    assert heads.stdout.split() == ["0004_atwork_reminders", "(head)"]
     up = alembic(url, "upgrade", "head")
     assert up.returncode == 0, up.stderr
     engine = create_engine(url)

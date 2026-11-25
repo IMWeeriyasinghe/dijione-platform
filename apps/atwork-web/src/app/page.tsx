@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Card, EmptyState, LoadingState, PageHeader, StatusBadge } from "@dijione/design-system";
-import { Coffee, LogIn, LogOut, Play } from "lucide-react";
+import { AlertTriangle, Coffee, LogIn, LogOut, Play } from "lucide-react";
 import { CheckoutDialog } from "@/components/checkout-dialog";
 import { DayHeading, Notice, OfflineBanner, Page, QueryError, RequirePermission, SessionRow, TotalsCards } from "@/components/ui";
 import type { Session, Today, WorkMode } from "@/lib/api";
@@ -124,6 +124,7 @@ function TodayScreen() {
   const breakSeconds = openBreak ? Math.max(0, Math.floor((serverNow - new Date(openBreak.started_at).getTime()) / 1000)) : 0;
   const busy = action.pending !== null;
   const disabled = busy || !online;
+  const isOverdue = Boolean(session && policy.data && totals && totals.gross >= policy.data.missed_checkout_hours * 3600);
 
   return (
     <>
@@ -133,9 +134,35 @@ function TodayScreen() {
       {action.notice && <Notice tone={action.notice.tone} action={action.retryable ? <Button size="sm" variant="secondary" disabled={disabled} onClick={action.retry}>Retry</Button> : undefined}>{action.notice.text}</Notice>}
 
       {session && policy.data && totals && totals.gross >= policy.data.missed_checkout_hours * 3600 && (
-        <Notice tone="info" action={hasPermission(scope, PERM.REQUEST_OWN) ? <Link className="font-medium text-dt-burnt-orange underline underline-offset-2" href={`/requests/new?sessionId=${session.id}`}>Request correction</Link> : undefined}>
-          This session has been open for over {policy.data.missed_checkout_hours} hours and its time is unverified, so it is not counted in your totals. If you forgot to check out, request a correction with your real check-out time; the hours count once Management approves it.
-        </Notice>
+        <div
+          role="alert"
+          aria-live="polite"
+          className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-start sm:gap-4"
+        >
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-900">Missed check-out suspected</p>
+            <p className="mt-1 text-sm text-amber-800">
+              This session has been open for over {policy.data.missed_checkout_hours} hours. The elapsed time shown below is unverified and will not count toward your attendance record until you check out or a correction is approved.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {canRecord && state === "WORKING" && (
+                <Button size="sm" loading={action.pending === "CHECK_OUT"} disabled={disabled} onClick={() => setConfirmingCheckout(true)}>
+                  <LogOut className="size-3.5" aria-hidden />
+                  Check Out Now
+                </Button>
+              )}
+              {hasPermission(scope, PERM.REQUEST_OWN) && (
+                <Link
+                  href={`/requests/new?sessionId=${session.id}`}
+                  className="inline-flex items-center rounded-lg border border-dt-border bg-dt-surface px-3 py-1.5 text-sm font-medium text-dt-text hover:bg-dt-surface-warm"
+                >
+                  Request Correction
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
       )}
       {state === "NOT_CHECKED_IN" && canRecord && today.data.session_count > 0 && (
         <Notice tone="info" action={hasPermission(scope, PERM.REQUEST_OWN) ? <Link className="font-medium text-dt-burnt-orange underline underline-offset-2" href="/requests/new">Request a missing session</Link> : undefined}>
@@ -164,10 +191,10 @@ function TodayScreen() {
         {session && totals && (
           <div>
             <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
-              {session.unverified ? (
+              {isOverdue ? (
                 <>
-                  <Timer label="Session elapsed (unverified)" seconds={totals.gross} large />
-                  <p className="self-center text-sm text-dt-warning">Not counted as working time until confirmed.</p>
+                  <Timer label="Unverified elapsed time" seconds={totals.gross} large />
+                  {state === "ON_BREAK" ? <Timer label="Net working time" seconds={totals.net} /> : <Timer label="Break time" seconds={totals.breaks} />}
                 </>
               ) : (
                 <>
@@ -200,7 +227,7 @@ function TodayScreen() {
       </Card>
 
       {confirmingCheckout && state === "WORKING" && totals && (
-        <CheckoutDialog netSeconds={totals.net} grossSeconds={totals.gross} onCancel={() => setConfirmingCheckout(false)} onConfirm={() => { setConfirmingCheckout(false); action.run({ kind: "CHECK_OUT" }); }} />
+        <CheckoutDialog netSeconds={totals.net} grossSeconds={totals.gross} isOverdue={isOverdue} onCancel={() => setConfirmingCheckout(false)} onConfirm={() => { setConfirmingCheckout(false); action.run({ kind: "CHECK_OUT" }); }} />
       )}
       {today.data.session_count === 0 && state === "NOT_CHECKED_IN" ? <EmptyState title="No attendance recorded today" description="Your sessions will appear here after you check in." /> : <TodaySummary today={today.data} format={format} serverNow={serverNow} />}
     </>

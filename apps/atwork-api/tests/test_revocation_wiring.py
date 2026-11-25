@@ -29,9 +29,17 @@ def _no_guard_afterwards():
 def _staff_headers(av):
     now = datetime.now(UTC)
     body = {
-        "sub": str(USER_ID), "iat": now, "exp": now + timedelta(hours=1), "iss": "dijione-dev-identity",
-        "is_active": True, "full_name": "Staff Person", "email": "staff@example.com", "av": av,
-        "platform_role": "PLATFORM_USER", "platform_permissions": [], "module_roles": {},
+        "sub": str(USER_ID),
+        "iat": now,
+        "exp": now + timedelta(hours=1),
+        "iss": "dijione-dev-identity",
+        "is_active": True,
+        "full_name": "Staff Person",
+        "email": "staff@example.com",
+        "av": av,
+        "platform_role": "PLATFORM_USER",
+        "platform_permissions": [],
+        "module_roles": {},
     }
     return {"Authorization": "Bearer " + jwt.encode(body, SECRET, algorithm="HS256")}
 
@@ -46,9 +54,7 @@ def _walk(router):
 
 def _actual_routes():
     return {
-        f"{method} {route.path}": route
-        for route in _walk(app.router)
-        for method in sorted(route.methods - {"HEAD", "OPTIONS"})
+        f"{method} {route.path}": route for route in _walk(app.router) for method in sorted(route.methods - {"HEAD", "OPTIONS"})
     }
 
 
@@ -89,8 +95,11 @@ def test_the_method_is_never_the_deciding_factor():
     writes = re.compile(r"\.commit\(|\.add\(|\.delete\(|\.merge\(")
     allowed_reads = set()
     offenders = [
-        key for key, route in routes.items()
-        if key.startswith("GET ") and ROUTE_POLICY[key] == "READ" and key not in allowed_reads
+        key
+        for key, route in routes.items()
+        if key.startswith("GET ")
+        and ROUTE_POLICY[key] == "READ"
+        and key not in allowed_reads
         and writes.search(inspect.getsource(route.endpoint))
     ]
     assert offenders == [], f"GET routes that write must not be READ: {offenders}"
@@ -101,8 +110,11 @@ def test_exports_and_administration_are_sensitive():
         _method, path = key.split(" ", 1)
         if path.endswith("/export") or "/admin/" in path:
             assert klass == "SENSITIVE", key
-    for key in ("PUT /api/atwork/management/settings", "GET /api/atwork/management/audit",
-                "POST /api/atwork/management/corrections/{request_id}/approve"):
+    for key in (
+        "PUT /api/atwork/management/settings",
+        "GET /api/atwork/management/audit",
+        "POST /api/atwork/management/corrections/{request_id}/approve",
+    ):
         assert ROUTE_POLICY[key] == "SENSITIVE", key
     assert ROUTE_POLICY["POST /api/atwork/attendance/check-in"] == "OWN"
 
@@ -138,7 +150,8 @@ def test_an_inactive_account_is_refused_whatever_its_version(api_client, db):
     _guard({USER_ID: (0, False)})
     routes = [r for r in _routes_requiring_a_token(api_client) if r[0] == "GET"]
     refused = [
-        r for r in routes
+        r
+        for r in routes
         if api_client.request(*r, headers=_staff_headers(av=50)).headers.get("x-auth-error") == "session_revoked"
     ]
     assert len(refused) >= 1
@@ -183,9 +196,18 @@ def test_everything_a_manager_sees_about_others_is_sensitive_except_the_access_p
 def _view_as_headers():
     now = datetime.now(UTC)
     body = {
-        "sub": str(USER_ID), "iat": now, "exp": now + timedelta(minutes=30), "iss": "dijione-dev-identity",
-        "is_active": True, "full_name": "Employee", "email": "employee@example.com", "av": 0,
-        "platform_role": "PLATFORM_USER", "platform_permissions": [], "module_roles": {}, "actor_type": "view_as",
+        "sub": str(USER_ID),
+        "iat": now,
+        "exp": now + timedelta(minutes=30),
+        "iss": "dijione-dev-identity",
+        "is_active": True,
+        "full_name": "Employee",
+        "email": "employee@example.com",
+        "av": 0,
+        "platform_role": "PLATFORM_USER",
+        "platform_permissions": [],
+        "module_roles": {},
+        "actor_type": "view_as",
         "view_as": {"session_id": "S-1", "actor_id": 99, "actor_name": "Admin", "actor_av": 0},
     }
     return {"Authorization": "Bearer " + jwt.encode(body, SECRET, algorithm="HS256")}
