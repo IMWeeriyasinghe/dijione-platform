@@ -222,6 +222,7 @@ describe("Identity Management — fail-closed confirmation", () => {
     fireEvent.click(await screen.findByRole("radio", {}, { timeout: 2000 }));
     fireEvent.change(screen.getByLabelText(/Verification evidence/), { target: { value: "IT enrolment sheet signed by HR" } });
     fireEvent.change(screen.getByLabelText(/Owned from/), { target: { value: "2026-02-31" } }); // not a real date (sanitised to "")
+    id.getEvidence.mockClear(); // hire-date auto-populate may have fired with the valid hire date; reset before the invalid-date assertion
     expect(screen.getByRole("button", { name: "Confirm mapping" })).toBeDisabled();
     expect(screen.queryByTestId("confirm-sentence")).not.toBeInTheDocument();
     expect(id.getEvidence).not.toHaveBeenCalled();

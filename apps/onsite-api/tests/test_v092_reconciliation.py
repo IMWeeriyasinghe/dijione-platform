@@ -14,7 +14,6 @@ import pytest
 from tests.conftest import headers_for, make_mapping
 from tests.identity_helpers import BASE, ready
 
-
 # ------------------------------------------------------------------ helpers
 
 

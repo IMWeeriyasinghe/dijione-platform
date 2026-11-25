@@ -248,7 +248,7 @@ function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog,
       {isPeriodScoped && onShowAll && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dt-border bg-dt-surface-warm px-3 py-2">
           <p className="text-sm text-dt-text-secondary">
-            Showing IDs with unmapped activity in <span className="font-medium text-dt-text-primary">{periodFrom} – {periodTo}</span>
+            Showing IDs with unmapped activity in <span className="font-medium text-dt-text-primary">{periodFrom} to {periodTo}</span>
             {" "}(drilldown from Overview). The count reconciles with the Overview widget.
           </p>
           <button type="button" className={buttonClass("ghost")} onClick={onShowAll}>Show all outstanding IDs</button>
