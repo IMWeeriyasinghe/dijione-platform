@@ -529,9 +529,16 @@ def _code_days(db: Session, actor: Actor, site_id: str) -> dict[str, list[tuple[
 
 
 def unmapped_report(db: Session, actor: Actor, directory: DirectorySnapshot, *, site_id: str | None = None,
-                    q: str | None = None, sort: str = "-unmapped_events", today: date | None = None) -> list[dict]:
+                    q: str | None = None, sort: str = "-unmapped_events", today: date | None = None,
+                    date_from: date | None = None, date_to: date | None = None) -> list[dict]:
     """Every ZKBioTime ID with attendance that is not covered by a verified
-    mapping on at least one day — the outstanding mapping work."""
+    mapping on at least one day — the outstanding mapping work.
+
+    When ``date_from``/``date_to`` are provided the returned list is restricted
+    to IDs that had at least one unmapped day inside that window (period-scoped
+    drilldown).  All per-row statistics still reflect full history so the
+    administrator sees the complete picture of each ID.
+    """
     index = MappingIndex.load(db, allowed_site_ids=actor.allowed_site_ids, directory=directory)
     repo = IdentityRepository(db)
     today = today or date.today()
@@ -547,6 +554,15 @@ def unmapped_report(db: Session, actor: Actor, directory: DirectorySnapshot, *, 
             unmapped = [(d, n) for d, n in days if not index.resolve(site, code, d).identified]
             if not unmapped:
                 continue
+            # Period gate: if caller supplies a window, only include IDs that
+            # had an unmapped day inside [date_from, date_to].
+            if date_from is not None or date_to is not None:
+                in_window = any(
+                    (date_from is None or d >= date_from) and (date_to is None or d <= date_to)
+                    for d, _ in unmapped
+                )
+                if not in_window:
+                    continue
             current = index.resolve(site, code, today)
             rows.append({
                 "site_id": site, "zk_emp_code": code,
@@ -591,13 +607,20 @@ def review_state(row: dict) -> str:
 
 
 def unmapped_summary(db: Session, actor: Actor, directory: DirectorySnapshot, *, site_id: str,
-                     today: date | None = None) -> dict:
-    """Backlog picture of every outstanding ZKBioTime ID at one site (all
-    mirrored history): review state, age of the oldest unmapped punch day and
-    recency of the latest one. Counts are biometric IDs, never people."""
+                     today: date | None = None, date_from: date | None = None,
+                     date_to: date | None = None) -> dict:
+    """Backlog picture of outstanding ZKBioTime IDs at one site: review state,
+    age of the oldest unmapped punch day and recency of the latest one.
+    Counts are biometric IDs, never people.
+
+    When ``date_from``/``date_to`` are supplied only IDs with unmapped activity
+    inside the window are counted (period-scoped view).  Omit both for the
+    full all-history backlog.
+    """
     site = _site(actor, site_id)
     today = today or date.today()
-    rows = unmapped_report(db, actor, directory, site_id=site, today=today)
+    rows = unmapped_report(db, actor, directory, site_id=site, today=today,
+                           date_from=date_from, date_to=date_to)
     review = Counter(review_state(r) for r in rows)
 
     def buckets(field: str, spec) -> list[dict]:
@@ -658,12 +681,18 @@ def directory_search(db: Session, actor: Actor, directory: DirectorySnapshot, q:
     out = []
     for e in directory.entries:
         bid = str(e.get("bamboohr_id"))
-        hay = [(e.get("display_name") or "").lower(), str(e.get("employee_number") or "").lower(), bid.lower()]
+        hay = [
+            (e.get("display_name") or "").lower(),
+            str(e.get("employee_number") or "").lower(),
+            bid.lower(),
+            (e.get("work_email") or "").lower(),   # Workstream C: work email search
+        ]
         if any(ql in h for h in hay):
             out.append({"bamboohr_id": bid, "display_name": e.get("display_name"),
                         "employee_number": e.get("employee_number"), "department": e.get("department"),
                         "job_title": e.get("job_title"), "employment_status": e.get("employment_status"),
                         "hire_date": e.get("hire_date"), "termination_date": e.get("termination_date"),
+                        "work_email": e.get("work_email"),   # returned so the UI can display it
                         "has_photo": bool(e.get("has_photo")), "active_codes": sorted(set(active_codes.get(bid, [])))})
     out.sort(key=lambda r: ((r["display_name"] or "").lower(), r["bamboohr_id"]))
     return out

@@ -212,7 +212,7 @@ function OverviewView() {
           <KpiCard label="Unmapped IDs" value={fmtNum(o.operational.unmapped_codes)} icon={Fingerprint}
             tone={o.operational.unmapped_codes ? "attention" : "default"} help={HELP.unmapped}
             sub={<span>{fmtNum(o.operational.unmapped_punches)} of {fmtNum(o.operational.total_punches)} punches unmapped</span>}
-            href={hasPermission(scope, PERM.IDENTITY) ? "/admin/identity?tab=unmapped" : undefined} hrefLabel="Open Identity Management" />
+            href={hasPermission(scope, PERM.IDENTITY) ? hrefWith("/admin/identity", { tab: "unmapped", from: period.from, to: period.to }) : undefined} hrefLabel="Open Identity Management" />
         ) : (
           <KpiCard label="Identified team members" value={fmtNum(k.identified_employees ?? k.employees_with_activity)} icon={Fingerprint}
             help={HELP.employees} />

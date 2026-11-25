@@ -77,7 +77,10 @@ function IdentityManagement() {
         {tab === "readiness" && <ReadinessTab siteId={site.site_id} canManage={canManage} open={open} />}
         {tab === "unmapped" && <UnmappedTab siteId={site.site_id} q={s.q} setQ={(q) => set({ q })} sort={s.sort} setSort={(v) => set({ sort: v })}
           canManage={canManage} open={open}
-          backlog={<BacklogPanel siteId={site.site_id} period={period} today={site.today} onPeriod={(p) => set({ from: p.from, to: p.to })} />} />}
+          periodFrom={s.from || undefined} periodTo={s.to || undefined}
+          onShowAll={() => set({ from: "", to: "" })}
+          backlog={<BacklogPanel siteId={site.site_id} period={period} today={site.today} onPeriod={(p) => set({ from: p.from, to: p.to })}
+            periodScoped={Boolean(s.from && s.to)} />} />}
         {tab === "mappings" && <MappingsTab siteId={site.site_id} status={s.status} q={s.mq} set={set} canManage={canManage} open={open} />}
         {tab === "conflicts" && <ConflictsTab siteId={site.site_id} timeZone={site.time_zone} canManage={canManage} open={open} />}
         {tab === "import" && (canManage ? <ImportTab /> : <InlineAlert tone="info">Importing requires the Manage Identity Mappings permission.</InlineAlert>)}
@@ -174,8 +177,14 @@ function ReadinessTab({ siteId, canManage, open }: { siteId: string; canManage: 
 
 /* ----------------------------------------------------------------- unmapped */
 
-function BacklogPanel({ siteId, period, today, onPeriod }: { siteId: string; period: Period; today: string; onPeriod: (p: Period) => void }) {
-  const sum = useQuery({ queryKey: ["onsite-identity", "unmapped-summary", siteId], queryFn: () => getUnmappedSummary({ site_id: siteId }) });
+function BacklogPanel({ siteId, period, today, onPeriod, periodScoped }: {
+  siteId: string; period: Period; today: string; onPeriod: (p: Period) => void; periodScoped: boolean;
+}) {
+  const sumParams = periodScoped
+    ? { site_id: siteId, date_from: period.from, date_to: period.to }
+    : { site_id: siteId };
+  const sum = useQuery({ queryKey: ["onsite-identity", "unmapped-summary", siteId, sumParams],
+    queryFn: () => getUnmappedSummary(sumParams) });
   const cov = useQuery({ queryKey: ["onsite-identity", "coverage", siteId, period.from, period.to],
     queryFn: () => getCoverage({ site_id: siteId, date_from: period.from, date_to: period.to }) });
   const label = fmtPeriod(period, today);
@@ -194,7 +203,7 @@ function BacklogPanel({ siteId, period, today, onPeriod }: { siteId: string; per
       </Panel>
       {sum.isLoading ? <div className="xl:col-span-3"><SkeletonRows rows={3} /></div> : !sum.data ? <div className="xl:col-span-3"><ErrorState onRetry={() => sum.refetch()} /></div> : (
         <>
-          <Panel title="Review status" subtitle={`${fmtNum(sum.data.outstanding_ids)} outstanding IDs · all mirrored history`}>
+          <Panel title="Review status" subtitle={`${fmtNum(sum.data.outstanding_ids)} outstanding IDs · ${periodScoped ? label : "all mirrored history"}`}>
             <SegmentBar unit="IDs" summary="Outstanding ZKBioTime IDs by review status" empty="No outstanding IDs." stacked
               segments={(Object.keys(REVIEW_STATE) as ReviewState[]).map((k) => ({
                 key: k, label: REVIEW_STATE[k].label, value: sum.data!.review[k], help: REVIEW_STATE[k].help,
@@ -202,7 +211,7 @@ function BacklogPanel({ siteId, period, today, onPeriod }: { siteId: string; per
                 tone: k === "REJECTED_ASSOCIATION" ? "neutral" : "warning",
               }))} />
           </Panel>
-          <Panel title="Backlog age" subtitle={`Since the oldest unmapped punch day · as of ${fmtDay(sum.data.as_of, true)}`}>
+          <Panel title="Backlog age" subtitle={`Since the oldest unmapped punch day · ${periodScoped ? label : `as of ${fmtDay(sum.data.as_of, true)}`}`}>
             <HBarList unit="IDs" summary="Outstanding IDs by age of their oldest unmapped punch day"
               items={sum.data.aging.map((b) => ({ key: b.label, label: b.label, value: b.ids, sub: `${fmtNum(b.unmapped_punches)} unmapped punches` }))} />
           </Panel>
@@ -218,20 +227,33 @@ function BacklogPanel({ siteId, period, today, onPeriod }: { siteId: string; per
 
 const UNMAPPED_SORT = new Set(["unmapped_events", "unmapped_days", "last_unmapped", "first_seen", "zk_emp_code", "event_count"]);
 
-function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog }: {
+function UnmappedTab({ siteId, q, setQ, sort, setSort, canManage, open, backlog, periodFrom, periodTo, onShowAll }: {
   siteId: string; q: string; setQ: (v: string) => void; sort: string; setSort: (v: string) => void; canManage: boolean; open: Open;
-  backlog: React.ReactNode;
+  backlog: React.ReactNode; periodFrom?: string; periodTo?: string; onShowAll?: () => void;
 }) {
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
   const [exportState, setExportState] = useState<"idle" | "busy" | "error">("idle");
   const sortKey = UNMAPPED_SORT.has(sort.replace(/^-/, "")) ? sort : "-unmapped_events";
-  const params = { site_id: siteId, q: q || undefined, sort: sortKey, page, page_size: size };
+  const isPeriodScoped = Boolean(periodFrom && periodTo);
+  const params = {
+    site_id: siteId, q: q || undefined, sort: sortKey, page, page_size: size,
+    ...(isPeriodScoped ? { date_from: periodFrom, date_to: periodTo } : {}),
+  };
   const query = useQuery({ queryKey: ["onsite-identity", "unmapped", params], queryFn: () => getUnmapped(params), placeholderData: keepPreviousData });
   const total = query.data?.total ?? 0;
   return (
     <div className="space-y-4">
       {backlog}
+      {isPeriodScoped && onShowAll && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dt-border bg-dt-surface-warm px-3 py-2">
+          <p className="text-sm text-dt-text-secondary">
+            Showing IDs with unmapped activity in <span className="font-medium text-dt-text-primary">{periodFrom} to {periodTo}</span>
+            {" "}(drilldown from Overview). The count reconciles with the Overview widget.
+          </p>
+          <button type="button" className={buttonClass("ghost")} onClick={onShowAll}>Show all outstanding IDs</button>
+        </div>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
           <div className="min-w-0 max-w-sm flex-1"><SearchField label={`Search ${ID_LABELS.zk}`} value={q} onChange={(v) => { setQ(v); setPage(1); }} /></div>
