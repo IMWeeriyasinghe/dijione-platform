@@ -150,20 +150,27 @@ def _site_today(db: Session, site_id: str) -> date:
 def unmapped(site_id: str | None = None, q: str | None = None,
              sort: str = Query("-unmapped_events", pattern="^-?(unmapped_events|event_count|last_unmapped|first_seen|"
                                                        "zk_emp_code|unmapped_days)$"),
+             date_from: date | None = None, date_to: date | None = None,
              page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200),
              fmt: str = Query("json", alias="format", pattern="^(json|csv)$"),
              scope: OnsiteScope = Depends(_READ), db: Session = Depends(get_db)):
-    rows = _run(ia.unmapped_report, db, _actor(scope), workforce_directory.load(), site_id=site_id, q=q, sort=sort)
+    rows = _run(ia.unmapped_report, db, _actor(scope), workforce_directory.load(),
+                site_id=site_id, q=q, sort=sort, date_from=date_from, date_to=date_to)
     if fmt == "csv":
         return _csv(rows, UNMAPPED_COLUMNS, "onsite-unmapped-zkbiotime-ids.csv")
     return _page(rows, page, page_size)
 
 
 @router.get("/unmapped/summary")
-def unmapped_summary(site_id: str, scope: OnsiteScope = Depends(_READ), db: Session = Depends(get_db)):
-    """Outstanding-ID backlog: review state, aging and recency (site-local dates)."""
+def unmapped_summary(site_id: str, date_from: date | None = None, date_to: date | None = None,
+                     scope: OnsiteScope = Depends(_READ), db: Session = Depends(get_db)):
+    """Outstanding-ID backlog: review state, aging and recency (site-local dates).
+
+    Supply ``date_from``/``date_to`` to scope the summary to IDs with unmapped
+    activity in that period (period-scoped view for the drilldown).
+    """
     return _run(ia.unmapped_summary, db, _actor(scope), workforce_directory.load(), site_id=site_id,
-                today=_site_today(db, site_id))
+                today=_site_today(db, site_id), date_from=date_from, date_to=date_to)
 
 
 @router.get("/codes/{zk_emp_code}")

@@ -71,7 +71,7 @@ export function EmployeePicker({ value, onChange }: { value: DirectoryHit | null
   return (
     <div className="space-y-2">
       <TextField label="Search the BambooHR Workforce Directory" value={text} onChange={setText}
-        placeholder="Name, BHR ID or EMP Number (2+ characters)" />
+        placeholder="Name, BHR ID, EMP Number or work email (2+ characters)" />
       {q.length >= 2 && results.isLoading && <SkeletonRows rows={2} label="Searching…" />}
       {results.isError && <ErrorBox error={results.error} />}
       {results.data && (
@@ -91,6 +91,7 @@ export function EmployeePicker({ value, onChange }: { value: DirectoryHit | null
                   </span>
                   <span className="block text-xs text-dt-text-secondary">
                     Hired {h.hire_date ?? "—"}{h.termination_date ? ` · terminated ${h.termination_date}` : ""}
+                    {h.work_email ? <> · {h.work_email}</> : null}
                     {h.active_codes.length ? ` · already mapped: ${h.active_codes.join(", ")}` : ""}
                   </span>
                 </span>
@@ -156,6 +157,7 @@ export function MapDialog({ siteId, code: initialCode, onClose }: { siteId: stri
   const [code, setCode] = useState(initialCode ?? "");
   const [emp, setEmp] = useState<DirectoryHit | null>(null);
   const [from, setFrom] = useState(""); // never defaulted: the administrator enters ownership start from evidence
+  const [fromSource, setFromSource] = useState<"empty" | "bhhr" | "manual">("empty");
   const [to, setTo] = useState("");
   const [evidence, setEvidence] = useState("");
   const [acked, setAcked] = useState<Set<string>>(new Set());
@@ -168,6 +170,19 @@ export function MapDialog({ siteId, code: initialCode, onClose }: { siteId: stri
   // Fail closed: confirm only after the evidence check for exactly these inputs succeeded.
   const ready = Boolean(code.trim() && emp && datesOk && evidence.trim().length >= MIN_TEXT && allAcked
     && preview.isSuccess && !preview.isFetching);
+
+  function handleEmpChange(h: DirectoryHit | null) {
+    setEmp(h);
+    setAcked(new Set());
+    setServerWarnings(null);
+    // Auto-populate "On from" with hire date unless the admin has already manually set it.
+    if (fromSource !== "manual") {
+      const hire = h?.hire_date ?? "";
+      setFrom(hire);
+      setFromSource(h ? (hire ? "bhhr" : "empty") : "empty");
+    }
+  }
+
   const save = useMutation({
     mutationFn: () => createMapping({ site_id: siteId, zk_emp_code: code, bamboohr_id: emp!.bamboohr_id, valid_from: from,
       valid_to: to || null, evidence, acknowledged_warnings: [...acked] }),
@@ -178,9 +193,18 @@ export function MapDialog({ siteId, code: initialCode, onClose }: { siteId: stri
     <Modal open onClose={onClose} title="Map ZKBioTime ID to a BambooHR team member">
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready) save.mutate(); }}>
         <TextField label={ID_LABELS.zk} value={code} onChange={setCode} required placeholder="Exact ZKBioTime ID" />
-        <EmployeePicker value={emp} onChange={(h) => { setEmp(h); setAcked(new Set()); setServerWarnings(null); }} />
+        <EmployeePicker value={emp} onChange={handleEmpChange} />
         <div className="grid grid-cols-2 gap-2">
-          <TextField label="Owned from (site-local date)" type="date" value={from} onChange={(v) => { setFrom(v); setServerWarnings(null); }} required />
+          <div>
+            <TextField label="Owned from (site-local date)" type="date" value={from}
+              onChange={(v) => { setFrom(v); setFromSource("manual"); setServerWarnings(null); }} required />
+            {fromSource === "bhhr" && (
+              <p className="mt-0.5 text-xs text-dt-text-secondary">From BambooHR hire date · you can change this</p>
+            )}
+            {emp && !emp.hire_date && fromSource === "empty" && (
+              <p className="mt-0.5 text-xs text-dt-text-secondary">BambooHR hire date not available · enter from evidence</p>
+            )}
+          </div>
           <TextField label="Owned until (optional)" type="date" value={to} onChange={(v) => { setTo(v); setServerWarnings(null); }} />
         </div>
         <p className="text-xs text-dt-text-secondary">Enter the start date from HR or enrolment evidence. It is never assumed from the first recorded punch.</p>

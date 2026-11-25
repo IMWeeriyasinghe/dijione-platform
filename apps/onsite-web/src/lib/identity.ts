@@ -52,7 +52,7 @@ export type UnmappedRow = {
 export type DirectoryHit = {
   bamboohr_id: string; display_name: string | null; employee_number: string | null; department: string | null;
   job_title: string | null; employment_status: string | null; hire_date: string | null;
-  termination_date: string | null; has_photo: boolean; active_codes: string[];
+  termination_date: string | null; work_email: string | null; has_photo: boolean; active_codes: string[];
 };
 
 export type CodeDetail = {
@@ -206,7 +206,7 @@ export type UnmappedSummary = {
   recency: { label: string; ids: number; unmapped_punches: number }[];
 };
 
-export const getUnmappedSummary = (p: { site_id: string }) =>
+export const getUnmappedSummary = (p: { site_id: string; date_from?: string; date_to?: string }) =>
   request<UnmappedSummary>(`${IDENTITY_API}/unmapped/summary${qs(p)}`);
 
 /** Presentation labels for the review state of an outstanding ZKBioTime ID.
