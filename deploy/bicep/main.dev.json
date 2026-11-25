@@ -29,6 +29,21 @@
     "deployCommercial": {
       "value": false
     },
+    "deployAtwork": {
+      "value": true
+    },
+    "deployOnsite": {
+      "value": true
+    },
+    "onsiteIntegrationsMode": {
+      "value": "live"
+    },
+    "onsiteSqlServer": {
+      "value": "sql-diji-onsite-attendance.database.windows.net"
+    },
+    "onsiteSqlDatabase": {
+      "value": "sqldb-diji-onsite-attendance"
+    },
     "containerCpu": {
       "value": "0.25"
     },
@@ -36,7 +51,9 @@
       "value": "0.5Gi"
     },
     "minReplicas": {
-      "value": {}
+      "value": {
+        "recruitment-api": 1
+      }
     },
     "maxReplicasDefault": {
       "value": 1
@@ -56,11 +73,17 @@
     "entraTenantId": {
       "value": "2abce006-6ea2-4675-b39d-33e0a54c46c7"
     },
+    "entraInternalEmailDomains": {
+      "value": "dijitalteam.com"
+    },
+    "delegatedAccessEnabled": {
+      "value": true
+    },
     "entraClientId": {
       "value": "2ea7f6b8-d3c2-4dda-b806-32549efeadb6"
     },
     "publicBaseUrl": {
-      "value": "https://shell-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io"
+      "value": "https://dijione-dev.dijitalteam.com"
     },
     "recruitmentIntegrationsMode": {
       "value": "live"
@@ -84,7 +107,59 @@
       "value": "30e36193-f0e4-40d5-875b-db1ef6a3f2b0"
     },
     "supplierPublicBaseUrl": {
-      "value": "https://birthday-supplier-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io"
+      "value": "https://supplierportal-dev.dijitalteam.com"
+    },
+    "customDomains": {
+      "value": {
+        "shell-web": [
+          {
+            "name": "dijione-dev.dijitalteam.com",
+            "certificateName": "mc-cae-dijione-de-dijione-dev-diji-9506"
+          }
+        ],
+        "birthday-supplier-web": [
+          {
+            "name": "supplierportal-dev.dijitalteam.com",
+            "certificateName": "mc-cae-dijione-de-supplierportal-d-3863"
+          }
+        ]
+      }
+    },
+    "birthdayMailTransport": {
+      "value": "graph"
+    },
+    "birthdayMailPolicy": {
+      "value": "internal_allowlist"
+    },
+    "birthdayMailSharedMailbox": {
+      "value": "appassistant@dijitalteam.com"
+    },
+    "platformMailTransport": {
+      "value": "graph"
+    },
+    "platformMailPolicy": {
+      "value": "internal_allowlist"
+    },
+    "platformMailSharedMailbox": {
+      "value": "appassistant@dijitalteam.com"
+    },
+    "atworkMailTransport": {
+      "value": ""
+    },
+    "atworkMailPolicy": {
+      "value": ""
+    },
+    "atworkMailSharedMailbox": {
+      "value": ""
+    },
+    "atworkMailAllowlist": {
+      "value": ""
+    },
+    "atworkAppUrl": {
+      "value": ""
+    },
+    "externalPortalBaseUrl": {
+      "value": "https://talentflow-portal-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io"
     }
   }
 }
