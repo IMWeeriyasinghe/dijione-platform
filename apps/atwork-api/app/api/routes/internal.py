@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_internal_service
 from app.api.routes.attendance import get_clock
 from app.db.session import get_db
+from app.integrations.mail_client import get_mail_client
 from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy, get_policy
 from app.services.attendance_service import Clock
@@ -18,7 +19,8 @@ def run_notifications(
     db: Session = Depends(get_db), policy: AttendancePolicy = Depends(get_policy), clock: Clock = Depends(get_clock)
 ) -> dict:
     now = clock()
-    queued = notifications.enqueue_scheduled(db, policy, now)
+    mail = get_mail_client()
+    queued = notifications.enqueue_scheduled(db, policy, now, mail)
     return {"queued": queued, "delivery": notifications.deliver_pending(db, notifications.platform_client(), now)}
 
 
@@ -26,5 +28,5 @@ def run_notifications(
 def retry_failed_notifications(
     db: Session = Depends(get_db), policy: AttendancePolicy = Depends(get_policy), clock: Clock = Depends(get_clock)
 ) -> dict:
-    """Operator action: requeue still-relevant FAILED notifications from the last 7 days."""
-    return notifications.retry_failed(db, policy, clock())
+    now = clock()
+    return notifications.retry_failed(db, policy, now)

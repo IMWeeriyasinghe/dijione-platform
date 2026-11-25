@@ -1,11 +1,16 @@
 """Notifications go through Platform Core's in-app service. Each one is stored in
 the outbox with the attendance change, so a Platform Core outage cannot fail that
-change, and is retried until delivered. Text carries no times or employee names."""
+change, and is retried until delivered. Text carries no times or employee names.
+
+Staged reminder emails are sent via mail-client-py using an independent
+AtworkReminderEmailSent table for at-most-once per session+stage+channel.
+"""
 
 import logging
 from datetime import datetime, timedelta
 
 from auth_client_py import PlatformClient
+from mail_client_py import MailClient, MailOutcome
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,9 +26,16 @@ from app.core.constants import (
 )
 from app.db.base import utcnow
 from app.models.attendance import AttendanceSession
-from app.models.corrections import CorrectionRequest
+from app.models.corrections import AttendanceEmployee, CorrectionRequest
 from app.models.notifications import NotificationOutbox
+from app.models.reminders import AtworkReminderEmailSent, AtworkReminderWatermark
 from app.services.attendance_policy import AttendancePolicy
+from app.services.employee_directory import employee_names
+from app.services.reminder_email_templates import (
+    render_stage1_email,
+    render_stage2_email,
+    render_stage3_email,
+)
 from app.services.reporting import Reporting
 
 logger = logging.getLogger("atwork-api.notifications")
@@ -34,6 +46,8 @@ REMINDER_AFTER = timedelta(hours=24)
 REMINDER_LOCAL_HOUR = 9
 _MAX_REASON = 300
 
+STAGE1_HOURS = 10
+STAGE3_HOURS = 24
 
 # Platform Core scales to zero and can take well over a few seconds to start.
 DELIVERY_TIMEOUT_SECONDS = 30.0
@@ -139,11 +153,285 @@ def _enqueue_once(db: Session, key: str, *args, **kwargs) -> bool:
     return True
 
 
-def enqueue_scheduled(db: Session, policy: AttendancePolicy, now: datetime) -> dict:
+# ---------------------------------------------------------------------------
+# Rollout watermark
+# ---------------------------------------------------------------------------
+
+
+def _get_watermark(db: Session, now: datetime) -> datetime:
+    """Return the deploy-time watermark. If none exists yet (should not happen
+    after migration), insert one for `now` so future runs find it."""
+    row = db.get(AtworkReminderWatermark, 1)
+    if row is not None:
+        return row.watermark_at
+    # Fallback: seed on first run (migration should have done this already).
+    try:
+        with db.begin_nested():
+            db.add(AtworkReminderWatermark(id=1, watermark_at=now))
+            db.flush()
+    except IntegrityError:
+        db.rollback()
+        row = db.get(AtworkReminderWatermark, 1)
+        if row:
+            return row.watermark_at
+    return now
+
+
+# ---------------------------------------------------------------------------
+# Email channel helpers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_recipient(db: Session, user_id: int) -> str | None:
+    """Return verified company email for the employee, or None if unavailable."""
+    emp = db.get(AttendanceEmployee, user_id)
+    if emp is None or not emp.email:
+        return None
+    email = emp.email.strip().lower()
+    # Reject empty, service account patterns, and non-email strings.
+    if not email or "@" not in email or email.startswith("no-reply") or email.startswith("noreply"):
+        return None
+    return emp.email.strip()
+
+
+def _claim_email(db: Session, session_id: str, stage: int, recipient: str) -> AtworkReminderEmailSent | None:
+    """Atomically claim an email slot. Returns the row on success, None if already claimed."""
+    existing = db.scalar(
+        select(AtworkReminderEmailSent).where(
+            AtworkReminderEmailSent.session_id == session_id,
+            AtworkReminderEmailSent.stage == stage,
+        )
+    )
+    if existing is not None:
+        return None
+    row = AtworkReminderEmailSent(session_id=session_id, stage=stage, recipient_email=recipient, status="PENDING")
+    try:
+        with db.begin_nested():
+            db.add(row)
+            db.flush()
+    except IntegrityError:
+        db.rollback()
+        return None
+    return row
+
+
+def _send_email(
+    db: Session,
+    mail: MailClient,
+    row: AtworkReminderEmailSent,
+    subject: str,
+    html_body: str,
+    now: datetime,
+) -> bool:
+    """Send the email and update the tracking row. Returns True on success."""
+    if not row.recipient_email:
+        row.status = "FAILED"
+        db.commit()
+        return False
+    try:
+        result = mail.send(to=row.recipient_email, subject=subject, body=html_body, content_type="HTML")
+        if result.sent:
+            row.status, row.sent_at = "SENT", now
+            db.commit()
+            return True
+        # Blocked/disabled — not a retry-worthy outcome.
+        if result.outcome in (MailOutcome.BLOCKED, MailOutcome.DISABLED):
+            row.status = "FAILED"
+            db.commit()
+            return False
+        # Submission error — schedule retry.
+        row.attempts += 1
+        row.next_attempt_at = now + timedelta(seconds=min(60 * 2**row.attempts, 3600))
+        db.commit()
+        return False
+    except Exception:  # noqa: BLE001 - never let an email error block the scheduler
+        logger.warning("Reminder email send raised", exc_info=False)
+        row.attempts += 1
+        row.next_attempt_at = now + timedelta(seconds=min(60 * 2**row.attempts, 3600))
+        db.commit()
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Staged reminder state machine
+# ---------------------------------------------------------------------------
+
+
+def _enqueue_staged_reminders(
+    db: Session,
+    policy: AttendancePolicy,
+    now: datetime,
+    mail: MailClient,
+    watermark: datetime,
+) -> dict:
+    """3-stage reminder workflow for sessions checked in AFTER the watermark.
+
+    Stage 1 (10 h):  friendly in-app + email; no unverified flag.
+    Stage 2 (threshold h): warning in-app + email; threshold = policy.missed_checkout_hours.
+    Stage 3 (24 h):  final in-app + email + management visibility.
+
+    Each stage fires at most once per session per channel (dedupe).
+    Sessions that check out before delivery are skipped.
+    """
+    settings = get_settings()
+    stage2_hours = policy.missed_checkout_hours
+    stage1_cutoff = now - timedelta(hours=STAGE1_HOURS)
+
+    # Fetch all OPEN sessions past stage1 threshold, started after watermark.
+    stmt = (
+        select(AttendanceSession)
+        .where(
+            AttendanceSession.status == STATUS_OPEN,
+            AttendanceSession.check_in_at <= stage1_cutoff,
+            AttendanceSession.check_in_at >= watermark,
+        )
+        .order_by(AttendanceSession.check_in_at)
+    )
+    sessions = list(db.scalars(stmt))
+    if not sessions:
+        return {"stage1": 0, "stage2": 0, "stage3": 0, "email_sent": 0}
+
+    user_ids = {s.platform_user_id for s in sessions}
+    names_map = employee_names(db, user_ids)
+
+    s1_count = s2_count = s3_count = email_sent = 0
+
+    for session in sessions:
+        sid = session.id
+        uid = session.platform_user_id
+        emp = names_map.get(uid)
+        full_name = emp.full_name if emp else f"User #{uid}"
+        check_in = session.check_in_at
+        zone = policy.zone
+        zone_name = policy.business_time_zone
+        link = "/atwork"
+
+        elapsed_seconds = (now - check_in).total_seconds()
+        elapsed_hours = elapsed_seconds / 3600
+
+        # Stage 1 (>= 10 h)
+        inapp_key1 = f"atwork:reminder:stage1:inapp:{sid}"
+        inapp_added = _enqueue_once(
+            db,
+            inapp_key1,
+            "ATWORK_REMINDER_STAGE1",
+            "Your work session is still active",
+            f"You have been checked in for over {STAGE1_HOURS} hours. If you have finished working, please check out.",
+            link,
+            user_id=uid,
+        )
+        s1_count += int(inapp_added)
+
+        email_row = _claim_email(db, sid, 1, _resolve_recipient(db, uid) or "")
+        if email_row and email_row.recipient_email:
+            subject, html = render_stage1_email(
+                employee_name=full_name,
+                check_in_at=check_in,
+                zone=zone,
+                zone_name=zone_name,
+                app_url=settings.atwork_app_url,
+            )
+            if _send_email(db, mail, email_row, subject, html, now):
+                email_sent += 1
+        elif email_row:
+            email_row.status = "FAILED"
+            db.commit()
+
+        # Stage 2 (>= policy.missed_checkout_hours)
+        if elapsed_hours >= stage2_hours:
+            inapp_key2 = f"atwork:reminder:stage2:inapp:{sid}"
+            inapp_added2 = _enqueue_once(
+                db,
+                inapp_key2,
+                "ATWORK_REMINDER_STAGE2",
+                "Possible missed check-out",
+                (
+                    f"Your session has been open for over {stage2_hours} hours. "
+                    "The elapsed time is unverified until you check out or submit a correction."
+                ),
+                f"/atwork/requests/new?sessionId={sid}",
+                user_id=uid,
+            )
+            s2_count += int(inapp_added2)
+
+            email_row2 = _claim_email(db, sid, 2, _resolve_recipient(db, uid) or "")
+            if email_row2 and email_row2.recipient_email:
+                subject2, html2 = render_stage2_email(
+                    employee_name=full_name,
+                    check_in_at=check_in,
+                    zone=zone,
+                    zone_name=zone_name,
+                    threshold_hours=stage2_hours,
+                    app_url=settings.atwork_app_url,
+                )
+                if _send_email(db, mail, email_row2, subject2, html2, now):
+                    email_sent += 1
+            elif email_row2:
+                email_row2.status = "FAILED"
+                db.commit()
+
+        # Stage 3 (>= 24 h)
+        if elapsed_hours >= STAGE3_HOURS:
+            inapp_key3 = f"atwork:reminder:stage3:inapp:{sid}"
+            inapp_added3 = _enqueue_once(
+                db,
+                inapp_key3,
+                "ATWORK_REMINDER_STAGE3",
+                "Attendance session still open — 24 h",
+                "Your session has been open for over 24 hours. Your attendance manager has been notified.",
+                f"/atwork/requests/new?sessionId={sid}",
+                user_id=uid,
+            )
+            s3_count += int(inapp_added3)
+
+            # Management visibility notification (one per session, to reviewers).
+            mgmt_key = f"atwork:reminder:stage3:mgmt:{sid}"
+            _enqueue_once(
+                db,
+                mgmt_key,
+                "ATWORK_REMINDER_STAGE3_MGMT",
+                "Open session — 24 h",
+                f"{full_name} has an attendance session that has been open for over 24 hours.",
+                f"/atwork/management/sessions/{sid}",
+                reviewers=True,
+                exclude=[uid],
+            )
+
+            email_row3 = _claim_email(db, sid, 3, _resolve_recipient(db, uid) or "")
+            if email_row3 and email_row3.recipient_email:
+                subject3, html3 = render_stage3_email(
+                    employee_name=full_name,
+                    check_in_at=check_in,
+                    zone=zone,
+                    zone_name=zone_name,
+                    app_url=settings.atwork_app_url,
+                )
+                if _send_email(db, mail, email_row3, subject3, html3, now):
+                    email_sent += 1
+            elif email_row3:
+                email_row3.status = "FAILED"
+                db.commit()
+
+    return {"stage1": s1_count, "stage2": s2_count, "stage3": s3_count, "email_sent": email_sent}
+
+
+# ---------------------------------------------------------------------------
+# Scheduled entry point
+# ---------------------------------------------------------------------------
+
+
+def enqueue_scheduled(db: Session, policy: AttendancePolicy, now: datetime, mail: MailClient | None = None) -> dict:
     """Safe to run at any frequency: each alert has one key, whatever the interval."""
+
+    watermark = _get_watermark(db, now)
+
+    # Legacy single-stage notification for pre-deploy sessions (check_in before watermark).
     missed = 0
     hours = policy.missed_checkout_hours
     for row in Reporting(db, policy, now).missed_checkouts():
+        session = db.get(AttendanceSession, row["session_id"])
+        if session and session.check_in_at >= watermark:
+            continue  # post-deploy session handled by staged reminders below
         missed += _enqueue_once(
             db,
             f"atwork:missed-checkout:{row['session_id']}",
@@ -153,6 +441,23 @@ def enqueue_scheduled(db: Session, policy: AttendancePolicy, now: datetime) -> d
             f"/atwork/requests/new?sessionId={row['session_id']}",
             user_id=row["platform_user_id"],
         )
+
+    # Staged 3-stage reminders for post-deploy sessions.
+    staged = {"stage1": 0, "stage2": 0, "stage3": 0, "email_sent": 0}
+    if mail is not None:
+        staged = _enqueue_staged_reminders(db, policy, now, mail, watermark)
+    else:
+        # Fallback: stage2 in-app only (backward compat when mail not passed).
+        staged = _enqueue_staged_reminders(
+            db,
+            policy,
+            now,
+            # NullMailTransport equivalent: a client that never sends.
+            _null_mail_client(),
+            watermark,
+        )
+
+    # Pending-correction daily reminder.
     reminders = 0
     local = now.astimezone(policy.zone)
     if local.hour >= REMINDER_LOCAL_HOUR:
@@ -176,7 +481,17 @@ def enqueue_scheduled(db: Session, policy: AttendancePolicy, now: datetime) -> d
                 reviewers=True,
             )
     db.commit()
-    return {"missed_checkout": int(missed), "pending_reminder": int(reminders)}
+    return {
+        "missed_checkout": int(missed),
+        "pending_reminder": int(reminders),
+        **staged,
+    }
+
+
+def _null_mail_client() -> MailClient:
+    from mail_client_py import DisabledPolicy, NullMailTransport
+
+    return MailClient(transport=NullMailTransport(), policy=DisabledPolicy())
 
 
 def _payload(row: NotificationOutbox) -> dict:
@@ -239,7 +554,13 @@ def deliver_pending(db: Session, client: PlatformClient, now: datetime, limit: i
 def _still_relevant(db: Session, row: NotificationOutbox, policy: AttendancePolicy, now: datetime) -> bool:
     """A failed notification is resent only if it is still true today."""
     parts = row.dedupe_key.split(":")
-    if row.kind == "ATWORK_MISSED_CHECKOUT":
+    if row.kind in (
+        "ATWORK_MISSED_CHECKOUT",
+        "ATWORK_REMINDER_STAGE1",
+        "ATWORK_REMINDER_STAGE2",
+        "ATWORK_REMINDER_STAGE3",
+        "ATWORK_REMINDER_STAGE3_MGMT",
+    ):
         session = db.get(AttendanceSession, parts[-1])
         return session is not None and session.status == STATUS_OPEN
     if row.kind == "ATWORK_CORRECTION_REMINDER":

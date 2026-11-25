@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # In-app notifications are delivered through Platform Core.
     platform_api_url: str = "http://localhost:8000"
 
+    # Email reminders — transport and policy.
+    mail_transport: str = "null"  # "null" in dev, "graph" in prod
+    mail_shared_mailbox: str = "appassistant@dijitalteam.com"
+    mail_allowlist: str = ""  # comma-separated addresses or @domain entries for DEV
+    mail_policy: str = "internal_allowlist"  # "internal_allowlist" | "production"
+    graph_base_url: str = "https://graph.microsoft.com"
+    atwork_app_url: str = "http://localhost:3005"
+
     # The foundation has no external integrations.
     integrations_mode: str = "mock"
 
