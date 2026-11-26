@@ -128,20 +128,25 @@ def test_period_scoped_summary_counts_period_active_ids(api_client, db, director
     )
 
 
-def test_work_email_is_searchable_in_directory(api_client, db, directory, audit_calls):
-    """work_email must be searchable and returned in directory/search results (Workstream C)."""
-    ready(api_client)
-    # The conftest directory fixture seeds entries with work_email set.
-    # Find an entry in the directory to verify what it has.
-    # Try to search by a known bamboohr_id first to see if work_email comes back.
-    r = _dir_search(api_client, "10")  # min 2 chars; "10" matches BHR IDs, names, or numbers
-    items = r["items"]
-    if not items:
-        pytest.skip("Directory is empty — cannot test email search")
+def test_email_search_routes_to_admin_path(api_client, db, directory, audit_calls, monkeypatch):
+    """Email queries (@) must route through the admin search path.
+    The response must NOT include work_email (minimum-data policy, Workstream C)."""
+    from app.services import workforce_directory as wf_dir
 
-    # Verify work_email is in the response schema (may be null but key must exist).
-    for item in items:
-        assert "work_email" in item, f"work_email missing from DirectoryHit for {item.get('bamboohr_id')}"
+    admin_hit = {
+        "bamboohr_id": "1", "employee_number": "101", "display_name": "A",
+        "department": "Bench", "job_title": "Engineer", "employment_status": "Active",
+        "hire_date": "2020-01-01",
+    }
+    monkeypatch.setattr(wf_dir, "admin_search", lambda q: [admin_hit] if "@" in q else [])
+    ready(api_client)
+
+    r = _dir_search(api_client, "a@dijitalteam.com")
+    items = r["items"]
+    assert len(items) == 1, "Email search must return the admin-path hit"
+    assert items[0]["bamboohr_id"] == "1"
+    # work_email is intentionally absent from the response (minimum-data policy).
+    assert "work_email" not in items[0], "work_email must not appear in directory search response"
 
 
 def test_period_filter_accepts_no_dates_returns_full_backlog(api_client, db, directory, audit_calls):

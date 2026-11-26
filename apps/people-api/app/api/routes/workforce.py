@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_internal_service
@@ -16,6 +16,7 @@ from app.core.constants import SyncTriggerType
 from app.db.session import get_db
 from app.models.workforce import WorkforceDirectoryEntry
 from app.schemas.workforce import (
+    WorkforceAdminSearchOut,
     WorkforceEntryOut,
     WorkforceFreshnessOut,
     WorkforceSyncAcceptedOut,
@@ -113,3 +114,34 @@ def scheduled_workforce_sync(background: BackgroundTasks, db: Session = Depends(
     if started:
         background.add_task(WorkforceSyncService.execute_run, run.run_id)
     return _accepted(run, started)
+
+def _admin_search_out(e: WorkforceDirectoryEntry) -> WorkforceAdminSearchOut:
+    return WorkforceAdminSearchOut(
+        bamboohr_id=e.bamboohr_id,
+        employee_number=e.employee_number,
+        display_name=e.display_name or "",
+        department=e.department or "",
+        job_title=e.job_title or "",
+        employment_status=e.employment_status or "",
+        hire_date=str(e.hire_date) if e.hire_date else None,
+    )
+
+
+@router.get("/workforce-directory/admin-search", response_model=list[WorkforceAdminSearchOut])
+def workforce_admin_search(
+    q: str = Query(..., min_length=2),
+    db: Session = Depends(get_db),
+) -> list[WorkforceAdminSearchOut]:
+    ql = q.strip().lower()
+    like = f"%{ql}%"
+    rows = db.execute(
+        select(WorkforceDirectoryEntry).where(
+            or_(
+                WorkforceDirectoryEntry.work_email.ilike(like),
+                WorkforceDirectoryEntry.display_name.ilike(like),
+                WorkforceDirectoryEntry.bamboohr_id.ilike(like),
+                WorkforceDirectoryEntry.employee_number.ilike(like),
+            )
+        ).order_by(WorkforceDirectoryEntry.display_name)
+    ).scalars().all()
+    return [_admin_search_out(e) for e in rows]

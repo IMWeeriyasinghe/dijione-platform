@@ -32,6 +32,7 @@ logger = logging.getLogger("people-api.workforce_sync")
 _TRACKED_FIELDS = (
     "employee_number", "display_name", "department", "job_title", "location",
     "employment_status", "hire_date", "termination_date", "photo_url",
+    "work_email",
 )
 
 

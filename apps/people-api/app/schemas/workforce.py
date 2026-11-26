@@ -23,6 +23,18 @@ class WorkforceEntryOut(BaseModel):
     synced_at: str | None = None
 
 
+class WorkforceAdminSearchOut(BaseModel):
+    """Minimal DTO for the admin-only email search path.
+    Returns only bamboohr_id + display_name + employment_status — never email."""
+    bamboohr_id: str
+    employee_number: str | None = None
+    display_name: str
+    department: str
+    job_title: str
+    employment_status: str
+    hire_date: str | None = None
+
+
 class WorkforceSyncRequestIn(BaseModel):
     # Required, no default: the directory serves any consumer, so the
     # caller must identify itself.

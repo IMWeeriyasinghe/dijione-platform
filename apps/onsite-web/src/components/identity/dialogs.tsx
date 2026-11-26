@@ -91,7 +91,6 @@ export function EmployeePicker({ value, onChange }: { value: DirectoryHit | null
                   </span>
                   <span className="block text-xs text-dt-text-secondary">
                     Hired {h.hire_date ?? "—"}{h.termination_date ? ` · terminated ${h.termination_date}` : ""}
-                    {h.work_email ? <> · {h.work_email}</> : null}
                     {h.active_codes.length ? ` · already mapped: ${h.active_codes.join(", ")}` : ""}
                   </span>
                 </span>

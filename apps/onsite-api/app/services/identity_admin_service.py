@@ -42,6 +42,7 @@ from app.models.identity import (
 from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.identity_repository import IdentityRepository
 from app.services import platform_audit
+from app.services import workforce_directory as _wf_dir
 from app.services.identity_resolution import MappingIndex
 from app.services.workforce_directory import DirectorySnapshot
 
@@ -667,17 +668,53 @@ def code_investigation(db: Session, actor: Actor, directory: DirectorySnapshot, 
     }
 
 
+def _enrich_with_active_codes(entries: list[dict], active_codes: dict[str, list[str]]) -> list[dict]:
+    out = []
+    for e in entries:
+        bid = str(e.get("bamboohr_id") or "")
+        out.append({
+            "bamboohr_id": bid,
+            "display_name": e.get("display_name"),
+            "employee_number": e.get("employee_number"),
+            "department": e.get("department"),
+            "job_title": e.get("job_title"),
+            "employment_status": e.get("employment_status"),
+            "hire_date": e.get("hire_date"),
+            "termination_date": e.get("termination_date"),
+            "has_photo": bool(e.get("has_photo")),
+            "active_codes": sorted(set(active_codes.get(bid, []))),
+        })
+    out.sort(key=lambda r: ((r["display_name"] or "").lower(), r["bamboohr_id"]))
+    return out
+
+
 def directory_search(db: Session, actor: Actor, directory: DirectorySnapshot, q: str | None) -> list[dict]:
-    """Search the cached Workforce Directory. Requires a typed query: nothing is
-    ever suggested or pre-selected."""
+    """Search the Workforce Directory.
+
+    When the query contains '@' the search is routed through the people-api
+    admin search endpoint, which searches the ``work_email`` column stored
+    server-side (the minimum-data policy keeps email out of WorkforceEntryOut
+    and therefore out of the in-memory snapshot). For all other queries the
+    cached snapshot is used as before (name, BambooHR ID, employee number).
+    Nothing is ever suggested or pre-selected.
+    """
     if not directory.available:
         raise IdentityError(503, {"error": "DIRECTORY_UNAVAILABLE", "message": "The Workforce Directory is unavailable."})
     ql = (q or "").strip().lower()
     if len(ql) < 2:
         raise IdentityError(422, {"error": "QUERY_TOO_SHORT", "message": "Type at least 2 characters."})
+
     active_codes: dict[str, list[str]] = defaultdict(list)
     for m in IdentityRepository(db).verified_mappings(allowed_site_ids=actor.allowed_site_ids):
         active_codes[m.bamboohr_id].append(m.zk_emp_code)
+
+    if "@" in ql:
+        # Email query: use the admin search path so work_email is searched
+        # server-side without being exposed in WorkforceEntryOut.
+        admin_hits = _wf_dir.admin_search(ql)
+        return _enrich_with_active_codes(admin_hits, active_codes)
+
+    # Non-email query: use the cached snapshot (name, BambooHR ID, employee number).
     out = []
     for e in directory.entries:
         bid = str(e.get("bamboohr_id"))
@@ -685,14 +722,12 @@ def directory_search(db: Session, actor: Actor, directory: DirectorySnapshot, q:
             (e.get("display_name") or "").lower(),
             str(e.get("employee_number") or "").lower(),
             bid.lower(),
-            (e.get("work_email") or "").lower(),   # Workstream C: work email search
         ]
         if any(ql in h for h in hay):
             out.append({"bamboohr_id": bid, "display_name": e.get("display_name"),
                         "employee_number": e.get("employee_number"), "department": e.get("department"),
                         "job_title": e.get("job_title"), "employment_status": e.get("employment_status"),
                         "hire_date": e.get("hire_date"), "termination_date": e.get("termination_date"),
-                        "work_email": e.get("work_email"),   # returned so the UI can display it
                         "has_photo": bool(e.get("has_photo")), "active_codes": sorted(set(active_codes.get(bid, [])))})
     out.sort(key=lambda r: ((r["display_name"] or "").lower(), r["bamboohr_id"]))
     return out

@@ -1,0 +1,145 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "uat"
+    },
+    "location": {
+      "value": "southeastasia"
+    },
+    "imageRegistryLoginServer": {
+      "value": "crdijionenonprod.azurecr.io"
+    },
+    "imageRegistryName": {
+      "value": "crdijionenonprod"
+    },
+    "imageRegistryResourceGroup": {
+      "value": "rg-dijione-shared"
+    },
+    "imageDigests": {
+      "value": {}
+    },
+    "imageTag": {
+      "value": "REPLACED_AT_DEPLOY"
+    },
+    "deployBirthday": {
+      "value": true
+    },
+    "deployCommercial": {
+      "value": false
+    },
+    "recruitmentIntegrationsMode": {
+      "value": "live"
+    },
+    "peopleIntegrationsMode": {
+      "value": "live"
+    },
+    "birthdayIntegrationsMode": {
+      "value": "live"
+    },
+    "bamboohrSubdomain": {
+      "value": "dijitalteam"
+    },
+    "seedTalentClientExtensions": {
+      "value": true
+    },
+    "containerCpu": {
+      "value": "0.25"
+    },
+    "containerMemory": {
+      "value": "0.5Gi"
+    },
+    "minReplicas": {
+      "value": {}
+    },
+    "maxReplicasDefault": {
+      "value": 2
+    },
+    "maxReplicasOverrides": {
+      "value": {}
+    },
+    "authMode": {
+      "value": "entra"
+    },
+    "entraTenantId": {
+      "value": "2abce006-6ea2-4675-b39d-33e0a54c46c7"
+    },
+    "entraInternalEmailDomains": {
+      "value": "dijitalteam.com"
+    },
+    "delegatedAccessEnabled": {
+      "value": true
+    },
+    "entraClientId": {
+      "value": "f7455106-f91b-42e0-9a6a-2f3dc256727c"
+    },
+    "publicBaseUrl": {
+      "value": "https://dijione-uat.dijitalteam.com"
+    },
+    "supplierAuthMode": {
+      "value": "entra"
+    },
+    "supplierEntraTenantId": {
+      "value": "2abce006-6ea2-4675-b39d-33e0a54c46c7"
+    },
+    "supplierEntraClientId": {
+      "value": "bdd98d91-1fe9-4b81-b621-96fa14d2e9b5"
+    },
+    "supplierPublicBaseUrl": {
+      "value": "https://supplierportal-uat.dijitalteam.com"
+    },
+    "externalPortalBaseUrl": {
+      "value": "https://talentflow-portal-web.mangofield-96838df7.southeastasia.azurecontainerapps.io"
+    },
+    "existingIdentityKvSecretsUserRoleAssignmentName": {
+      "value": "b7260736-9c22-4075-b254-95985f11206a"
+    },
+    "existingIdentityAcrPullRoleAssignmentName": {
+      "value": "e9a143c7-fcbc-44dc-af44-393173e4ce66"
+    },
+    "customDomains": {
+      "value": {
+        "shell-web": [
+          {
+            "name": "dijione-uat.dijitalteam.com",
+            "certificateName": "mc-cae-dijione-ua-dijione-uat-diji-4211"
+          }
+        ],
+        "birthday-supplier-web": [
+          {
+            "name": "supplierportal-uat.dijitalteam.com",
+            "certificateName": "mc-cae-dijione-ua-supplierportal-u-1670"
+          }
+        ]
+      }
+    },
+    "platformMailTransport": {
+      "value": "graph"
+    },
+    "platformMailPolicy": {
+      "value": "internal_allowlist"
+    },
+    "platformMailSharedMailbox": {
+      "value": "appassistant@dijitalteam.com"
+    },
+    "deployAtwork": {
+      "value": true
+    },
+    "atworkMailTransport": {
+      "value": "graph"
+    },
+    "atworkMailPolicy": {
+      "value": "internal_allowlist"
+    },
+    "atworkMailSharedMailbox": {
+      "value": "appassistant@dijitalteam.com"
+    },
+    "atworkMailAllowlist": {
+      "value": "@dijitalteam.com"
+    },
+    "atworkAppUrl": {
+      "value": "https://shell-web.mangofield-96838df7.southeastasia.azurecontainerapps.io"
+    }
+  }
+}
