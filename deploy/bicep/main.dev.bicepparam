@@ -18,8 +18,8 @@ param imageTag = 'REPLACED_AT_DEPLOY'
 param deployBirthday = true
 param deployCommercial = false
 
-// DijiAtWork stays off until DEV deployment is separately authorized (docs/atwork/deployment.md).
-param deployAtwork = false
+// DijiAtWork is live in DEV (deployed PR #205 ad73175, 2026-11-25).
+param deployAtwork = true
 
 // Diji On-site (docs/onsite/architecture.md). Reads the ONE shared Diji On-site Attendance source
 // (rg-diji-onsite-attendance), exactly like UAT and PROD (deploy/bicep/onsite-release.bicep).
@@ -107,6 +107,18 @@ param birthdayMailSharedMailbox = 'appassistant@dijitalteam.com'
 param platformMailTransport = 'graph'
 param platformMailPolicy = 'internal_allowlist'
 param platformMailSharedMailbox = 'appassistant@dijitalteam.com'
+
+// DijiAtWork outbound mail — atwork-api managed identity needs Exchange RBAC
+// (Mail.Send on the shared mailbox) before this can be changed to 'graph'.
+// Until that grant is confirmed, leave atworkMailTransport unset so the app
+// uses its built-in null transport (simulated, nothing sent). Do NOT copy
+// birthdayMailTransport='graph' here without verifying the RBAC scope first.
+// atworkAppUrl: set to the shell-web URL once action-link paths are confirmed.
+param atworkMailTransport = ''
+param atworkMailPolicy = ''
+param atworkMailSharedMailbox = ''
+param atworkMailAllowlist = ''
+param atworkAppUrl = ''
 
 // External DijiTalentFlow client portal origin used by talent-api for portal
 // links (EXTERNAL_PORTAL_BASE_URL). Equals live DEV talent-api (verified

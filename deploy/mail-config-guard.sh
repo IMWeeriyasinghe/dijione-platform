@@ -23,6 +23,7 @@ PARAMS="${2:?usage: mail-config-guard.sh <resource-group> <bicepparam>}"
 SERVICES=(
   "birthday-api|birthdayMailTransport|birthdayMailPolicy|birthdayMailSharedMailbox"
   "platform-api|platformMailTransport|platformMailPolicy|platformMailSharedMailbox"
+  "atwork-api|atworkMailTransport|atworkMailPolicy|atworkMailSharedMailbox"
 )
 
 param_value() {  # value of `param <name> = '<value>'` in the .bicepparam ('' when absent)

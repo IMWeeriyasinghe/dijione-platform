@@ -90,7 +90,8 @@ DIGESTS="$(python -c "import sys,json;print(json.dumps({r.split(chr(9))[0]:r.spl
 rm -f "$_DIGEST_TSV"
 
 echo "== 3. assert Key Vault secrets are set (init-secrets.sh writes them) =="
-mapfile -t EXPECTED < <(az deployment group show -g "$RG" -n "dijione-foundation-${GITSHA}" \
+EXPECTED=()
+while IFS= read -r line; do EXPECTED+=("$line"); done < <(az deployment group show -g "$RG" -n "dijione-foundation-${GITSHA}" \
   --query 'properties.outputs.expectedSecretNames.value' -o tsv | tr '\t' '\n')
 for name in "${EXPECTED[@]}"; do
   [ -n "$name" ] || continue

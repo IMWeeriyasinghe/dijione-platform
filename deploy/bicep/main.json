@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.46.1.21595",
-      "templateHash": "8601591788606087399"
+      "version": "0.49.2.45890",
+      "templateHash": "17852469790897251396"
     }
   },
   "functions": [
@@ -57,6 +57,10 @@
             },
             {
               "type": "string",
+              "name": "internalEmailDomains"
+            },
+            {
+              "type": "string",
               "name": "publicBaseUrl"
             },
             {
@@ -90,11 +94,27 @@
             {
               "type": "string",
               "name": "birthdayMode"
+            },
+            {
+              "type": "string",
+              "name": "onsiteMode"
+            },
+            {
+              "type": "string",
+              "name": "onsiteSqlServer"
+            },
+            {
+              "type": "string",
+              "name": "onsiteSqlDatabase"
+            },
+            {
+              "type": "string",
+              "name": "externalPortalBaseUrl"
             }
           ],
           "output": {
             "type": "array",
-            "value": "[if(equals(parameters('svc'), 'shell-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ADMIN_API_URL', 'value', 'http://admin-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api'), createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api'), createObject('name', 'SPARK_API_URL', 'value', 'http://spark-api'), createObject('name', 'ADMIN_WEB_URL', 'value', 'http://admin-web'), createObject('name', 'TALENT_WEB_URL', 'value', 'http://talent-web'), createObject('name', 'BIRTHDAY_WEB_URL', 'value', 'http://birthday-web'), createObject('name', 'PUBLIC_BASE_URL', 'value', parameters('publicBaseUrl'))), if(equals(parameters('svc'), 'platform-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'AUTH_MODE', 'value', parameters('authMode')), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('authMode'), 'entra'), createArray(createObject('name', 'ENTRA_TENANT_ID', 'value', parameters('entraTenantId')), createObject('name', 'ENTRA_CLIENT_ID', 'value', parameters('entraClientId')), createObject('name', 'ENTRA_REDIRECT_URI', 'value', format('{0}/api/auth/callback', parameters('publicBaseUrl'))), createObject('name', 'PUBLIC_BASE_URL', 'value', parameters('publicBaseUrl'))), createArray(createObject('name', 'DEV_IDENTITY_MODE', 'value', 'true')))), if(equals(parameters('svc'), 'admin-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('svc'), 'talent-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'RECRUITMENT_API_URL', 'value', 'http://recruitment-api')), if(equals(parameters('svc'), 'recruitment-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('recruitmentMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'OPPORTUNITY_SYNC_LIMIT', 'value', '200')), if(equals(parameters('svc'), 'people-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('peopleMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api')), if(and(equals(parameters('peopleMode'), 'live'), not(empty(parameters('bamboohrSubdomain')))), createArray(createObject('name', 'BAMBOOHR_SUBDOMAIN', 'value', parameters('bamboohrSubdomain'))), createArray())), if(equals(parameters('svc'), 'birthday-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('birthdayMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'PEOPLE_API_URL', 'value', 'http://people-api'), createObject('name', 'SUPPLIER_AUTH_MODE', 'value', parameters('supplierAuthMode'))), if(equals(parameters('supplierAuthMode'), 'entra'), createArray(createObject('name', 'SUPPLIER_ENTRA_TENANT_ID', 'value', parameters('supplierEntraTenantId')), createObject('name', 'SUPPLIER_ENTRA_CLIENT_ID', 'value', parameters('supplierEntraClientId')), createObject('name', 'SUPPLIER_ENTRA_REDIRECT_URI', 'value', format('{0}/api/auth/callback', parameters('supplierPublicBaseUrl'))), createObject('name', 'SUPPLIER_PUBLIC_BASE_URL', 'value', parameters('supplierPublicBaseUrl'))), createArray())), if(equals(parameters('svc'), 'admin-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ADMIN_API_URL', 'value', 'http://admin-api')), if(equals(parameters('svc'), 'talent-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('svc'), 'birthday-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api')), if(equals(parameters('svc'), 'birthday-supplier-web'), createArray(createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api'), createObject('name', 'SUPPLIER_PUBLIC_BASE_URL', 'value', parameters('supplierPublicBaseUrl'))), if(equals(parameters('svc'), 'talentflow-portal-web'), createArray(createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), createArray()))))))))))))]"
+            "value": "[if(equals(parameters('svc'), 'shell-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ADMIN_API_URL', 'value', 'http://admin-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api'), createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api'), createObject('name', 'SPARK_API_URL', 'value', 'http://spark-api'), createObject('name', 'ADMIN_WEB_URL', 'value', 'http://admin-web'), createObject('name', 'TALENT_WEB_URL', 'value', 'http://talent-web'), createObject('name', 'BIRTHDAY_WEB_URL', 'value', 'http://birthday-web'), createObject('name', 'ONSITE_API_URL', 'value', 'http://onsite-api'), createObject('name', 'ONSITE_WEB_URL', 'value', 'http://onsite-web'), createObject('name', 'ATWORK_API_URL', 'value', 'http://atwork-api'), createObject('name', 'ATWORK_WEB_URL', 'value', 'http://atwork-web'), createObject('name', 'PUBLIC_BASE_URL', 'value', parameters('publicBaseUrl'))), if(equals(parameters('svc'), 'platform-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'AUTH_MODE', 'value', parameters('authMode')), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api'), createObject('name', 'VIEW_AS_ENABLED', 'value', 'true'), createObject('name', 'DIRECTORY_MODE', 'value', 'graph'), createObject('name', 'PEOPLE_API_URL', 'value', 'http://people-api')), if(equals(parameters('authMode'), 'entra'), createArray(createObject('name', 'ENTRA_TENANT_ID', 'value', parameters('entraTenantId')), createObject('name', 'ENTRA_INTERNAL_EMAIL_DOMAINS', 'value', parameters('internalEmailDomains')), createObject('name', 'ENTRA_CLIENT_ID', 'value', parameters('entraClientId')), createObject('name', 'ENTRA_REDIRECT_URI', 'value', format('{0}/api/auth/callback', parameters('publicBaseUrl'))), createObject('name', 'PUBLIC_BASE_URL', 'value', parameters('publicBaseUrl'))), createArray(createObject('name', 'DEV_IDENTITY_MODE', 'value', 'true')))), if(equals(parameters('svc'), 'admin-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('svc'), 'talent-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'RECRUITMENT_API_URL', 'value', 'http://recruitment-api'), createObject('name', 'REVOCATION_ENABLED', 'value', 'true')), if(empty(parameters('externalPortalBaseUrl')), createArray(), createArray(createObject('name', 'EXTERNAL_PORTAL_BASE_URL', 'value', parameters('externalPortalBaseUrl'))))), if(equals(parameters('svc'), 'recruitment-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('recruitmentMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'OPPORTUNITY_SYNC_LIMIT', 'value', '200')), if(equals(parameters('svc'), 'people-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('peopleMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api')), if(and(equals(parameters('peopleMode'), 'live'), not(empty(parameters('bamboohrSubdomain')))), createArray(createObject('name', 'BAMBOOHR_SUBDOMAIN', 'value', parameters('bamboohrSubdomain'))), createArray())), if(equals(parameters('svc'), 'birthday-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('birthdayMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'PEOPLE_API_URL', 'value', 'http://people-api'), createObject('name', 'PEOPLE_API_TIMEOUT_SECONDS', 'value', '30'), createObject('name', 'SUPPLIER_AUTH_MODE', 'value', parameters('supplierAuthMode')), createObject('name', 'BIRTHDAY_INTERNAL_BASE_URL', 'value', parameters('publicBaseUrl')), createObject('name', 'REVOCATION_ENABLED', 'value', 'true')), if(equals(parameters('supplierAuthMode'), 'entra'), createArray(createObject('name', 'SUPPLIER_ENTRA_TENANT_ID', 'value', parameters('supplierEntraTenantId')), createObject('name', 'SUPPLIER_ENTRA_CLIENT_ID', 'value', parameters('supplierEntraClientId')), createObject('name', 'SUPPLIER_ENTRA_REDIRECT_URI', 'value', format('{0}/api/auth/callback', parameters('supplierPublicBaseUrl'))), createObject('name', 'SUPPLIER_PUBLIC_BASE_URL', 'value', parameters('supplierPublicBaseUrl'))), createArray())), if(equals(parameters('svc'), 'admin-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ADMIN_API_URL', 'value', 'http://admin-api')), if(equals(parameters('svc'), 'talent-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('svc'), 'birthday-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api')), if(equals(parameters('svc'), 'birthday-supplier-web'), createArray(createObject('name', 'BIRTHDAY_API_URL', 'value', 'http://birthday-api'), createObject('name', 'SUPPLIER_PUBLIC_BASE_URL', 'value', parameters('supplierPublicBaseUrl'))), if(equals(parameters('svc'), 'talentflow-portal-web'), createArray(createObject('name', 'TALENT_API_URL', 'value', 'http://talent-api')), if(equals(parameters('svc'), 'onsite-api'), concat(createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', parameters('onsiteMode')), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'PEOPLE_API_URL', 'value', 'http://people-api'), createObject('name', 'PEOPLE_API_TIMEOUT_SECONDS', 'value', '30'), createObject('name', 'REVOCATION_ENABLED', 'value', 'true')), if(equals(parameters('onsiteMode'), 'live'), createArray(createObject('name', 'ONSITE_SQL_SERVER', 'value', parameters('onsiteSqlServer')), createObject('name', 'ONSITE_SQL_DATABASE', 'value', parameters('onsiteSqlDatabase'))), createArray())), if(equals(parameters('svc'), 'atwork-api'), createArray(createObject('name', 'INTEGRATIONS_MODE', 'value', 'mock'), createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'REVOCATION_ENABLED', 'value', 'true')), if(equals(parameters('svc'), 'atwork-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ATWORK_API_URL', 'value', 'http://atwork-api')), if(equals(parameters('svc'), 'onsite-web'), createArray(createObject('name', 'PLATFORM_API_URL', 'value', 'http://platform-api'), createObject('name', 'ONSITE_API_URL', 'value', 'http://onsite-api')), createArray()))))))))))))))))]"
           }
         },
         "_apiSecretRefs": {
@@ -134,7 +154,7 @@
           ],
           "output": {
             "type": "array",
-            "value": "[concat(createArray(createObject('name', 'jwt-dev-secret', 'keyVaultUrl', format('{0}secrets/jwt-dev-secret', parameters('uri')), 'envName', 'JWT_DEV_SECRET'), createObject('name', 'internal-service-secret', 'keyVaultUrl', format('{0}secrets/internal-service-secret', parameters('uri')), 'envName', 'INTERNAL_SERVICE_SECRET')), if(equals(parameters('svc'), 'talent-api'), createArray(createObject('name', 'external-session-jwt-secret', 'keyVaultUrl', format('{0}secrets/external-session-jwt-secret', parameters('uri')), 'envName', 'EXTERNAL_SESSION_JWT_SECRET')), createArray()), if(and(equals(parameters('svc'), 'platform-api'), equals(parameters('authMode'), 'entra')), createArray(createObject('name', format('entra-client-secret-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/entra-client-secret-{1}', parameters('uri'), parameters('env')), 'envName', 'ENTRA_CLIENT_SECRET')), createArray()), if(and(equals(parameters('svc'), 'recruitment-api'), equals(parameters('recruitmentMode'), 'live')), createArray(createObject('name', format('lever-api-key-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/lever-api-key-{1}', parameters('uri'), parameters('env')), 'envName', 'LEVER_API_KEY')), createArray()), if(and(equals(parameters('svc'), 'people-api'), equals(parameters('peopleMode'), 'live')), createArray(createObject('name', format('bamboohr-api-key-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/bamboohr-api-key-{1}', parameters('uri'), parameters('env')), 'envName', 'BAMBOOHR_API_KEY')), createArray()), if(and(equals(parameters('svc'), 'birthday-api'), equals(parameters('supplierAuthMode'), 'entra')), createArray(createObject('name', format('birthday-supplier-entra-secret-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/birthday-supplier-entra-secret-{1}', parameters('uri'), parameters('env')), 'envName', 'SUPPLIER_ENTRA_CLIENT_SECRET')), createArray()), if(equals(parameters('db'), ''), createArray(), createArray(createObject('name', format('database-url-{0}', replace(parameters('db'), '_dev', '')), 'keyVaultUrl', format('{0}secrets/database-url-{1}', parameters('uri'), replace(parameters('db'), '_dev', '')), 'envName', 'DATABASE_URL'))))]"
+            "value": "[concat(createArray(createObject('name', format('jwt-{0}-secret', parameters('env')), 'keyVaultUrl', format('{0}secrets/jwt-{1}-secret', parameters('uri'), parameters('env')), 'envName', 'PLATFORM_JWT_SECRET'), createObject('name', 'internal-service-secret', 'keyVaultUrl', format('{0}secrets/internal-service-secret', parameters('uri')), 'envName', 'INTERNAL_SERVICE_SECRET')), if(equals(parameters('svc'), 'talent-api'), createArray(createObject('name', 'external-session-jwt-secret', 'keyVaultUrl', format('{0}secrets/external-session-jwt-secret', parameters('uri')), 'envName', 'EXTERNAL_SESSION_JWT_SECRET')), createArray()), if(and(equals(parameters('svc'), 'platform-api'), equals(parameters('authMode'), 'entra')), createArray(createObject('name', format('entra-client-secret-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/entra-client-secret-{1}', parameters('uri'), parameters('env')), 'envName', 'ENTRA_CLIENT_SECRET')), createArray()), if(and(equals(parameters('svc'), 'recruitment-api'), equals(parameters('recruitmentMode'), 'live')), createArray(createObject('name', format('lever-api-key-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/lever-api-key-{1}', parameters('uri'), parameters('env')), 'envName', 'LEVER_API_KEY')), createArray()), if(and(equals(parameters('svc'), 'people-api'), equals(parameters('peopleMode'), 'live')), createArray(createObject('name', format('bamboohr-api-key-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/bamboohr-api-key-{1}', parameters('uri'), parameters('env')), 'envName', 'BAMBOOHR_API_KEY')), createArray()), if(and(equals(parameters('svc'), 'birthday-api'), equals(parameters('supplierAuthMode'), 'entra')), createArray(createObject('name', format('birthday-supplier-entra-secret-{0}', parameters('env')), 'keyVaultUrl', format('{0}secrets/birthday-supplier-entra-secret-{1}', parameters('uri'), parameters('env')), 'envName', 'SUPPLIER_ENTRA_CLIENT_SECRET')), createArray()), if(equals(parameters('db'), ''), createArray(), createArray(createObject('name', format('database-url-{0}', parameters('db')), 'keyVaultUrl', format('{0}secrets/database-url-{1}', parameters('uri'), parameters('db')), 'envName', 'DATABASE_URL'))))]"
           }
         },
         "_dbFor": {
@@ -146,7 +166,7 @@
           ],
           "output": {
             "type": "string",
-            "value": "[if(equals(parameters('svc'), 'platform-api'), 'platform_dev', if(equals(parameters('svc'), 'talent-api'), 'talent_dev', if(equals(parameters('svc'), 'recruitment-api'), 'recruitment_dev', if(equals(parameters('svc'), 'people-api'), 'people_dev', if(equals(parameters('svc'), 'birthday-api'), 'birthday_dev', 'commercial_dev')))))]"
+            "value": "[if(equals(parameters('svc'), 'platform-api'), 'platform', if(equals(parameters('svc'), 'talent-api'), 'talent', if(equals(parameters('svc'), 'recruitment-api'), 'recruitment', if(equals(parameters('svc'), 'people-api'), 'people', if(equals(parameters('svc'), 'birthday-api'), 'birthday', if(equals(parameters('svc'), 'onsite-api'), 'onsite', if(equals(parameters('svc'), 'atwork-api'), 'atwork', 'commercial')))))))]"
           }
         }
       }
@@ -213,6 +233,52 @@
         "description": "Deploy the commercial-api skeleton."
       }
     },
+    "deployOnsite": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy Diji On-site (onsite-api, onsite-web, migrate + sync jobs). Independently deployable/removable; requires people-api (deployed whenever DijiBirthday or Diji On-site is). See docs/onsite/architecture.md."
+      }
+    },
+    "deployAtwork": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy DijiAtWork (atwork-api, atwork-web, migrate and notification jobs). Independently deployable and removable. Separate authorization required before enabling."
+      }
+    },
+    "onsiteIntegrationsMode": {
+      "type": "string",
+      "defaultValue": "mock",
+      "allowedValues": [
+        "mock",
+        "live"
+      ],
+      "metadata": {
+        "description": "onsite-api source mode. \"mock\" = MockOnsiteSource; \"live\" = SELECT-only Azure SQL onsite.* via the Container App system-assigned managed identity (no SQL password)."
+      }
+    },
+    "onsiteSqlServer": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure SQL server host name for the Diji On-site source (ingestion plane). Only used when onsiteIntegrationsMode == live."
+      }
+    },
+    "onsiteSqlDatabase": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure SQL database name for the Diji On-site source. Only used when onsiteIntegrationsMode == live."
+      }
+    },
+    "onsiteSyncCron": {
+      "type": "string",
+      "defaultValue": "* * * * *",
+      "metadata": {
+        "description": "onsite-sync-job cron (UTC). Every minute in every environment for near-real-time attendance (docs/onsite/deployment.md \"Refresh cadence\"); the run is single-flight and incremental."
+      }
+    },
     "containerCpu": {
       "type": "string",
       "defaultValue": "0.25",
@@ -253,7 +319,7 @@
       "type": "bool",
       "defaultValue": false,
       "metadata": {
-        "description": "Create a Manual bootstrap-talent-clients job that runs talent-api/scripts/seed.py — it pulls the canonical client directory from platform-api (GET /api/platform/internal/clients) and creates ONLY the talent_dev.clients extension rows (platform_client_id + name), idempotent, no business data. Needed for the governed DTC tag -> Client resolution."
+        "description": "Create a Manual bootstrap-talent-clients job that runs talent-api/scripts/seed.py — it pulls the canonical client directory from platform-api (GET /api/platform/internal/clients) and creates ONLY the talent-api clients extension rows (platform_client_id + name) in this environment, idempotent, no business data. Needed for the governed DTC tag -> Client resolution."
       }
     },
     "authMode": {
@@ -267,11 +333,25 @@
         "description": "Internal identity mode for platform-api. \"dev\" = the passwordless persona switcher; \"entra\" = real Microsoft Entra ID OIDC (Authorization Code + PKCE). \"entra\" also requires entraTenantId, entraClientId, publicBaseUrl, and the entra-client-secret-<env> Key Vault secret."
       }
     },
+    "delegatedAccessEnabled": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Delegated application access administration (docs/platform/delegated-access.md): appointments and the /api/access endpoints. Off by default. Turning it off is always a safe rollback: existing suspensions stay enforced."
+      }
+    },
     "entraTenantId": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
         "description": "Entra directory (tenant) id. Only used when authMode == entra."
+      }
+    },
+    "entraInternalEmailDomains": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated email domains of internal employees. Empty disables default module access."
       }
     },
     "entraClientId": {
@@ -286,6 +366,13 @@
       "defaultValue": "",
       "metadata": {
         "description": "Public HTTPS origin of shell-web for this environment, e.g. https://shell-web.<env-domain>. Backs the Entra redirect URI and the front-channel logout redirect."
+      }
+    },
+    "externalPortalBaseUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Base URL of the TalentFlow client portal, used to build access links. Empty leaves the app default, which only works locally."
       }
     },
     "recruitmentIntegrationsMode": {
@@ -359,9 +446,148 @@
       "metadata": {
         "description": "Public HTTPS origin of birthday-supplier-web, e.g. https://birthday-supplier-web.<env-domain>. Backs the supplier Entra redirect URI."
       }
+    },
+    "birthdayMailTransport": {
+      "type": "string",
+      "defaultValue": "",
+      "allowedValues": [
+        "",
+        "null",
+        "graph"
+      ],
+      "metadata": {
+        "description": "birthday-api MAIL_TRANSPORT. \"\" = not set (app default \"null\"); \"null\" = simulated, never sends; \"graph\" = Microsoft Graph sendMail via birthday-api's own system-assigned managed identity."
+      }
+    },
+    "birthdayMailPolicy": {
+      "type": "string",
+      "defaultValue": "",
+      "allowedValues": [
+        "",
+        "disabled",
+        "internal_allowlist",
+        "production"
+      ],
+      "metadata": {
+        "description": "birthday-api MAIL_POLICY. \"disabled\" fails closed; \"internal_allowlist\" = DEV/UAT Email Safety allowlist only (never PROD); \"production\" = real supplier recipients."
+      }
+    },
+    "birthdayMailSharedMailbox": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "birthday-api MAIL_SHARED_MAILBOX — the one mailbox the managed identity sends as (Exchange RBAC-scoped). Required when birthdayMailTransport == \"graph\"."
+      }
+    },
+    "atworkMailTransport": {
+      "type": "string",
+      "defaultValue": "",
+      "allowedValues": [
+        "",
+        "null",
+        "graph"
+      ],
+      "metadata": {
+        "description": "atwork-api MAIL_TRANSPORT. \"\" = not set (app default \"null\"); \"null\" = simulated; \"graph\" = Microsoft Graph sendMail via atwork-api's system-assigned managed identity."
+      }
+    },
+    "atworkMailPolicy": {
+      "type": "string",
+      "defaultValue": "",
+      "allowedValues": [
+        "",
+        "disabled",
+        "internal_allowlist",
+        "production"
+      ],
+      "metadata": {
+        "description": "atwork-api MAIL_POLICY. \"disabled\" fails closed; \"internal_allowlist\" = DEV/UAT allowlist only (never PROD); \"production\" = real employee recipients."
+      }
+    },
+    "atworkMailSharedMailbox": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "atwork-api MAIL_SHARED_MAILBOX — mailbox the managed identity sends as. Required when atworkMailTransport == \"graph\"."
+      }
+    },
+    "atworkMailAllowlist": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated email addresses or @domain entries allowed to receive atwork-api emails in DEV/UAT. Only honoured when atworkMailPolicy == \"internal_allowlist\"."
+      }
+    },
+    "atworkAppUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Public base URL of the DijiAtWork application, e.g. https://shell-web.<env-domain>. Used as the base for email action links. Empty leaves the app default (localhost:3005 — links in emails will be broken)."
+      }
+    },
+    "platformMailTransport": {
+      "type": "string",
+      "defaultValue": "",
+      "allowedValues": [
+        "",
+        "null",
+        "graph"
+      ],
+      "metadata": {
+        "description": "platform-api MAIL_TRANSPORT. \"\" = not set (app default \"null\"); \"null\" = simulated; \"graph\" = Microsoft Graph sendMail via platform-api's own system-assigned managed identity."
+      }
+    },
+    "platformMailPolicy": {
+      "type": "string",
+      "defaultValue": "",
+      "allowedValues": [
+        "",
+        "disabled",
+        "internal_allowlist",
+        "production"
+      ],
+      "metadata": {
+        "description": "platform-api MAIL_POLICY. \"disabled\" fails closed; \"internal_allowlist\" = Admin > Notifications test recipients only (DEV/UAT, never PROD); \"production\" = honoured by the app only when APP_ENV=prod."
+      }
+    },
+    "platformMailSharedMailbox": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "platform-api MAIL_SHARED_MAILBOX — the mailbox platform-api sends as (Exchange RBAC-scoped). Required when platformMailTransport == \"graph\"."
+      }
+    },
+    "releaseDates": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Per-service runtime RELEASE_DATE, keyed by service name. NEVER hand-edit in a .bicepparam: deploy/deploy.sh and deploy/promote.sh build it with deploy/release-dates.sh, which carries every live value forward and stamps only the apps named in RELEASE_APPS. A service absent from the map gets no RELEASE_DATE."
+      }
+    },
+    "customDomains": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Custom-domain ingress bindings per service name: { 'shell-web': [{ name: 'dijione.example.com', certificateName: 'mc-...' }] }. The certificate is an existing managed certificate on this environment's Container Apps Environment (created when the DNS-validated domain was first bound). Declared here because ACA ingress is desired-state: a deployment that omits a live binding REMOVES it, which would break Entra sign-in redirects and the supplier portal hostname."
+      }
+    },
+    "existingIdentityKvSecretsUserRoleAssignmentName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Override the Key Vault Secrets User role-assignment name that modules/identity.bicep creates — only needed when that (scope, role, principal) grant already exists in this environment under a different assignment id (created out-of-band before this template first ran here). Leave empty (the default) for a normal deployment."
+      }
+    },
+    "existingIdentityAcrPullRoleAssignmentName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Same override, for the bootstrap identity AcrPull role assignment (modules/acr-pull.bicep). Leave empty (the default) for a normal deployment."
+      }
     }
   },
   "variables": {
+    "deployPeople": "[or(parameters('deployBirthday'), parameters('deployOnsite'))]",
     "tags": {
       "platform": "dijione",
       "env": "[parameters('environmentName')]",
@@ -374,7 +600,7 @@
       {
         "name": "platform-api",
         "kind": "api",
-        "db": "platform_dev",
+        "db": "platform",
         "external": false
       },
       {
@@ -386,13 +612,13 @@
       {
         "name": "talent-api",
         "kind": "api",
-        "db": "talent_dev",
+        "db": "talent",
         "external": false
       },
       {
         "name": "recruitment-api",
         "kind": "api",
-        "db": "recruitment_dev",
+        "db": "recruitment",
         "external": false
       },
       {
@@ -420,17 +646,19 @@
         "external": true
       }
     ],
-    "birthdayServices": [
+    "peopleServices": [
       {
         "name": "people-api",
         "kind": "api",
-        "db": "people_dev",
+        "db": "people",
         "external": false
-      },
+      }
+    ],
+    "birthdayServices": [
       {
         "name": "birthday-api",
         "kind": "api",
-        "db": "birthday_dev",
+        "db": "birthday",
         "external": false
       },
       {
@@ -450,13 +678,57 @@
       {
         "name": "commercial-api",
         "kind": "api",
-        "db": "commercial_dev",
+        "db": "commercial",
         "external": false
       }
     ],
-    "services": "[concat(variables('coreServices'), if(parameters('deployBirthday'), variables('birthdayServices'), createArray()), if(parameters('deployCommercial'), variables('commercialServices'), createArray()))]",
-    "migrateTargets": "[concat(createArray('platform-api', 'talent-api', 'recruitment-api'), if(parameters('deployBirthday'), createArray('people-api', 'birthday-api'), createArray()), if(parameters('deployCommercial'), createArray('commercial-api'), createArray()))]",
-    "scheduledJobs": "[concat(createArray(createObject('name', 'recruitment-sync-job', 'image', 'recruitment-api', 'cron', '0 */6 * * *', 'url', 'http://recruitment-api/api/recruitment/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'talent-reconcile-job', 'image', 'talent-api', 'cron', '15 */6 * * *', 'url', 'http://talent-api/api/talent/internal/recruitment/reconcile', 'timeout', 900)), if(parameters('deployBirthday'), createArray(createObject('name', 'people-sync-job', 'image', 'people-api', 'cron', '30 18 * * *', 'url', 'http://people-api/api/people/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'birthday-scan-job', 'image', 'birthday-api', 'cron', '0 19 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-daily-scan', 'timeout', 900), createObject('name', 'birthday-attention-job', 'image', 'birthday-api', 'cron', '30 20 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-attention', 'timeout', 600), createObject('name', 'birthday-comms-job', 'image', 'birthday-api', 'cron', '*/10 * * * *', 'url', 'http://birthday-api/api/birthday/internal/run-comms', 'timeout', 600)), createArray()))]"
+    "onsiteServices": [
+      {
+        "name": "onsite-api",
+        "kind": "api",
+        "db": "onsite",
+        "external": false
+      },
+      {
+        "name": "onsite-web",
+        "kind": "web",
+        "db": "",
+        "external": false
+      }
+    ],
+    "atworkServices": [
+      {
+        "name": "atwork-api",
+        "kind": "api",
+        "db": "atwork",
+        "external": false
+      },
+      {
+        "name": "atwork-web",
+        "kind": "web",
+        "db": "",
+        "external": false
+      }
+    ],
+    "services": "[concat(variables('coreServices'), if(variables('deployPeople'), variables('peopleServices'), createArray()), if(parameters('deployBirthday'), variables('birthdayServices'), createArray()), if(parameters('deployCommercial'), variables('commercialServices'), createArray()), if(parameters('deployOnsite'), variables('onsiteServices'), createArray()), if(parameters('deployAtwork'), variables('atworkServices'), createArray()))]",
+    "_mailPolicyForEnv": "[if(and(equals(parameters('environmentName'), 'prod'), equals(parameters('birthdayMailPolicy'), 'internal_allowlist')), int('PROD must not use birthdayMailPolicy=internal_allowlist'), 0)]",
+    "_mailMailboxPresent": "[if(and(equals(parameters('birthdayMailTransport'), 'graph'), empty(parameters('birthdayMailSharedMailbox'))), int('birthdayMailTransport=graph requires birthdayMailSharedMailbox'), 0)]",
+    "_platformMailPolicyForEnv": "[if(and(equals(parameters('environmentName'), 'prod'), equals(parameters('platformMailPolicy'), 'internal_allowlist')), int('PROD must not use platformMailPolicy=internal_allowlist'), 0)]",
+    "_platformMailPolicyNonProd": "[if(and(not(equals(parameters('environmentName'), 'prod')), equals(parameters('platformMailPolicy'), 'production')), int('platformMailPolicy=production is for PROD only'), 0)]",
+    "_platformMailMailboxPresent": "[if(and(equals(parameters('platformMailTransport'), 'graph'), empty(parameters('platformMailSharedMailbox'))), int('platformMailTransport=graph requires platformMailSharedMailbox'), 0)]",
+    "platformApiMailEnv": "[if(or(not(equals(add(add(variables('_platformMailPolicyForEnv'), variables('_platformMailPolicyNonProd')), variables('_platformMailMailboxPresent')), 0)), empty(parameters('platformMailTransport'))), createArray(), concat(createArray(createObject('name', 'MAIL_TRANSPORT', 'value', parameters('platformMailTransport'))), if(empty(parameters('platformMailPolicy')), createArray(), createArray(createObject('name', 'MAIL_POLICY', 'value', parameters('platformMailPolicy')))), if(empty(parameters('platformMailSharedMailbox')), createArray(), createArray(createObject('name', 'MAIL_SHARED_MAILBOX', 'value', parameters('platformMailSharedMailbox'))))))]",
+    "birthdayApiMailEnv": "[if(or(not(equals(add(variables('_mailPolicyForEnv'), variables('_mailMailboxPresent')), 0)), empty(parameters('birthdayMailTransport'))), createArray(), concat(createArray(createObject('name', 'MAIL_TRANSPORT', 'value', parameters('birthdayMailTransport'))), if(empty(parameters('birthdayMailPolicy')), createArray(), createArray(createObject('name', 'MAIL_POLICY', 'value', parameters('birthdayMailPolicy')))), if(empty(parameters('birthdayMailSharedMailbox')), createArray(), createArray(createObject('name', 'MAIL_SHARED_MAILBOX', 'value', parameters('birthdayMailSharedMailbox'))))))]",
+    "_atworkMailPolicyForEnv": "[if(and(equals(parameters('environmentName'), 'prod'), equals(parameters('atworkMailPolicy'), 'internal_allowlist')), int('PROD must not use atworkMailPolicy=internal_allowlist'), 0)]",
+    "_atworkMailMailboxPresent": "[if(and(equals(parameters('atworkMailTransport'), 'graph'), empty(parameters('atworkMailSharedMailbox'))), int('atworkMailTransport=graph requires atworkMailSharedMailbox'), 0)]",
+    "atworkApiMailEnv": "[if(or(not(equals(add(variables('_atworkMailPolicyForEnv'), variables('_atworkMailMailboxPresent')), 0)), empty(parameters('atworkMailTransport'))), createArray(), concat(createArray(createObject('name', 'MAIL_TRANSPORT', 'value', parameters('atworkMailTransport'))), if(empty(parameters('atworkMailPolicy')), createArray(), createArray(createObject('name', 'MAIL_POLICY', 'value', parameters('atworkMailPolicy')))), if(empty(parameters('atworkMailSharedMailbox')), createArray(), createArray(createObject('name', 'MAIL_SHARED_MAILBOX', 'value', parameters('atworkMailSharedMailbox')))), if(empty(parameters('atworkMailAllowlist')), createArray(), createArray(createObject('name', 'MAIL_ALLOWLIST', 'value', parameters('atworkMailAllowlist')))), if(empty(parameters('atworkAppUrl')), createArray(), createArray(createObject('name', 'ATWORK_APP_URL', 'value', parameters('atworkAppUrl'))))))]",
+    "birthdayWebEnv": [
+      {
+        "name": "APP_ENV",
+        "value": "[if(equals(parameters('environmentName'), 'dev'), 'development', parameters('environmentName'))]"
+      }
+    ],
+    "migrateTargets": "[concat(createArray('platform-api', 'talent-api', 'recruitment-api'), if(variables('deployPeople'), createArray('people-api'), createArray()), if(parameters('deployBirthday'), createArray('birthday-api'), createArray()), if(parameters('deployCommercial'), createArray('commercial-api'), createArray()), if(parameters('deployOnsite'), createArray('onsite-api'), createArray()), if(parameters('deployAtwork'), createArray('atwork-api'), createArray()))]",
+    "scheduledJobs": "[concat(createArray(createObject('name', 'recruitment-sync-job', 'image', 'recruitment-api', 'cron', '0 */6 * * *', 'url', 'http://recruitment-api/api/recruitment/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'talent-reconcile-job', 'image', 'talent-api', 'cron', '15 */6 * * *', 'url', 'http://talent-api/api/talent/internal/recruitment/reconcile', 'timeout', 900)), if(parameters('deployBirthday'), createArray(createObject('name', 'people-sync-job', 'image', 'people-api', 'cron', '30 18 * * *', 'url', 'http://people-api/api/people/internal/scheduled-sync', 'timeout', 1800), createObject('name', 'birthday-scan-job', 'image', 'birthday-api', 'cron', '0 19 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-daily-scan', 'timeout', 900), createObject('name', 'birthday-attention-job', 'image', 'birthday-api', 'cron', '30 20 * * *', 'url', 'http://birthday-api/api/birthday/internal/run-attention', 'timeout', 600), createObject('name', 'birthday-comms-job', 'image', 'birthday-api', 'cron', '*/10 * * * *', 'url', 'http://birthday-api/api/birthday/internal/run-comms', 'timeout', 600)), createArray()), if(variables('deployPeople'), createArray(createObject('name', 'people-workforce-sync-job', 'image', 'people-api', 'cron', '15 */6 * * *', 'url', 'http://people-api/api/people/internal/workforce-directory/scheduled-sync', 'timeout', 1800)), createArray()), if(parameters('deployOnsite'), createArray(createObject('name', 'onsite-sync-job', 'image', 'onsite-api', 'cron', parameters('onsiteSyncCron'), 'url', 'http://onsite-api/api/onsite/internal/scheduled-sync', 'timeout', 120)), createArray()), if(parameters('deployAtwork'), createArray(createObject('name', 'atwork-notifications-job', 'image', 'atwork-api', 'cron', '*/15 * * * *', 'url', 'http://atwork-api/api/atwork/internal/notifications/run', 'timeout', 300)), createArray()))]"
   },
   "resources": {
     "cae": {
@@ -492,6 +764,9 @@
           },
           "keyVaultName": {
             "value": "[variables('kvName')]"
+          },
+          "existingKvSecretsUserRoleAssignmentName": {
+            "value": "[parameters('existingIdentityKvSecretsUserRoleAssignmentName')]"
           }
         },
         "template": {
@@ -500,8 +775,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "14222176492384674482"
+              "version": "0.49.2.45890",
+              "templateHash": "14985343422891236040"
             }
           },
           "parameters": {
@@ -524,6 +799,13 @@
               "metadata": {
                 "description": "Key Vault name (same RG) — this identity receives Key Vault Secrets User on it."
               }
+            },
+            "existingKvSecretsUserRoleAssignmentName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Override the Key Vault Secrets User role-assignment NAME (a GUID) instead of the deterministic guid(kv.id, uami.id, roleId) this module computes by default. Only needed when that exact (scope, role, principal) grant already exists under a different assignment id — e.g. it was created out-of-band before this module ever ran for this environment — so a fresh incremental deployment does not collide with it as a duplicate RBAC assignment. Leave empty (the default) everywhere else."
+              }
             }
           },
           "variables": {
@@ -541,7 +823,7 @@
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
-              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), variables('kvSecretsUserRoleId'))]",
+              "name": "[if(empty(parameters('existingKvSecretsUserRoleAssignmentName')), guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), variables('kvSecretsUserRoleId')), parameters('existingKvSecretsUserRoleAssignmentName'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('kvSecretsUserRoleId'))]",
                 "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), '2023-01-31').principalId]",
@@ -592,6 +874,9 @@
           },
           "principalId": {
             "value": "[reference('identity').outputs.principalId.value]"
+          },
+          "existingAcrPullRoleAssignmentName": {
+            "value": "[parameters('existingIdentityAcrPullRoleAssignmentName')]"
           }
         },
         "template": {
@@ -600,8 +885,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "3660136379277234820"
+              "version": "0.49.2.45890",
+              "templateHash": "11675644387704225645"
             }
           },
           "parameters": {
@@ -622,6 +907,13 @@
               "metadata": {
                 "description": "The Container App / Job system-assigned identity principalId."
               }
+            },
+            "existingAcrPullRoleAssignmentName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Override the AcrPull role-assignment name instead of the deterministic guid(acr.id, granteeName, roleId) this module computes by default. Only needed when that exact (scope, role, principal) grant already exists in this environment under a different assignment id (created out-of-band before this template first ran here). Leave empty (the default) for a normal deployment."
+              }
             }
           },
           "variables": {
@@ -632,7 +924,7 @@
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
-              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), parameters('granteeName'), variables('acrPullRoleId'))]",
+              "name": "[if(empty(parameters('existingAcrPullRoleAssignmentName')), guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), parameters('granteeName'), variables('acrPullRoleId')), parameters('existingAcrPullRoleAssignmentName'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleId'))]",
                 "principalId": "[parameters('principalId')]",
@@ -684,6 +976,9 @@
           "external": {
             "value": "[variables('services')[copyIndex()].external]"
           },
+          "customDomains": {
+            "value": "[coalesce(tryGet(parameters('customDomains'), variables('services')[copyIndex()].name), createArray())]"
+          },
           "minReplicas": {
             "value": "[coalesce(tryGet(parameters('minReplicas'), variables('services')[copyIndex()].name), 0)]"
           },
@@ -703,7 +998,7 @@
             "value": "[variables('tags')]"
           },
           "envVars": {
-            "value": "[concat(if(equals(variables('services')[copyIndex()].kind, 'api'), createArray(createObject('name', 'APP_ENV', 'value', if(equals(parameters('environmentName'), 'dev'), 'development', parameters('environmentName'))), createObject('name', 'EMAIL_SENDING_MODE', 'value', 'mock'), createObject('name', 'API_CORS_ORIGINS', 'value', join(createArray(format('https://shell-web.{0}', reference('cae').defaultDomain), format('https://talentflow-portal-web.{0}', reference('cae').defaultDomain), if(parameters('deployBirthday'), format('https://birthday-supplier-web.{0}', reference('cae').defaultDomain), '')), ','))), createArray()), __bicep._perServiceEnv(variables('services')[copyIndex()].name, parameters('authMode'), parameters('entraTenantId'), parameters('entraClientId'), parameters('publicBaseUrl'), parameters('recruitmentIntegrationsMode'), parameters('peopleIntegrationsMode'), parameters('bamboohrSubdomain'), parameters('supplierAuthMode'), parameters('supplierEntraTenantId'), parameters('supplierEntraClientId'), parameters('supplierPublicBaseUrl'), parameters('birthdayIntegrationsMode')))]"
+            "value": "[concat(if(equals(variables('services')[copyIndex()].kind, 'api'), createArray(createObject('name', 'APP_ENV', 'value', if(equals(parameters('environmentName'), 'dev'), 'development', parameters('environmentName'))), createObject('name', 'EMAIL_SENDING_MODE', 'value', 'mock'), createObject('name', 'API_CORS_ORIGINS', 'value', join(createArray(format('https://shell-web.{0}', reference('cae').defaultDomain), format('https://talentflow-portal-web.{0}', reference('cae').defaultDomain), if(parameters('deployBirthday'), format('https://birthday-supplier-web.{0}', reference('cae').defaultDomain), '')), ','))), createArray()), if(equals(variables('services')[copyIndex()].name, 'birthday-web'), variables('birthdayWebEnv'), createArray()), if(equals(variables('services')[copyIndex()].name, 'birthday-api'), variables('birthdayApiMailEnv'), createArray()), if(equals(variables('services')[copyIndex()].name, 'platform-api'), variables('platformApiMailEnv'), createArray()), if(equals(variables('services')[copyIndex()].name, 'atwork-api'), variables('atworkApiMailEnv'), createArray()), if(equals(variables('services')[copyIndex()].name, 'platform-api'), createArray(createObject('name', 'DELEGATED_ACCESS_ENABLED', 'value', if(parameters('delegatedAccessEnabled'), 'true', 'false'))), createArray()), if(contains(parameters('releaseDates'), variables('services')[copyIndex()].name), createArray(createObject('name', 'RELEASE_DATE', 'value', string(parameters('releaseDates')[variables('services')[copyIndex()].name]))), createArray()), __bicep._perServiceEnv(variables('services')[copyIndex()].name, parameters('authMode'), parameters('entraTenantId'), parameters('entraClientId'), parameters('entraInternalEmailDomains'), parameters('publicBaseUrl'), parameters('recruitmentIntegrationsMode'), parameters('peopleIntegrationsMode'), parameters('bamboohrSubdomain'), parameters('supplierAuthMode'), parameters('supplierEntraTenantId'), parameters('supplierEntraClientId'), parameters('supplierPublicBaseUrl'), parameters('birthdayIntegrationsMode'), parameters('onsiteIntegrationsMode'), parameters('onsiteSqlServer'), parameters('onsiteSqlDatabase'), parameters('externalPortalBaseUrl')))]"
           },
           "secretRefs": "[if(equals(variables('services')[copyIndex()].kind, 'api'), createObject('value', __bicep._apiSecretRefs(variables('services')[copyIndex()].name, variables('services')[copyIndex()].db, reference('kv').vaultUri, parameters('authMode'), parameters('environmentName'), parameters('recruitmentIntegrationsMode'), parameters('peopleIntegrationsMode'), parameters('supplierAuthMode'))), createObject('value', createArray()))]"
         },
@@ -713,8 +1008,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "13272718894302306785"
+              "version": "0.49.2.45890",
+              "templateHash": "17832405630971408306"
             }
           },
           "parameters": {
@@ -773,6 +1068,13 @@
               "defaultValue": false,
               "metadata": {
                 "description": "true = public ingress (shell-web + the two external portals only)."
+              }
+            },
+            "customDomains": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Custom-domain bindings to DECLARE on this app's ingress: [{ name: <hostname>, certificateName: <managedCertificates name on the environment> }]. Container Apps ingress is desired-state, so any binding that exists live but is missing here is REMOVED by a deployment. Default [] = no custom domain."
               }
             },
             "minReplicas": {
@@ -855,6 +1157,17 @@
                 "configuration": {
                   "activeRevisionsMode": "Single",
                   "ingress": {
+                    "copy": [
+                      {
+                        "name": "customDomains",
+                        "count": "[length(parameters('customDomains'))]",
+                        "input": {
+                          "name": "[parameters('customDomains')[copyIndex('customDomains')].name]",
+                          "bindingType": "SniEnabled",
+                          "certificateId": "[format('{0}/managedCertificates/{1}', parameters('managedEnvironmentId'), parameters('customDomains')[copyIndex('customDomains')].certificateName)]"
+                        }
+                      }
+                    ],
                     "external": "[parameters('external')]",
                     "targetPort": "[parameters('targetPort')]",
                     "transport": "auto",
@@ -975,8 +1288,8 @@
           "secretRefs": {
             "value": [
               {
-                "name": "[format('database-url-{0}', replace(__bicep._dbFor(variables('migrateTargets')[copyIndex()]), '_dev', ''))]",
-                "keyVaultUrl": "[format('{0}secrets/database-url-{1}', reference('kv').vaultUri, replace(__bicep._dbFor(variables('migrateTargets')[copyIndex()]), '_dev', ''))]",
+                "name": "[format('database-url-{0}', __bicep._dbFor(variables('migrateTargets')[copyIndex()]))]",
+                "keyVaultUrl": "[format('{0}secrets/database-url-{1}', reference('kv').vaultUri, __bicep._dbFor(variables('migrateTargets')[copyIndex()]))]",
                 "envName": "DATABASE_URL"
               }
             ]
@@ -988,8 +1301,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "15536014598024239761"
+              "version": "0.49.2.45890",
+              "templateHash": "11631915317841071925"
             }
           },
           "parameters": {
@@ -1236,8 +1549,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "15536014598024239761"
+              "version": "0.49.2.45890",
+              "templateHash": "11631915317841071925"
             }
           },
           "parameters": {
@@ -1485,9 +1798,9 @@
                 "envName": "INTERNAL_SERVICE_SECRET"
               },
               {
-                "name": "jwt-dev-secret",
-                "keyVaultUrl": "[format('{0}secrets/jwt-dev-secret', reference('kv').vaultUri)]",
-                "envName": "JWT_DEV_SECRET"
+                "name": "[format('jwt-{0}-secret', parameters('environmentName'))]",
+                "keyVaultUrl": "[format('{0}secrets/jwt-{1}-secret', reference('kv').vaultUri, parameters('environmentName'))]",
+                "envName": "PLATFORM_JWT_SECRET"
               }
             ]
           }
@@ -1498,8 +1811,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "15536014598024239761"
+              "version": "0.49.2.45890",
+              "templateHash": "11631915317841071925"
             }
           },
           "parameters": {
@@ -1744,8 +2057,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.46.1.21595",
-              "templateHash": "15536014598024239761"
+              "version": "0.49.2.45890",
+              "templateHash": "11631915317841071925"
             }
           },
           "parameters": {

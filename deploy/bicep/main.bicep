@@ -152,6 +152,28 @@ param birthdayMailPolicy string = ''
 @description('birthday-api MAIL_SHARED_MAILBOX — the one mailbox the managed identity sends as (Exchange RBAC-scoped). Required when birthdayMailTransport == "graph".')
 param birthdayMailSharedMailbox string = ''
 
+// ---- DijiAtWork outbound mail (atwork-api only) ----------------------------
+// Same pattern as birthday-api and platform-api: empty transport = fail-closed defaults
+// (null transport, internal_allowlist policy, nothing sent). atwork-api uses its OWN
+// system-assigned managed identity and Exchange RBAC scope.
+// deploy/mail-config-guard.sh must be extended to guard this service before UAT/PROD.
+@description('atwork-api MAIL_TRANSPORT. "" = not set (app default "null"); "null" = simulated; "graph" = Microsoft Graph sendMail via atwork-api\'s system-assigned managed identity.')
+@allowed([ '', 'null', 'graph' ])
+param atworkMailTransport string = ''
+
+@description('atwork-api MAIL_POLICY. "disabled" fails closed; "internal_allowlist" = DEV/UAT allowlist only (never PROD); "production" = real employee recipients.')
+@allowed([ '', 'disabled', 'internal_allowlist', 'production' ])
+param atworkMailPolicy string = ''
+
+@description('atwork-api MAIL_SHARED_MAILBOX — mailbox the managed identity sends as. Required when atworkMailTransport == "graph".')
+param atworkMailSharedMailbox string = ''
+
+@description('Comma-separated email addresses or @domain entries allowed to receive atwork-api emails in DEV/UAT. Only honoured when atworkMailPolicy == "internal_allowlist".')
+param atworkMailAllowlist string = ''
+
+@description('Public base URL of the DijiAtWork application, e.g. https://shell-web.<env-domain>. Used as the base for email action links. Empty leaves the app default (localhost:3005 — links in emails will be broken).')
+param atworkAppUrl string = ''
+
 // ---- DijiOne access-notification mail (platform-api only) -------------------
 // Same contract as birthday-api's: empty transport = emit nothing = the app's fail-closed
 // defaults (null transport -> SIMULATED rows, nothing sent). platform-api uses its OWN
@@ -313,6 +335,18 @@ var birthdayApiMailEnv = (_mailPolicyForEnv + _mailMailboxPresent) != 0 || empty
   [ { name: 'MAIL_TRANSPORT', value: birthdayMailTransport } ],
   empty(birthdayMailPolicy) ? [] : [ { name: 'MAIL_POLICY', value: birthdayMailPolicy } ],
   empty(birthdayMailSharedMailbox) ? [] : [ { name: 'MAIL_SHARED_MAILBOX', value: birthdayMailSharedMailbox } ]
+)
+
+// DijiAtWork outbound mail guards — same pattern as birthday-api.
+var _atworkMailPolicyForEnv = environmentName == 'prod' && atworkMailPolicy == 'internal_allowlist' ? int('PROD must not use atworkMailPolicy=internal_allowlist') : 0
+var _atworkMailMailboxPresent = atworkMailTransport == 'graph' && empty(atworkMailSharedMailbox) ? int('atworkMailTransport=graph requires atworkMailSharedMailbox') : 0
+
+var atworkApiMailEnv = (_atworkMailPolicyForEnv + _atworkMailMailboxPresent) != 0 || empty(atworkMailTransport) ? [] : concat(
+  [ { name: 'MAIL_TRANSPORT', value: atworkMailTransport } ],
+  empty(atworkMailPolicy) ? [] : [ { name: 'MAIL_POLICY', value: atworkMailPolicy } ],
+  empty(atworkMailSharedMailbox) ? [] : [ { name: 'MAIL_SHARED_MAILBOX', value: atworkMailSharedMailbox } ],
+  empty(atworkMailAllowlist) ? [] : [ { name: 'MAIL_ALLOWLIST', value: atworkMailAllowlist } ],
+  empty(atworkAppUrl) ? [] : [ { name: 'ATWORK_APP_URL', value: atworkAppUrl } ]
 )
 
 // Web apps don't get commonApiEnv. birthday-web reads APP_ENV (its
@@ -522,7 +556,7 @@ module apps 'modules/containerapp.bicep' = [
       memory: containerMemory
       location: location
       tags: tags
-      envVars: concat(s.kind == 'api' ? commonApiEnv : [], s.name == 'birthday-web' ? birthdayWebEnv : [], s.name == 'birthday-api' ? birthdayApiMailEnv : [], s.name == 'platform-api' ? platformApiMailEnv : [],
+      envVars: concat(s.kind == 'api' ? commonApiEnv : [], s.name == 'birthday-web' ? birthdayWebEnv : [], s.name == 'birthday-api' ? birthdayApiMailEnv : [], s.name == 'platform-api' ? platformApiMailEnv : [], s.name == 'atwork-api' ? atworkApiMailEnv : [],
         s.name == 'platform-api' ? [ { name: 'DELEGATED_ACCESS_ENABLED', value: delegatedAccessEnabled ? 'true' : 'false' } ] : [], contains(releaseDates, s.name) ? [ { name: 'RELEASE_DATE', value: string(releaseDates[s.name]) } ] : [], _perServiceEnv(s.name, authMode, entraTenantId, entraClientId, entraInternalEmailDomains, publicBaseUrl, recruitmentIntegrationsMode, peopleIntegrationsMode, bamboohrSubdomain, supplierAuthMode, supplierEntraTenantId, supplierEntraClientId, supplierPublicBaseUrl, birthdayIntegrationsMode, onsiteIntegrationsMode, onsiteSqlServer, onsiteSqlDatabase, externalPortalBaseUrl))
       secretRefs: s.kind == 'api' ? _apiSecretRefs(s.name, s.db, kvUri, authMode, environmentName, recruitmentIntegrationsMode, peopleIntegrationsMode, supplierAuthMode) : []
       // ^ lever-api-key-<env> / bamboohr-api-key-<env> attach only when the
