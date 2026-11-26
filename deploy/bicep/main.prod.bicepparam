@@ -140,3 +140,11 @@ param externalPortalBaseUrl = 'https://talentflow-portal-web.icybush-52a8142b.so
 param platformMailTransport = 'graph'
 param platformMailPolicy = 'production'
 param platformMailSharedMailbox = 'appassistant@dijitalteam.com'
+
+// DijiAtWork outbound mail — Exchange RBAC: DijiAtWork-Prod-MailSend, scoped to
+// DijiApps-AppAssistant-Mailbox-Scope. Provisioned 2026-11-26.
+param deployAtwork = true
+param atworkMailTransport = 'graph'
+param atworkMailPolicy = 'production'
+param atworkMailSharedMailbox = 'appassistant@dijitalteam.com'
+param atworkAppUrl = 'https://shell-web.icybush-52a8142b.southeastasia.azurecontainerapps.io'

@@ -108,17 +108,13 @@ param platformMailTransport = 'graph'
 param platformMailPolicy = 'internal_allowlist'
 param platformMailSharedMailbox = 'appassistant@dijitalteam.com'
 
-// DijiAtWork outbound mail — atwork-api managed identity needs Exchange RBAC
-// (Mail.Send on the shared mailbox) before this can be changed to 'graph'.
-// Until that grant is confirmed, leave atworkMailTransport unset so the app
-// uses its built-in null transport (simulated, nothing sent). Do NOT copy
-// birthdayMailTransport='graph' here without verifying the RBAC scope first.
-// atworkAppUrl: set to the shell-web URL once action-link paths are confirmed.
-param atworkMailTransport = ''
-param atworkMailPolicy = ''
-param atworkMailSharedMailbox = ''
-param atworkMailAllowlist = ''
-param atworkAppUrl = ''
+// DijiAtWork outbound mail — Exchange RBAC for Applications (DijiAtWork-Dev-MailSend)
+// provisioned 2026-11-26, scoped to DijiApps-AppAssistant-Mailbox-Scope.
+param atworkMailTransport = 'graph'
+param atworkMailPolicy = 'internal_allowlist'
+param atworkMailSharedMailbox = 'appassistant@dijitalteam.com'
+param atworkMailAllowlist = '@dijitalteam.com'
+param atworkAppUrl = 'https://shell-web.livelypebble-890e141a.southeastasia.azurecontainerapps.io'
 
 // External DijiTalentFlow client portal origin used by talent-api for portal
 // links (EXTERNAL_PORTAL_BASE_URL). Equals live DEV talent-api (verified
