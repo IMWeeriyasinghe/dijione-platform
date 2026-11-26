@@ -22,26 +22,38 @@ def _iso_in_days(n: int) -> str:
 def _record(
     rid: str, number: str | None, name: str, status: str, *, dept: str = "Internal Bench",
     title: str = "Software Engineer", location: str = "Sri Lanka", hire: str = "2021-03-01",
-    term: str = _NO_TERMINATION,
+    term: str = _NO_TERMINATION, email: str | None = None,
 ) -> BambooHRWorkforceRecord:
     return BambooHRWorkforceRecord(
         id=rid, employee_number=number, display_name=name, department=dept, job_title=title,
         location=location, employment_status=status, hire_date=hire, termination_date=term,
+        work_email=email,
     )
 
 
 def _build_roster() -> list[BambooHRWorkforceRecord]:
     return [
-        _record("wf-201", "101", "Nimal Perera", "Active", dept="blueAPACHE"),
-        _record("wf-202", "102", "Kasun Fernando", "Active", title="QA Engineer"),
-        _record("wf-203", "103", "Dilani Silva", "Inactive", hire="2020-06-01", term="2025-08-31"),
-        _record("wf-204", None, "Ruwan Jayasinghe", "Active", title="Business Analyst"),  # blank number
-        _record("wf-205", "105", "Tharindu Bandara", "Active", dept="Cytrack"),
-        _record("wf-206", "105", "Sachini Wickramasinghe", "Active", title="Designer"),  # duplicated number
-        _record("wf-207", "0107", "Ishara Gunawardena", "Active", title="Support Engineer"),  # leading zero kept
-        _record("wf-208", "108", "Chamara Dissanayake", "Active", hire=_iso_in_days(21)),  # future starter
-        _record("wf-209", "109", "Harsha Rathnayake", "Inactive", dept="Cytrack", hire="2019-02-11", term="2024-12-15"),
-        _record("wf-210", "110", "Anjali Herath", "Active", location="Brisbane", title="Account Manager"),
+        _record("wf-201", "101", "Nimal Perera", "Active", dept="blueAPACHE",
+                email="nimal.perera@dijitalteam.com"),
+        _record("wf-202", "102", "Kasun Fernando", "Active", title="QA Engineer",
+                email="kasun.fernando@dijitalteam.com"),
+        _record("wf-203", "103", "Dilani Silva", "Inactive", hire="2020-06-01", term="2025-08-31",
+                email="dilani.silva@dijitalteam.com"),
+        _record("wf-204", None, "Ruwan Jayasinghe", "Active", title="Business Analyst",
+                email="ruwan.jayasinghe@dijitalteam.com"),  # blank number
+        _record("wf-205", "105", "Tharindu Bandara", "Active", dept="Cytrack",
+                email="tharindu.bandara@dijitalteam.com"),
+        _record("wf-206", "105", "Sachini Wickramasinghe", "Active", title="Designer",
+                email="sachini.wickramasinghe@dijitalteam.com"),  # duplicated number
+        _record("wf-207", "0107", "Ishara Gunawardena", "Active", title="Support Engineer",
+                email="ishara.gunawardena@dijitalteam.com"),  # leading zero kept
+        _record("wf-208", "108", "Chamara Dissanayake", "Active", hire=_iso_in_days(21),
+                email="chamara.dissanayake@dijitalteam.com"),  # future starter
+        _record("wf-209", "109", "Harsha Rathnayake", "Inactive", dept="Cytrack",
+                hire="2019-02-11", term="2024-12-15",
+                email="harsha.rathnayake@dijitalteam.com"),
+        _record("wf-210", "110", "Anjali Herath", "Active", location="Brisbane", title="Account Manager",
+                email="anjali.herath@dijitalteam.com"),
     ]
 
 

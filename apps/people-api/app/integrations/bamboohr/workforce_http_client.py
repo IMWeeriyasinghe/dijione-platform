@@ -36,6 +36,9 @@ _WORKFORCE_REPORT_FIELDS = [
     "status",
     "hireDate",
     "terminationDate",
+    # Included for the admin-only email search path only. Never returned in
+    # WorkforceEntryOut (minimum-data policy, CLAUDE.md rule 9).
+    "workEmail",
 ]
 
 
@@ -94,6 +97,7 @@ class BambooHRWorkforceHttpClient(BambooHRWorkforceClient):
                     hire_date=row.get("hireDate") or None,
                     termination_date=row.get("terminationDate") or None,
                     photo_url=photos.get(record_id),
+                    work_email=(row.get("workEmail") or "").strip() or None,
                 )
             )
         return records

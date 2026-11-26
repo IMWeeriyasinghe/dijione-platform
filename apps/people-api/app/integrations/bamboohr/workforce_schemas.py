@@ -27,3 +27,6 @@ class BambooHRWorkforceRecord(BaseModel):
     # and merge rule Customer Portal V2 verified live). Never sent to
     # consumers; people-api proxies the bytes (routes/workforce.py).
     photo_url: str | None = None
+    # Included for the admin-only email search path; never returned in
+    # WorkforceEntryOut (minimum-data policy, CLAUDE.md rule 9).
+    work_email: str | None = None

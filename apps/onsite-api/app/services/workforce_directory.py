@@ -77,6 +77,19 @@ def load(*, force: bool = False) -> DirectorySnapshot:
     return snapshot
 
 
+def admin_search(q: str) -> list[dict]:
+    """Live email/name/ID search via the people-api admin search endpoint.
+    Bypasses the cache; returns empty list when people-api is unavailable."""
+    client = _client()
+    if client is None:
+        return []
+    try:
+        return client.admin_search(q)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("workforce admin_search unavailable: %s", exc.__class__.__name__)
+        return []
+
+
 def clear_cache() -> None:
     with _lock:
         _cache["snapshot"], _cache["at"] = None, 0.0

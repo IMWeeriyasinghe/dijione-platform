@@ -31,4 +31,5 @@ def map_workforce_record(record: BambooHRWorkforceRecord) -> dict:
         "hire_date": _parse_iso_date(record.hire_date),
         "termination_date": _parse_iso_date(record.termination_date),
         "photo_url": record.photo_url if (record.photo_url or "").lower().startswith("https://") else None,
+        "work_email": (record.work_email or "").strip().lower() or None,
     }

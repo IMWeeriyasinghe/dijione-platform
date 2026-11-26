@@ -36,6 +36,7 @@ class WorkforceDirectoryEntry(TimestampMixin, Base):
     termination_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # BambooHR photo link (https only). Internal: served via the photo proxy.
     photo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    work_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     present_in_source: Mapped[bool] = mapped_column(Boolean, default=True)
     first_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -52,7 +52,7 @@ export type UnmappedRow = {
 export type DirectoryHit = {
   bamboohr_id: string; display_name: string | null; employee_number: string | null; department: string | null;
   job_title: string | null; employment_status: string | null; hire_date: string | null;
-  termination_date: string | null; work_email: string | null; has_photo: boolean; active_codes: string[];
+  termination_date: string | null; has_photo: boolean; active_codes: string[];
 };
 
 export type CodeDetail = {
