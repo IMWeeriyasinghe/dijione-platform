@@ -103,3 +103,12 @@ param customDomains = {
 param platformMailTransport = 'graph'
 param platformMailPolicy = 'internal_allowlist'
 param platformMailSharedMailbox = 'appassistant@dijitalteam.com'
+
+// DijiAtWork outbound mail — Exchange RBAC: DijiAtWork-Uat-MailSend, scoped to
+// DijiApps-AppAssistant-Mailbox-Scope. Provisioned 2026-11-26.
+param deployAtwork = true
+param atworkMailTransport = 'graph'
+param atworkMailPolicy = 'internal_allowlist'
+param atworkMailSharedMailbox = 'appassistant@dijitalteam.com'
+param atworkMailAllowlist = '@dijitalteam.com'
+param atworkAppUrl = 'https://shell-web.mangofield-96838df7.southeastasia.azurecontainerapps.io'
