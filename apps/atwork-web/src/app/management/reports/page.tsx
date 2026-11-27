@@ -67,6 +67,26 @@ function Stat({ label, value, tone }: { label: string; value: string | number; t
   );
 }
 
+// ─── Sortable table header ────────────────────────────────────────────────────
+
+function SortTh<K extends string>({
+  col, sortKey, sortDir, onSort, children,
+}: { col: K; sortKey: K; sortDir: "asc" | "desc"; onSort: (k: K) => void; children: React.ReactNode }) {
+  const active = sortKey === col;
+  return (
+    <Th>
+      <button
+        type="button"
+        className={`flex items-center gap-1 ${active ? "font-bold text-dt-burnt-orange" : ""}`}
+        onClick={() => onSort(col)}
+      >
+        {children}
+        <span aria-hidden className="text-xs">{active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+      </button>
+    </Th>
+  );
+}
+
 // ─── Employee Summary tab ─────────────────────────────────────────────────────
 
 type SortKey = "employee_name" | "session_count" | "net" | "gross" | "unverified";
@@ -97,22 +117,6 @@ function EmployeeSummaryTab({
 
   function toggleSort(key: SortKey) {
     setSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
-  }
-
-  function SortTh({ col, children }: { col: SortKey; children: React.ReactNode }) {
-    const active = sort.key === col;
-    return (
-      <Th>
-        <button
-          type="button"
-          className={`flex items-center gap-1 ${active ? "font-bold text-dt-burnt-orange" : ""}`}
-          onClick={() => toggleSort(col)}
-        >
-          {children}
-          <span aria-hidden className="text-xs">{active ? (sort.dir === "asc" ? "↑" : "↓") : "↕"}</span>
-        </button>
-      </Th>
-    );
   }
 
   if (query.isLoading) return <LoadingState />;
@@ -161,12 +165,12 @@ function EmployeeSummaryTab({
         <Table>
           <Thead>
             <Tr>
-              <SortTh col="employee_name">Employee</SortTh>
-              <SortTh col="session_count">Sessions</SortTh>
-              <SortTh col="gross">Gross</SortTh>
+              <SortTh col="employee_name" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Employee</SortTh>
+              <SortTh col="session_count" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Sessions</SortTh>
+              <SortTh col="gross" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Gross</SortTh>
               <Th>Break</Th>
-              <SortTh col="net">Net</SortTh>
-              <SortTh col="unverified">Unverified</SortTh>
+              <SortTh col="net" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Net</SortTh>
+              <SortTh col="unverified" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Unverified</SortTh>
             </Tr>
           </Thead>
           <tbody>
@@ -281,22 +285,6 @@ function SessionsTab({ filters, offset, onOffset }: { filters: ReportFilters; of
     setSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" });
   }
 
-  function SortTh({ col, children }: { col: SessionSortKey; children: React.ReactNode }) {
-    const active = sort.key === col;
-    return (
-      <Th>
-        <button
-          type="button"
-          className={`flex items-center gap-1 ${active ? "font-bold text-dt-burnt-orange" : ""}`}
-          onClick={() => toggleSort(col)}
-        >
-          {children}
-          <span aria-hidden className="text-xs">{active ? (sort.dir === "asc" ? "↑" : "↓") : "↕"}</span>
-        </button>
-      </Th>
-    );
-  }
-
   if (query.isLoading) return <LoadingState />;
   if (!d) return <QueryError error={query.error} retry={() => query.refetch()} />;
   if (d.total === 0) return <EmptyState title="No sessions in this range" />;
@@ -349,12 +337,12 @@ function SessionsTab({ filters, offset, onOffset }: { filters: ReportFilters; of
         <Table>
           <Thead>
             <Tr>
-              <SortTh col="employee_name">Employee</SortTh>
-              <SortTh col="check_in_at">Check-in</SortTh>
+              <SortTh col="employee_name" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Employee</SortTh>
+              <SortTh col="check_in_at" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Check-in</SortTh>
               <Th>Check-out</Th>
-              <SortTh col="work_mode">Mode</SortTh>
-              <SortTh col="status">Status</SortTh>
-              <SortTh col="net">Net</SortTh>
+              <SortTh col="work_mode" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Mode</SortTh>
+              <SortTh col="status" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Status</SortTh>
+              <SortTh col="net" sortKey={sort.key} sortDir={sort.dir} onSort={toggleSort}>Net</SortTh>
               <Th>Gross</Th>
               <Th></Th>
             </Tr>
