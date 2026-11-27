@@ -74,8 +74,9 @@ ROUTE_POLICY: dict[str, str] = {
     "GET /api/onsite/summary": READ,
     "GET /api/onsite/sync/history": READ,
     "GET /api/onsite/sync/runs/{run_id}": READ,
-    # --- EXEMPT (4)
+    # --- EXEMPT (5)
     "POST /api/onsite/internal/scheduled-sync": EXEMPT,
+    "POST /api/onsite/internal/ops/correct-mapping-dates": EXEMPT,
     "GET /api/onsite/metadata": EXEMPT,
     "GET /health": EXEMPT,
     "GET /health/deep": EXEMPT,

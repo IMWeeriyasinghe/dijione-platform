@@ -41,6 +41,7 @@ app.add_middleware(CorrelationIdMiddleware)
 app.include_router(health.router)
 app.include_router(onsite.router)
 app.include_router(admin.router)
+app.include_router(admin.internal_router)
 app.include_router(identity_admin.router)
 app.include_router(exports.router)  # before dashboard: /employees/export vs /employees/{emp_code}
 app.include_router(dashboard.router)

@@ -12,11 +12,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import OnsiteScope, require_onsite_permission
+from app.api.deps import OnsiteScope, require_internal_service, require_onsite_permission
 from app.core.constants import Perm
 from app.db.session import get_db
 from app.repositories.site_repository import SiteRepository
-from app.services import platform_audit, workforce_directory
+from app.services import mapping_date_correction, platform_audit, workforce_directory
 from app.services.freshness_service import freshness
 from app.services.legacy_contract import CSV_COLUMNS, csv_rows, identity_match_report, require_legacy_contract
 from app.services.mirror_sync_service import MirrorSyncService
@@ -109,3 +109,51 @@ def identity_match(fmt: str = Query("json", alias="format", pattern="^(json|csv)
     writer.writerows(csv_rows(report))
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": 'attachment; filename="onsite-identity-match.csv"'})
+
+
+# ── One-time hire-date alignment (internal service only) ───────────────────────
+
+internal_router = APIRouter(
+    prefix="/api/onsite/internal/ops", tags=["onsite-admin-internal"],
+    dependencies=[Depends(require_internal_service)],
+)
+
+
+@internal_router.post("/correct-mapping-dates", status_code=200)
+def correct_mapping_dates(
+    dry_run: bool = Query(True, description="Set false to commit corrections"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """One-time hire-date alignment correction.
+
+    Returns an inventory and correction report. Defaults to dry_run=True.
+    Set dry_run=false to commit the approved corrections.
+    Requires internal service token (X-Internal-Token header).
+    """
+    report = mapping_date_correction.run(db, dry_run=dry_run)
+    return {
+        "generated_at": report.generated_at,
+        "dry_run": report.dry_run,
+        "total_verified_open": report.total_verified_open,
+        "already_aligned": report.already_aligned,
+        "hire_date_missing": report.hire_date_missing,
+        "hire_date_after_current": report.hire_date_after_current,
+        "conflict_detected": report.conflict_detected,
+        "historical_reassignment": report.historical_reassignment,
+        "corrected": report.corrected,
+        "rows": [
+            {
+                "mapping_id": r.mapping_id,
+                "site_id": r.site_id,
+                "zk_emp_code": r.zk_emp_code,
+                "bamboohr_id": r.bamboohr_id,
+                "current_valid_from": r.current_valid_from,
+                "hire_date": r.hire_date,
+                "proposed_valid_from": r.proposed_valid_from,
+                "action": r.action,
+                "skip_reason": r.skip_reason,
+                "new_mapping_id": r.new_mapping_id,
+            }
+            for r in report.rows
+        ],
+    }
