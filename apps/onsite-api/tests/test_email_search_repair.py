@@ -8,11 +8,9 @@ Covers:
   - mapping date correction: dry_run inventory, correction, skip gates
 """
 
-import pytest
 
-from tests.conftest import DIRECTORY, headers_for, internal_headers, make_mapping
+from tests.conftest import headers_for, internal_headers, make_mapping
 from tests.identity_helpers import BASE
-
 
 # ── directory_search routing ───────────────────────────────────────────────────
 
@@ -122,7 +120,8 @@ class TestMappingDateCorrection:
         # Mapping still at original date (not committed)
         db.expire_all()
         from sqlalchemy import select
-        from app.models.identity import IdentityMapping, MAPPING_VERIFIED
+
+        from app.models.identity import MAPPING_VERIFIED, IdentityMapping
         still_there = db.execute(select(IdentityMapping).where(
             IdentityMapping.id == m.id,
             IdentityMapping.status == MAPPING_VERIFIED,
@@ -140,7 +139,8 @@ class TestMappingDateCorrection:
         assert report.corrected == 1
         db.expire_all()
         from sqlalchemy import select
-        from app.models.identity import IdentityMapping, MAPPING_SUPERSEDED, MAPPING_VERIFIED
+
+        from app.models.identity import MAPPING_SUPERSEDED, MAPPING_VERIFIED, IdentityMapping
         old = db.execute(select(IdentityMapping).where(IdentityMapping.id == m.id)).scalars().first()
         assert old.status == MAPPING_SUPERSEDED
         new = db.execute(select(IdentityMapping).where(
