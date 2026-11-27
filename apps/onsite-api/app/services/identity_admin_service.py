@@ -691,11 +691,17 @@ def _enrich_with_active_codes(entries: list[dict], active_codes: dict[str, list[
 def directory_search(db: Session, actor: Actor, directory: DirectorySnapshot, q: str | None) -> list[dict]:
     """Search the Workforce Directory.
 
-    When the query contains '@' the search is routed through the people-api
-    admin search endpoint, which searches the ``work_email`` column stored
-    server-side (the minimum-data policy keeps email out of WorkforceEntryOut
-    and therefore out of the in-memory snapshot). For all other queries the
-    cached snapshot is used as before (name, BambooHR ID, employee number).
+    Admin search (people-api live endpoint) is tried first for every query:
+    it searches work_email, display_name, bamboohr_id and employee_number
+    server-side, so email and partial-email queries (e.g. "ahmed.thaha",
+    "@dijitalteam.com") work without exposing work_email in any response.
+
+    If admin_search is unavailable (None return) and the query does not
+    contain '@', the cached snapshot is used as a fallback for name/ID
+    searches.  When admin_search is unavailable and the query contains '@',
+    a 503 is raised so the UI shows a meaningful error rather than a silent
+    empty result.
+
     Nothing is ever suggested or pre-selected.
     """
     if not directory.available:
@@ -708,13 +714,17 @@ def directory_search(db: Session, actor: Actor, directory: DirectorySnapshot, q:
     for m in IdentityRepository(db).verified_mappings(allowed_site_ids=actor.allowed_site_ids):
         active_codes[m.bamboohr_id].append(m.zk_emp_code)
 
-    if "@" in ql:
-        # Email query: use the admin search path so work_email is searched
-        # server-side without being exposed in WorkforceEntryOut.
-        admin_hits = _wf_dir.admin_search(ql)
+    # Try admin search first (searches work_email server-side + name/ID).
+    admin_hits = _wf_dir.admin_search(ql)
+    if admin_hits is not None:
+        # Endpoint reachable: use its results (may be an empty list = no match).
         return _enrich_with_active_codes(admin_hits, active_codes)
 
-    # Non-email query: use the cached snapshot (name, BambooHR ID, employee number).
+    # Admin search unavailable: snapshot fallback for non-email queries only.
+    if "@" in ql:
+        raise IdentityError(503, {"error": "DIRECTORY_UNAVAILABLE",
+                                  "message": "The Workforce Directory is unavailable."})
+
     out = []
     for e in directory.entries:
         bid = str(e.get("bamboohr_id"))

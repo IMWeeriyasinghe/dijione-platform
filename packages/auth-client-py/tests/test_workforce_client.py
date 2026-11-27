@@ -49,3 +49,29 @@ def test_request_sync_posts_caller_identity():
 def test_errors_raise():
     with pytest.raises(httpx.HTTPStatusError):
         _client(lambda r: httpx.Response(503)).get_freshness()
+
+
+def test_admin_search_sends_q_parameter():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["q"] = request.url.params.get("q")
+        seen["token"] = request.headers.get("x-internal-token")
+        return httpx.Response(200, json=[
+            {"bamboohr_id": "77", "display_name": "Thaha Munowwar",
+             "employee_number": "426", "department": "IT",
+             "job_title": "Dev", "employment_status": "Active", "hire_date": "2026-05-04"},
+        ])
+
+    rows = _client(handler).admin_search("ahmed.thaha@dijitalteam.com")
+    assert len(rows) == 1
+    assert rows[0]["display_name"] == "Thaha Munowwar"
+    assert seen["path"] == "/api/people/workforce-directory/admin-search"
+    assert seen["q"] == "ahmed.thaha@dijitalteam.com"
+    assert seen["token"] == "s3cr3t"
+
+
+def test_admin_search_raises_on_error():
+    with pytest.raises(httpx.HTTPStatusError):
+        _client(lambda r: httpx.Response(401)).admin_search("test@example.com")

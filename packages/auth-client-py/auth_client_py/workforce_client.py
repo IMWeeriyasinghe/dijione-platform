@@ -39,6 +39,12 @@ class WorkforceDirectoryClient:
     def get_freshness(self) -> dict:
         return self._get("/api/people/workforce-directory/freshness").json()
 
+    def admin_search(self, q: str) -> list[dict]:
+        """Internal email/name/ID search via the admin-only endpoint.
+        Returns the raw list; raises on HTTP error."""
+        resp = self._get("/api/people/workforce-directory/admin-search", params={"q": q})
+        return resp.json()
+
     def request_sync(self, *, requested_by_application: str, requested_by_user_id: int | None = None) -> dict:
         resp = self._request(
             "POST", "/api/people/internal/workforce-directory/sync",

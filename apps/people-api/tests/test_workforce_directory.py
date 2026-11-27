@@ -164,3 +164,93 @@ def test_list_status_filter_and_minimum_data_dto(api_client, db):
     assert "photo_url" not in keys  # the BambooHR link itself is never exposed
     forbidden = {"birth_month", "birth_day", "birthday", "work_email", "address_line1", "city", "postal_code"}
     assert not keys & forbidden
+
+
+# ── admin search ───────────────────────────────────────────────────────────────
+
+class TestAdminSearch:
+    def test_admin_search_returns_hits_by_email(self, api_client, db):
+        """After sync, admin-search should find employees by work_email."""
+        WorkforceDirectoryService(db).reconcile()
+        db.commit()
+        # Mock client populates work_email; search by partial email domain
+        r = api_client.get(
+            "/api/people/workforce-directory/admin-search",
+            params={"q": "@dijitalteam.com"},
+            headers=internal_headers(),
+        )
+        assert r.status_code == 200
+        rows = r.json()
+        # All mock employees share the @dijitalteam.com domain in MockBambooHRWorkforceClient
+        assert len(rows) > 0
+
+    def test_admin_search_by_full_email(self, api_client, db):
+        WorkforceDirectoryService(db).reconcile()
+        db.commit()
+        mock_entries = MockBambooHRWorkforceClient().list_workforce_records()
+        # Find one entry with a work_email
+        sample = next((e for e in mock_entries if e.work_email), None)
+        if sample is None:
+            pytest.skip("No mock entries with work_email")
+        r = api_client.get(
+            "/api/people/workforce-directory/admin-search",
+            params={"q": sample.work_email},
+            headers=internal_headers(),
+        )
+        assert r.status_code == 200
+        rows = r.json()
+        assert any(row["bamboohr_id"] == sample.id for row in rows)
+
+    def test_admin_search_by_partial_email_case_insensitive(self, api_client, db):
+        WorkforceDirectoryService(db).reconcile()
+        db.commit()
+        mock_entries = MockBambooHRWorkforceClient().list_workforce_records()
+        sample = next((e for e in mock_entries if e.work_email), None)
+        if sample is None:
+            pytest.skip("No mock entries with work_email")
+        # Use uppercase fragment of the email
+        fragment = sample.work_email.split("@")[0][:4].upper()
+        r = api_client.get(
+            "/api/people/workforce-directory/admin-search",
+            params={"q": fragment},
+            headers=internal_headers(),
+        )
+        assert r.status_code == 200
+        rows = r.json()
+        assert any(row["bamboohr_id"] == sample.id for row in rows)
+
+    def test_admin_search_response_never_includes_work_email(self, api_client, db):
+        """work_email must NOT appear in the admin-search response body."""
+        WorkforceDirectoryService(db).reconcile()
+        db.commit()
+        r = api_client.get(
+            "/api/people/workforce-directory/admin-search",
+            params={"q": "@dijitalteam.com"},
+            headers=internal_headers(),
+        )
+        assert r.status_code == 200
+        for row in r.json():
+            assert "work_email" not in row
+
+    def test_admin_search_requires_internal_token(self, api_client, db):
+        r = api_client.get("/api/people/workforce-directory/admin-search", params={"q": "test@example.com"})
+        assert r.status_code == 401
+
+    def test_admin_search_min_length_two(self, api_client, db):
+        r = api_client.get(
+            "/api/people/workforce-directory/admin-search",
+            params={"q": "x"},
+            headers=internal_headers(),
+        )
+        assert r.status_code == 422
+
+    def test_admin_search_empty_result_for_unknown(self, api_client, db):
+        WorkforceDirectoryService(db).reconcile()
+        db.commit()
+        r = api_client.get(
+            "/api/people/workforce-directory/admin-search",
+            params={"q": "xyznonexistent@nobody.example"},
+            headers=internal_headers(),
+        )
+        assert r.status_code == 200
+        assert r.json() == []
