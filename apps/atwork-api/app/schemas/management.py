@@ -130,6 +130,23 @@ class MissedCheckoutReportOut(BaseModel):
     items: list[MissedCheckoutOut]
 
 
+class SessionReportItemOut(BaseModel):
+    platform_user_id: int
+    employee_name: str
+    session: SessionOut
+    period_totals: TotalsOut
+
+
+class SessionsReportOut(BaseModel):
+    date_from: date
+    date_to: date
+    time_zone: str
+    total: int
+    limit: int
+    offset: int
+    items: list[SessionReportItemOut]
+
+
 class CorrectionReportOut(BaseModel):
     total: int
     by_status: dict[str, int]

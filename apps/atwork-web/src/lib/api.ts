@@ -106,6 +106,8 @@ export type Settings = {
   time_format: "24h" | "12h"; default_history_days: number; version: number;
 };
 export type ReportFilters = { date_from?: string; date_to?: string; user_id?: string; work_mode?: string };
+export type SessionReportItem = { platform_user_id: number; employee_name: string; session: Session; period_totals: Totals };
+export type SessionsReport = { date_from: string; date_to: string; time_zone: string; total: number; limit: number; offset: number; items: SessionReportItem[] };
 export type RangeParams = { date_from?: string; date_to?: string; limit?: number; offset?: number };
 
 const A = "/api/atwork/attendance";
@@ -143,6 +145,7 @@ export const management = {
   audit: (p: { action?: string; user_id?: string; session_id?: string; date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     json<Page<AuditEvent>>(`${M}/audit${qs(p)}`),
   report: (p: ReportFilters & { limit?: number; offset?: number }) => json<ReportSummary>(`${M}/reports/summary${qs(p)}`),
+  reportSessions: (p: ReportFilters & { limit?: number; offset?: number }) => json<SessionsReport>(`${M}/reports/sessions${qs(p)}`),
   missed: (p: ReportFilters) => json<{ threshold_hours: number; total: number; items: MissedCheckout[] }>(`${M}/reports/missed-checkouts${qs(p)}`),
   correctionReport: (p: ReportFilters) => json<{ total: number; by_status: Record<string, number> }>(`${M}/reports/corrections${qs(p)}`),
   settings: () => json<Settings>(`${M}/settings`),

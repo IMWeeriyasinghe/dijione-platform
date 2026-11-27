@@ -27,6 +27,7 @@ ROUTE_POLICY: dict[str, str] = {
     "GET /api/atwork/management/reports/corrections": SENSITIVE,
     "GET /api/atwork/management/reports/export": SENSITIVE,
     "GET /api/atwork/management/reports/missed-checkouts": SENSITIVE,
+    "GET /api/atwork/management/reports/sessions": SENSITIVE,
     "GET /api/atwork/management/reports/summary": SENSITIVE,
     "GET /api/atwork/management/sessions/{session_id}": SENSITIVE,
     "GET /api/atwork/management/settings": SENSITIVE,

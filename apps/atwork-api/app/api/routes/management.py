@@ -50,6 +50,8 @@ from app.schemas.management import (
     ModeTotalsOut,
     OverviewOut,
     ReportSummaryOut,
+    SessionReportItemOut,
+    SessionsReportOut,
     SettingsIn,
     SettingsOut,
 )
@@ -412,6 +414,42 @@ def report_missed(
     rows = Reporting(service.db, service.policy, service.now()).missed_checkouts(flt)
     return MissedCheckoutReportOut(
         threshold_hours=service.policy.missed_checkout_hours, total=len(rows), items=[MissedCheckoutOut(**r) for r in rows]
+    )
+
+
+@router.get("/reports/sessions", response_model=SessionsReportOut)
+def report_sessions(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    user_id: int | None = None,
+    work_mode: str | None = None,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    _claims: AuthClaims = Depends(can_report),
+    service: AttendanceService = Depends(_service),
+) -> SessionsReportOut:
+    flt = _filter(service, date_from, date_to, user_id, work_mode)
+    now = service.now()
+    reporter = Reporting(service.db, service.policy, now)
+    sessions = reporter.sessions(flt)
+    names = employee_names(service.db, {s.platform_user_id for s in sessions})
+    items = [
+        SessionReportItemOut(
+            platform_user_id=s.platform_user_id,
+            employee_name=display_name(names, s.platform_user_id),
+            session=_session(s, now, service.policy.unverified_after_seconds),
+            period_totals=_totals(reporter.in_range(s, flt)),
+        )
+        for s in sessions[offset : offset + limit]
+    ]
+    return SessionsReportOut(
+        date_from=flt.date_from,
+        date_to=flt.date_to,
+        time_zone=service.policy.business_time_zone,
+        total=len(sessions),
+        limit=limit,
+        offset=offset,
+        items=items,
     )
 
 
