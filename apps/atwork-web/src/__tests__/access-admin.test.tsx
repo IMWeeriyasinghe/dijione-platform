@@ -8,7 +8,7 @@ const labels = (permissions: string[]) =>
 
 describe("DijiAtWork Management → Access", () => {
   it("an appointed administrator with standard access sees their own pages plus Management → Access only", () => {
-    expect(labels([...USER, PERM.ACCESS_MANAGE])).toEqual(["/Today", "/My Attendance", "/My Requests", "Management/Access"]);
+    expect(labels([...USER, PERM.ACCESS_MANAGE])).toEqual(["/Today", "/My Time", "/My Requests", "Management/Access"]);
   });
 
   it("a manager who is also an administrator sees Access inside Management", () => {

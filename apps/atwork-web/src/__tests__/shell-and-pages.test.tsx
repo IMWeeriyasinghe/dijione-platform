@@ -30,7 +30,7 @@ describe("resolveAtworkScope", () => {
 describe("navigation follows permissions", () => {
   const labels = (scope: AtworkScope | null) => buildSections(scope).flatMap((s) => s.items.map((i) => i.label));
   it("shows employee items only for an employee", () => {
-    expect(labels(EMPLOYEE)).toEqual(["Today", "My Attendance", "My Requests"]);
+    expect(labels(EMPLOYEE)).toEqual(["Today", "My Time", "My Requests"]);
   });
   it("gives a manager-named role nothing without permissions", () => {
     expect(labels({ role: "ATWORK_MANAGER", permissions: [PERM.ACCESS] })).toEqual([]);

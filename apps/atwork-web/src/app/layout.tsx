@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "DijiAtWork — by Dijital Team",
-  description: "Employee work check-in and attendance.",
+  description: "Manage your workday, your time and your requests—all in one place.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

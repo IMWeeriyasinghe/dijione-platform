@@ -28,7 +28,7 @@ function History({ initial }: { initial: { from: string; to: string } }) {
   const first = pages?.[0];
   return (
     <>
-      <PageHeader title="My Attendance" description="Your recorded sessions. Days without records are simply not shown." action={hasPermission(scope, PERM.REQUEST_OWN) ? <Link href="/requests/new"><Button variant="secondary">Request missing session</Button></Link> : undefined} />
+      <PageHeader title="My Time" description="Your recorded sessions. Days without records are simply not shown." action={hasPermission(scope, PERM.REQUEST_OWN) ? <Link href="/requests/new"><Button variant="secondary">Request missing session</Button></Link> : undefined} />
       <OfflineBanner />
       <Card className="mb-6 p-4"><DateRange from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} /></Card>
       {query.isLoading ? <LoadingState label="Loading attendance…" /> : !first ? <QueryError error={query.error} retry={() => query.refetch()} /> : sessions.length === 0 ? (
