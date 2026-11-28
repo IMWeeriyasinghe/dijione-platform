@@ -1,4 +1,4 @@
-import { Cake, Clock, LayoutGrid, MapPin, Sparkles, Users } from "lucide-react";
+import { Bell, Cake, Clock, LayoutGrid, MapPin, Sparkles, Users } from "lucide-react";
 
 export function ModuleIcon({ iconKey, className }: { iconKey: string; className?: string }) {
   switch (iconKey) {
@@ -12,6 +12,8 @@ export function ModuleIcon({ iconKey, className }: { iconKey: string; className?
       return <MapPin className={className} />;
     case "Clock":
       return <Clock className={className} />;
+    case "BellAlert":
+      return <Bell className={className} />;
     default:
       return <LayoutGrid className={className} />;
   }

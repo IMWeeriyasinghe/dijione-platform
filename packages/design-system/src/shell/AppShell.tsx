@@ -16,6 +16,7 @@ export function AppShell({
   homeHref,
   roleContext,
   collapsible,
+  topNavSearch,
   children,
 }: {
   eyebrow?: string;
@@ -30,6 +31,9 @@ export function AppShell({
    * rail, preference remembered per browser under `storageKey`). Omitted =
    * the unchanged always-expanded sidebar. Never affects the mobile drawer. */
   collapsible?: { storageKey: string };
+  /** OPT-IN: wires the TopNav center search input. Scoped to DijiOne Home;
+   * omit in all other applications to preserve the existing visual placeholder. */
+  topNavSearch?: { query: string; onSearch: (q: string) => void };
   children: React.ReactNode;
 }) {
   const storageKey = collapsible?.storageKey;
@@ -124,7 +128,7 @@ export function AppShell({
 
       <div className="flex min-w-0 flex-1 flex-col print:block">
         <div className="print:hidden">
-          <TopNav title={topNavTitle} onMenuClick={() => setMobileNavOpen(true)} roleContext={roleContext} />
+          <TopNav title={topNavTitle} onMenuClick={() => setMobileNavOpen(true)} roleContext={roleContext} topNavSearch={topNavSearch} />
         </div>
         <main className="dt-scrollbar min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:p-0">
           {children}

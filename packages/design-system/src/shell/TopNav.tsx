@@ -9,6 +9,7 @@ export function TopNav({
   title,
   onMenuClick,
   roleContext,
+  topNavSearch,
 }: {
   title?: string;
   /** Shows the role indicator: "platform" on DijiOne Home and Central Admin, a module key inside an
@@ -17,6 +18,11 @@ export function TopNav({
   /** Renders a hamburger button (≤767px only) that opens AppShell's mobile
    * nav drawer. Omitted where TopNav is used without a companion Sidebar. */
   onMenuClick?: () => void;
+  /** OPT-IN: wires the center search input to the caller's state. When omitted
+   * the input remains a visual placeholder (unchanged behaviour for all
+   * applications that do not pass this prop). Scoped to DijiOne Home; other
+   * applications should omit this prop entirely. */
+  topNavSearch?: { query: string; onSearch: (q: string) => void };
 }) {
   return (
     // Below sm the row is gap-2 and the (placeholder) search box is hidden: with
@@ -65,6 +71,13 @@ export function TopNav({
           type="search"
           placeholder="Search DijiOne…"
           className="w-full rounded-full border border-dt-border bg-dt-surface-warm py-2 pl-9 pr-3 text-sm placeholder:text-dt-text-secondary focus:border-dt-orange focus:outline-none focus:ring-2 focus:ring-dt-orange/20"
+          {...(topNavSearch
+            ? {
+                value: topNavSearch.query,
+                onChange: (e) => topNavSearch.onSearch(e.target.value),
+                onKeyDown: (e) => { if (e.key === "Escape") topNavSearch.onSearch(""); },
+              }
+            : { readOnly: true, "aria-label": "Search DijiOne (not yet functional)" })}
         />
       </div>
 

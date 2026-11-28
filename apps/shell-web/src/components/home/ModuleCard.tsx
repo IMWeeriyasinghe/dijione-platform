@@ -101,35 +101,70 @@ export function ModuleCard({ module }: { module: ModuleOut }) {
   const { user } = useAuth();
   const comingSoon = module.status === "COMING_SOON";
   const roleForModule = user?.module_roles.find((r) => r.module_key === module.key);
+  const isFeatured = module.key === "alerts";
 
   const content = (
     <Card
       className={cn(
-        "group relative flex h-full flex-col gap-4 overflow-hidden transition",
-        comingSoon ? "p-4 opacity-70" : "p-5 hover:-translate-y-0.5 hover:shadow-md"
+        "group relative flex h-full flex-col gap-4 overflow-hidden transition-all duration-200",
+        comingSoon && !isFeatured && "opacity-70",
+        isFeatured
+          ? "border-dt-orange/40 bg-linear-to-br from-dt-red-deep/5 via-dt-burnt-orange/5 to-dt-orange/10 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+          : comingSoon
+          ? "p-4"
+          : "p-5 hover:-translate-y-0.5 hover:shadow-md"
       )}
     >
-      <div className="flex items-center justify-between">
+      {isFeatured && (
+        <div className="absolute inset-x-0 top-0 h-0.5 rounded-t-[inherit] bg-linear-to-r from-dt-red-deep via-dt-burnt-orange to-dt-orange" />
+      )}
+
+      <div className="flex items-start justify-between gap-2">
         <div
           className={cn(
-            "flex items-center justify-center rounded-2xl bg-linear-to-br from-dt-red to-dt-orange text-white",
-            comingSoon ? "size-9 opacity-80" : "size-11"
+            "flex shrink-0 items-center justify-center rounded-2xl text-white",
+            isFeatured
+              ? "size-11 bg-linear-to-br from-dt-red-deep to-dt-orange shadow-sm"
+              : comingSoon
+              ? "size-9 bg-linear-to-br from-dt-red to-dt-orange opacity-80"
+              : "size-11 bg-linear-to-br from-dt-red to-dt-orange"
           )}
         >
-          <ModuleIcon iconKey={module.icon} className={comingSoon ? "size-4" : "size-5"} />
+          <ModuleIcon iconKey={module.icon} className={comingSoon && !isFeatured ? "size-4" : "size-5"} />
         </div>
-        {comingSoon && (
-          <span className="rounded-full bg-dt-surface-warm px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-dt-text-secondary">
-            Coming soon
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {comingSoon && (
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                isFeatured
+                  ? "bg-dt-orange/15 text-dt-burnt-orange ring-1 ring-dt-orange/30"
+                  : "bg-dt-surface-warm text-dt-text-secondary"
+              )}
+            >
+              Coming soon
+            </span>
+          )}
+        </div>
       </div>
-      <div>
-        <p className={cn("font-semibold text-dt-text-primary", comingSoon ? "text-sm" : "text-base")}>
+
+      <div className="flex-1">
+        <p
+          className={cn(
+            "font-semibold text-dt-text-primary",
+            isFeatured ? "text-base" : comingSoon ? "text-sm" : "text-base"
+          )}
+        >
           {module.name}
         </p>
         <p className="mt-1 text-sm text-dt-text-secondary">{module.description}</p>
+        {isFeatured && (
+          <p className="mt-2 text-xs text-dt-text-secondary/80">
+            Employee announcements, targeted messaging, and emergency alerts — all in one place.
+          </p>
+        )}
       </div>
+
       {!comingSoon && roleForModule && (
         <span className="inline-flex w-fit items-center rounded-full bg-dt-surface-warm px-2.5 py-0.5 text-xs font-medium text-dt-burnt-orange">
           Your role: {stageLabel(roleForModule.role)}
