@@ -35,6 +35,8 @@ class ReportFilter:
     date_to: date
     user_id: int | None = None
     work_mode: str | None = None
+    user_ids: frozenset[int] | None = None  # BP scope: restrict to these user IDs
+    client: str | None = None  # client/department filter (applied after scope)
 
 
 def hours(seconds: int) -> float:
@@ -65,6 +67,10 @@ class Reporting:
         )
         if flt.user_id is not None:
             stmt = stmt.where(AttendanceSession.platform_user_id == flt.user_id)
+        elif flt.user_ids is not None:
+            if not flt.user_ids:
+                return []  # empty scope → no data (fail-closed for BP with no employees)
+            stmt = stmt.where(AttendanceSession.platform_user_id.in_(flt.user_ids))
         if flt.work_mode:
             stmt = stmt.where(AttendanceSession.work_mode == flt.work_mode)
         return list(self.db.scalars(stmt.order_by(AttendanceSession.check_in_at.desc())))
@@ -130,6 +136,10 @@ class Reporting:
             )
             if flt.user_id is not None:
                 stmt = stmt.where(AttendanceSession.platform_user_id == flt.user_id)
+            elif flt.user_ids is not None:
+                if not flt.user_ids:
+                    return []
+                stmt = stmt.where(AttendanceSession.platform_user_id.in_(flt.user_ids))
             if flt.work_mode:
                 stmt = stmt.where(AttendanceSession.work_mode == flt.work_mode)
         sessions = list(self.db.scalars(stmt.order_by(AttendanceSession.check_in_at)))
@@ -156,6 +166,10 @@ class Reporting:
         )
         if flt.user_id is not None:
             stmt = stmt.where(CorrectionRequest.platform_user_id == flt.user_id)
+        elif flt.user_ids is not None:
+            if not flt.user_ids:
+                return []
+            stmt = stmt.where(CorrectionRequest.platform_user_id.in_(flt.user_ids))
         return list(self.db.scalars(stmt.order_by(CorrectionRequest.created_at.desc())))
 
     def local(self, value: datetime | None) -> datetime | None:

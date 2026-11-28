@@ -35,6 +35,18 @@ class WorkforceAdminSearchOut(BaseModel):
     hire_date: str | None = None
 
 
+class WorkforceEmailEnrichIn(BaseModel):
+    """Internal-only request: resolve department/client for a set of work emails."""
+    emails: list[str]
+
+
+class WorkforceEmailEnrichItem(BaseModel):
+    """Internal-only response item: work_email → department + status."""
+    work_email: str
+    department: str
+    employment_status: str
+
+
 class WorkforceSyncRequestIn(BaseModel):
     # Required, no default: the directory serves any consumer, so the
     # caller must identify itself.

@@ -17,6 +17,8 @@ from app.db.session import get_db
 from app.models.workforce import WorkforceDirectoryEntry
 from app.schemas.workforce import (
     WorkforceAdminSearchOut,
+    WorkforceEmailEnrichIn,
+    WorkforceEmailEnrichItem,
     WorkforceEntryOut,
     WorkforceFreshnessOut,
     WorkforceSyncAcceptedOut,
@@ -145,3 +147,33 @@ def workforce_admin_search(
         ).order_by(WorkforceDirectoryEntry.display_name)
     ).scalars().all()
     return [_admin_search_out(e) for e in rows]
+
+
+@router.post("/workforce-directory/email-enrich", response_model=list[WorkforceEmailEnrichItem])
+def workforce_email_enrich(
+    body: WorkforceEmailEnrichIn, db: Session = Depends(get_db)
+) -> list[WorkforceEmailEnrichItem]:
+    """Internal: resolve department (client) and status for a list of work emails.
+
+    Returns only entries where work_email matches; unmatched emails are silently
+    omitted. Callers should treat missing entries as Unassigned.
+    """
+    if not body.emails:
+        return []
+    normalised = [e.strip().lower() for e in body.emails if e.strip()]
+    if not normalised:
+        return []
+    rows = db.execute(
+        select(WorkforceDirectoryEntry).where(
+            WorkforceDirectoryEntry.work_email.in_(normalised)
+        )
+    ).scalars().all()
+    return [
+        WorkforceEmailEnrichItem(
+            work_email=r.work_email,
+            department=r.department or "",
+            employment_status=r.employment_status or "",
+        )
+        for r in rows
+        if r.work_email
+    ]

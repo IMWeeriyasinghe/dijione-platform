@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # In-app notifications are delivered through Platform Core.
     platform_api_url: str = "http://localhost:8000"
 
+    # Workforce directory (people-api). Used for Client/BP reporting enrichment.
+    people_api_url: str = "http://localhost:8001"
+    people_api_timeout_seconds: float = 15.0
+
     # Email reminders — transport and policy.
     mail_transport: str = "null"  # "null" in dev, "graph" in prod
     mail_shared_mailbox: str = "appassistant@dijitalteam.com"
