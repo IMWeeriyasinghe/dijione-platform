@@ -64,7 +64,8 @@ echo "== unpark $TO PostgreSQL (idempotent) =="
 az postgres flexible-server start -g "$TO_RG" -n "psql-dijione-${TO}" -o none 2>/dev/null || true
 
 echo "== assert $TO Key Vault secrets are set =="
-mapfile -t EXPECTED < <(az deployment group show -g "$TO_RG" --query \
+EXPECTED=()
+while IFS= read -r line; do EXPECTED+=("$line"); done < <(az deployment group show -g "$TO_RG" --query \
   "properties.outputs.expectedSecretNames.value" -o tsv 2>/dev/null \
   -n "$(az deployment group list -g "$TO_RG" --query "[?contains(name,'foundation')]|[0].name" -o tsv)" | tr '\t' '\n' || true)
 for name in "${EXPECTED[@]}"; do
