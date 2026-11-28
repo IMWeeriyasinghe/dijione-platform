@@ -7,8 +7,11 @@ import { Notice, Page, QueryError, RequirePermission } from "@/components/ui";
 import { errorMessage, management, type Settings, type WorkMode } from "@/lib/api";
 import { ALL_WORK_MODES, WORK_MODE_LABEL } from "@/lib/format";
 import { PERM } from "@/lib/atwork-scope";
+import { BPAccessContent } from "@/app/management/bp/page";
 
-function Form({ initial }: { initial: Settings }) {
+// ─── General Settings ─────────────────────────────────────────────────────────
+
+function SettingsForm({ initial }: { initial: Settings }) {
   const client = useQueryClient();
   const [v, setV] = useState(initial);
   const save = useMutation({ mutationFn: () => management.saveSettings(v), onSuccess: (saved) => { setV(saved); client.invalidateQueries({ queryKey: ["atwork"] }); } });
@@ -29,13 +32,58 @@ function Form({ initial }: { initial: Settings }) {
   );
 }
 
-function Screen() {
+function GeneralSettingsTab() {
   const query = useQuery({ queryKey: ["atwork", "settings"], queryFn: management.settings });
   if (query.isLoading) return <LoadingState />;
   if (!query.data) return <QueryError error={query.error} retry={() => query.refetch()} />;
-  return <><PageHeader title="Settings" description="DijiAtWork operational policy." /><Form key={query.data.version} initial={query.data} /></>;
+  return <SettingsForm key={query.data.version} initial={query.data} />;
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+type Tab = "general" | "access";
+
+function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+  const base = "px-4 py-2 text-sm font-medium border-b-2 transition-colors";
+  const active_ = "border-dt-orange text-dt-orange";
+  const inactive = "border-transparent text-dt-text-secondary hover:text-dt-text-primary";
+  return (
+    <div className="mb-6 flex gap-0 border-b border-dt-border">
+      <button className={`${base} ${active === "general" ? active_ : inactive}`} onClick={() => onChange("general")}>
+        General Settings
+      </button>
+      <button className={`${base} ${active === "access" ? active_ : inactive}`} onClick={() => onChange("access")}>
+        Access Management
+      </button>
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
+function SettingsScreen() {
+  const [tab, setTab] = useState<Tab>("general");
+  return (
+    <>
+      <PageHeader title="Settings" description="DijiAtWork operational policy and access management." />
+      <TabBar active={tab} onChange={setTab} />
+      {tab === "general" && <GeneralSettingsTab />}
+      {tab === "access" && (
+        <RequirePermission permission={PERM.ACCESS_MANAGE} title="Access administration required">
+          <BPAccessContent />
+        </RequirePermission>
+      )}
+    </>
+  );
 }
 
 export default function SettingsPage() {
-  return <Page><RequirePermission permission={[PERM.MANAGEMENT, PERM.SETTINGS]} title="Settings access required"><Screen /></RequirePermission></Page>;
+  return (
+    <Page>
+      <RequirePermission permission={[PERM.MANAGEMENT, PERM.SETTINGS]} title="Settings access required">
+        <SettingsScreen />
+      </RequirePermission>
+    </Page>
+  );
 }
+

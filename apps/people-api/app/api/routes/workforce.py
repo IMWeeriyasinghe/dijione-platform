@@ -17,10 +17,12 @@ from app.db.session import get_db
 from app.models.workforce import WorkforceDirectoryEntry
 from app.schemas.workforce import (
     WorkforceAdminSearchOut,
+    WorkforceClientCountItem,
     WorkforceEmailEnrichIn,
     WorkforceEmailEnrichItem,
     WorkforceEntryOut,
     WorkforceFreshnessOut,
+    WorkforceSearchItem,
     WorkforceSyncAcceptedOut,
     WorkforceSyncRequestIn,
     WorkforceSyncRunOut,
@@ -171,6 +173,74 @@ def workforce_email_enrich(
     return [
         WorkforceEmailEnrichItem(
             work_email=r.work_email,
+            department=r.department or "",
+            employment_status=r.employment_status or "",
+        )
+        for r in rows
+        if r.work_email
+    ]
+
+
+@router.get("/workforce-directory/client-counts", response_model=list[WorkforceClientCountItem])
+def workforce_client_counts(db: Session = Depends(get_db)) -> list[WorkforceClientCountItem]:
+    """Internal: active employee count per client (BambooHR department).
+
+    Active = employment_status == 'Active' AND present_in_source.
+    Used for analytics adoption denominators.
+    """
+    from sqlalchemy import func
+    rows = db.execute(
+        select(
+            WorkforceDirectoryEntry.department,
+            func.count(WorkforceDirectoryEntry.id).label("cnt"),
+        ).where(
+            WorkforceDirectoryEntry.employment_status == "Active",
+            WorkforceDirectoryEntry.present_in_source.is_(True),
+        ).group_by(WorkforceDirectoryEntry.department)
+    ).all()
+    return [
+        WorkforceClientCountItem(client=r.department or "", active_count=r.cnt)
+        for r in rows
+    ]
+
+
+@router.post("/workforce-directory/search", response_model=list[WorkforceSearchItem])
+def workforce_search(
+    body: WorkforceEmailEnrichIn, db: Session = Depends(get_db)
+) -> list[WorkforceSearchItem]:
+    """Internal: search active employees by name fragment or email fragment.
+
+    The ``emails`` field is reused as the query list (each item is treated
+    as a name/email fragment). Returns active employees matching any item.
+    Limited to 20 results to prevent bulk extraction.
+    """
+    if not body.emails:
+        return []
+    clauses = []
+    for fragment in body.emails[:5]:  # cap query terms
+        f = fragment.strip().lower()
+        if not f or len(f) < 2:
+            continue
+        like = f"%{f}%"
+        clauses.append(
+            or_(
+                WorkforceDirectoryEntry.work_email.ilike(like),
+                WorkforceDirectoryEntry.display_name.ilike(like),
+            )
+        )
+    if not clauses:
+        return []
+    from sqlalchemy import or_ as _or
+    stmt = select(WorkforceDirectoryEntry).where(
+        WorkforceDirectoryEntry.employment_status == "Active",
+        WorkforceDirectoryEntry.present_in_source.is_(True),
+        _or(*clauses),
+    ).order_by(WorkforceDirectoryEntry.display_name).limit(20)
+    rows = db.scalars(stmt).all()
+    return [
+        WorkforceSearchItem(
+            work_email=r.work_email or "",
+            display_name=r.display_name or "",
             department=r.department or "",
             employment_status=r.employment_status or "",
         )

@@ -100,6 +100,7 @@ export type ClientAdoption = { client: string; eligible_employees: number; adopt
 export type Analytics = { date_from: string; date_to: string; time_zone: string; by_client: ClientAdoption[] };
 export type BPGrant = { platform_user_id: number; full_name: string; work_email: string | null; employee_count: number; granted_at: string; granted_by: number };
 export type BPScopeEmployee = { platform_user_id: number; employee_name: string; work_email: string | null; client: string };
+export type WorkforceSearchResult = { platform_user_id: number | null; display_name: string; work_email: string; department: string };
 export type ReportSummary = {
   date_from: string; date_to: string; time_zone: string; session_count: number; totals: Totals;
   by_work_mode: (Totals & { work_mode: WorkMode })[]; by_day: DayTotals[];
@@ -157,6 +158,7 @@ export const management = {
   correctionReport: (p: ReportFilters) => json<{ total: number; by_status: Record<string, number> }>(`${M}/reports/corrections${qs(p)}`),
   analytics: (p: { date_from?: string; date_to?: string }) => json<Analytics>(`${M}/analytics${qs(p)}`),
   bps: () => json<{ items: BPGrant[] }>(`${M}/bp`),
+  bpEmployeeSearch: (q: string) => json<WorkforceSearchResult[]>(`${M}/bp/employee-search?q=${encodeURIComponent(q)}`),
   grantBP: (target_user_id: number) => json<BPGrant>(`${M}/bp`, { method: "POST", body: JSON.stringify({ target_user_id }) }),
   revokeBP: (bp_user_id: number) => send(`${M}/bp/${bp_user_id}/revoke`, { method: "POST" }),
   bpScope: (bp_user_id: number) => json<BPScopeEmployee[]>(`${M}/bp/${bp_user_id}/scope`),

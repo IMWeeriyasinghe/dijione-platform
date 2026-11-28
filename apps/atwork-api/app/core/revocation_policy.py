@@ -33,6 +33,7 @@ ROUTE_POLICY: dict[str, str] = {
     "GET /api/atwork/management/settings": SENSITIVE,
     "PUT /api/atwork/management/settings": SENSITIVE,
     "GET /api/atwork/management/analytics": SENSITIVE,
+    "GET /api/atwork/management/bp/employee-search": SENSITIVE,
     "GET /api/atwork/management/bp": SENSITIVE,
     "POST /api/atwork/management/bp": SENSITIVE,
     "POST /api/atwork/management/bp/{bp_user_id}/revoke": SENSITIVE,

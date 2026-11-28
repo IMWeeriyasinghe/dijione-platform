@@ -223,3 +223,11 @@ class BPScopeEmployeeOut(BaseModel):
     employee_name: str
     work_email: str | None
     client: str = ""
+
+
+class WorkforceSearchResultOut(BaseModel):
+    """An employee found via workforce directory search, with platform_user_id if known."""
+    platform_user_id: int | None
+    display_name: str
+    work_email: str
+    department: str

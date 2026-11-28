@@ -1,39 +1,112 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, EmptyState, FormField, Input, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
+import { Button, Card, EmptyState, Input, LoadingState, PageHeader, Table, Td, Th, Thead, Tr } from "@dijione/design-system";
 import { Notice, Page, QueryError, RequirePermission } from "@/components/ui";
-import { errorMessage, management, type BPGrant, type BPScopeEmployee } from "@/lib/api";
+import { errorMessage, management, type BPGrant, type BPScopeEmployee, type WorkforceSearchResult } from "@/lib/api";
 import { PERM } from "@/lib/atwork-scope";
+
+// ─── Employee directory search ────────────────────────────────────────────────
+
+function EmployeeSearch({ onSelect }: { onSelect: (result: WorkforceSearchResult) => void }) {
+  const [q, setQ] = useState("");
+  const [triggered, setTriggered] = useState(false);
+
+  const search = useQuery({
+    queryKey: ["atwork", "bp-search", q],
+    queryFn: () => management.bpEmployeeSearch(q),
+    enabled: triggered && q.trim().length >= 2,
+    staleTime: 30_000,
+  });
+
+  const handleSearch = useCallback(() => {
+    if (q.trim().length >= 2) setTriggered(true);
+  }, [q]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setTriggered(false); }}
+          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          placeholder="Search by name or email…"
+          className="flex-1"
+        />
+        <Button variant="secondary" onClick={handleSearch} disabled={q.trim().length < 2}>
+          Search
+        </Button>
+      </div>
+      {triggered && search.isLoading && <p className="text-xs text-dt-text-secondary">Searching…</p>}
+      {triggered && search.isError && <Notice tone="error">{errorMessage(search.error)}</Notice>}
+      {triggered && search.data && (
+        search.data.length === 0 ? (
+          <p className="text-xs text-dt-text-secondary">No active employees found.</p>
+        ) : (
+          <ul className="divide-y divide-dt-border rounded-md border border-dt-border bg-dt-surface">
+            {search.data.map((r) => (
+              <li key={r.work_email} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span>
+                  <span className="font-medium">{r.display_name}</span>
+                  <span className="ml-2 text-xs text-dt-text-secondary">{r.work_email}</span>
+                  {r.department && <span className="ml-2 text-xs text-dt-text-secondary">· {r.department}</span>}
+                  {r.platform_user_id === null && (
+                    <span className="ml-2 text-xs text-dt-warning">· Not yet registered in DijiAtWork</span>
+                  )}
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={r.platform_user_id === null}
+                  onClick={() => { onSelect(r); setQ(""); setTriggered(false); }}
+                >
+                  Select
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
+}
 
 // ─── Grant BP form ────────────────────────────────────────────────────────────
 
 function GrantBPForm({ onDone }: { onDone: () => void }) {
-  const [userId, setUserId] = useState("");
+  const [selected, setSelected] = useState<WorkforceSearchResult | null>(null);
   const grant = useMutation({
-    mutationFn: () => management.grantBP(Number(userId)),
-    onSuccess: () => { setUserId(""); onDone(); },
+    mutationFn: () => management.grantBP(selected!.platform_user_id!),
+    onSuccess: () => { setSelected(null); onDone(); },
   });
+
   return (
-    <Card className="mb-6 max-w-sm space-y-3 p-4">
+    <Card className="mb-6 max-w-lg space-y-3 p-4">
       <h3 className="text-sm font-semibold">Grant BP Access</h3>
       <p className="text-xs text-dt-text-secondary">
-        Enter the platform user ID of the employee who will receive Business Partner access.
+        Search the employee directory to find the person who should receive Business Partner access.
         They will be able to view Management for their assigned employees only.
       </p>
       {grant.isError && <Notice tone="error">{errorMessage(grant.error)}</Notice>}
-      <FormField label="Platform User ID" htmlFor="bp-uid">
-        <Input id="bp-uid" type="number" min={1} value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="e.g. 42" />
-      </FormField>
-      <Button
-        variant="primary"
-        loading={grant.isPending}
-        disabled={!userId || isNaN(Number(userId))}
-        onClick={() => grant.mutate()}
-      >
-        Grant access
-      </Button>
+      {selected ? (
+        <div className="flex items-center justify-between gap-2 rounded border border-dt-border bg-dt-surface p-2 text-sm">
+          <span>
+            <span className="font-medium">{selected.display_name}</span>
+            <span className="ml-2 text-xs text-dt-text-secondary">{selected.work_email}</span>
+          </span>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" loading={grant.isPending} onClick={() => grant.mutate()}>
+              Confirm grant
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <EmployeeSearch onSelect={setSelected} />
+      )}
     </Card>
   );
 }
@@ -42,14 +115,14 @@ function GrantBPForm({ onDone }: { onDone: () => void }) {
 
 function BPScopePanel({ bp }: { bp: BPGrant }) {
   const qc = useQueryClient();
-  const [addId, setAddId] = useState("");
+  const [adding, setAdding] = useState(false);
   const scope = useQuery({
     queryKey: ["atwork", "bp-scope", bp.platform_user_id],
     queryFn: () => management.bpScope(bp.platform_user_id),
   });
   const add = useMutation({
-    mutationFn: () => management.addBPScope(bp.platform_user_id, Number(addId)),
-    onSuccess: () => { setAddId(""); void qc.invalidateQueries({ queryKey: ["atwork", "bp-scope", bp.platform_user_id] }); void qc.invalidateQueries({ queryKey: ["atwork", "bps"] }); },
+    mutationFn: (uid: number) => management.addBPScope(bp.platform_user_id, uid),
+    onSuccess: () => { setAdding(false); void qc.invalidateQueries({ queryKey: ["atwork", "bp-scope", bp.platform_user_id] }); void qc.invalidateQueries({ queryKey: ["atwork", "bps"] }); },
   });
   const remove = useMutation({
     mutationFn: (eid: number) => management.removeBPScope(bp.platform_user_id, eid),
@@ -61,7 +134,7 @@ function BPScopePanel({ bp }: { bp: BPGrant }) {
       <h4 className="mb-2 text-xs font-semibold text-dt-text-secondary">Assigned employees</h4>
       {scope.isLoading ? <LoadingState /> : !scope.data ? <QueryError error={scope.error} retry={() => scope.refetch()} /> : (
         scope.data.length === 0 ? (
-          <p className="text-xs text-dt-text-secondary">No employees assigned — this BP sees an empty view.</p>
+          <p className="mb-3 text-xs text-dt-text-secondary">No employees assigned — this BP sees an empty view.</p>
         ) : (
           <ul className="mb-3 space-y-1">
             {scope.data.map((emp: BPScopeEmployee) => (
@@ -83,23 +156,21 @@ function BPScopePanel({ bp }: { bp: BPGrant }) {
           </ul>
         )
       )}
-      <div className="flex items-end gap-2">
-        <FormField label="Add employee (user ID)" htmlFor={`add-emp-${bp.platform_user_id}`}>
-          <Input
-            id={`add-emp-${bp.platform_user_id}`}
-            type="number"
-            min={1}
-            placeholder="User ID"
-            value={addId}
-            onChange={(e) => setAddId(e.target.value)}
-            className="w-28"
+      {add.isError && <div className="mb-2"><Notice tone="error">{errorMessage(add.error)}</Notice></div>}
+      {adding ? (
+        <div className="rounded border border-dt-border bg-dt-surface p-2">
+          <p className="mb-2 text-xs font-medium">Add employee to scope</p>
+          <EmployeeSearch
+            onSelect={(r) => {
+              if (r.platform_user_id !== null) add.mutate(r.platform_user_id);
+            }}
           />
-        </FormField>
-        <Button size="sm" variant="secondary" loading={add.isPending} disabled={!addId} onClick={() => add.mutate()}>
-          Add
+        </div>
+      ) : (
+        <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
+          Add employee
         </Button>
-      </div>
-      {add.isError && <div className="mt-2"><Notice tone="error">{errorMessage(add.error)}</Notice></div>}
+      )}
     </div>
   );
 }
@@ -153,14 +224,14 @@ function Screen() {
       />
       <div className="mb-4 rounded-lg border border-dt-warning bg-dt-warning/5 p-3 text-sm text-dt-text-primary">
         <strong>Security reminder:</strong> A BP can only see employees explicitly assigned to their scope.
-        An employee not in a BP's scope is not visible to them. BPs cannot access another employee by
+        An employee not in a BP&apos;s scope is not visible to them. BPs cannot access another employee by
         changing a URL or parameter — authorization is enforced server-side.
       </div>
 
       <GrantBPForm onDone={() => void qc.invalidateQueries({ queryKey: ["atwork", "bps"] })} />
 
       {bps.isLoading ? <LoadingState /> : !bps.data ? <QueryError error={bps.error} retry={() => bps.refetch()} /> : bps.data.items.length === 0 ? (
-        <EmptyState title="No BPs granted" description="Use the form above to grant BP access to an employee." />
+        <EmptyState title="No BPs granted" description="Use the search above to find an employee and grant BP access." />
       ) : (
         <>
           {revoke.isError && <div className="mb-4"><Notice tone="error">{errorMessage(revoke.error)}</Notice></div>}
@@ -182,6 +253,11 @@ function Screen() {
       )}
     </>
   );
+}
+
+/** Embeddable content — no Page or RequirePermission wrapper. */
+export function BPAccessContent() {
+  return <Screen />;
 }
 
 export default function BPAccessPage() {

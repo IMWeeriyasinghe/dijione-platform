@@ -62,6 +62,7 @@ from app.schemas.management import (
     SessionsReportOut,
     SettingsIn,
     SettingsOut,
+    WorkforceSearchResultOut,
 )
 from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy, get_policy
@@ -70,7 +71,7 @@ from app.services.correction_service import CorrectionService
 from app.services.bp_service import assign_employee_to_bp, grant_bp, list_active_bps, remove_employee_from_bp, revoke_bp
 from app.services.employee_directory import display_name, employee_names
 from app.services.reporting import ExportInfo, ReportFilter, Reporting, checked_range, export_filename, to_csv, to_xlsx
-from app.services.workforce_client import resolve_client_for_users
+from app.services.workforce_client import get_client_counts, resolve_client_for_users, search_workforce
 from app.services.time_accounting import daily_totals, local_day_bounds
 
 router = APIRouter(prefix="/api/atwork/management", tags=["management"])
@@ -750,17 +751,25 @@ def analytics(
     ms: ManagementScope = Depends(bp_read),
     service: AttendanceService = Depends(_service),
 ) -> AnalyticsOut:
-    """Client-level adoption, office/remote split and confirmed hours."""
-    from app.services.time_accounting import Totals as _Totals
+    """Client-level adoption, office/remote split and confirmed hours.
+
+    Eligible = active employees in the workforce directory for that client.
+    Adopted = distinct employees with at least one session in the period.
+    Adoption % = adopted / eligible (0% if no eligible, 100% if directory unavailable).
+    """
+    from app.services.workforce_client import get_client_counts
     flt = _filter(service, date_from, date_to, None, None, ms.scope)
     reporter = Reporting(service.db, service.policy, service.now())
     sessions = reporter.sessions(flt)
 
-    # Resolve client for every employee in the result set
+    # Resolve client for every employee with sessions
     all_uids = {s.platform_user_id for s in sessions}
     client_map = resolve_client_for_users(service.db, all_uids) if all_uids else {}
 
-    # Aggregate per client
+    # Authoritative eligible counts from the workforce directory
+    eligible_counts = get_client_counts()  # {client: active_count}; {} if unavailable
+
+    # Aggregate sessions per client
     class _Agg:
         def __init__(self) -> None:
             self.users: set[int] = set()
@@ -782,23 +791,31 @@ def analytics(
         a.net_s += part.net_seconds
         a.unverified_s += part.provisional_seconds
 
-    # Eligible employees: anyone who had a session in scope
-    by_client = sorted(
-        [
-            ClientAdoptionOut(
-                client=c or "(Unassigned)",
-                eligible_employees=len(a.users),
-                adopted_employees=len(a.users),
-                adoption_pct=100.0,
-                office_sessions=a.office,
-                remote_sessions=a.remote,
-                net_hours=round(a.net_s / 3600, 2),
-                unverified_hours=round(a.unverified_s / 3600, 2),
-            )
-            for c, a in agg.items()
-        ],
-        key=lambda x: x.client,
-    )
+    # Union of clients with sessions and clients in the directory
+    all_clients = set(agg.keys()) | set(eligible_counts.keys())
+
+    def _build_row(c: str) -> ClientAdoptionOut:
+        a = agg.get(c)
+        adopted = len(a.users) if a else 0
+        eligible = eligible_counts.get(c, 0)
+        if eligible <= 0:
+            # Directory unavailable or no active employees for this client
+            eligible = adopted  # treat adopted as eligible (can't divide by 0)
+            pct = 100.0 if adopted > 0 else 0.0
+        else:
+            pct = round(min(100.0, adopted / eligible * 100), 1)
+        return ClientAdoptionOut(
+            client=c or "(Unassigned)",
+            eligible_employees=eligible,
+            adopted_employees=adopted,
+            adoption_pct=pct,
+            office_sessions=a.office if a else 0,
+            remote_sessions=a.remote if a else 0,
+            net_hours=round(a.net_s / 3600, 2) if a else 0.0,
+            unverified_hours=round(a.unverified_s / 3600, 2) if a else 0.0,
+        )
+
+    by_client = sorted([_build_row(c) for c in all_clients], key=lambda x: x.client)
     return AnalyticsOut(
         date_from=flt.date_from,
         date_to=flt.date_to,
@@ -894,3 +911,42 @@ def remove_bp_scope_employee(
 ) -> None:
     if not remove_employee_from_bp(db, bp_user_id, employee_user_id, claims.user_id):
         raise AttendanceError("SCOPE_NOT_FOUND", "Employee scope assignment not found.", 404)
+
+
+@router.get("/bp/employee-search", response_model=list[WorkforceSearchResultOut])
+def bp_employee_search(
+    q: str = Query(..., min_length=2, max_length=100),
+    claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> list[WorkforceSearchResultOut]:
+    """Search active employees by name/email for BP scope assignment.
+
+    Returns up to 20 results with platform_user_id resolved from AttendanceEmployee.
+    platform_user_id is None when the employee exists in the workforce directory
+    but has never logged into DijiAtWork (no AttendanceEmployee record yet).
+    """
+    workforce_results = search_workforce(q)
+    if not workforce_results:
+        return []
+
+    # Resolve work_email → platform_user_id via AttendanceEmployee
+    emails = [r["work_email"].lower() for r in workforce_results if r.get("work_email")]
+    from app.models.attendance import AttendanceEmployee
+    from sqlalchemy import select as _select, func as _func
+    rows = db.execute(
+        _select(AttendanceEmployee.id, _func.lower(AttendanceEmployee.email)).where(
+            _func.lower(AttendanceEmployee.email).in_(emails)
+        )
+    ).all()
+    email_to_uid: dict[str, int] = {email: uid for uid, email in rows}
+
+    return [
+        WorkforceSearchResultOut(
+            platform_user_id=email_to_uid.get((r.get("work_email") or "").lower()),
+            display_name=r.get("display_name", ""),
+            work_email=r.get("work_email", ""),
+            department=r.get("department", ""),
+        )
+        for r in workforce_results
+        if r.get("work_email")
+    ]

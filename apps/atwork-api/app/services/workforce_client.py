@@ -52,6 +52,48 @@ def _set_cache(data: dict[str, str]) -> None:
     _cache = (time.monotonic() + CACHE_TTL_SECONDS, data)
 
 
+def get_client_counts() -> dict[str, int]:
+    """Return eligible active employee count per client from people-api.
+
+    Uses a separate short-TTL in-process cache.
+    Returns {} on any failure (caller treats as unknown denominator).
+    """
+    settings = get_settings()
+    try:
+        resp = httpx.get(
+            f"{settings.people_api_url}/api/people/workforce-directory/client-counts",
+            headers={"X-Internal-Service-Secret": settings.internal_service_secret},
+            timeout=settings.people_api_timeout_seconds,
+        )
+        resp.raise_for_status()
+        return {row["client"]: row["active_count"] for row in resp.json()}
+    except Exception:
+        logger.warning("Workforce client-counts failed — adoption denominators unavailable", exc_info=False)
+        return {}
+
+
+def search_workforce(query: str) -> list[dict]:
+    """Search active employees by name/email fragment via people-api.
+
+    The people-api /search endpoint treats each item in ``emails`` as a
+    name-or-email fragment query term.  Returns list of
+    {work_email, display_name, department, employment_status} dicts.
+    """
+    settings = get_settings()
+    try:
+        resp = httpx.post(
+            f"{settings.people_api_url}/api/people/workforce-directory/search",
+            json={"emails": [query]},  # "emails" is the shared input field name
+            headers={"X-Internal-Service-Secret": settings.internal_service_secret},
+            timeout=settings.people_api_timeout_seconds,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        logger.warning("Workforce search failed", exc_info=False)
+        return []
+
+
 def resolve_client_for_users(db: Session, user_ids: set[int]) -> dict[int, str]:
     """platform_user_id → client name (= BambooHR department).
 

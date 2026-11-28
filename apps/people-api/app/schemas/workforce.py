@@ -47,6 +47,20 @@ class WorkforceEmailEnrichItem(BaseModel):
     employment_status: str
 
 
+class WorkforceClientCountItem(BaseModel):
+    """Internal: active employee count per client (BambooHR department)."""
+    client: str
+    active_count: int
+
+
+class WorkforceSearchItem(BaseModel):
+    """Internal: minimal employee record for directory search (name/email lookup)."""
+    work_email: str
+    display_name: str
+    department: str
+    employment_status: str
+
+
 class WorkforceSyncRequestIn(BaseModel):
     # Required, no default: the directory serves any consumer, so the
     # caller must identify itself.
