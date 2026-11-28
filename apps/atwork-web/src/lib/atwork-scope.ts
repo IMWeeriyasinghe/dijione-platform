@@ -20,6 +20,7 @@ export const PERM = {
   SETTINGS: "atwork.settings.manage",
   AUDIT: "atwork.audit.read",
   ACCESS_MANAGE: "atwork.access.manage", // appointed access administrators (Management → Access)
+  BP_ACCESS: "atwork.bp.access",         // Business Partner role — scoped management view
 } as const;
 
 export type AtworkScope = {

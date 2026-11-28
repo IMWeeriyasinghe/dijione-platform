@@ -88,14 +88,18 @@ export type Overview = {
   completed: { platform_user_id: number; employee_name: string; session: Session }[];
   exceptions: MissedCheckout[];
 };
-export type Employee = { platform_user_id: number; employee_name: string; email: string | null; state: AttendanceState };
+export type Employee = { platform_user_id: number; employee_name: string; email: string | null; client?: string; state: AttendanceState };
 export type EmployeeHistory = Omit<History, never> & { employee: Employee };
 export type AuditEvent = {
   id: string; action: string; entity_type: string; entity_id: string; session_id: string | null;
   actor_user_id: number; actor_name: string; subject_user_id: number; subject_name: string;
   occurred_at: string; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null;
 };
-export type EmployeeSummaryItem = { platform_user_id: number; employee_name: string; session_count: number; totals: Totals };
+export type EmployeeSummaryItem = { platform_user_id: number; employee_name: string; client?: string; session_count: number; totals: Totals };
+export type ClientAdoption = { client: string; eligible_employees: number; adopted_employees: number; adoption_pct: number; office_sessions: number; remote_sessions: number; net_hours: number; unverified_hours: number };
+export type Analytics = { date_from: string; date_to: string; time_zone: string; by_client: ClientAdoption[] };
+export type BPGrant = { platform_user_id: number; full_name: string; work_email: string | null; employee_count: number; granted_at: string; granted_by: number };
+export type BPScopeEmployee = { platform_user_id: number; employee_name: string; work_email: string | null; client: string };
 export type ReportSummary = {
   date_from: string; date_to: string; time_zone: string; session_count: number; totals: Totals;
   by_work_mode: (Totals & { work_mode: WorkMode })[]; by_day: DayTotals[];
@@ -107,7 +111,7 @@ export type Settings = {
   enabled_work_modes: WorkMode[]; business_time_zone: string; missed_checkout_hours: number;
   time_format: "24h" | "12h"; default_history_days: number; version: number;
 };
-export type ReportFilters = { date_from?: string; date_to?: string; user_id?: string; work_mode?: string; q?: string };
+export type ReportFilters = { date_from?: string; date_to?: string; user_id?: string; work_mode?: string; client?: string; q?: string };
 export type ReportSortParams = { sort_by?: string; sort_dir?: "asc" | "desc" };
 export type SessionReportItem = { platform_user_id: number; employee_name: string; session: Session; period_totals: Totals };
 export type SessionsReport = { date_from: string; date_to: string; time_zone: string; total: number; limit: number; offset: number; by_status: Record<string, number>; by_mode: Record<string, number>; items: SessionReportItem[] };
@@ -138,7 +142,7 @@ export const corrections = {
 
 export const management = {
   overview: () => json<Overview>(`${M}/overview`),
-  employees: (p: { q?: string; limit?: number; offset?: number }) => json<Page<Employee>>(`${M}/employees${qs(p)}`),
+  employees: (p: { q?: string; client?: string; limit?: number; offset?: number }) => json<Page<Employee>>(`${M}/employees${qs(p)}`),
   employeeHistory: (id: string, p: RangeParams) => json<EmployeeHistory>(`${M}/employees/${encodeURIComponent(id)}/attendance${qs(p)}`),
   session: (id: string) => json<{ employee: Employee; session: Session }>(`${M}/sessions/${encodeURIComponent(id)}`),
   corrections: (p: { status?: string; date_from?: string; date_to?: string; q?: string; limit?: number; offset?: number }) => json<Page<Correction>>(`${M}/corrections${qs(p)}`),
@@ -151,6 +155,15 @@ export const management = {
   reportSessions: (p: ReportFilters & ReportSortParams & { limit?: number; offset?: number }) => json<SessionsReport>(`${M}/reports/sessions${qs(p)}`),
   missed: (p: ReportFilters) => json<{ threshold_hours: number; total: number; items: MissedCheckout[] }>(`${M}/reports/missed-checkouts${qs(p)}`),
   correctionReport: (p: ReportFilters) => json<{ total: number; by_status: Record<string, number> }>(`${M}/reports/corrections${qs(p)}`),
+  analytics: (p: { date_from?: string; date_to?: string }) => json<Analytics>(`${M}/analytics${qs(p)}`),
+  bps: () => json<{ items: BPGrant[] }>(`${M}/bp`),
+  grantBP: (target_user_id: number) => json<BPGrant>(`${M}/bp`, { method: "POST", body: JSON.stringify({ target_user_id }) }),
+  revokeBP: (bp_user_id: number) => send(`${M}/bp/${bp_user_id}/revoke`, { method: "POST" }),
+  bpScope: (bp_user_id: number) => json<BPScopeEmployee[]>(`${M}/bp/${bp_user_id}/scope`),
+  addBPScope: (bp_user_id: number, employee_user_id: number) =>
+    json<unknown>(`${M}/bp/${bp_user_id}/scope`, { method: "POST", body: JSON.stringify({ employee_user_id }) }),
+  removeBPScope: (bp_user_id: number, employee_user_id: number) =>
+    send(`${M}/bp/${bp_user_id}/scope/${employee_user_id}`, { method: "DELETE" }),
   settings: () => json<Settings>(`${M}/settings`),
   saveSettings: (body: Settings) => json<Settings>(`${M}/settings`, { method: "PUT", body: JSON.stringify(body) }),
   async download(report: string, format: "csv" | "xlsx", filters: ReportFilters & { q?: string }) {
