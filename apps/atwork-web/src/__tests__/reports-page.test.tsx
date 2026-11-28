@@ -44,6 +44,9 @@ const SUMMARY = {
     { platform_user_id: 1, employee_name: "Alice Smith", session_count: 5, totals: { gross_seconds: 36000, break_seconds: 1800, net_seconds: 34200, provisional_seconds: 0 } },
     { platform_user_id: 2, employee_name: "Bob Jones", session_count: 5, totals: { gross_seconds: 36000, break_seconds: 1800, net_seconds: 34200, provisional_seconds: 0 } },
   ],
+  chart_employees: [
+    { platform_user_id: 1, employee_name: "Alice Smith", session_count: 5, totals: { gross_seconds: 36000, break_seconds: 1800, net_seconds: 34200, provisional_seconds: 0 } },
+  ],
 };
 
 const MISSED = {
@@ -65,7 +68,7 @@ function renderPage() {
 beforeEach(() => {
   scopeMock.value = { loading: false, failed: false, scope: MANAGER };
   mgmt.report.mockResolvedValue(SUMMARY);
-  mgmt.reportSessions.mockResolvedValue({ date_from: "2026-11-01", date_to: "2026-11-28", time_zone: "Asia/Colombo", total: 0, limit: 25, offset: 0, items: [] });
+  mgmt.reportSessions.mockResolvedValue({ date_from: "2026-11-01", date_to: "2026-11-28", time_zone: "Asia/Colombo", total: 0, limit: 25, offset: 0, by_status: {}, by_mode: {}, items: [] });
   mgmt.missed.mockResolvedValue(MISSED);
   mgmt.correctionReport.mockResolvedValue(CORRECTIONS);
   mgmt.corrections.mockResolvedValue(CORRECTIONS_LIST);

@@ -169,7 +169,7 @@ class Reporting:
     def local_iso(self, value: str | None) -> datetime | None:
         return self.local(datetime.fromisoformat(value)) if value else None
 
-    def table(self, report: str, flt: ReportFilter) -> tuple[list[str], list[list]]:
+    def table(self, report: str, flt: ReportFilter, *, name_filter: str | None = None) -> tuple[list[str], list[list]]:
         if report == "employee_summary":
             head = [
                 "Employee",
@@ -180,6 +180,10 @@ class Reporting:
                 "Net hours",
                 "Unverified hours (not included)",
             ]
+            all_emp = self.summary(flt)["by_employee"]
+            if name_filter:
+                nf = name_filter.strip().lower()
+                all_emp = [r for r in all_emp if nf in r["employee_name"].lower()]
             rows = [
                 [
                     r["employee_name"],
@@ -190,12 +194,15 @@ class Reporting:
                     hours(r["totals"].net_seconds),
                     hours(r["totals"].provisional_seconds),
                 ]
-                for r in self.summary(flt)["by_employee"]
+                for r in all_emp
             ]
             return head, rows
         if report == "sessions":
             sessions = self.sessions(flt)
             names = employee_names(self.db, {s.platform_user_id for s in sessions})
+            if name_filter:
+                nf = name_filter.strip().lower()
+                sessions = [s for s in sessions if nf in display_name(names, s.platform_user_id).lower()]
             head = [
                 "Employee",
                 "User ID",
