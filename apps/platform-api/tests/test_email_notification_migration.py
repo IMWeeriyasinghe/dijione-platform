@@ -27,7 +27,7 @@ def test_single_head_upgrade_adds_only_the_new_tables_and_downgrade_removes_them
     url = f"sqlite:///{tmp_path / 'mail.db'}"
     heads = _alembic(url, "heads")
     assert heads.returncode == 0, heads.stderr
-    assert heads.stdout.split() == ["v4w6y8a0c2e4", "(head)"]  # single head
+    assert heads.stdout.split() == ["w5x7z9b1d3f5", "(head)"]  # single head
 
     assert _alembic(url, "upgrade", PREVIOUS).returncode == 0
     engine = create_engine(url)

@@ -98,7 +98,10 @@ def test_birthday_registry_no_longer_claims_client_scope(tmp_path):
     assert _alembic(url, "upgrade", "head").returncode == 0
     after, scopes_after, roles_after = state()
     assert after["birthday"] in (0, False)
-    assert {k: v for k, v in after.items() if k != "birthday"} == {k: v for k, v in caps.items() if k != "birthday"}
+    # "alerts" is excluded: it is added by w5x7z9b1d3f5 (after the snapshot at REVISION)
+    # and is COMING_SOON — it does not affect client-scope assignments.
+    _excluded = {"birthday", "alerts"}
+    assert {k: v for k, v in after.items() if k not in _excluded} == {k: v for k, v in caps.items() if k not in _excluded}
     assert (scopes_after, roles_after) == (scopes, roles)
     assert _alembic(url, "upgrade", "head").returncode == 0  # idempotent
     assert _alembic(url, "downgrade", REVISION).returncode == 0

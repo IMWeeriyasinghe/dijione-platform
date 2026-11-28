@@ -233,4 +233,6 @@ def test_release_activation_runs_only_in_uat_and_prod_and_grants_nothing(tmp_pat
             enabled = conn.execute(text("SELECT enabled FROM module_baseline_roles WHERE module_key = 'atwork'")).scalar()
             assert conn.execute(text("SELECT COUNT(*) FROM user_module_roles")).scalar() == grants
         assert (after["atwork"], bool(enabled)) == (status, baseline)
-        assert {k: v for k, v in after.items() if k != "atwork"} == {k: v for k, v in before.items() if k != "atwork"}
+        # "alerts" excluded: added by w5x7z9b1d3f5 during the head upgrade (after the before snapshot)
+        _exc = {"atwork", "alerts"}
+        assert {k: v for k, v in after.items() if k not in _exc} == {k: v for k, v in before.items() if k not in _exc}
