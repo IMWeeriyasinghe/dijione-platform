@@ -21,7 +21,7 @@ function Detail({ id }: { id: string }) {
       <PageHeader title="Session details" action={hasPermission(scope, PERM.REQUEST_OWN) ? <Link href={`/requests/new?sessionId=${s.id}`}><Button variant="secondary">Request correction</Button></Link> : undefined} />
       <div className="mb-4"><SessionBadge session={s} /></div>
       <SessionDetails session={s} zone={s.time_zone} format={format} />
-      <Link href="/attendance" className="mt-6 inline-block text-sm font-medium text-dt-burnt-orange underline underline-offset-2">Back to My Attendance</Link>
+      <Link href="/attendance" className="mt-6 inline-block text-sm font-medium text-dt-burnt-orange underline underline-offset-2">Back to My Time</Link>
     </>
   );
 }

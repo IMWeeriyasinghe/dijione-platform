@@ -12,7 +12,7 @@ export function buildSections(scope: AtworkScope | null): NavSection[] {
   const mine: NavItem[] = [];
   if (can(PERM.READ_OWN)) {
     mine.push({ label: "Today", href: "/", icon: CalendarClock, exact: true });
-    mine.push({ label: "My Attendance", href: "/attendance", icon: History });
+    mine.push({ label: "My Time", href: "/attendance", icon: History });
   }
   if (can(PERM.REQUEST_OWN)) mine.push({ label: "My Requests", href: "/requests", icon: FilePenLine });
   const sections: NavSection[] = mine.length ? [{ items: mine }] : [];
@@ -66,7 +66,7 @@ export function AtworkContent({ children }: { children: React.ReactNode }) {
       roleContext="atwork"
       eyebrow="by Dijital Team"
       title="DijiAtWork"
-      topNavTitle="Work Check-in and Attendance"
+      topNavTitle="Your Workday, Made Simple"
       sections={buildSections(scope)}
       homeHref="/"
       collapsible={{ storageKey: "atwork.nav.collapsed" }}
