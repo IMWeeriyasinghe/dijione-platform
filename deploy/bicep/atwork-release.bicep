@@ -61,6 +61,7 @@ module atworkApi 'modules/containerapp.bicep' = {
       { name: 'API_CORS_ORIGINS', value: 'https://shell-web.${envDomain}' }
       { name: 'INTEGRATIONS_MODE', value: 'mock' }
       { name: 'PLATFORM_API_URL', value: 'http://platform-api' }
+      { name: 'PEOPLE_API_URL', value: 'http://people-api' }
     ]
     secretRefs: concat(trustSecrets, [ dbSecret ])
   }
