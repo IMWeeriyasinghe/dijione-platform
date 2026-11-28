@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  Button, Card, EmptyState, FormField, LoadingState, PageHeader, Select, StatusBadge,
+  Button, Card, EmptyState, FormField, Input, LoadingState, PageHeader, Select, StatusBadge,
   Table, Td, Th, Thead, Tr,
 } from "@dijione/design-system";
 import { DateRange, Notice, Page, Pager, QueryError, RequirePermission, TotalsCards } from "@/components/ui";
-import { errorMessage, management, type ReportFilters, type SessionReportItem } from "@/lib/api";
+import { errorMessage, management, type ReportFilters, type ReportSortParams } from "@/lib/api";
 import {
   addDays, ALL_WORK_MODES, dateTime, localDate, longDate, shortDuration, WORK_MODE_LABEL,
 } from "@/lib/format";
@@ -96,36 +96,23 @@ function EmployeeSummaryTab({
 }: { filters: ReportFilters; offset: number; onOffset: (n: number) => void }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "employee_name", dir: "asc" });
   const [expanded, setExpanded] = useState<number | null>(null);
+  const sortParams: ReportSortParams = { sort_by: sort.key, sort_dir: sort.dir };
   const query = useQuery({
-    queryKey: ["atwork", "report", filters, offset],
-    queryFn: () => management.report({ ...filters, limit: LIMIT, offset }),
+    queryKey: ["atwork", "report", filters, offset, sortParams],
+    queryFn: () => management.report({ ...filters, ...sortParams, limit: LIMIT, offset }),
   });
   const d = query.data;
 
-  const sorted = useMemo(() => {
-    if (!d) return [];
-    return [...d.by_employee].sort((a, b) => {
-      let x = 0;
-      if (sort.key === "employee_name") x = a.employee_name.localeCompare(b.employee_name);
-      else if (sort.key === "session_count") x = a.session_count - b.session_count;
-      else if (sort.key === "net") x = a.totals.net_seconds - b.totals.net_seconds;
-      else if (sort.key === "gross") x = a.totals.gross_seconds - b.totals.gross_seconds;
-      else if (sort.key === "unverified") x = (a.totals.provisional_seconds ?? 0) - (b.totals.provisional_seconds ?? 0);
-      return sort.dir === "asc" ? x : -x;
-    });
-  }, [d, sort]);
-
   function toggleSort(key: SortKey) {
     setSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+    onOffset(0);
   }
 
   if (query.isLoading) return <LoadingState />;
   if (!d) return <QueryError error={query.error} retry={() => query.refetch()} />;
   if (d.session_count === 0) return <EmptyState title="No attendance in this range" />;
 
-  const topEmployees = [...d.by_employee]
-    .sort((a, b) => b.totals.net_seconds - a.totals.net_seconds)
-    .slice(0, 8);
+  const topEmployees = d.chart_employees;
 
   return (
     <div className="space-y-6">
@@ -174,7 +161,7 @@ function EmployeeSummaryTab({
             </Tr>
           </Thead>
           <tbody>
-            {sorted.map((e) => (
+            {d.by_employee.map((e) => (
               <React.Fragment key={e.platform_user_id}>
                 <Tr>
                   <Td>
@@ -262,42 +249,24 @@ type SessionSortKey = "employee_name" | "check_in_at" | "work_mode" | "status" |
 function SessionsTab({ filters, offset, onOffset }: { filters: ReportFilters; offset: number; onOffset: (n: number) => void }) {
   const { zone, format } = useDisplay();
   const [sort, setSort] = useState<{ key: SessionSortKey; dir: "asc" | "desc" }>({ key: "check_in_at", dir: "desc" });
+  const sortParams: ReportSortParams = { sort_by: sort.key, sort_dir: sort.dir };
   const query = useQuery({
-    queryKey: ["atwork", "report-sessions", filters, offset],
-    queryFn: () => management.reportSessions({ ...filters, limit: LIMIT, offset }),
+    queryKey: ["atwork", "report-sessions", filters, offset, sortParams],
+    queryFn: () => management.reportSessions({ ...filters, ...sortParams, limit: LIMIT, offset }),
   });
   const d = query.data;
 
-  const sorted = useMemo<SessionReportItem[]>(() => {
-    if (!d) return [];
-    return [...d.items].sort((a, b) => {
-      let x = 0;
-      if (sort.key === "employee_name") x = a.employee_name.localeCompare(b.employee_name);
-      else if (sort.key === "check_in_at") x = a.session.check_in_at.localeCompare(b.session.check_in_at);
-      else if (sort.key === "work_mode") x = a.session.work_mode.localeCompare(b.session.work_mode);
-      else if (sort.key === "status") x = a.session.status.localeCompare(b.session.status);
-      else if (sort.key === "net") x = a.period_totals.net_seconds - b.period_totals.net_seconds;
-      return sort.dir === "asc" ? x : -x;
-    });
-  }, [d, sort]);
-
   function toggleSort(key: SessionSortKey) {
     setSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" });
+    onOffset(0);
   }
 
   if (query.isLoading) return <LoadingState />;
   if (!d) return <QueryError error={query.error} retry={() => query.refetch()} />;
   if (d.total === 0) return <EmptyState title="No sessions in this range" />;
 
-  const byStatus = sorted.reduce<Record<string, number>>((acc, i) => {
-    acc[i.session.status] = (acc[i.session.status] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const byMode = sorted.reduce<Record<string, number>>((acc, i) => {
-    acc[i.session.work_mode] = (acc[i.session.work_mode] ?? 0) + 1;
-    return acc;
-  }, {});
+  const byStatus = d.by_status;
+  const byMode = d.by_mode;
 
   return (
     <div className="space-y-6">
@@ -348,7 +317,7 @@ function SessionsTab({ filters, offset, onOffset }: { filters: ReportFilters; of
             </Tr>
           </Thead>
           <tbody>
-            {sorted.map((item) => {
+            {d.items.map((item) => {
               const s = item.session;
               return (
                 <Tr key={s.id}>
@@ -445,7 +414,7 @@ function CorrectionsTab({ filters, offset, onOffset }: { filters: ReportFilters;
   const [statusFilter, setStatusFilter] = useState("");
   const query = useQuery({
     queryKey: ["atwork", "report-corrections-preview", filters, statusFilter, offset],
-    queryFn: () => management.corrections({ status: statusFilter || undefined, limit: LIMIT, offset }),
+    queryFn: () => management.corrections({ status: statusFilter || undefined, date_from: filters.date_from, date_to: filters.date_to, q: filters.q, limit: LIMIT, offset }),
   });
   const statsQuery = useQuery({
     queryKey: ["atwork", "report-corrections", filters],
@@ -545,13 +514,26 @@ function Screen() {
   });
   const [mode, setMode] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; name: string } | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQ(searchInput.trim());
+      setOffset(0);
+    }, 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
 
   const filters: ReportFilters = {
     date_from: range.from,
     date_to: range.to,
     work_mode: mode || undefined,
     user_id: selectedEmployee ? String(selectedEmployee.id) : undefined,
+    q: debouncedQ || undefined,
   };
 
   const download = useMutation({ mutationFn: (f: "csv" | "xlsx") => management.download(activeTab, f, filters) });
@@ -561,6 +543,8 @@ function Screen() {
   const handleTabChange = useCallback((key: ReportType) => {
     setActiveTab(key);
     setOffset(0);
+    setSearchInput("");
+    setDebouncedQ("");
   }, []);
 
   const handleFilterApply = useCallback((from: string, to: string) => {
@@ -580,6 +564,15 @@ function Screen() {
             <option value="">All</option>
             {ALL_WORK_MODES.map((m) => <option key={m} value={m}>{WORK_MODE_LABEL[m]}</option>)}
           </Select>
+        </FormField>
+        <FormField label="Employee search" htmlFor="report-q">
+          <Input
+            id="report-q"
+            type="search"
+            placeholder="Name…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
         </FormField>
         {selectedEmployee && (
           <div className="flex items-center gap-2 text-sm">

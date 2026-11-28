@@ -95,19 +95,22 @@ export type AuditEvent = {
   actor_user_id: number; actor_name: string; subject_user_id: number; subject_name: string;
   occurred_at: string; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null;
 };
+export type EmployeeSummaryItem = { platform_user_id: number; employee_name: string; session_count: number; totals: Totals };
 export type ReportSummary = {
   date_from: string; date_to: string; time_zone: string; session_count: number; totals: Totals;
   by_work_mode: (Totals & { work_mode: WorkMode })[]; by_day: DayTotals[];
   employee_total: number; limit: number; offset: number;
-  by_employee: { platform_user_id: number; employee_name: string; session_count: number; totals: Totals }[];
+  by_employee: EmployeeSummaryItem[];
+  chart_employees: EmployeeSummaryItem[];
 };
 export type Settings = {
   enabled_work_modes: WorkMode[]; business_time_zone: string; missed_checkout_hours: number;
   time_format: "24h" | "12h"; default_history_days: number; version: number;
 };
-export type ReportFilters = { date_from?: string; date_to?: string; user_id?: string; work_mode?: string };
+export type ReportFilters = { date_from?: string; date_to?: string; user_id?: string; work_mode?: string; q?: string };
+export type ReportSortParams = { sort_by?: string; sort_dir?: "asc" | "desc" };
 export type SessionReportItem = { platform_user_id: number; employee_name: string; session: Session; period_totals: Totals };
-export type SessionsReport = { date_from: string; date_to: string; time_zone: string; total: number; limit: number; offset: number; items: SessionReportItem[] };
+export type SessionsReport = { date_from: string; date_to: string; time_zone: string; total: number; limit: number; offset: number; by_status: Record<string, number>; by_mode: Record<string, number>; items: SessionReportItem[] };
 export type RangeParams = { date_from?: string; date_to?: string; limit?: number; offset?: number };
 
 const A = "/api/atwork/attendance";
@@ -138,19 +141,19 @@ export const management = {
   employees: (p: { q?: string; limit?: number; offset?: number }) => json<Page<Employee>>(`${M}/employees${qs(p)}`),
   employeeHistory: (id: string, p: RangeParams) => json<EmployeeHistory>(`${M}/employees/${encodeURIComponent(id)}/attendance${qs(p)}`),
   session: (id: string) => json<{ employee: Employee; session: Session }>(`${M}/sessions/${encodeURIComponent(id)}`),
-  corrections: (p: { status?: string; limit?: number; offset?: number }) => json<Page<Correction>>(`${M}/corrections${qs(p)}`),
+  corrections: (p: { status?: string; date_from?: string; date_to?: string; q?: string; limit?: number; offset?: number }) => json<Page<Correction>>(`${M}/corrections${qs(p)}`),
   correction: (id: string) => json<Correction>(`${M}/corrections/${encodeURIComponent(id)}`),
   approve: (id: string, note?: string) => post<Correction>(`${M}/corrections/${encodeURIComponent(id)}/approve`, { note: note || null }),
   reject: (id: string, reason: string) => post<Correction>(`${M}/corrections/${encodeURIComponent(id)}/reject`, { reason }),
   audit: (p: { action?: string; user_id?: string; session_id?: string; date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     json<Page<AuditEvent>>(`${M}/audit${qs(p)}`),
-  report: (p: ReportFilters & { limit?: number; offset?: number }) => json<ReportSummary>(`${M}/reports/summary${qs(p)}`),
-  reportSessions: (p: ReportFilters & { limit?: number; offset?: number }) => json<SessionsReport>(`${M}/reports/sessions${qs(p)}`),
+  report: (p: ReportFilters & ReportSortParams & { limit?: number; offset?: number }) => json<ReportSummary>(`${M}/reports/summary${qs(p)}`),
+  reportSessions: (p: ReportFilters & ReportSortParams & { limit?: number; offset?: number }) => json<SessionsReport>(`${M}/reports/sessions${qs(p)}`),
   missed: (p: ReportFilters) => json<{ threshold_hours: number; total: number; items: MissedCheckout[] }>(`${M}/reports/missed-checkouts${qs(p)}`),
   correctionReport: (p: ReportFilters) => json<{ total: number; by_status: Record<string, number> }>(`${M}/reports/corrections${qs(p)}`),
   settings: () => json<Settings>(`${M}/settings`),
   saveSettings: (body: Settings) => json<Settings>(`${M}/settings`, { method: "PUT", body: JSON.stringify(body) }),
-  async download(report: string, format: "csv" | "xlsx", filters: ReportFilters) {
+  async download(report: string, format: "csv" | "xlsx", filters: ReportFilters & { q?: string }) {
     const res = await send(`${M}/reports/export${qs({ report, format, ...filters })}`);
     const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `dijiatwork-${report}.${format}`;
     const url = URL.createObjectURL(await res.blob());

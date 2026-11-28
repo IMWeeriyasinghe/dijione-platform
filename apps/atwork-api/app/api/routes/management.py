@@ -240,6 +240,9 @@ def _can_decide(claims: AuthClaims, item: CorrectionRequest) -> bool:
 def correction_queue(
     status: str | None = None,
     user_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    q: str | None = None,
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     claims: AuthClaims = Depends(can_review),
@@ -250,11 +253,20 @@ def correction_queue(
         criteria.append(CorrectionRequest.status == status)
     if user_id is not None:
         criteria.append(CorrectionRequest.platform_user_id == user_id)
-    total = db.scalar(select(func.count()).select_from(CorrectionRequest).where(*criteria)) or 0
-    items = db.scalars(
-        select(CorrectionRequest).where(*criteria).order_by(CorrectionRequest.created_at.desc()).limit(limit).offset(offset)
+    if date_from is not None:
+        criteria.append(CorrectionRequest.created_at >= date_from)
+    if date_to is not None:
+        # end of day inclusive
+        criteria.append(CorrectionRequest.created_at < date_to + timedelta(days=1))
+    all_items = db.scalars(
+        select(CorrectionRequest).where(*criteria).order_by(CorrectionRequest.created_at.desc())
     ).all()
-    names = employee_names(db, {i.platform_user_id for i in items})
+    names = employee_names(db, {i.platform_user_id for i in all_items})
+    if q:
+        q_lower = q.strip().lower()
+        all_items = [i for i in all_items if q_lower in display_name(names, i.platform_user_id).lower()]
+    total = len(all_items)
+    items = all_items[offset : offset + limit]
     return CorrectionListOut(
         total=total,
         limit=limit,
@@ -365,12 +377,41 @@ def _filter(
     return ReportFilter(date_from or end - timedelta(days=29), end, user_id, work_mode)
 
 
+_EMPLOYEE_SORT = {"employee_name", "session_count", "net", "gross", "unverified"}
+_SESSION_SORT = {"check_in_at", "employee_name", "work_mode", "status", "net"}
+
+
+def _sort_employees(employees: list[dict], sort_by: str, sort_dir: str) -> list[dict]:
+    reverse = sort_dir == "desc"
+    if sort_by == "session_count":
+        return sorted(employees, key=lambda e: e["session_count"], reverse=reverse)
+    if sort_by == "net":
+        return sorted(employees, key=lambda e: e["totals"].net_seconds, reverse=reverse)
+    if sort_by == "gross":
+        return sorted(employees, key=lambda e: e["totals"].gross_seconds, reverse=reverse)
+    if sort_by == "unverified":
+        return sorted(employees, key=lambda e: e["totals"].provisional_seconds, reverse=reverse)
+    return sorted(employees, key=lambda e: e["employee_name"].lower(), reverse=reverse)
+
+
+def _employee_out(r: dict) -> EmployeeSummaryOut:
+    return EmployeeSummaryOut(
+        platform_user_id=r["platform_user_id"],
+        employee_name=r["employee_name"],
+        session_count=r["session_count"],
+        totals=_totals(r["totals"]),
+    )
+
+
 @router.get("/reports/summary", response_model=ReportSummaryOut)
 def report_summary(
     date_from: date | None = None,
     date_to: date | None = None,
     user_id: int | None = None,
     work_mode: str | None = None,
+    q: str | None = None,
+    sort_by: str = Query(default="employee_name"),
+    sort_dir: str = Query(default="asc", pattern="^(asc|desc)$"),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     _claims: AuthClaims = Depends(can_report),
@@ -378,6 +419,13 @@ def report_summary(
 ) -> ReportSummaryOut:
     flt = _filter(service, date_from, date_to, user_id, work_mode)
     data = Reporting(service.db, service.policy, service.now()).summary(flt)
+    employees = data["by_employee"]
+    if q:
+        q_lower = q.strip().lower()
+        employees = [e for e in employees if q_lower in e["employee_name"].lower()]
+    sort_key = sort_by if sort_by in _EMPLOYEE_SORT else "employee_name"
+    employees = _sort_employees(employees, sort_key, sort_dir)
+    chart_employees = sorted(employees, key=lambda e: e["totals"].net_seconds, reverse=True)[:8]
     return ReportSummaryOut(
         date_from=flt.date_from,
         date_to=flt.date_to,
@@ -386,18 +434,11 @@ def report_summary(
         totals=_totals(data["totals"]),
         by_work_mode=[ModeTotalsOut(work_mode=m, **_totals(t).model_dump()) for m, t in sorted(data["by_work_mode"].items())],
         by_day=[DayTotalsOut(date=d, **_totals(t).model_dump()) for d, t in data["by_day"].items()],
-        employee_total=len(data["by_employee"]),
+        employee_total=len(employees),
         limit=limit,
         offset=offset,
-        by_employee=[
-            EmployeeSummaryOut(
-                platform_user_id=r["platform_user_id"],
-                employee_name=r["employee_name"],
-                session_count=r["session_count"],
-                totals=_totals(r["totals"]),
-            )
-            for r in data["by_employee"][offset : offset + limit]
-        ],
+        chart_employees=[_employee_out(r) for r in chart_employees],
+        by_employee=[_employee_out(r) for r in employees[offset : offset + limit]],
     )
 
 
@@ -423,6 +464,9 @@ def report_sessions(
     date_to: date | None = None,
     user_id: int | None = None,
     work_mode: str | None = None,
+    q: str | None = None,
+    sort_by: str = Query(default="check_in_at"),
+    sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     _claims: AuthClaims = Depends(can_report),
@@ -433,6 +477,28 @@ def report_sessions(
     reporter = Reporting(service.db, service.policy, now)
     sessions = reporter.sessions(flt)
     names = employee_names(service.db, {s.platform_user_id for s in sessions})
+    if q:
+        q_lower = q.strip().lower()
+        sessions = [s for s in sessions if q_lower in display_name(names, s.platform_user_id).lower()]
+    # Full-dataset aggregates before pagination
+    by_status: dict[str, int] = {}
+    by_mode: dict[str, int] = {}
+    for s in sessions:
+        by_status[s.status] = by_status.get(s.status, 0) + 1
+        by_mode[s.work_mode] = by_mode.get(s.work_mode, 0) + 1
+    # Sort before pagination
+    sk = sort_by if sort_by in _SESSION_SORT else "check_in_at"
+    reverse = sort_dir == "desc"
+    if sk == "employee_name":
+        sessions = sorted(sessions, key=lambda s: display_name(names, s.platform_user_id).lower(), reverse=reverse)
+    elif sk == "work_mode":
+        sessions = sorted(sessions, key=lambda s: s.work_mode, reverse=reverse)
+    elif sk == "status":
+        sessions = sorted(sessions, key=lambda s: s.status, reverse=reverse)
+    elif sk == "net":
+        sessions = sorted(sessions, key=lambda s: reporter.in_range(s, flt).net_seconds, reverse=reverse)
+    else:
+        sessions = sorted(sessions, key=lambda s: s.check_in_at, reverse=reverse)
     items = [
         SessionReportItemOut(
             platform_user_id=s.platform_user_id,
@@ -449,6 +515,8 @@ def report_sessions(
         total=len(sessions),
         limit=limit,
         offset=offset,
+        by_status=by_status,
+        by_mode=by_mode,
         items=items,
     )
 
@@ -477,13 +545,14 @@ def report_export(
     date_to: date | None = None,
     user_id: int | None = None,
     work_mode: str | None = None,
+    q: str | None = None,
     claims: AuthClaims = Depends(can_export),
     _can_read_reports: AuthClaims = Depends(can_report),
     service: AttendanceService = Depends(_service),
 ) -> Response:
     flt = _filter(service, date_from, date_to, user_id, work_mode)
     now = service.now()
-    head, rows = Reporting(service.db, service.policy, now).table(report, flt)
+    head, rows = Reporting(service.db, service.policy, now).table(report, flt, name_filter=q or None)
     info = ExportInfo(
         report,
         flt.date_from,

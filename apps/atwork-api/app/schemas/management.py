@@ -122,6 +122,7 @@ class ReportSummaryOut(BaseModel):
     limit: int
     offset: int
     by_employee: list[EmployeeSummaryOut]
+    chart_employees: list[EmployeeSummaryOut]
 
 
 class MissedCheckoutReportOut(BaseModel):
@@ -140,6 +141,8 @@ class SessionReportItemOut(BaseModel):
 class SessionsReportOut(BaseModel):
     date_from: date
     date_to: date
+    by_status: dict[str, int]
+    by_mode: dict[str, int]
     time_zone: str
     total: int
     limit: int
