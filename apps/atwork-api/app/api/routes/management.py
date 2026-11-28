@@ -32,7 +32,6 @@ from app.core.errors import AttendanceError
 from app.db.base import utcnow
 from app.db.session import get_db
 from app.models.attendance import AttendanceEvent, AttendanceSession, new_id
-from app.models.bp import AtworkBPGrant, AtworkBPEmployeeScope
 from app.models.corrections import AttendanceEmployee, AtworkSettings, CorrectionRequest
 from app.schemas.attendance import DayTotalsOut
 from app.schemas.corrections import ApproveIn, CorrectionListOut, CorrectionOut, RejectIn
@@ -67,12 +66,12 @@ from app.schemas.management import (
 from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy, get_policy
 from app.services.attendance_service import AttendanceService, Clock
-from app.services.correction_service import CorrectionService
 from app.services.bp_service import assign_employee_to_bp, grant_bp, list_active_bps, remove_employee_from_bp, revoke_bp
+from app.services.correction_service import CorrectionService
 from app.services.employee_directory import display_name, employee_names
 from app.services.reporting import ExportInfo, ReportFilter, Reporting, checked_range, export_filename, to_csv, to_xlsx
-from app.services.workforce_client import get_client_counts, resolve_client_for_users, search_workforce
 from app.services.time_accounting import daily_totals, local_day_bounds
+from app.services.workforce_client import get_client_counts, resolve_client_for_users, search_workforce
 
 router = APIRouter(prefix="/api/atwork/management", tags=["management"])
 
@@ -218,7 +217,8 @@ def employees(
         filtered_ids = {uid for uid, cl in client_map.items() if cl.lower() == c}
         names = {uid: row for uid, row in names.items() if uid in filtered_ids}
         total = len(names)  # recount after client filter
-    return EmployeeListOut(total=total, limit=limit, offset=offset, items=[_employee(db, uid, names, open_map, client_map) for uid in names])
+    items = [_employee(db, uid, names, open_map, client_map) for uid in names]
+    return EmployeeListOut(total=total, limit=limit, offset=offset, items=items)
 
 
 @router.get("/employees/{user_id}/attendance", response_model=EmployeeHistoryOut)
@@ -757,7 +757,6 @@ def analytics(
     Adopted = distinct employees with at least one session in the period.
     Adoption % = adopted / eligible (0% if no eligible, 100% if directory unavailable).
     """
-    from app.services.workforce_client import get_client_counts
     flt = _filter(service, date_from, date_to, None, None, ms.scope)
     reporter = Reporting(service.db, service.policy, service.now())
     sessions = reporter.sessions(flt)
@@ -780,7 +779,7 @@ def analytics(
         scope_uids: set[int] = ms.scope  # type: ignore[assignment]
         scope_client_map = resolve_client_for_users(service.db, scope_uids) if scope_uids else {}
         scope_client_counts = {}
-        for uid, c in scope_client_map.items():
+        for _uid, c in scope_client_map.items():
             scope_client_counts[c] = scope_client_counts.get(c, 0) + 1
 
     # Aggregate sessions per client
@@ -953,7 +952,8 @@ def bp_employee_search(
     # Resolve work_email → platform_user_id via AttendanceEmployee.
     # AttendanceEmployee.platform_user_id is the PK — there is no separate id column.
     emails = [r["work_email"].lower() for r in workforce_results if r.get("work_email")]
-    from sqlalchemy import select as _select, func as _func
+    from sqlalchemy import func as _func
+    from sqlalchemy import select as _select
     rows = db.execute(
         _select(AttendanceEmployee.platform_user_id, _func.lower(AttendanceEmployee.email)).where(
             _func.lower(AttendanceEmployee.email).in_(emails)

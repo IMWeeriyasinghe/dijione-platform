@@ -12,12 +12,12 @@ Tests:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db.session import SessionLocal
 from tests.conftest import bearer, issue_token
 
 A = "/api/atwork/attendance"
@@ -65,8 +65,8 @@ def _access_manage_hdr(user_id: int = 99) -> dict:
 
 @pytest.fixture()
 def api_client():
+    from app.db.session import engine
     from app.main import app
-    from app.db.session import SessionLocal, engine
     from app.models import Base
 
     Base.metadata.create_all(bind=engine)
@@ -93,9 +93,9 @@ def _register_employee(api_client, user_id: int, email: str, name: str = "Test E
     ``remember_employee`` is called on check-in, not on status, so we insert
     directly rather than triggering a full session lifecycle.
     """
-    from app.db.session import SessionLocal
-    from app.models.corrections import AttendanceEmployee
     from sqlalchemy.exc import IntegrityError
+
+    from app.models.corrections import AttendanceEmployee
 
     db = SessionLocal()
     try:
