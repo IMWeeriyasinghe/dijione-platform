@@ -7,6 +7,20 @@ Create Date: 2026-11-28 00:00:00.000000
 Adds:
   atwork_bp_grants           — which employees hold the BP role
   atwork_bp_employee_scope   — which employees a BP can see in Management
+
+BP source-of-truth — why manual assignment:
+  The ``dijitalteam`` BambooHR tenant was surveyed live (2026-08-14) using
+  GET /v1/meta/fields (400 total fields). No supervisor, manager, reports_to,
+  or Business Partner relationship field exists in this tenant. BambooHR
+  ``department`` for this business holds client engagement/bench assignment,
+  not a hierarchical reporting relationship. There is therefore no authoritative
+  automated source from which BP scope can be derived. Manual administrator
+  assignment via these tables is the deliberate design, not a placeholder. If
+  a future BambooHR custom field is added to represent the BP relationship,
+  the workforce sync and these tables should be updated to prefer it; until
+  then, the ``atwork_bp_employee_scope`` table is the sole authoritative source.
+  Reference: docs/platform/bamboohr-live-discovery.md (address follow-up,
+  field catalogue section).
 """
 
 from alembic import op
