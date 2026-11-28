@@ -50,6 +50,7 @@ class EmployeeOut(BaseModel):
     platform_user_id: int
     employee_name: str
     email: str | None
+    client: str = ""
     state: Literal["NOT_CHECKED_IN", "WORKING", "ON_BREAK"]
 
 
@@ -102,6 +103,7 @@ class AuditListOut(BaseModel):
 class EmployeeSummaryOut(BaseModel):
     platform_user_id: int
     employee_name: str
+    client: str = ""
     session_count: int
     totals: TotalsOut
 
@@ -171,3 +173,61 @@ class SettingsIn(BaseModel):
     time_format: Literal["24h", "12h"]
     default_history_days: int = Field(ge=7, le=90)
     version: int = Field(ge=0)
+
+
+# --- Client/BP analytics ---
+
+class ClientAdoptionOut(BaseModel):
+    client: str
+    eligible_employees: int
+    adopted_employees: int
+    adoption_pct: float
+    office_sessions: int
+    remote_sessions: int
+    net_hours: float
+    unverified_hours: float
+
+
+class AnalyticsOut(BaseModel):
+    date_from: date
+    date_to: date
+    time_zone: str
+    by_client: list[ClientAdoptionOut]
+
+
+# --- BP access management ---
+
+class BPGrantOut(BaseModel):
+    platform_user_id: int
+    full_name: str
+    work_email: str | None
+    employee_count: int
+    granted_at: datetime
+    granted_by: int
+
+
+class BPGrantIn(BaseModel):
+    target_user_id: int
+
+
+class BPScopeAssignIn(BaseModel):
+    employee_user_id: int
+
+
+class BPListOut(BaseModel):
+    items: list[BPGrantOut]
+
+
+class BPScopeEmployeeOut(BaseModel):
+    platform_user_id: int
+    employee_name: str
+    work_email: str | None
+    client: str = ""
+
+
+class WorkforceSearchResultOut(BaseModel):
+    """An employee found via workforce directory search, with platform_user_id if known."""
+    platform_user_id: int | None
+    display_name: str
+    work_email: str
+    department: str

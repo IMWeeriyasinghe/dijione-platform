@@ -4,7 +4,7 @@ import { AppShell, AuthGate, EmptyState, ErrorState, LoadingState, VersionFooter
 import type { NavSection } from "@dijione/design-system";
 
 type NavItem = NavSection["items"][number];
-import { BarChart3, CalendarClock, ClipboardCheck, FilePenLine, History, KeyRound, ScrollText, Settings, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, CalendarClock, ClipboardCheck, FilePenLine, History, KeyRound, PieChart, ScrollText, Settings, ShieldCheck, Users } from "lucide-react";
 import { hasPermission, PERM, useAtworkScope, type AtworkScope } from "@/lib/atwork-scope";
 
 export function buildSections(scope: AtworkScope | null): NavSection[] {
@@ -16,11 +16,13 @@ export function buildSections(scope: AtworkScope | null): NavSection[] {
   }
   if (can(PERM.REQUEST_OWN)) mine.push({ label: "My Requests", href: "/requests", icon: FilePenLine });
   const sections: NavSection[] = mine.length ? [{ items: mine }] : [];
-  if (can(PERM.MANAGEMENT)) {
+  const hasMgmtAccess = can(PERM.MANAGEMENT) || can(PERM.BP_ACCESS);
+  if (hasMgmtAccess) {
     const items: NavItem[] = [{ label: "Overview", href: "/management", icon: ShieldCheck, exact: true }];
-    if (can(PERM.READ_ALL)) items.push({ label: "Employees", href: "/management/employees", icon: Users });
+    if (can(PERM.READ_ALL) || can(PERM.BP_ACCESS)) items.push({ label: "Employees", href: "/management/employees", icon: Users });
     if (can(PERM.REVIEW)) items.push({ label: "Corrections", href: "/management/corrections", icon: ClipboardCheck });
-    if (can(PERM.REPORTS)) items.push({ label: "Reports", href: "/management/reports", icon: BarChart3 });
+    if (can(PERM.REPORTS) || can(PERM.BP_ACCESS)) items.push({ label: "Reports", href: "/management/reports", icon: BarChart3 });
+    if (can(PERM.READ_ALL) || can(PERM.BP_ACCESS)) items.push({ label: "Analytics", href: "/management/analytics", icon: PieChart });
     if (can(PERM.AUDIT)) items.push({ label: "Audit History", href: "/management/audit", icon: ScrollText });
     if (can(PERM.SETTINGS)) items.push({ label: "Settings", href: "/management/settings", icon: Settings });
     if (can(PERM.ACCESS_MANAGE)) items.push({ label: "Access", href: "/management/access", icon: KeyRound });

@@ -10,6 +10,8 @@ from tests.conftest import bearer, issue_token
 
 PREFIX = "/api/atwork"
 EXEMPT = {"/api/atwork/summary", "/api/atwork/metadata"}
+# BP management endpoints ARE the business of atwork.access.manage — they should be reachable
+_BP_MANAGEMENT_PREFIX = "/api/atwork/management/bp"
 
 
 def test_admin_only_token_reaches_no_business_endpoint(api_client, db, monkeypatch):
@@ -23,6 +25,11 @@ def test_admin_only_token_reaches_no_business_endpoint(api_client, db, monkeypat
         resp = api_client.get(path, headers=headers)
         if route_path == "/api/atwork/me":  # reports the caller's own role and permissions, nothing else
             assert resp.status_code == 200 and resp.json()["permissions"] == ["atwork.access.manage"]
+            continue
+        if route_path.startswith(_BP_MANAGEMENT_PREFIX):  # access.manage routes ARE callable by this token
+            # 422 is acceptable for GET routes that require query params (e.g. employee-search?q=)
+            assert resp.status_code in (200, 204, 404, 422), (route_path, resp.status_code, resp.text[:200])
+            checked += 1
             continue
         assert resp.status_code in (401, 403, 404, 422), (route_path, resp.status_code, resp.text[:200])
         checked += 1

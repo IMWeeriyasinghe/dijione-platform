@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.api.deps import require_management_permission
+from app.api.deps import ManagementScope, management_scope, require_access_manage_permission, require_management_permission
 from app.api.routes.attendance import _session, _state, _totals, get_clock
 from app.api.routes.corrections import correction_out, get_correction_service
 from app.core.constants import (
@@ -36,8 +36,15 @@ from app.models.corrections import AttendanceEmployee, AtworkSettings, Correctio
 from app.schemas.attendance import DayTotalsOut
 from app.schemas.corrections import ApproveIn, CorrectionListOut, CorrectionOut, RejectIn
 from app.schemas.management import (
+    AnalyticsOut,
     AuditEventOut,
     AuditListOut,
+    BPGrantIn,
+    BPGrantOut,
+    BPListOut,
+    BPScopeAssignIn,
+    BPScopeEmployeeOut,
+    ClientAdoptionOut,
     CorrectionReportOut,
     EmployeeHistoryOut,
     EmployeeListOut,
@@ -54,14 +61,17 @@ from app.schemas.management import (
     SessionsReportOut,
     SettingsIn,
     SettingsOut,
+    WorkforceSearchResultOut,
 )
 from app.services import notifications
 from app.services.attendance_policy import AttendancePolicy, get_policy
 from app.services.attendance_service import AttendanceService, Clock
+from app.services.bp_service import assign_employee_to_bp, grant_bp, list_active_bps, remove_employee_from_bp, revoke_bp
 from app.services.correction_service import CorrectionService
 from app.services.employee_directory import display_name, employee_names
 from app.services.reporting import ExportInfo, ReportFilter, Reporting, checked_range, export_filename, to_csv, to_xlsx
 from app.services.time_accounting import daily_totals, local_day_bounds
+from app.services.workforce_client import get_client_counts, resolve_client_for_users, search_workforce
 
 router = APIRouter(prefix="/api/atwork/management", tags=["management"])
 
@@ -72,6 +82,14 @@ can_report = require_management_permission(PERM_REPORTS_READ)
 can_export = require_management_permission(PERM_REPORTS_EXPORT)
 can_manage_settings = require_management_permission(PERM_SETTINGS_MANAGE)
 can_audit = require_management_permission(PERM_AUDIT_READ)
+can_access_manage = require_access_manage_permission()
+
+# BP-aware dependency factories
+bp_read = management_scope(PERM_ATTENDANCE_READ)
+bp_report = management_scope(PERM_REPORTS_READ)
+bp_export = management_scope(PERM_REPORTS_EXPORT)
+bp_review = management_scope(PERM_CORRECTIONS_REVIEW)
+bp_approve = management_scope(PERM_CORRECTIONS_APPROVE)
 
 
 def _service(
@@ -80,31 +98,42 @@ def _service(
     return AttendanceService(db, policy, clock)
 
 
-def _employee(db: Session, user_id: int, names: dict, open_map: dict[int, AttendanceSession]) -> EmployeeOut:
+def _employee(
+    db: Session,
+    user_id: int,
+    names: dict,
+    open_map: dict[int, AttendanceSession],
+    client_map: dict[int, str] | None = None,
+) -> EmployeeOut:
     row = names.get(user_id)
     return EmployeeOut(
         platform_user_id=user_id,
         employee_name=display_name(names, user_id),
         email=row.email if row else None,
+        client=client_map.get(user_id, "") if client_map else "",
         state=_state(open_map.get(user_id)),
     )
 
 
-def _open_sessions(db: Session, user_ids: set[int] | None = None) -> list[AttendanceSession]:
+def _open_sessions(db: Session, user_ids: set[int] | None = None, scope: frozenset[int] | None = None) -> list[AttendanceSession]:
     stmt = select(AttendanceSession).where(AttendanceSession.status == STATUS_OPEN)
-    if user_ids is not None:
-        stmt = stmt.where(AttendanceSession.platform_user_id.in_(user_ids))
+    effective = user_ids
+    if scope is not None:
+        effective = (user_ids & scope) if user_ids else scope
+    if effective is not None:
+        stmt = stmt.where(AttendanceSession.platform_user_id.in_(effective))
     return list(db.scalars(stmt.order_by(AttendanceSession.check_in_at)))
 
 
 @router.get("/overview", response_model=OverviewOut)
-def overview(claims: AuthClaims = Depends(can_read), service: AttendanceService = Depends(_service)) -> OverviewOut:
-    db, now = service.db, service.now()
+def overview(ms: ManagementScope = Depends(bp_read), service: AttendanceService = Depends(_service)) -> OverviewOut:
+    db, now, claims = service.db, service.now(), ms.claims
+    scope = ms.scope
     day = service.local_date(now)
     report = Reporting(db, service.policy, now)
-    flt = ReportFilter(day, day)
+    flt = ReportFilter(day, day, user_ids=scope)
     today = report.sessions(flt)
-    live = _open_sessions(db)
+    live = _open_sessions(db, scope=scope)
     names = employee_names(db, {s.platform_user_id for s in [*today, *live]})
     cutoff = now - timedelta(hours=service.policy.missed_checkout_hours)
 
@@ -120,13 +149,15 @@ def overview(claims: AuthClaims = Depends(can_read), service: AttendanceService 
 
     cards = [card(s) for s in live]
     completed = [s for s in today if s.status == STATUS_COMPLETED]
-    exceptions = [MissedCheckoutOut(**row) for row in report.missed_checkouts()]
+    mc_flt = ReportFilter(day, day, user_ids=scope) if scope is not None else None
+    exceptions = [MissedCheckoutOut(**row) for row in report.missed_checkouts(mc_flt)]
     module = claims.module(MODULE_ATWORK)
     pending = None
     if module.has(PERM_CORRECTIONS_REVIEW):
-        pending = db.scalar(
-            select(func.count()).select_from(CorrectionRequest).where(CorrectionRequest.status == CORRECTION_PENDING)
-        )
+        pend_stmt = select(func.count()).select_from(CorrectionRequest).where(CorrectionRequest.status == CORRECTION_PENDING)
+        if scope is not None:
+            pend_stmt = pend_stmt.where(CorrectionRequest.platform_user_id.in_(scope))
+        pending = db.scalar(pend_stmt)
     return OverviewOut(
         date=day,
         time_zone=service.policy.business_time_zone,
@@ -154,9 +185,10 @@ def overview(claims: AuthClaims = Depends(can_read), service: AttendanceService 
 @router.get("/employees", response_model=EmployeeListOut)
 def employees(
     q: str | None = Query(default=None, max_length=100),
+    client: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    _claims: AuthClaims = Depends(can_read),
+    ms: ManagementScope = Depends(bp_read),
     db: Session = Depends(get_db),
 ) -> EmployeeListOut:
     criteria = []
@@ -166,13 +198,27 @@ def employees(
         criteria.append(
             or_(AttendanceEmployee.full_name.ilike(like, escape="\\"), AttendanceEmployee.email.ilike(like, escape="\\"))
         )
+    # BP scope filter
+    if ms.scope is not None:
+        if not ms.scope:
+            return EmployeeListOut(total=0, limit=limit, offset=offset, items=[])
+        criteria.append(AttendanceEmployee.platform_user_id.in_(ms.scope))
+
     total = db.scalar(select(func.count()).select_from(AttendanceEmployee).where(*criteria)) or 0
     rows = db.scalars(
         select(AttendanceEmployee).where(*criteria).order_by(func.lower(AttendanceEmployee.full_name)).limit(limit).offset(offset)
     ).all()
     names = {r.platform_user_id: r for r in rows}
     open_map = {s.platform_user_id: s for s in _open_sessions(db, set(names))}
-    return EmployeeListOut(total=total, limit=limit, offset=offset, items=[_employee(db, uid, names, open_map) for uid in names])
+    client_map = resolve_client_for_users(db, set(names.keys()))
+    # Apply client filter if provided (after resolving clients)
+    if client and client.strip():
+        c = client.strip().lower()
+        filtered_ids = {uid for uid, cl in client_map.items() if cl.lower() == c}
+        names = {uid: row for uid, row in names.items() if uid in filtered_ids}
+        total = len(names)  # recount after client filter
+    items = [_employee(db, uid, names, open_map, client_map) for uid in names]
+    return EmployeeListOut(total=total, limit=limit, offset=offset, items=items)
 
 
 @router.get("/employees/{user_id}/attendance", response_model=EmployeeHistoryOut)
@@ -182,9 +228,11 @@ def employee_attendance(
     date_to: date | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    _claims: AuthClaims = Depends(can_read),
+    ms: ManagementScope = Depends(bp_read),
     service: AttendanceService = Depends(_service),
 ) -> EmployeeHistoryOut:
+    if ms.scope is not None and user_id not in ms.scope:
+        raise AttendanceError("EMPLOYEE_NOT_FOUND", "No attendance records exist for this employee.", 404)
     now = service.now()
     end = date_to or service.local_date(now)
     start = date_from or end - timedelta(days=service.policy.default_history_days - 1)
@@ -214,12 +262,14 @@ def employee_attendance(
 
 @router.get("/sessions/{session_id}", response_model=ManagedSessionOut)
 def managed_session(
-    session_id: str, _claims: AuthClaims = Depends(can_read), service: AttendanceService = Depends(_service)
+    session_id: str, ms: ManagementScope = Depends(bp_read), service: AttendanceService = Depends(_service)
 ) -> ManagedSessionOut:
     session = service.db.get(AttendanceSession, session_id)
     if session is None:
         raise AttendanceError("SESSION_NOT_FOUND", "Attendance session not found.", 404)
     uid = session.platform_user_id
+    if ms.scope is not None and uid not in ms.scope:
+        raise AttendanceError("SESSION_NOT_FOUND", "Attendance session not found.", 404)
     names = employee_names(service.db, {uid})
     open_map = {s.platform_user_id: s for s in _open_sessions(service.db, {uid})}
     return ManagedSessionOut(
@@ -245,18 +295,23 @@ def correction_queue(
     q: str | None = None,
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    claims: AuthClaims = Depends(can_review),
+    ms: ManagementScope = Depends(bp_review),
     db: Session = Depends(get_db),
 ) -> CorrectionListOut:
+    claims = ms.claims
     criteria = []
     if status:
         criteria.append(CorrectionRequest.status == status)
     if user_id is not None:
         criteria.append(CorrectionRequest.platform_user_id == user_id)
+    # BP scope
+    if ms.scope is not None:
+        if not ms.scope:
+            return CorrectionListOut(total=0, limit=limit, offset=offset, items=[])
+        criteria.append(CorrectionRequest.platform_user_id.in_(ms.scope))
     if date_from is not None:
         criteria.append(CorrectionRequest.created_at >= date_from)
     if date_to is not None:
-        # end of day inclusive
         criteria.append(CorrectionRequest.created_at < date_to + timedelta(days=1))
     all_items = db.scalars(
         select(CorrectionRequest).where(*criteria).order_by(CorrectionRequest.created_at.desc())
@@ -276,9 +331,12 @@ def correction_queue(
 
 
 @router.get("/corrections/{request_id}", response_model=CorrectionOut)
-def correction_detail(request_id: str, claims: AuthClaims = Depends(can_review), db: Session = Depends(get_db)) -> CorrectionOut:
+def correction_detail(request_id: str, ms: ManagementScope = Depends(bp_review), db: Session = Depends(get_db)) -> CorrectionOut:
+    claims = ms.claims
     item = db.get(CorrectionRequest, request_id)
     if item is None:
+        raise AttendanceError("CORRECTION_NOT_FOUND", "Correction request not found.", 404)
+    if ms.scope is not None and item.platform_user_id not in ms.scope:
         raise AttendanceError("CORRECTION_NOT_FOUND", "Correction request not found.", 404)
     return correction_out(item, employee_names(db, {item.platform_user_id}), can_decide=_can_decide(claims, item))
 
@@ -288,10 +346,15 @@ def approve(
     request_id: str,
     body: ApproveIn,
     background: BackgroundTasks,
-    claims: AuthClaims = Depends(can_approve),
+    ms: ManagementScope = Depends(bp_approve),
     db: Session = Depends(get_db),
     service: CorrectionService = Depends(get_correction_service),
 ) -> CorrectionOut:
+    claims = ms.claims
+    if ms.scope is not None:
+        item = db.get(CorrectionRequest, request_id)
+        if item and item.platform_user_id not in ms.scope:
+            raise AttendanceError("CORRECTION_NOT_FOUND", "Correction request not found.", 404)
     item = service.approve(request_id, claims.user_id, claims.full_name, body.note)
     background.add_task(notifications.deliver_after_response)
     return correction_out(item, employee_names(db, {item.platform_user_id}))
@@ -302,10 +365,15 @@ def reject(
     request_id: str,
     body: RejectIn,
     background: BackgroundTasks,
-    claims: AuthClaims = Depends(can_approve),
+    ms: ManagementScope = Depends(bp_approve),
     db: Session = Depends(get_db),
     service: CorrectionService = Depends(get_correction_service),
 ) -> CorrectionOut:
+    claims = ms.claims
+    if ms.scope is not None:
+        item = db.get(CorrectionRequest, request_id)
+        if item and item.platform_user_id not in ms.scope:
+            raise AttendanceError("CORRECTION_NOT_FOUND", "Correction request not found.", 404)
     item = service.reject(request_id, claims.user_id, claims.full_name, body.reason)
     background.add_task(notifications.deliver_after_response)
     return correction_out(item, employee_names(db, {item.platform_user_id}))
@@ -371,10 +439,16 @@ def audit(
 
 
 def _filter(
-    service: AttendanceService, date_from: date | None, date_to: date | None, user_id: int | None, work_mode: str | None
+    service: AttendanceService,
+    date_from: date | None,
+    date_to: date | None,
+    user_id: int | None,
+    work_mode: str | None,
+    scope: frozenset[int] | None = None,
+    client: str | None = None,
 ) -> ReportFilter:
     end = date_to or service.local_date(service.now())
-    return ReportFilter(date_from or end - timedelta(days=29), end, user_id, work_mode)
+    return ReportFilter(date_from or end - timedelta(days=29), end, user_id, work_mode, scope, client or None)
 
 
 _EMPLOYEE_SORT = {"employee_name", "session_count", "net", "gross", "unverified"}
@@ -398,6 +472,7 @@ def _employee_out(r: dict) -> EmployeeSummaryOut:
     return EmployeeSummaryOut(
         platform_user_id=r["platform_user_id"],
         employee_name=r["employee_name"],
+        client=r.get("client", ""),
         session_count=r["session_count"],
         totals=_totals(r["totals"]),
     )
@@ -409,17 +484,25 @@ def report_summary(
     date_to: date | None = None,
     user_id: int | None = None,
     work_mode: str | None = None,
+    client: str | None = None,
     q: str | None = None,
     sort_by: str = Query(default="employee_name"),
     sort_dir: str = Query(default="asc", pattern="^(asc|desc)$"),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    _claims: AuthClaims = Depends(can_report),
+    ms: ManagementScope = Depends(bp_report),
     service: AttendanceService = Depends(_service),
 ) -> ReportSummaryOut:
-    flt = _filter(service, date_from, date_to, user_id, work_mode)
+    flt = _filter(service, date_from, date_to, user_id, work_mode, ms.scope, client)
     data = Reporting(service.db, service.policy, service.now()).summary(flt)
     employees = data["by_employee"]
+    # Enrich client for each employee row
+    all_uids = {r["platform_user_id"] for r in employees}
+    client_map = resolve_client_for_users(service.db, all_uids) if all_uids else {}
+    for emp in employees:
+        emp["client"] = client_map.get(emp["platform_user_id"], "")
+    if client:
+        employees = [e for e in employees if e["client"] == client]
     if q:
         q_lower = q.strip().lower()
         employees = [e for e in employees if q_lower in e["employee_name"].lower()]
@@ -448,10 +531,10 @@ def report_missed(
     date_to: date | None = None,
     user_id: int | None = None,
     work_mode: str | None = None,
-    _claims: AuthClaims = Depends(can_report),
+    ms: ManagementScope = Depends(bp_report),
     service: AttendanceService = Depends(_service),
 ) -> MissedCheckoutReportOut:
-    flt = _filter(service, date_from, date_to, user_id, work_mode)
+    flt = _filter(service, date_from, date_to, user_id, work_mode, ms.scope)
     rows = Reporting(service.db, service.policy, service.now()).missed_checkouts(flt)
     return MissedCheckoutReportOut(
         threshold_hours=service.policy.missed_checkout_hours, total=len(rows), items=[MissedCheckoutOut(**r) for r in rows]
@@ -464,15 +547,16 @@ def report_sessions(
     date_to: date | None = None,
     user_id: int | None = None,
     work_mode: str | None = None,
+    client: str | None = None,
     q: str | None = None,
     sort_by: str = Query(default="check_in_at"),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    _claims: AuthClaims = Depends(can_report),
+    ms: ManagementScope = Depends(bp_report),
     service: AttendanceService = Depends(_service),
 ) -> SessionsReportOut:
-    flt = _filter(service, date_from, date_to, user_id, work_mode)
+    flt = _filter(service, date_from, date_to, user_id, work_mode, ms.scope, client)
     now = service.now()
     reporter = Reporting(service.db, service.policy, now)
     sessions = reporter.sessions(flt)
@@ -526,10 +610,10 @@ def report_corrections(
     date_from: date | None = None,
     date_to: date | None = None,
     user_id: int | None = None,
-    _claims: AuthClaims = Depends(can_report),
+    ms: ManagementScope = Depends(bp_report),
     service: AttendanceService = Depends(_service),
 ) -> CorrectionReportOut:
-    flt = _filter(service, date_from, date_to, user_id, None)
+    flt = _filter(service, date_from, date_to, user_id, None, ms.scope)
     items = Reporting(service.db, service.policy, service.now()).corrections(flt)
     return CorrectionReportOut(total=len(items), by_status=dict(Counter(i.status for i in items)))
 
@@ -545,12 +629,19 @@ def report_export(
     date_to: date | None = None,
     user_id: int | None = None,
     work_mode: str | None = None,
+    client: str | None = None,
     q: str | None = None,
-    claims: AuthClaims = Depends(can_export),
-    _can_read_reports: AuthClaims = Depends(can_report),
+    ms: ManagementScope = Depends(bp_export),
     service: AttendanceService = Depends(_service),
 ) -> Response:
-    flt = _filter(service, date_from, date_to, user_id, work_mode)
+    claims = ms.claims
+    # Full managers need reports.read as well as reports.export
+    if ms.scope is None:
+        module_claim = claims.module(MODULE_ATWORK)
+        if module_claim is None or not module_claim.has(PERM_REPORTS_READ):
+            from fastapi import HTTPException, status
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing required permission: {PERM_REPORTS_READ}")
+    flt = _filter(service, date_from, date_to, user_id, work_mode, ms.scope, client)
     now = service.now()
     head, rows = Reporting(service.db, service.policy, now).table(report, flt, name_filter=q or None)
     info = ExportInfo(
@@ -647,3 +738,236 @@ def update_settings(
         db.rollback()
         raise AttendanceError("SETTINGS_CONFLICT", "Settings were changed by someone else. Reload and try again.") from exc
     return _settings_out(get_policy(db))
+
+
+# ---------------------------------------------------------------------------
+# Analytics: adoption by client
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics", response_model=AnalyticsOut)
+def analytics(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    ms: ManagementScope = Depends(bp_read),
+    service: AttendanceService = Depends(_service),
+) -> AnalyticsOut:
+    """Client-level adoption, office/remote split and confirmed hours.
+
+    Eligible = active employees in the workforce directory for that client.
+    Adopted = distinct employees with at least one session in the period.
+    Adoption % = adopted / eligible (0% if no eligible, 100% if directory unavailable).
+    """
+    flt = _filter(service, date_from, date_to, None, None, ms.scope)
+    reporter = Reporting(service.db, service.policy, service.now())
+    sessions = reporter.sessions(flt)
+
+    # Resolve client for every employee with sessions
+    all_uids = {s.platform_user_id for s in sessions}
+    client_map = resolve_client_for_users(service.db, all_uids) if all_uids else {}
+
+    # Eligible counts:
+    # - Full admin (scope=None): authoritative from the workforce directory (all active employees)
+    # - BP (scope=frozenset): count is restricted to the BP's explicitly assigned employees per
+    #   client. The full directory count must not leak other employees' existence to a BP.
+    if ms.scope is None:
+        eligible_counts = get_client_counts()  # {client: active_count}; {} if unavailable
+        # Clients visible to full admins: those with sessions + those in directory
+        scope_client_counts: dict[str, int] | None = None
+    else:
+        eligible_counts = {}  # won't be used directly for BPs
+        # Build eligible_counts from BP's own employee scope
+        scope_uids: set[int] = ms.scope  # type: ignore[assignment]
+        scope_client_map = resolve_client_for_users(service.db, scope_uids) if scope_uids else {}
+        scope_client_counts = {}
+        for _uid, c in scope_client_map.items():
+            scope_client_counts[c] = scope_client_counts.get(c, 0) + 1
+
+    # Aggregate sessions per client
+    class _Agg:
+        def __init__(self) -> None:
+            self.users: set[int] = set()
+            self.office = 0
+            self.remote = 0
+            self.net_s = 0.0
+            self.unverified_s = 0.0
+
+    agg: dict[str, _Agg] = {}
+    for s in sessions:
+        c = client_map.get(s.platform_user_id, "")
+        a = agg.setdefault(c, _Agg())
+        a.users.add(s.platform_user_id)
+        part = reporter.in_range(s, flt)
+        if s.work_mode == "OFFICE":
+            a.office += 1
+        else:
+            a.remote += 1
+        a.net_s += part.net_seconds
+        a.unverified_s += part.provisional_seconds
+
+    # Union of clients visible to this identity
+    if ms.scope is None:
+        all_clients = set(agg.keys()) | set(eligible_counts.keys())
+    else:
+        # BPs only see clients their scoped employees belong to
+        all_clients = set(agg.keys()) | set((scope_client_counts or {}).keys())
+
+    def _build_row(c: str) -> ClientAdoptionOut:
+        a = agg.get(c)
+        adopted = len(a.users) if a else 0
+        if ms.scope is None:
+            eligible = eligible_counts.get(c, 0)
+        else:
+            eligible = (scope_client_counts or {}).get(c, 0)
+        if eligible <= 0:
+            # Directory unavailable or no active employees for this client
+            eligible = adopted  # treat adopted as eligible (can't divide by 0)
+            pct = 100.0 if adopted > 0 else 0.0
+        else:
+            pct = round(min(100.0, adopted / eligible * 100), 1)
+        return ClientAdoptionOut(
+            client=c or "(Unassigned)",
+            eligible_employees=eligible,
+            adopted_employees=adopted,
+            adoption_pct=pct,
+            office_sessions=a.office if a else 0,
+            remote_sessions=a.remote if a else 0,
+            net_hours=round(a.net_s / 3600, 2) if a else 0.0,
+            unverified_hours=round(a.unverified_s / 3600, 2) if a else 0.0,
+        )
+
+    by_client = sorted([_build_row(c) for c in all_clients], key=lambda x: x.client)
+    return AnalyticsOut(
+        date_from=flt.date_from,
+        date_to=flt.date_to,
+        time_zone=service.policy.business_time_zone,
+        by_client=by_client,
+    )
+
+
+# ---------------------------------------------------------------------------
+# BP Access Management endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/bp", response_model=BPListOut)
+def list_bps(
+    _claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> BPListOut:
+    return BPListOut(items=[BPGrantOut(**r) for r in list_active_bps(db)])
+
+
+@router.post("/bp", response_model=BPGrantOut, status_code=201)
+def create_bp(
+    body: BPGrantIn,
+    claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> BPGrantOut:
+    grant = grant_bp(db, body.target_user_id, claims.user_id)
+    emp = db.get(AttendanceEmployee, grant.platform_user_id)
+    return BPGrantOut(
+        platform_user_id=grant.platform_user_id,
+        full_name=emp.full_name if emp else f"User #{grant.platform_user_id}",
+        work_email=emp.email if emp else None,
+        employee_count=0,
+        granted_at=grant.granted_at,
+        granted_by=grant.granted_by,
+    )
+
+
+@router.post("/bp/{bp_user_id}/revoke", status_code=204)
+def revoke_bp_access(
+    bp_user_id: int,
+    claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> None:
+    if not revoke_bp(db, bp_user_id, claims.user_id):
+        raise AttendanceError("BP_NOT_FOUND", "Active BP grant not found.", 404)
+
+
+@router.get("/bp/{bp_user_id}/scope", response_model=list[BPScopeEmployeeOut])
+def get_bp_scope(
+    bp_user_id: int,
+    _claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> list[BPScopeEmployeeOut]:
+    from app.services.bp_service import get_bp_employee_scope
+    employee_ids = get_bp_employee_scope(db, bp_user_id)
+    if not employee_ids:
+        return []
+    names = employee_names(db, set(employee_ids))
+    client_map = resolve_client_for_users(db, set(employee_ids))
+    result = []
+    for uid in sorted(employee_ids):
+        row = names.get(uid)
+        result.append(BPScopeEmployeeOut(
+            platform_user_id=uid,
+            employee_name=display_name(names, uid),
+            work_email=row.email if row else None,
+            client=client_map.get(uid, ""),
+        ))
+    return result
+
+
+@router.post("/bp/{bp_user_id}/scope", status_code=201)
+def add_bp_scope_employee(
+    bp_user_id: int,
+    body: BPScopeAssignIn,
+    claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.services.bp_service import is_bp
+    if not is_bp(db, bp_user_id):
+        raise AttendanceError("BP_NOT_FOUND", "Active BP grant not found.", 404)
+    assign_employee_to_bp(db, bp_user_id, body.employee_user_id, claims.user_id)
+    return {"bp_user_id": bp_user_id, "employee_user_id": body.employee_user_id}
+
+
+@router.delete("/bp/{bp_user_id}/scope/{employee_user_id}", status_code=204)
+def remove_bp_scope_employee(
+    bp_user_id: int,
+    employee_user_id: int,
+    claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> None:
+    if not remove_employee_from_bp(db, bp_user_id, employee_user_id, claims.user_id):
+        raise AttendanceError("SCOPE_NOT_FOUND", "Employee scope assignment not found.", 404)
+
+
+@router.get("/bp/employee-search", response_model=list[WorkforceSearchResultOut])
+def bp_employee_search(
+    q: str = Query(..., min_length=2, max_length=100),
+    claims: AuthClaims = Depends(can_access_manage),
+    db: Session = Depends(get_db),
+) -> list[WorkforceSearchResultOut]:
+    """Search active employees by name/email for BP scope assignment.
+
+    Returns up to 20 results with platform_user_id resolved from AttendanceEmployee.
+    platform_user_id is None when the employee exists in the workforce directory
+    but has never logged into DijiAtWork (no AttendanceEmployee record yet).
+    """
+    workforce_results = search_workforce(q)
+    if not workforce_results:
+        return []
+
+    # Resolve work_email → platform_user_id via AttendanceEmployee.
+    # AttendanceEmployee.platform_user_id is the PK — there is no separate id column.
+    emails = [r["work_email"].lower() for r in workforce_results if r.get("work_email")]
+    from sqlalchemy import func as _func
+    from sqlalchemy import select as _select
+    rows = db.execute(
+        _select(AttendanceEmployee.platform_user_id, _func.lower(AttendanceEmployee.email)).where(
+            _func.lower(AttendanceEmployee.email).in_(emails)
+        )
+    ).all()
+    email_to_uid: dict[str, int] = {email: uid for uid, email in rows}
+
+    return [
+        WorkforceSearchResultOut(
+            platform_user_id=email_to_uid.get((r.get("work_email") or "").lower()),
+            display_name=r.get("display_name", ""),
+            work_email=r.get("work_email", ""),
+            department=r.get("department", ""),
+        )
+        for r in workforce_results
+        if r.get("work_email")
+    ]

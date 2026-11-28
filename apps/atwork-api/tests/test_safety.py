@@ -11,12 +11,15 @@ ALLOWED_THIRD_PARTY = {
     "openpyxl",
     "app",
     "auth_client_py",
+    "httpx",  # used by workforce_client for internal people-api calls
     "mail_client_py",
     "fastapi",
     "pydantic",
     "pydantic_settings",
     "sqlalchemy",
 }
+# Service URLs explicitly approved for inter-service calls within the platform
+_ALLOWED_API_URLS = {"platform_api_url", "people_api_url"}
 
 
 def test_refuses_to_start_outside_development_with_default_secrets():
@@ -42,4 +45,4 @@ def test_only_imports_stdlib_shared_auth_and_its_own_code():
 
 def test_has_no_setting_pointing_at_another_service():
     for field in Settings.model_fields:
-        assert field == "platform_api_url" or not field.endswith("_api_url"), field
+        assert field in _ALLOWED_API_URLS or not field.endswith("_api_url"), field

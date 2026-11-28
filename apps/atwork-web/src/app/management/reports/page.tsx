@@ -513,6 +513,7 @@ function Screen() {
     return { from: addDays(to, -29), to };
   });
   const [mode, setMode] = useState("");
+  const [clientFilter, setClientFilter] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; name: string } | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -532,6 +533,7 @@ function Screen() {
     date_from: range.from,
     date_to: range.to,
     work_mode: mode || undefined,
+    client: clientFilter || undefined,
     user_id: selectedEmployee ? String(selectedEmployee.id) : undefined,
     q: debouncedQ || undefined,
   };
@@ -564,6 +566,15 @@ function Screen() {
             <option value="">All</option>
             {ALL_WORK_MODES.map((m) => <option key={m} value={m}>{WORK_MODE_LABEL[m]}</option>)}
           </Select>
+        </FormField>
+        <FormField label="Client" htmlFor="report-client">
+          <Input
+            id="report-client"
+            type="search"
+            placeholder="All clients"
+            value={clientFilter}
+            onChange={(e) => { setClientFilter(e.target.value); setOffset(0); }}
+          />
         </FormField>
         <FormField label="Employee search" htmlFor="report-q">
           <Input
