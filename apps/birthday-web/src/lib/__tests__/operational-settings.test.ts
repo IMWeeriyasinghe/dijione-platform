@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysIso, validateLeadTime, validateStartDate } from "../operational-settings";
+import { addDaysIso, validateLeadTime, validateOrderCreationWindow, validateStartDate } from "../operational-settings";
 
 describe("operational settings validation", () => {
   const now = new Date("2026-11-18T12:00:00Z");
@@ -23,5 +23,16 @@ describe("operational settings validation", () => {
     expect(validateLeadTime("-1")).not.toBeNull();
     expect(validateLeadTime("2.5")).not.toBeNull();
     expect(validateLeadTime("61")).not.toBeNull();
+  });
+
+  it("validates the order creation window (1–90, integers only)", () => {
+    expect(validateOrderCreationWindow("14")).toBeNull();
+    expect(validateOrderCreationWindow("1")).toBeNull();
+    expect(validateOrderCreationWindow("90")).toBeNull();
+    expect(validateOrderCreationWindow("0")).not.toBeNull();
+    expect(validateOrderCreationWindow("-1")).not.toBeNull();
+    expect(validateOrderCreationWindow("91")).not.toBeNull();
+    expect(validateOrderCreationWindow("2.5")).not.toBeNull();
+    expect(validateOrderCreationWindow("")).not.toBeNull();
   });
 });
