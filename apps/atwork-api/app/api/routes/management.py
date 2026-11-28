@@ -766,8 +766,22 @@ def analytics(
     all_uids = {s.platform_user_id for s in sessions}
     client_map = resolve_client_for_users(service.db, all_uids) if all_uids else {}
 
-    # Authoritative eligible counts from the workforce directory
-    eligible_counts = get_client_counts()  # {client: active_count}; {} if unavailable
+    # Eligible counts:
+    # - Full admin (scope=None): authoritative from the workforce directory (all active employees)
+    # - BP (scope=frozenset): count is restricted to the BP's explicitly assigned employees per
+    #   client. The full directory count must not leak other employees' existence to a BP.
+    if ms.scope is None:
+        eligible_counts = get_client_counts()  # {client: active_count}; {} if unavailable
+        # Clients visible to full admins: those with sessions + those in directory
+        scope_client_counts: dict[str, int] | None = None
+    else:
+        eligible_counts = {}  # won't be used directly for BPs
+        # Build eligible_counts from BP's own employee scope
+        scope_uids: set[int] = ms.scope  # type: ignore[assignment]
+        scope_client_map = resolve_client_for_users(service.db, scope_uids) if scope_uids else {}
+        scope_client_counts = {}
+        for uid, c in scope_client_map.items():
+            scope_client_counts[c] = scope_client_counts.get(c, 0) + 1
 
     # Aggregate sessions per client
     class _Agg:
@@ -791,13 +805,20 @@ def analytics(
         a.net_s += part.net_seconds
         a.unverified_s += part.provisional_seconds
 
-    # Union of clients with sessions and clients in the directory
-    all_clients = set(agg.keys()) | set(eligible_counts.keys())
+    # Union of clients visible to this identity
+    if ms.scope is None:
+        all_clients = set(agg.keys()) | set(eligible_counts.keys())
+    else:
+        # BPs only see clients their scoped employees belong to
+        all_clients = set(agg.keys()) | set((scope_client_counts or {}).keys())
 
     def _build_row(c: str) -> ClientAdoptionOut:
         a = agg.get(c)
         adopted = len(a.users) if a else 0
-        eligible = eligible_counts.get(c, 0)
+        if ms.scope is None:
+            eligible = eligible_counts.get(c, 0)
+        else:
+            eligible = (scope_client_counts or {}).get(c, 0)
         if eligible <= 0:
             # Directory unavailable or no active employees for this client
             eligible = adopted  # treat adopted as eligible (can't divide by 0)
@@ -929,12 +950,12 @@ def bp_employee_search(
     if not workforce_results:
         return []
 
-    # Resolve work_email → platform_user_id via AttendanceEmployee
+    # Resolve work_email → platform_user_id via AttendanceEmployee.
+    # AttendanceEmployee.platform_user_id is the PK — there is no separate id column.
     emails = [r["work_email"].lower() for r in workforce_results if r.get("work_email")]
-    from app.models.attendance import AttendanceEmployee
     from sqlalchemy import select as _select, func as _func
     rows = db.execute(
-        _select(AttendanceEmployee.id, _func.lower(AttendanceEmployee.email)).where(
+        _select(AttendanceEmployee.platform_user_id, _func.lower(AttendanceEmployee.email)).where(
             _func.lower(AttendanceEmployee.email).in_(emails)
         )
     ).all()
