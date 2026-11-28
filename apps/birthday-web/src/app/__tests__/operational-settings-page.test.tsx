@@ -90,7 +90,7 @@ describe("Operational Settings page", () => {
     expect(screen.getByTestId("first-eligible")).toHaveTextContent(`First eligible birthday: ${expected}`);
   });
 
-  it("saving settings calls PATCH only, never the clean start", async () => {
+  it("saving settings calls PATCH with all fields including window_lookahead_days, never the clean start", async () => {
     getConfig.mockResolvedValue(config());
     getCleanStartPreview.mockResolvedValue({ ...PREVIEW, first_eligible_birthday: null, total: 0, by_status: {}, released_to_supplier: 0 });
     updateConfig.mockResolvedValue(config({ operational_start_date: today, first_eligible_birthday: plus7 }));
@@ -98,9 +98,45 @@ describe("Operational Settings page", () => {
     await userEvent.type(await screen.findByLabelText(/Operational Start Date/), today);
     await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() =>
-      expect(updateConfig).toHaveBeenCalledWith({ operational_start_date: today, supplier_lead_time_days: 7 }),
+      expect(updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ operational_start_date: today, supplier_lead_time_days: 7, window_lookahead_days: 14 }),
+      ),
     );
     expect(applyCleanStart).not.toHaveBeenCalled();
+  });
+
+  it("displays the order creation window field with the saved value", async () => {
+    getConfig.mockResolvedValue(config({ window_lookahead_days: 21 }));
+    getCleanStartPreview.mockResolvedValue({ ...PREVIEW, first_eligible_birthday: null, total: 0, by_status: {}, released_to_supplier: 0 });
+    wrap(<OperationalSettingsPage />);
+    const input = await screen.findByLabelText(/Order Creation Window/);
+    expect(input).toHaveValue(21);
+  });
+
+  it("shows a validation error when order creation window is out of range and disables Save", async () => {
+    getConfig.mockResolvedValue(config());
+    getCleanStartPreview.mockResolvedValue({ ...PREVIEW, first_eligible_birthday: null, total: 0, by_status: {}, released_to_supplier: 0 });
+    wrap(<OperationalSettingsPage />);
+    const input = await screen.findByLabelText(/Order Creation Window/);
+    await userEvent.clear(input);
+    await userEvent.type(input, "0");
+    expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled();
+  });
+
+  it("includes window_lookahead_days in the PATCH payload when changed", async () => {
+    getConfig.mockResolvedValue(config());
+    getCleanStartPreview.mockResolvedValue({ ...PREVIEW, first_eligible_birthday: null, total: 0, by_status: {}, released_to_supplier: 0 });
+    updateConfig.mockResolvedValue(config({ window_lookahead_days: 30 }));
+    wrap(<OperationalSettingsPage />);
+    const input = await screen.findByLabelText(/Order Creation Window/);
+    await userEvent.clear(input);
+    await userEvent.type(input, "30");
+    await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ window_lookahead_days: 30 }),
+      ),
+    );
   });
 
   it("previews the impact before confirming, then applies once with the previewed boundary", async () => {

@@ -15,7 +15,7 @@ import {
 } from "@dijione/design-system";
 import { AlertRecipientsSection } from "./alert-recipients";
 import { applyCleanStart, getCleanStartPreview, getConfig, updateConfig } from "@/lib/api";
-import { addDaysIso, formatIsoDate, validateLeadTime, validateStartDate } from "@/lib/operational-settings";
+import { addDaysIso, formatIsoDate, validateLeadTime, validateOrderCreationWindow, validateStartDate } from "@/lib/operational-settings";
 
 // Operational settings (DIJI Birthday V1 go-live).
 //
@@ -59,12 +59,15 @@ export default function OperationalSettingsPage() {
   // show the saved values.
   const [startDraft, setStartDate] = useState<string | null>(null);
   const [leadDraft, setLeadTime] = useState<string | null>(null);
+  const [windowDraft, setWindowDraft] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const startDate = startDraft ?? configQuery.data?.operational_start_date ?? "";
   const leadTime = leadDraft ?? String(configQuery.data?.supplier_lead_time_days ?? 7);
+  const windowDays = windowDraft ?? String(configQuery.data?.window_lookahead_days ?? 14);
 
   const startError = validateStartDate(startDate);
   const leadError = validateLeadTime(leadTime);
+  const windowError = validateOrderCreationWindow(windowDays);
   const firstEligible = useMemo(
     () => (startDate && !startError && !leadError ? addDaysIso(startDate, Number(leadTime)) : null),
     [startDate, leadTime, startError, leadError],
@@ -73,7 +76,9 @@ export default function OperationalSettingsPage() {
   const saved = configQuery.data;
   const dirty =
     !!saved &&
-    ((saved.operational_start_date ?? "") !== startDate || String(saved.supplier_lead_time_days) !== leadTime);
+    ((saved.operational_start_date ?? "") !== startDate ||
+      String(saved.supplier_lead_time_days) !== leadTime ||
+      String(saved.window_lookahead_days) !== windowDays);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["birthday-config"] });
@@ -85,10 +90,12 @@ export default function OperationalSettingsPage() {
       updateConfig({
         operational_start_date: startDate || null,
         supplier_lead_time_days: Number(leadTime),
+        window_lookahead_days: Number(windowDays),
       }),
     onSuccess: () => {
       setStartDate(null);
       setLeadTime(null);
+      setWindowDraft(null);
       refresh();
     },
   });
@@ -172,11 +179,29 @@ export default function OperationalSettingsPage() {
           is processed normally next year. Per-supplier lead times still apply to each order as before.
         </p>
 
+        <div className="mt-4">
+          <FormField
+            label="Order Creation Window (days)"
+            htmlFor="order-creation-window"
+            hint={windowError ?? "Create birthday orders this many days before the team member's birthday."}
+          >
+            <Input
+              id="order-creation-window"
+              type="number"
+              min={1}
+              max={90}
+              value={windowDays}
+              aria-invalid={!!windowError}
+              onChange={(e) => setWindowDraft(e.target.value)}
+            />
+          </FormField>
+        </div>
+
         {saveMutation.isError && <p className="mt-3 text-sm text-dt-danger">{errorText(saveMutation.error)}</p>}
         <div className="mt-4 flex justify-end">
           <Button
             size="sm"
-            disabled={!dirty || !!startError || !!leadError}
+            disabled={!dirty || !!startError || !!leadError || !!windowError}
             loading={saveMutation.isPending}
             onClick={() => saveMutation.mutate()}
           >
@@ -227,7 +252,7 @@ export default function OperationalSettingsPage() {
             )}
             <p className="text-dt-text-secondary">
               No supplier cancellation email is sent. Nothing is deleted: excluded orders keep their full history,
-              are marked “Excluded — before operational start”, and can be reopened individually.
+              are marked &ldquo;Excluded — before operational start&rdquo;, and can be reopened individually.
             </p>
             <div className="flex justify-end">
               <Button size="sm" disabled={!canApply} onClick={() => setConfirmOpen(true)}>

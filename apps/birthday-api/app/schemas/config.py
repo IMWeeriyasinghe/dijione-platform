@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 OPERATIONAL_START_WINDOW_DAYS = 365
 MAX_SUPPLIER_LEAD_TIME_DAYS = 60
 MAX_ALERT_RECIPIENTS = 20
+MIN_ORDER_CREATION_WINDOW_DAYS = 1
+MAX_ORDER_CREATION_WINDOW_DAYS = 90
 
 
 class DetectionConfigRead(BaseModel):
@@ -40,7 +42,9 @@ class DetectionConfigUpdate(BaseModel):
     short_notice_threshold_days: int | None = None
     urgent_threshold_days: int | None = None
     window_lookback_days: int | None = None
-    window_lookahead_days: int | None = None
+    window_lookahead_days: int | None = Field(
+        default=None, ge=MIN_ORDER_CREATION_WINDOW_DAYS, le=MAX_ORDER_CREATION_WINDOW_DAYS
+    )
     default_quantity: int | None = None
     verify_buffer_days: int | None = None
     acknowledgement_sla_hours: int | None = None

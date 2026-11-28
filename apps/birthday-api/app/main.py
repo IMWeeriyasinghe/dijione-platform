@@ -41,7 +41,7 @@ app = FastAPI(
         "delivery-address verification, the explicit approval workflow, and "
         "the supplier-portal boundary. See docs/birthday/end-to-end-workflow.md."
     ),
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(

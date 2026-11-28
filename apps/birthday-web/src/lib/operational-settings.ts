@@ -4,6 +4,8 @@
 
 export const OPERATIONAL_START_WINDOW_DAYS = 365;
 export const MAX_SUPPLIER_LEAD_TIME_DAYS = 60;
+export const MIN_ORDER_CREATION_WINDOW_DAYS = 1;
+export const MAX_ORDER_CREATION_WINDOW_DAYS = 90;
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -40,6 +42,15 @@ export function validateLeadTime(value: string): string | null {
   if (value.trim() === "" || !/^\d+$/.test(value.trim())) return "Enter a whole number of days.";
   const n = Number(value);
   if (n < 0 || n > MAX_SUPPLIER_LEAD_TIME_DAYS) return `Must be between 0 and ${MAX_SUPPLIER_LEAD_TIME_DAYS}.`;
+  return null;
+}
+
+export function validateOrderCreationWindow(value: string): string | null {
+  if (value.trim() === "" || !/^-?\d+$/.test(value.trim())) return "Enter a whole number of days.";
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < MIN_ORDER_CREATION_WINDOW_DAYS || n > MAX_ORDER_CREATION_WINDOW_DAYS) {
+    return `Must be between ${MIN_ORDER_CREATION_WINDOW_DAYS} and ${MAX_ORDER_CREATION_WINDOW_DAYS}.`;
+  }
   return null;
 }
 
